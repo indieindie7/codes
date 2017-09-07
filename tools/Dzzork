@@ -1,6 +1,9 @@
 /*
-*this game has been made on JAVA using NETBEANS ide
+ *this game has been made on JAVA using NETBEANS ide
  * this tool/game was made by TC BRAGA, for more
+ *This is a java class, run at your own risk. this has been an interesting project, imma try make some other stuff
+ *
+ *the tool side is to load a script for the game, the game is a zork-style game
  */
 package dzzork;
 
