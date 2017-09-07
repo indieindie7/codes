@@ -1,0 +1,458 @@
+/*
+ * this tool/game was made by TC BRAGA, for more
+ */
+package dzzork;
+
+import static dzzork.Dzzork.EFEITO.usar;
+import static dzzork.Dzzork.sj;
+import static dzzork.action_caller.editTextArea;
+import static dzzork.action_caller.myString;
+import static dzzork.action_caller.uneditedTextArea;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Container;
+import java.awt.KeyboardFocusManager;
+import java.awt.event.KeyEvent;
+import java.util.*;
+import java.io.*;
+import java.nio.file.*;
+import javax.swing.BorderFactory;
+import javax.swing.JFrame;
+import javax.swing.JTextArea;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.swing.text.BadLocationException;
+
+/**
+ * *|Dzzork|
+ *
+ *
+ * @author lonis
+ */
+public class Dzzork extends JFrame {
+
+    public enum EFEITO {
+        usar, passar
+    }
+    static java.util.List<Sala> salas = new ArrayList<Sala>();
+    static Sala my_sala;
+    static boolean loaded = false;
+////////////////////
+    //////////////
+    //////////////
+
+    /**
+     * @param args the command line arguments
+     * @throws java.io.IOException
+     */
+    public static void main(String[] args) throws IOException {
+        settuper();
+        comand_settup("C:\\Users\\lonis\\Desktop\\script_dzzork.txt".trim().replaceAll("\r*\n*", "").replaceAll(" ", ""));
+        print_intro();
+    }
+    public static screen_caller sc;
+
+    static void settuper() throws IOException {
+        sc = new screen_caller();
+        sc.settuper();
+    }
+
+    static void output_message(String s) {
+        sc.uneditedTextArea.setText(sc.uneditedTextArea.getText() + System.lineSeparator() + s);
+    }
+
+    static void print_intro() {
+        output_message("hello user");
+        output_message("load or loading game, how god knos :/");
+     }
+
+    static void game_function(String enter) throws IOException {
+        java.util.List<String> s = String_separator(enter, " ");
+
+        objetos i = null;
+        if (loaded && s.size() > 1) {
+            i = oj(my_sala, s);
+            if (aj(i, s) != null) {
+                output_message("nao entendi, olhe melhor " + i.Name);
+                //    + System.lineSeparator() + myString
+                System.out.println("nao entendi, olhe melhor " + i.Name);
+                i = null;
+            }
+        }
+        if (i != null) {
+            Acao a = aj(i, s);
+            output_message(return_message(a, i));
+            //   System.out.println(return_message(a));
+        } else {
+            switch (s.get(0)) {
+                case "olhar":
+                    if (loaded) {
+                        if (s.size() > 1 && oj(my_sala, s) != null) {
+                            objetos o = oj(my_sala, s);
+                            String zdo = " " + o.Name + " : " + o.Descricao;
+                            for (Acao asa : o.acoes) {
+                                zdo += " " + asa.Verbo + " : " + asa.descricao;
+                            }
+                            output_message("  " + zdo);
+                                  } else {
+                            String a = "";
+                            for (objetos sd : my_sala.objetos) {
+                                a += sd.Name + " : " + sd.Descricao;
+                            }
+                            output_message(my_sala.subname + " : " + my_sala.descricao + ",  " + a);
+                        }
+                    }
+                    break;
+                case "creditos":
+                    output_message("|||||||||||||||| Jogo Feito por Campanário, TIAGO B, Programado em Java durante 30 dias /b em seu tempo livre depois de árduas sessões de estudos");
+                    break;
+                case "help":
+                    output_message("Lista de comandos: creditos, help, fechar, olhar , examinar /b Sintaxe: Verbo + Objeto");
+                    break;
+                case "fechar":
+                    System.exit(0);
+                    break;
+            }
+        }
+        //  game_function();
+    }
+////////////////
+///////////////
+
+    static void comand_settup(String sv) throws IOException {
+        String FILE_NAME = sv;
+        output_message("loading " + sv);
+        File f = new File(FILE_NAME);
+
+        Sala Msalas = null;
+        if (salas.size() > 0) {
+            salas.get(salas.size() - 1);
+        }
+        objetos Mobj = null;
+        if (Msalas.objetos.size() > 0) {
+            Mobj = Msalas.objetos.get(Msalas.objetos.size() - 1);
+        }
+        Acao Mac = null;
+        if (Mobj.acoes.size() > 0) {
+            Mac = Mobj.acoes.get(Mobj.acoes.size() - 1);
+        }
+
+        java.util.List<String> rd = Files.readAllLines(Paths.get(FILE_NAME));
+        for (String r : rd) {//here read  text files
+            String[] io = r.split(";");//.trim();
+            for (int w = 0; w < io.length; w++) {
+                io[w] = io[w].trim();
+            }
+            switch (io[0]) {
+//ref// sala; uma descricao da sala; um nome da sala
+//ref// objeto; um nome da sala;nome obj; descricao obj
+//ref// verbo; nome verbo;desc verbo
+//ref// mensagem;failmessage;passmessage
+//ref// condicao;NOM_sala2,nom obj2;cond descric
+//ref// efeito;tipoefeito ;/[usar]/um nome da sala2,nom obj2/[passar]/nomsala;/[usar]/efeit descric *( sem : /|[EFEITO])*
+                case "sala":
+                    salas.add(new Sala(io[1], io[2], salas.size()));
+                    output_message("sala adicionada");
+                    break;
+                case "objeto":
+
+                    Msalas.objetos.add(new objetos(io[1], io[2], Msalas.objetos.size()));// , io[3]
+                    salas.set(Msalas.place, Msalas);
+                    output_message("objeto adicionada");
+                    break;
+                case "verbo":
+
+                    Mobj.acoes.add(new Acao(io[1], io[2], Mobj.acoes.size()));
+                    Msalas.objetos.set(Mobj.place, Mobj);
+                    salas.set(Msalas.place, Msalas);
+                    output_message("acao adicionada");
+                    break;
+                case "menssagem":
+
+                    Mac.fail = io[2];
+                    Mac.pass = io[3];
+                    Mobj.acoes.set(Mac.place, Mac);
+                    Msalas.objetos.set(Mobj.place, Mobj);
+                    salas.set(Msalas.place, Msalas);
+                    output_message("menssagem adicionada");
+                    break;
+                case "condicao":
+
+                    Mac.CONDICAO.add(new Condicao(io[1], io[2]));
+                    Mobj.acoes.set(Mac.place, Mac);
+                    Msalas.objetos.set(Mobj.place, Mobj);
+                    salas.set(Msalas.place, Msalas);
+                    output_message("condicao adicionada");
+                    break;
+                case "efeito":
+
+                    Mac.Efeito.add(new Efeito(io[1], io[2], io[3], Mac.Efeito.size()));
+                    Mobj.acoes.set(Mac.place, Mac);
+                    Msalas.objetos.set(Mobj.place, Mobj);
+                    salas.set(Msalas.place, Msalas);
+                    output_message("efeito adicionada");
+                    break;
+
+            }
+
+        }
+        output_message("file loaded, vide salas conta :" + salas.size());
+        if (salas.size() > 0) {
+            output_message(salas.get(0).descricao);
+            loaded = true;
+            my_sala = salas.get(0);
+        }
+    }
+
+    static boolean name_get(java.util.List<String> isname, String name) {
+        java.util.List<String> sname = Arrays.asList(name.split(" "));
+        for (int w = 0; w < sname.size(); w++) {
+            sname.set(w, sname.get(w).trim());
+        }
+        sname.removeIf(z -> z.equals("") || z.equals(" ") || z.equals(null));
+        if (sname.size() > isname.size()) {
+            return false;
+        }
+        int x = -1;
+        for (int i = 0; i < isname.size(); i++) {
+            if (isname.get(i).equals(sname.get(0))) {
+                x = i;
+                break;
+            }
+        }
+        //if(int z = x )
+
+        for (int z = x;
+                z < sname.size()
+                && z < isname.size(); z++) {
+            if (!sname.get(z).equals(isname.get(z))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    static java.util.List<String> String_separator(String x, String condtion) {
+        java.util.List<String> s = Arrays.asList(new Scanner(System.in).nextLine().split(condtion));
+        for (int i = 0; i < s.size(); i++) {
+            s.set(i, s.get(i).trim());
+        }
+        s.removeIf(z -> z.equals("") || z.equals(" ") || z.equals(null));
+        return s;
+    }
+
+    //////////////////
+    //////////////////
+    /////////////////
+/////////////////////////
+    ////get_specificic classes on the main list
+    static Sala sj(java.util.List<String> x) { // throws IOException {
+        return salas.stream().filter(z -> name_get(x, z.subname)).findFirst().get();
+
+    }
+
+    static objetos oj(Sala s, java.util.List<String> x) {
+        return s.objetos.stream().filter(w -> name_get(x, w.Name)).findFirst().get();
+    }
+
+    static Acao aj(objetos o, java.util.List<String> x) {
+        return o.acoes.stream().filter(z -> name_get(x, z.Verbo)).findFirst().get();
+    }
+//////////////////////
+    //////////////
+    ///////////
+
+    static String return_message(Acao e, objetos i) { //objetos i,
+        if (e.CONDICAO.stream().allMatch(z -> condition_met(z))) {
+            e.Efeito.forEach(y
+                    -> {
+
+                switch (y.efeito) {
+                    case usar:
+                        //    Sala s = sj(y.nom_sala);//).findFirst().get();
+                        objetos o = oj(my_sala, String_separator(y.Target_obj, " "));
+
+                        o.Descricao = y.descricao;
+                        Sala sa = sj(String_separator(y.nom_sala, " "));
+                        sa.objetos.set(o.place, o);
+                        salas.set(sa.place, sa);
+
+                        e.Efeito.remove(y.place);
+
+                        break;
+
+                    case passar:
+                        my_sala = sj(String_separator(y.nom_sala, " "));
+                        break;
+                }
+
+            });
+            if (e.Efeito.size() > 0) {
+                i.acoes.set(e.place, e);
+            } else {
+                i.acoes.remove(e.place);
+            }
+            my_sala.objetos.set(i.place, i);
+            salas.set(my_sala.place, my_sala);
+            return e.pass;
+        } else {
+            return e.fail;
+        }
+
+    }
+//////////////////
+    ///////////////////////
+    ////////////////////
+    //////////////////////
+    ////////////////////// CLASSES
+
+    static boolean condition_met(Condicao c) {
+        return salas.stream()
+                .anyMatch(w -> w.subname.equals(c.nom_sala) && w.objetos
+                .stream()
+                .anyMatch(y -> y.Name.equals(c.nom_sala) && y.Descricao.equals(c.Descricao)));
+
+    }
+
+}
+
+class Sala {
+
+    public Sala(String s, String sub, int i) {
+        descricao = sub;
+        subname = s;
+        place = i;
+    }
+
+    public String descricao;
+    public java.util.List<objetos> objetos = new ArrayList<>();
+    public String subname;
+    public int place;
+}
+
+class objetos {
+
+    public objetos(String s, String d, int i) {//, String e
+        Name = s;
+        Descricao = d;
+        place = i;
+    }
+    public String Name;
+    public String Descricao;
+    public java.util.List<Acao> acoes = new ArrayList<>();
+    public int place;
+
+}
+
+class Acao {
+
+    public Acao(String s, int i) {
+        Verbo = s;
+        place = i;
+    }
+
+    public Acao(String s, String z, int i) {
+        Verbo = s;
+        descricao = z;
+        place = i;
+    }
+    public String Verbo;
+    public java.util.List<Condicao> CONDICAO = new ArrayList<>();
+    public String pass;
+    public String fail;
+    public java.util.List<Efeito> Efeito = new ArrayList<>();// EFEITO;
+    public int place;
+    public String descricao;
+}
+
+class Condicao {
+
+    public Condicao(String a, String s) {
+        nom_sala = a.split(",")[1].trim();
+        Nom_objeto = a.split(",")[1].trim();
+        Descricao = s;
+    }
+    public String Nom_objeto;
+    public String nom_sala;
+    public String Descricao;
+
+}
+
+class Efeito {
+
+    public Efeito(String a, String o1, String o2, int o3) {
+        efeito = Dzzork.EFEITO.valueOf(a);
+        place = o3;
+        switch (efeito) {
+            case usar:
+                nom_sala = o1.split(",")[0].trim();
+                Target_obj = o1.split(",")[1].trim();
+                descricao = o2;
+                break;
+
+            case passar:
+                nom_sala = o1;// sj();
+                break;
+            default:
+                System.out.println("krill me");
+        }
+    }
+    public Dzzork.EFEITO efeito;
+    public String nom_sala;
+    public String Target_obj;
+    public String descricao;
+    public int place;
+}
+
+class screen_caller extends JFrame {
+
+    JFrame frame;
+    public static JTextField editTextArea = new JTextField("Type Here");
+
+    public static JTextArea uneditedTextArea = new JTextArea(" the old text is rere");
+    public static String myString;
+    public void settuper() throws IOException {
+        keymappingf();
+        g();
+    }
+
+    public static void keymappingf() throws IOException {
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher((KeyEvent ke) -> {
+            switch (ke.getID()) {
+                case KeyEvent.KEY_PRESSED:
+                    if (ke.getKeyCode() == KeyEvent.VK_ENTER) {
+                        myString = editTextArea.getText();
+                        editTextArea.setText("");
+                        uneditedTextArea.setText(uneditedTextArea.getText() + System.lineSeparator() + myString);
+                        System.out.println(myString);
+                        try {
+                            Dzzork.game_function(myString);
+                        } catch (IOException ex) {
+                            //    Logger.getLogger(screen_caller.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+                    }
+                    System.out.println(ke.getKeyCode());
+            }
+            return false;
+        });
+    }
+
+    public void g() {
+        frame = new JFrame();
+        setLayout(new BorderLayout());
+        uneditedTextArea.setEditable(false);
+        editTextArea.setForeground(Color.BLACK);
+        editTextArea.setBorder(BorderFactory.createLineBorder(Color.BLACK));
+        Container c = frame.getContentPane();
+        c.add(uneditedTextArea, BorderLayout.CENTER);
+        c.add(editTextArea, BorderLayout.SOUTH);
+        frame.setSize(300, 300);
+        frame.setVisible(true);
+
+    }
+
+}
