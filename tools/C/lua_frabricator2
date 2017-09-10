@@ -1,0 +1,1174 @@
+
+using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using System;
+using System.IO;
+using System.Linq;
+using System.Text;
+//using System.Runtime.InteropServices; // Pro and Free!!!
+//using System.Drawing;
+//using Screen = System.Windows.Forms.Screen;
+//using Application = UnityEngine.Application;
+//using System.Drawing.Imaging;
+//using NReco.VideoConverter;
+//using UnityEngine.Video;
+
+public class luafabrication2 : MonoBehaviour
+{
+
+    void Start()
+    {
+
+        string a = DateTime.Now.ToString("yyyyMMddTHHmmsszzz");
+
+        StringBuilder sb = new StringBuilder();
+        foreach (char c in a)
+        {
+            if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '.' || c == '_')
+            {
+                sb.Append(c);
+            }
+        }
+        a = sb.ToString();
+        path = "lua_folder/version" + a + ".txt";
+        if (!File.Exists(path))
+            using (StreamWriter sw = File.CreateText(path))
+            {
+                sw.WriteLine("the text starts down here" + "\n");
+
+            }
+
+        words = File.ReadAllLines("lua_folder/sample.csv");
+
+
+
+
+        print("started");
+
+    }
+    string[] words;
+    string path;
+    int wirds = 1;
+    int werds = 0;
+    public enum tupd
+    {
+        religion,buildings
+    }
+    public tupd choice;
+    // Update is called once per frame
+    void Update()
+    {
+
+
+        if (wirds < words.Length)
+        {
+            List<string> letras = words[wirds].Split(',').ToList();
+            string word = "";
+            letras.RemoveAll(x => x == "");
+
+
+            if (choice == tupd.buildings)
+            {
+                return_naca(letras[1].ToLower().Trim());
+
+                word = "{ owner = " + '"' + nacao + '"' + ", ctname = " + '"' + letras[0] + '"' + ",buildins = {";// + '"' + letras[2] + '"' + "}," + "\n");
+                for (int i = 0; i < letras.Count(); i++)
+                {
+                    if(letras[i]!="")
+                    switch (letras[i].Trim())
+                    {
+                        case ("Ancient"):
+                            letras.AddRange(new string[] { "Barracks", "Circus", "Granary", "Library", "Monument", "Shrine", "Stone Works", "Walls", "Water Mill" });
+                            break;
+                        case ("Classical"):
+                            letras.AddRange(new string[] { "Ampitheater", "Aqueduct", "Caravansary", "Colosseum", "Courthouse", "Lighthouse", "Market", "Mint", "Stable", "Temple" });
+                            break;
+                        case ("Medieval"):
+                            letras.AddRange(new string[] {"Armory","Castle","Forge","Garden","Harbor","University","Workshop","Arsenal","Constabulary","Bank","Observatory","Opera House",
+                        "Seaport","War Academy","Windmill","Zoo" }); break;
+                        case ("Modern"):
+                            letras.AddRange(new string[] { "Broadcast Tower", "Hotel", "Military Base", "Research Lab", "Stadium" });
+                            break;
+                        case ("Industrial"):
+                            letras.AddRange(new string[] { "Factory", "Hospital", "Hydro Plant", "Military Academy", "Museum", "Police Station", "Public School", "Stock Exchange" });
+                            break;
+                        case ("Atomic"):
+                            letras.AddRange(new string[] { "Airport", "Medical Lab", "Recycling Center", "Solar Plant" });
+                            break;
+                        case ("Information"):
+                            letras.AddRange(new string[] { "Bomb Shelter", "Spaceship Factory" });
+                            break;
+
+                        default:
+                            return_build(letras[i]);
+
+                            if (i > 1) word += '"' + bld + '"';
+                            if (i > 1 && i < letras.Count() - 1) word += ',';
+                            break;
+
+                    }
+
+
+                }
+
+                word += "} }," + "\n";
+
+            }
+            if (choice == tupd.religion && letras[2] != "NONE")
+            {
+                return_naca(letras[1].ToLower().Trim());
+                word = "{ owner = " + '"' + nacao + ", ctname = " + '"' + letras[0] + '"' + ",relgn = " + '"' + letras[2] + '"' + "}," + "\n";
+
+
+            }
+            File.AppendAllText(path, word);
+            print(wirds + " " + words.Length);
+            wirds++;
+        }
+
+
+
+
+        if (wirds >= words.Length)
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#endif
+
+
+        }
+
+
+    }
+
+    string nacao = "";
+
+
+    void return_naca(string e)
+    {
+        nacao = e.Trim().ToLower();
+        switch (e)
+        {
+            case "bolivia":
+                nacao = "CIVILIZATION_BOLIVIA";
+                break;
+            case "israel":
+                nacao = "CIVILIZATION_LEUGI_ISRAEL";
+                break;
+
+            case "brazil":
+                nacao = "CIVILIZATION_BRAZIL";
+                break;
+
+            case "australia":
+                nacao = "CIVILIZATION_CL_AUSTRALIA";
+                break;
+            case "afghanistan":
+                nacao = "CIVILIZATION_CL_AFGHANISTAN";
+                break;
+            case "canada":
+                nacao = "CIVILIZATION_COLONIALCANADA";
+                break;
+            case "kimberley":
+                nacao = "CIVILIZATION_CLKIMBERLEY";
+                break;
+            case "mexico":
+                nacao = "CIVILIZATION_MEXICOREPUBLIC";
+                break;
+            case "mexico republic":
+                nacao = "CIVILIZATION_MEXICOREPUBLIC";
+                break;
+            case "philippines":
+                nacao = "CIVILIZATION_JFD_PHILIPPINES";
+                break;
+            case "blackfoot":
+                nacao = "CIVILIZATION_CLBLACKFOOT";
+                break;
+            case "boer":
+                nacao = "CIVILIZATION_BOER";
+                break;
+            case "boers":
+                nacao = "CIVILIZATION_BOER";
+                break;
+            case "inuit":
+                nacao = "CIVILIZATION_CLINUIT";
+                break;
+            case "vietnam":
+                nacao = "CIVILIZATION_VIETNAM";
+                break;
+            case "argentina":
+                nacao = "CIVILIZATION_ARGENTINA";
+                break;
+            case "ayyubids":
+                nacao = "CIVILIZATION_MC_AYYUBIDS";
+                break;
+            case "sparta":
+                nacao = "CIVILIZATION_MC_SPARTA";
+                break;
+            case "buccaneer":
+                nacao = "CIVILIZATION_BUCCANEER";
+                break;
+            case "buccaneers":
+                nacao = "CIVILIZATION_BUCCANEER";
+                break;
+
+            case "cornwall":
+                nacao = "CIVILIZATION_CORNWALL";
+                break;
+
+            case "hawaii":
+                nacao = "CIVILIZATION_POLYNESIA";
+                break;
+            case "polynesia":
+                nacao = "CIVILIZATION_POLYNESIA";
+                break;
+            case "iceni":
+                nacao = "CIVILIZATION_ICENI";
+                break;
+            case "ireland":
+                nacao = "CIVILIZATION_IRELAND";
+                break;
+            case "picts":
+                nacao = "CIVILIZATION_PICTS";
+                break;
+            case "wales":
+                nacao = "CIVILIZATION_WALES";
+                break;
+            case "champa":
+                nacao = "CIVILIZATION_CHAMPA_MOD";
+                break;
+            case "chile":
+                nacao = "CIVILIZATION_CHILE";
+                break;
+            case "finland":
+                nacao = "CIVILIZATION_HYP_FINLAND";
+                break;
+            case "india":
+                nacao = "CIVILIZATION_MUGHAL";
+                break;
+            case "mughal":
+                nacao = "CIVILIZATION_MUGHAL";
+                break;
+            case "iceland":
+                nacao = "CIVILIZATION_JFD_ICELAND";
+                break;
+            case "byzantium":
+                nacao = "CIVILIZATION_JFD_BYZANTIUM_ALEXIOS";
+                break;
+            case "nazi":
+                nacao = "CIVILIZATION_JFD_NAZI_GERMANY";
+                break;
+            case "nazi germany":
+                nacao = "CIVILIZATION_JFD_NAZI_GERMANY";
+                break;
+            case "japan":
+                nacao = "CIVILIZATION_JFD_JAPAN_MEIJI";
+                break;
+            case "japan meiji":
+                nacao = "CIVILIZATION_JFD_JAPAN_MEIJI";
+                break;
+            case "sweden":
+                nacao = "CIVILIZATION_SWEDEN";
+                break;
+            case "khazar":
+                nacao = "CIVILIZATION_JFD_KHAZARIA";
+                break;
+            case "khaganate":
+                nacao = "CIVILIZATION_JFD_KHAZARIA";
+                break;
+            case "khazar khaganate":
+                nacao = "CIVILIZATION_JFD_KHAZARIA";
+                break;
+            case "armenia":
+                nacao = "CIVILIZATION_JFD_ARMENIA";
+                break;
+            case "napoleon":
+                nacao = "CIVILIZATION_JFD_NAPOLEONIC_FRANCE";
+                break;
+            case "france":
+                nacao = "CIVILIZATION_JFD_NAPOLEONIC_FRANCE";
+                break;
+            case "napoleonic france":
+                nacao = "CIVILIZATION_JFD_NAPOLEONIC_FRANCE";
+                break;
+            case "norway":
+                nacao = "CIVILIZATION_JFD_NORWAY";
+                break;
+            case "carthage":
+                nacao = "CIVILIZATION_JFD_CARTHAGE_HANNIBAL";
+                break;
+            case "ussr":
+                nacao = "CIVILIZATION_JFD_USSR_STALIN";
+                break;
+            case "sweden norway":
+                nacao = "CIVILIZATION_JFD_SWEDEN_NORWAY";
+                break;
+            case "America Lincoln":
+                nacao = "CIVILIZATION_JFD_AMERICA_LINCOLN";
+                break;
+            case "USA":
+                nacao = "CIVILIZATION_JFD_AMERICA_LINCOLN";
+                break;
+            case "sibir":
+                nacao = "CIVILIZATION_SIBIR";
+                break;
+            case "kievan rus":
+                nacao = "CIVILIZATION_KIEVAN_RUS_MOD";
+                break;
+            case "kongo":
+                nacao = "CIVILIZATION_KONGO_MOD";
+                break;
+            case "sri lanka":
+                nacao = "CIVILIZATION_LITE_SRI_LANKA";
+                break;
+            case "mali":
+                nacao = "CIVILIZATION_MALI_MOD";
+                break;
+            case "ashanti":
+                nacao = "CIVILIZATION_MC_ASHANTI";
+                break;
+
+            case "tibet":
+                nacao = "CIVILIZATION_MC_TIBET";
+                break;
+            case "china":
+                nacao = "CIVILIZATION_OW_PRC_MAO";
+                break;
+            case "mao china":
+                nacao = "CIVILIZATION_OW_PRC_MAO";
+                break;
+            case "texas":
+                nacao = "CIVILIZATION_TEXAS";
+                break;
+            case "republic of texas":
+                nacao = "CIVILIZATION_TEXAS";
+                break;
+            case "burma":
+                nacao = "CIVILIZATION_BURMA";
+                break;
+            case "mongols":
+                nacao = "CIVILIZATION_MONGOL";
+                break;
+            case "mongolia":
+                nacao = "CIVILIZATION_MONGOL";
+                break;
+            case "sioux":
+                nacao = "CIVILIZATION_SIOUX_MOD";
+                break;
+            case "timurids":
+                nacao = "CIVILIZATION_TIMURIDS_MOD";
+                break;
+            case "yakutia":
+                nacao = "CIVILIZATION_YAKUTIA";
+                break;
+
+            case "korea":
+                nacao = "CIVILIZATION_KOREA";
+                break;
+
+
+        }
+
+
+
+    }
+
+    string bld = "";
+    void return_build(string e)
+    {
+
+        e = e.Trim().ToLower();
+        bld = "lower" + e;
+            
+        switch (e)
+        {
+            case ("courthouse"):
+
+                e = "BUILDING_COURTHOUSE";
+                break;
+            case ("amphitheater"):
+
+                e = "BUILDING_AMPHITHEATER";
+                break;
+
+            case ("himeji castle"):
+
+                e = "BUILDING_HIMEJI_CASTLE";
+                break;
+            case ("sistine chapel"):
+
+                e = "BUILDING_SISTINE_CHAPEL";
+                break;
+            case ("kremlin"):
+
+                e = "BUILDING_KREMLIN";
+                break;
+            case ("forbidden palace"):
+
+                e = "BUILDING_FORBIDDEN_PALACE";
+                break;
+            case ("hanging garden"):
+
+                e = "BUILDING_HANGING_GARDEN";
+                break;
+            case ("great wall"):
+
+                e = "BUILDING_GREAT_WALL";
+                break;
+            case ("chichen itza"):
+
+                e = "BUILDING_CHICHEN_ITZA";
+                break;
+            case ("machu pichu"):
+
+                e = "BUILDING_MACHU_PICHU";
+                break;
+            case ("notre dame"):
+
+                e = "BUILDING_NOTRE_DAME";
+                break;
+            case ("porcelain tower"):
+
+                e = "BUILDING_PORCELAIN_TOWER";
+                break;
+            case ("stone works"):
+
+                e = "BUILDING_STONE_WORKS";
+                break;
+            case ("aqueduct"):
+
+                e = "BUILDING_AQUEDUCT";
+                break;
+            case ("sydney opera house"):
+
+                e = "BUILDING_SYDNEY_OPERA_HOUSE";
+                break;
+            case ("united nations"):
+
+                e = "BUILDING_UNITED_NATIONS";
+                break;
+            case ("pentagon"):
+
+                e = "BUILDING_PENTAGON";
+                break;
+
+            case ("museum"):
+
+                e = "BUILDING_MUSEUM";
+                break;
+            case ("broadcast tower"):
+
+                e = "BUILDING_BROADCAST_TOWER";
+                break;
+            case ("barracks"):
+
+                e = "BUILDING_BARRACKS";
+                break;
+            case ("armory"):
+
+                e = "BUILDING_ARMORY";
+                break;
+            case ("military academy"):
+
+                e = "BUILDING_MILITARY_ACADEMY";
+                break;
+            case ("arsenal"):
+
+                e = "BUILDING_ARSENAL";
+                break;
+            case ("walls"):
+
+                e = "BUILDING_WALLS";
+                break;
+            case ("castle"):
+
+
+                e = "BUILDING_CASTLE";
+                break;
+            case ("military base"):
+
+                e = "BUILDING_MILITARY_BASE";
+                break;
+            case ("coffee house"):
+
+                e = "BUILDING_COFFEE_HOUSE";
+                break;
+            case ("monastery"):
+
+                e = "BUILDING_MONASTERY";
+                break;
+            case ("ceilidh hall"):
+
+                e = "BUILDING_CEILIDH_HALL";
+                break;
+            case ("observatory"):
+
+                e = "BUILDING_OBSERVATORY";
+                break;
+            case ("pagoda"):
+
+                e = "BUILDING_PAGODA";
+                break;
+            case ("mint"):
+
+                e = "BUILDING_MINT";
+                break;
+            case ("mosque"):
+
+                e = "BUILDING_MOSQUE";
+                break;
+            case ("solar plant"):
+
+                e = "BUILDING_SOLAR_PLANT";
+                break;
+            case ("cathedral"):
+
+                e = "BUILDING_CATHEDRAL";
+                break;
+            case ("hydro plant"):
+
+                e = "BUILDING_HYDRO_PLANT";
+                break;
+
+
+            case ("great firewall"):
+
+                e = "BUILDING_GREAT_FIREWALL";
+                break;
+            case ("windmill"):
+
+                e = "BUILDING_WINDMILL";
+                break;
+            case ("terracotta army"):
+
+                e = "BUILDING_TERRACOTTA_ARMY";
+                break;
+            case ("forge"):
+
+                e = "BUILDING_FORGE";
+                break;
+            case ("petra"):
+
+                e = "BUILDING_PETRA";
+                break;
+            case ("circus"):
+
+                e = "BUILDING_CIRCUS";
+                break;
+            case ("neuschwanstein"):
+
+                e = "BUILDING_NEUSCHWANSTEIN";
+                break;
+            case ("watermill"):
+
+                e = "BUILDING_WATERMILL";
+                break;
+            case ("mosque of djenne"):
+
+                e = "BUILDING_MOSQUE_OF_DJENNE";
+                break;
+            case ("stable"):
+
+                e = "BUILDING_STABLE";
+                break;
+            case ("garden"):
+
+                e = "BUILDING_GARDEN";
+                break;
+            case ("monument"):
+
+                e = "BUILDING_MONUMENT";
+                break;
+            case ("temple"):
+
+                e = "BUILDING_TEMPLE";
+                break;
+            case ("opera house"):
+
+                e = "BUILDING_OPERA_HOUSE";
+                break;
+            case ("stele"):
+
+                e = "BUILDING_STELE";
+                break;
+            case ("lighthouse"):
+
+                e = "BUILDING_LIGHTHOUSE";
+                break;
+            case ("maydan"):
+
+                e = "BUILDING_MC_AYYUBID_MADRASAH";
+                break;
+
+
+
+                
+            case ("maya pyramid"):
+
+                e = "BUILDING_MAYA_PYRAMID";
+                break;
+            case ("harbor"):
+
+                e = "BUILDING_HARBOR";
+                break;
+            case ("colosseum"):
+
+                e = "BUILDING_COLOSSEUM";
+                break;
+            case ("theatre"):
+
+                e = "BUILDING_THEATRE";
+                break;
+            case ("stadium"):
+
+                e = "BUILDING_STADIUM";
+                break;
+
+            case ("granary"):
+
+                e = "BUILDING_GRANARY";
+                break;
+            case ("hospital"):
+
+                e = "BUILDING_HOSPITAL";
+                break;
+            case ("medical lab"):
+
+                e = "BUILDING_MEDICAL_LAB";
+                break;
+            case ("workshop"):
+
+                e = "BUILDING_WORKSHOP";
+                break;
+            case ("factory"):
+
+                e = "BUILDING_FACTORY";
+                break;
+
+
+            case ("nuclear plant"):
+
+                e = "BUILDING_NUCLEAR_PLANT";
+                break;
+            case ("spaceship factory"):
+
+                e = "BUILDING_SPACESHIP_FACTORY";
+                break;
+            case ("market"):
+
+                e = "BUILDING_MARKET";
+                break;
+            case ("bank"):
+
+                e = "BUILDING_BANK";
+                break;
+            case ("stock exchange"):
+
+                e = "BUILDING_STOCK_EXCHANGE";
+                break;
+            case ("library"):
+
+                e = "BUILDING_LIBRARY";
+                break;
+
+
+            case ("national epic"):
+
+                e = "BUILDING_NATIONAL_EPIC";
+                break;
+            case ("national college"):
+
+                e = "BUILDING_NATIONAL_COLLEGE";
+                break;
+            case ("heroic epic"):
+
+                e = "BUILDING_HEROIC_EPIC";
+                break;
+            case ("palace"):
+
+                e = "BUILDING_PALACE";
+                break;
+            case ("laboratory"):
+
+                e = "BUILDING_LABORATORY";
+                break;
+            case ("public school"):
+
+                e = "BUILDING_PUBLIC_SCHOOL";
+                break;
+            case ("university"):
+
+                e = "BUILDING_UNIVERSITY";
+                break;
+            case ("hermitage"):
+
+                e = "BUILDING_HERMITAGE";
+                break;
+            case ("oxford university"):
+
+                e = "BUILDING_OXFORD_UNIVERSITY";
+                break;
+            case ("ironworks"):
+
+                e = "BUILDING_IRONWORKS";
+                break;
+            case ("national treasury"):
+
+                e = "BUILDING_NATIONAL_TREASURY";
+                break;
+            case ("circus maximus"):
+
+                e = "BUILDING_CIRCUS_MAXIMUS";
+                break;
+
+            case ("great lighthouse"):
+
+                e = "BUILDING_GREAT_LIGHTHOUSE";
+                break;
+            case ("stonehenge"):
+
+                e = "BUILDING_STONEHENGE";
+                break;
+            case ("great library"):
+
+                e = "BUILDING_GREAT_LIBRARY";
+                break;
+            case ("pyramid"):
+
+                e = "BUILDING_PYRAMID";
+                break;
+            case ("oracle"):
+
+                e = "BUILDING_ORACLE";
+                break;
+            case ("colossus"):
+
+                e = "BUILDING_COLOSSUS";
+                break;
+            case ("eiffel tower"):
+
+                e = "BUILDING_EIFFEL_TOWER";
+                break;
+            case ("cristo redento"):
+
+                e = "BUILDING_CRISTO_REDENTOR";
+                break;
+            case ("brandenburg gate"):
+
+                e = "BUILDING_BRANDENBURG_GATE";
+                break;
+            case ("louvre"):
+
+                e = "BUILDING_LOUVRE";
+                break;
+            case ("big ben"):
+
+                e = "BUILDING_BIG_BEN";
+                break;
+            case ("taj mahal"):
+
+                e = "BUILDING_TAJ_MAHAL";
+                break;
+
+
+            case ("leaning tower"):
+
+                e = "BUILDING_LEANING_TOWER";
+                break;
+            case ("seaport"):
+
+                e = "BUILDING_SEAPORT";
+                break;
+            case ("hubble"):
+
+                e = "BUILDING_HUBBLE";
+                break;
+            case ("burial tomb"):
+
+                e = "BUILDING_BURIAL_TOMB";
+                break;
+            case ("cn tower"):
+
+                e = "BUILDING_CN_TOWER";
+                break;
+            case ("alhambra"):
+
+                e = "BUILDING_ALHAMBRA";
+                break;
+            case ("wat"):
+
+                e = "BUILDING_WAT";
+                break;
+            case ("intelligence agency"):
+
+                e = "BUILDING_INTELLIGENCE_AGENCY";
+                break;
+            case ("paper maker"):
+
+                e = "BUILDING_PAPER_MAKER";
+                break;
+            case ("police station"):
+
+                e = "BUILDING_POLICE_STATION";
+                break;
+            case ("satraps court"):
+
+                e = "BUILDING_SATRAPS_COURT";
+                break;
+            case ("constable"):
+
+                e = "BUILDING_CONSTABLE";
+                break;
+            case ("building bazaar"):
+
+                e = "BUILDING_BAZAAR";
+                break;
+            case ("bomb shelter"):
+
+                e = "BUILDING_BOMB_SHELTER";
+                break;
+            case ("longhouse"):
+
+                e = "BUILDING_LONGHOUSE";
+                break;
+            case ("recycling center"):
+
+                e = "BUILDING_RECYCLING_CENTER";
+                break;
+            case ("krepost"):
+
+                e = "BUILDING_KREPOST";
+                break;
+            case ("shrine"):
+
+                e = "BUILDING_SHRINE";
+                break;
+            case ("mughal fort"):
+
+                e = "BUILDING_MUGHAL_FORT";
+                break;
+            case ("floating gardens"):
+
+                e = "BUILDING_FLOATING_GARDENS";
+                break;
+
+
+            case ("birthing pods"):
+
+                e = "BUILDING_FW_ECTOGENESIS_POD";
+                break;
+            case ("biogenesis pod"):
+
+                e = "BUILDING_FW_ECTOGENESIS_POD";
+                break;
+            case ("cloning lab"):
+
+                e = "BUILDING_FW_CLONE_LAB";
+                break;
+            case ("comm module"):
+
+                e = "BUILDING_FW_COMM_MODULE_1";
+                break;
+            case ("convertor"):
+
+                e = "BUILDING_FW_CONVERTER";
+                break;
+
+            case ("buffalo pound"):
+
+                e = "BUILDING_BUFFALOPOUND";
+                break;
+            case ("yaranga"):
+
+                e = "BUILDING_YARANGA";
+                break;
+            case ("syssitia hall"):
+
+                e = "BUILDING_MC_SPARTAN_SYSSITIA_HALL";
+                break;
+            case ("hudson's bay company"):
+
+                e = "BUILDING_CLHUDSONSBAY";
+                break;
+            case ("madrasah"):
+
+                e = "BUILDING_MC_AYYUBID_MADRASAH";
+                break;
+            case ("paya"):
+
+                e = "BUILDING_PAYA";
+                break;
+
+            case ("stave church"):
+
+                e = "BUILDING_JFD_STAVE_CHURCH";
+                break;
+                
+
+
+            case ("sysstia hall"):
+
+                e = "BUILDING_MC_SPARTAN_SYSSITIA_HALL";
+                break;
+
+            case ("ranch"):
+
+                e = "BUILDING_TEXASRANCH";
+                break;
+                
+            case ("heiau"):
+
+                e = "BUILDING_MC_HAWAIIAN_HEIAU";
+                break;
+                
+            case ("autoplant"):
+
+                e = "BUILDING_FW_AUTOPLANT";
+                break;
+                
+            case ("arcology"):
+
+                e = "BUILDING_FW_ARCOLOGY";
+                break;
+                
+
+            case ("ducal stable"):
+
+                e = "BUILDING_DUCAL_STABLE";
+                break;
+                
+            case ("chorten"):
+
+                e = "BUILDING_MC_TIBET_CHORTEN";
+                break;
+            case ("paper mill"):
+
+                e = "BUILDING_HYP_FINLAND_PAPER_MILL";
+                break;
+            case ("medialuna"):
+
+                e = "BUILDING_MEDIALUNA";
+                break;
+                
+
+            case ("ecosanctuary"):
+
+                e = "BUILDING_FW_SANCTUARY";
+                break;
+            case ("cyberclinic"):
+
+                e = "BUILDING_FW_CYBERCLINIC";
+                break;
+            case ("drone hive"):
+
+                e = "BUILDING_FW_DRONE_HIVE";
+                break;
+            case ("e - commerce server"):
+
+                e = "BUILDING_FW_COMMERCE_SERVER";
+                break;
+
+            case ("e-commerce server"):
+                e = "BUILDING_FW_COMMERCE_SERVER";
+                break;
+
+            case ("engineering module"):
+
+                e = "BUILDING_FW_ENGINEERING_MODULE_1";
+                break;
+            case ("entertainment server"):
+
+                e = "BUILDING_FW_ENTERTAINMENT_SERVER";
+                break;
+            case ("feedsite node"):
+
+                e = "BUILDING_FW_FEEDSITE_NODE";
+                break;
+
+            case ("water mill"):
+                e = "BUILDING_WATERMILL";
+                break;
+            case ("ampitheater"):
+                e = "BUILDING_AMPHITHEATER";
+                break;
+            case ("war academy"):
+                e = "BUILDING_MILITARY_ACADEMY";
+                break;
+            case ("caravansary"):
+                e = "BUILDING_CARAVANSARY";
+                break;
+            case ("vank"):
+                e = "BUILDING_BANK";
+                break;
+            case ("constabulary"):
+                e = "BUILDING_CONSTABLE";
+                break;
+            case ("zoo"):
+                e = "BUILDING_THEATRE";
+                break;
+            case ("research lab"):
+                e = "BUILDING_RESEARCHLAB";
+                break;
+            case ("hotel"):
+                e = "BUILDING_HOTEL";
+                break;
+
+            case ("aquaculture lab"):
+                e = "BUILDING_FW_AQUACULTURE_LAB";
+                break;
+                
+
+
+
+
+            case ("geofront"):
+
+                e = "BUILDING_FW_DEFENSE_FIELD";
+                break;
+            case ("gene lab"):
+
+                e = "BUILDING_FW_GENE_LAB";
+                break;
+            case ("fusion reactor"):
+
+                e = "BUILDING_FW_FUSION_PLANT";
+                break;
+            case ("geothermal plant"):
+
+                e = "BUILDING_FW_GEOTHERMAL_PLANT";
+                break;
+            case ("implant clinic"):
+
+                e = "BUILDING_FW_IMPLANT_CLINIC";
+                break;
+
+
+
+
+            case ("mycoprotein in vats"):
+
+                e = "BUILDING_FW_MYCOPROTEIN_VATS";
+                break;
+            case ("mycoprotein vats"):
+
+                e = "BUILDING_FW_MYCOPROTEIN_VATS";
+                break;
+
+               
+            case ("nanoforge"):
+
+                e = "BUILDING_FW_NANOFORGE";
+                break;
+
+
+
+
+            case ("nucleonic foundry"):
+
+                e = "BUILDING_FW_ALLOY_FOUNDRY";
+                break;
+            case ("neurolink facility"):
+
+                e = "BUILDING_FW_NEUROLINK_FACILITY";
+                break;
+            case ("network backbone"):
+
+                e = "BUILDING_FW_NETWORK_BACKBONE";
+                break;
+            case ("nanomaterial plant"):
+
+                e = "BUILDING_FW_NANOMAT_PLANT";
+                break;
+            case ("trepanger camp"):
+
+                e = "BUILDING_CLTREPANGER";
+                break;
+            case ("airport"):
+
+                e = "BUILDING_AIRPORT";
+                break;
+
+            case ("biofactory"):
+
+                e = "BUILDING_FW_BIOFACTORY";
+                break;
+            case ("thingstead"):
+
+                e = "BUILDING_JFD_THINGSTEAD";
+                break;
+            case ("staatsmuseum"):
+
+                e = "BUILDING_BOERSTAATSMUSEUM";
+                break;
+                
+                
+
+            case ("water puppet theater"):
+
+                e = "BUILDING_WATER_THEATRE";
+                break;
+                
+
+            case ("space station"):
+
+                e = "BUILDING_FW_SPACE_STATION";
+                break;
+            case ("simulation server"):
+
+                e = "BUILDING_FW_SIMULATION_SERVER";
+                break;
+            case ("server hub"):
+
+                e = "BUILDING_FW_SERVER_HUB";
+                break;
+            case ("research server"):
+
+                e = "BUILDING_FW_RESEARCH_SERVER";
+                break;
+            case ("research module"):
+
+                e = "BUILDING_FW_RESEARCH_MODULE_1";
+                break;
+
+
+
+
+
+
+
+            case ("vr training centre"):
+
+                e = "BUILDING_FW_VR_TRAINING";
+                break;
+            case ("vivarium"):
+
+                e = "BUILDING_FW_VIVARIUM";
+                break;
+            case ("utility fog generator"):
+
+                e = "BUILDING_FW_UTILITY_FOG";
+                break;
+            case ("undersea mining platform"):
+
+                e = "BUILDING_FW_UNDERSEA_MINING";
+                break;
+            case ("transgenic nursery"):
+
+                e = "BUILDING_FW_TG_NURSERY";
+                break;
+            case ("tidal plant"):
+
+                e = "BUILDING_FW_TIDAL_PLANT";
+                break;
+            case ("telepresence hub"):
+
+                e = "BUILDING_FW_TELEPRESENCE_HUB";
+                break;
+   
+        }
+        bld = e;
+
+    }
+
+}
