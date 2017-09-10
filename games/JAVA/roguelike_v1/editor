@@ -1,0 +1,454 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package roguelike_v1_ascii;
+
+import javax.swing.*;
+import java.awt.*;
+import java.util.*;
+import java.util.TimerTask;
+import java.util.Timer;
+import java.awt.event.*;
+import static javafx.scene.text.Font.font;
+import java.awt.FontMetrics;
+import java.awt.geom.Rectangle2D;
+import java.io.IOException;
+import java.util.concurrent.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
+
+/**
+ *
+ * @author lonis
+ */
+public class editor {
+
+    public static editor ed;
+    public JFrame frame;
+    // public side_panel panel_side;
+    public down_panel down_panel;
+    public options_panel center_p;
+    public static game gam;
+    public JLayeredPane lpane = new JLayeredPane();
+
+    public static Timer timer = new Timer();
+
+    public static void main(String[] args) throws IOException {
+        ed = new editor();
+        ed.setup1();
+        timer.schedule(new Update(), 0, 100);
+        ed.keymappingf();
+
+    }
+
+    public void setup1() {
+        frame = new JFrame();
+        frame.setResizable(false);
+        frame.setBackground(Color.black);
+        down_panel = new down_panel();
+        down_panel.setup();
+        frame.getContentPane().add(BorderLayout.SOUTH, down_panel);
+        gam = new game();
+     
+        center_p = new options_panel();
+  
+        gam.setBackground(Color.black);
+        gam.setSize(900, 600);
+        gam.setMaximumSize(gam.getSize());
+        gam.player.x = 0;
+        gam.player.y = 0;
+        center_p.old();
+        lpane.add(gam, new Integer(0), 102);
+        lpane.add(center_p, new Integer(1), 101);
+        frame.getContentPane().add(BorderLayout.CENTER, lpane);
+
+        gam.repaint();
+
+     
+        frame.setSize(900, 600);
+        frame.setBackground(Color.black);
+        frame.setVisible(true);
+        System.out.print("ddda");
+        frame.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                System.out.print(e.getButton());
+                if (e.getButton() == MouseEvent.BUTTON3) {
+                    frame.getContentPane().setLayout(null);
+                    center_p.setup(e.getPoint(), "some text here");
+                    System.out.print("da");
+                }
+                if (e.getButton() == MouseEvent.BUTTON1) {
+                    gam.enemies.add(e.getPoint());
+                    System.out.print("do");
+                }
+
+            }
+
+        });
+
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                System.exit(0);
+            }
+        });
+    
+    }
+
+    public static int velo = 2;
+
+    public static boolean check_vound(Point p, int a, int b) {
+        if ((b < 0 && p.y - velo * 3 > 525) || (b > 0 && p.y + velo * 3 < 20)) {
+            return false;
+        }
+        if ((a > 0 && p.x + velo * 3 > 870) || (a < 0 && p.x - velo * 3 < 0)) {
+            return false;
+        }
+        return true;
+    }
+
+    public static void keymappingf() throws IOException {
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher((KeyEvent ke) -> {
+            switch (ke.getID()) {
+                case KeyEvent.KEY_PRESSED:
+                    System.out.print(gam.player);
+                    if (ke.getKeyCode() == KeyEvent.VK_W && check_vound(gam.player, 0, 1)) {
+                 
+                        gam.player.y -= velo;
+                    }
+                    if (ke.getKeyCode() == KeyEvent.VK_S && check_vound(gam.player, 0, -1)) {
+                        gam.player.y += velo;
+                    }
+                    if (ke.getKeyCode() == KeyEvent.VK_D && check_vound(gam.player, 1, 0)) {
+                        gam.player.x += velo;
+                    }
+                    if (ke.getKeyCode() == KeyEvent.VK_A && check_vound(gam.player, -1, 0)) {
+                        gam.player.x -= velo;
+                    }
+
+                    System.out.println(ke.getKeyCode());
+            }
+            return false;
+        });
+    }
+
+
+    public void mouseClicked(MouseEvent e) {
+        int x = e.getX();
+        int y = e.getY();
+        System.out.println(x + "," + y);//these co-ords are relative to the component
+    }
+
+}
+
+class side_panel extends JPanel {
+
+    public static java.util.List<JButton> targets = new ArrayList<JButton>();
+    JButton but1 = new JButton("attack") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but2 = new JButton("look") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but3 = new JButton("talk") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but4 = new JButton("trade") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but5 = new JButton("rob") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but6 = new JButton("wait") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+
+    public void set() {
+        setPreferredSize(new Dimension(70, 20));
+        add(but1);
+        add(but2);
+        add(but3);
+        add(but4);
+        add(but5);
+        add(but6);
+        add(Box.createRigidArea(new Dimension(0, 20)));
+        setBackground(Color.darkGray);
+
+        setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+        but1.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+
+                resize_and_set_buttons();
+
+            }
+
+        });
+
+    }
+
+    public void resize_and_set_buttons() {
+
+        but2.setSize(new Dimension(70, 30));
+        but3.setSize(new Dimension(70, 30));
+        but4.setSize(new Dimension(70, 30));
+        but5.setSize(new Dimension(70, 30));
+        but6.setSize(new Dimension(70, 30));
+        updateUI();
+    }
+
+}
+
+class Update extends TimerTask {
+
+    public void run() {
+
+        //editor.ed.gam.repaint();
+        //editor.ed.gam.dothing();
+        editor.gam.repaint();
+        // editor.ed.center_p.repaint();
+        System.out.println("Hello World!");
+    }
+}
+
+class down_panel extends JPanel {
+
+    public static Font f = new Font("Courier", Font.ROMAN_BASELINE, 12) {
+
+    };
+
+    public static JTextArea text = new JTextArea(" the old text is rere") {
+
+        @Override
+        public void setFont(Font font) {
+            super.setFont(font); //To change body of generated methods, choose Tools | Templates.
+        }
+    };
+
+    public void setup() {
+     
+        setBackground(Color.black);
+        text.setBackground(Color.black);
+        text.setForeground(Color.white);
+        text.setBorder(BorderFactory.createLineBorder(Color.white));
+        text.setFont(f);
+        text.setEditable(false);
+        text.setOpaque(false);
+        text.setSize(150, 75);
+        text.setMaximumSize(getSize());
+        setSize(150, 75);
+        setMaximumSize(getSize());
+        add(text);
+        setSize(new Dimension(100, 300));
+    }
+}
+
+class options_panel extends JPanel implements MouseListener {
+
+    public static Font f = new Font("Courier", Font.ROMAN_BASELINE, 12);
+    JButton but1 = new JButton("ATK") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but2 = new JButton("look") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but3 = new JButton("talk") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but4 = new JButton("TRD") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    JButton but5 = new JButton("rob") {
+        {
+            setSize(150, 75);
+            setMaximumSize(getSize());
+        }
+    };
+    public static JTextArea text = new JTextArea(" the old text is rere") {
+
+        @Override
+        public void setFont(Font font) {
+            super.setFont(font); //To change body of generated methods, choose Tools | Templates.
+        }
+    };
+
+    public void old() {
+        setBackground(Color.BLACK);
+        reset_text();
+        text.setSize(150, 75);
+        text.setMaximumSize(getSize());
+        rc(150, 75);
+
+        setSize(new Dimension(80, 300));
+        Point p = new Point();
+        p.x = 0;
+        p.y = 0;
+        add(text);
+        add(but1);
+        add(but2);
+        add(but3);
+        add(but4);
+        add(but5);
+        but1.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+
+                //  resize_and_set_buttons();
+            }
+
+        });
+        setLayout(null);
+        setVisible(false);
+  
+    }
+
+    void reset_text() {
+        text.setBackground(Color.black);
+        text.setForeground(Color.white);
+        text.setBorder(BorderFactory.createLineBorder(Color.white));
+        text.setFont(f);
+        text.setEditable(false);
+        text.setOpaque(false);
+    }
+
+    void rc(int o1, int o2) {
+        setSize(o1, o2);
+        setMaximumSize(getSize());
+    }
+
+    public void setup(Point p, String s) {
+  
+        setVisible(true);
+        text.setText(s);
+        setBackground(Color.BLACK);
+        setLayout(null);
+        setOpaque(false);
+        updateUI();
+        reset_text();
+        text.setSize(60, 20);
+        setBounds(p.x - 18, p.y - 38, 70, 250);
+        rc(70, 130);//p.x - 10
+        setBorder(BorderFactory.createLineBorder(Color.white));
+        text.setMaximumSize(text.getSize());
+        text.setBounds(5, 3, text.getSize().width, text.getSize().height);
+        but1.setBounds(5, 3 + text.getSize().height, 60, 20);
+        but1.setForeground(Color.white);
+        but1.setBackground(Color.black);
+        but1.setBorder(BorderFactory.createLineBorder(Color.white));
+        but1.setOpaque(false);
+        but2.setBounds(5, 3 + text.getSize().height * 2, 60, 20);
+        but2.setForeground(Color.white);
+        but2.setBackground(Color.black);
+        but2.setBorder(BorderFactory.createLineBorder(Color.white));
+        but3.setBounds(5, 3 + text.getSize().height * 3, 60, 20);
+        but3.setForeground(Color.white);
+        but3.setBackground(Color.black);
+        but3.setBorder(BorderFactory.createLineBorder(Color.white));
+        but4.setBounds(5, 3 + text.getSize().height * 4, 60, 20);
+        but4.setForeground(Color.white);
+        but4.setBackground(Color.black);
+        but4.setBorder(BorderFactory.createLineBorder(Color.white));
+        but5.setBounds(5, 3 + text.getSize().height * 5, 60, 20);
+        but5.setForeground(Color.white);
+        but5.setBackground(Color.black);
+        but5.setBorder(BorderFactory.createLineBorder(Color.white));
+        but2.setOpaque(false);
+        but3.setOpaque(false);
+        but4.setOpaque(false);
+        but5.setOpaque(false);
+
+
+        text.setMaximumSize(text.getSize());
+        but1.setMaximumSize(text.getSize());
+        but2.setMaximumSize(text.getSize());
+        but3.setMaximumSize(text.getSize());
+        but4.setMaximumSize(text.getSize());
+        but5.setMaximumSize(text.getSize());        //  setSize(150, 75);
+
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseExited(MouseEvent me) {
+                System.out.println("Mouse is not over " + me.getComponent().getClass().getName() + " anymore");
+
+                java.awt.Point p = new java.awt.Point(me.getLocationOnScreen());
+                SwingUtilities.convertPointFromScreen(p, me.getComponent());
+                if (me.getComponent().contains(p)) {
+                    return;
+                }
+                setLayout(null);
+                setVisible(false);
+           }
+        });
+         updateUI();
+
+    }
+
+    @Override
+    public void mouseClicked(MouseEvent me) {
+        System.out.println("Mouse is not over " + me.getComponent().getClass().getName() + " anymore");
+
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void mousePressed(MouseEvent me) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void mouseReleased(MouseEvent me) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void mouseEntered(MouseEvent me) {
+        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    }
+
+    @Override
+    public void mouseExited(MouseEvent me) {
+        System.out.println("Mouse is not over " + me.getComponent().getClass().getName() + " anymore");
+
+        java.awt.Point p = new java.awt.Point(me.getLocationOnScreen());
+        SwingUtilities.convertPointFromScreen(p, me.getComponent());
+        if (me.getComponent().contains(p)) {
+            return;
+        }
+
+        setLayout(null);
+        setVisible(false);
+    }
+}
