@@ -1,0 +1,60 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package roguelike_v1_ascii;
+
+import javax.swing.*;
+import java.awt.*;
+import java.util.*;
+import java.awt.event.*;
+import javax.swing.JLayeredPane;
+import javax.swing.JPanel;
+
+/**
+ *
+ * @author lonis
+ */
+public class game extends JPanel {
+ 
+    public static Point player = new Point();
+    public static Point mousep;
+    public static java.util.List<Point> enemies = new ArrayList();
+
+    private Point new_point(Point p) {
+        if (p.x < player.x - 10) {
+            p.x++;
+            return p;
+        } else if (p.x > player.x + 10) {
+            p.x--;
+            return p;
+        }
+        if (p.y > player.y + 10) {
+            p.y--;
+            return p;
+        } else if (p.y < player.y - 10) {
+            p.y++;
+            return p;
+        }
+        return p;
+    }
+
+    @Override
+    public void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        g.setColor(Color.black);
+        g.fillRect(0, 0, 900, 600);
+        g.setColor(Color.white);
+        g.fillRect(player.x, player.y, 10, 10);
+        g.setColor(Color.red);
+        for (int i = 0; i < enemies.size(); i++) {
+            enemies.set(i, new_point(enemies.get(i)));
+            g.fillRect(enemies.get(i).x, enemies.get(i).y, 10, 10);
+        }
+
+        g.setColor(Color.gray);
+
+    }
+
+}
