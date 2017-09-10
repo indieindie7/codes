@@ -1,0 +1,848 @@
+using System.Collections;
+using System.Linq;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Networking;
+using UnityEngine.UI;
+using System.IO;
+//using HtmlAgilityPack;
+using System.Net;
+using System.Text.RegularExpressions;
+using System.Text;
+using System;
+using NReco.VideoConverter;
+using UnityEngine.Video;
+//using HtmlAgilityPack;
+//import NAudio;
+using NAudio;
+using NAudio.Wave;
+//using System.Windows.Forms;
+using System.Windows.Forms;
+//using System.Text.RegularExpressions;
+public class main_pipeline : MonoBehaviour
+{
+
+    void Start()
+    {
+        cvimages = GameObject.FindGameObjectWithTag("canvasimages");
+        ads = Camera.main.transform.GetChild(0).GetComponent<AudioSource>();
+        nds = Camera.main.transform.GetChild(1).GetComponent<AudioSource>();
+        tnarra = cvimages.transform.GetChild(4).GetComponent<Text>();
+        tbckg = cvimages.transform.GetChild(3).GetComponent<Image>();
+        tnarra.enabled = false;
+        tbckg.enabled = false;
+        DIMAGE = cvimages.transform.GetChild(2).GetComponent<Image>();
+        avs = GetComponent<AVProMovieCaptureFromScene>();
+        vp = cvimages.transform.GetChild(1).GetComponent<VideoPlayer>();
+        cvoptions = GameObject.Find("Canvas");
+        tpai = cvoptions.transform.Find("Scroll View").GetChild(0).GetChild(0);
+        tfilho = tpai.GetChild(0);
+        rct = cvoptions.transform.Find("sctxd").GetComponent<RectTransform>();
+        rct.position = new Vector2(0, -1300);
+        tx = rct.GetChild(1).GetChild(0).GetChild(2);
+    }
+    void Update()
+    {
+        if (started)
+        {
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                ads.Stop();
+                nds.Stop();
+                avs.StopCapture();
+                cvoptions.SetActive(true);
+                started = false;
+                return;
+            }
+            atime += Time.deltaTime;
+            if (atime > movspeed)
+            {
+
+                atime = 0;
+                if (image_roster >= tpai.childCount)
+                {
+                    ads.Stop();
+                    nds.Stop();
+                    avs.StopCapture();
+                    cvoptions.SetActive(true);
+                    started = false;
+                    return;
+                }
+                if (tnarration && setup)
+                {
+                    if (!narrating)
+                    {
+                        string eed = tpai.GetChild(image_roster).GetChild(0).GetComponent<InputField>().text;
+                        if (eed != "" && eed != null && eed.Any(x => char.IsLetter(x)))
+                        {
+                            narrating = true;
+                            movspeed = float.Parse(tpai.GetChild(image_roster).GetChild(3).GetChild(0).GetComponent<Text>().text);
+                            tnarra.text = eed;
+                            tnarra.font = tpai.GetChild(image_roster).GetChild(4).GetChild(0).GetComponent<Text>().font;
+                            tnarra.enabled = true;
+                            tbckg.enabled = true;
+                            vp.enabled = false;
+                            DIMAGE.enabled = false;
+                            return;
+                        }
+
+                    }
+                    if (narrating)
+                    {
+                        narrating = false;
+                        tnarra.enabled = false;
+                        tbckg.enabled = false;
+                    }
+
+                }
+                nds.Stop();
+                DIMAGE.enabled = tpai.GetChild(image_roster).GetChild(6).gameObject.activeInHierarchy;
+                vp.enabled = tpai.GetChild(image_roster).GetChild(7).gameObject.activeInHierarchy;
+                if (vp.gameObject.activeInHierarchy)
+                {
+                    vp.clip = tpai.GetChild(image_roster).GetChild(7).GetComponent<VideoPlayer>().clip;
+                }
+                else
+                {
+                    DIMAGE.sprite = tpai.GetChild(image_roster).GetChild(6).GetComponent<Image>().sprite;
+                }
+
+                if (tpai.GetChild(image_roster).GetChild(1).GetComponent<Dropdown>().value > 1 && naudios.Count > 0)
+                {
+                    int tn = tpai.GetChild(image_roster).GetChild(1).GetComponent<Dropdown>().value;
+                    if (naudios[tn - 2].name == tpai.GetChild(image_roster).GetChild(1).GetComponent<Dropdown>().options[tn].text)
+                    {
+                        nds.clip = naudios[tn - 2];
+                        nds.Play();
+                    }
+                }
+                movspeed = float.Parse(tpai.GetChild(image_roster).GetChild(2).GetChild(0).GetComponent<Text>().text);
+                setup = true;
+                image_roster++;
+                image_scale();
+            }
+            if (musiced && aaudios.Count > 0 && !ads.isPlaying)
+            {
+                if (audioint >= aaudios.Count) audioint = 0;
+                ads.clip = aaudios[audioint];
+                ads.Play();
+                audioint++;
+            }
+            if (image_roster == 1) avs.StartCapture();
+
+        }
+
+    }
+    List<string> imagefiles;
+    List<string> musicfiles;
+    List<string> narrationfiles;
+    string[] filesjpg;
+    string[] filespng;
+    string[] filesmp3;
+    string[] fileswav;
+    AVProMovieCaptureFromScene avs;
+    List<AudioClip> aaudios;
+    List<AudioClip> naudios = new List<AudioClip>();
+    List<string> descriptions = new List<string>();
+    bool narrated = false;
+    float narrationspeed = 0;
+    GameObject cvoptions;
+    bool tnarration = false;
+    GameObject cvimages;
+    Text tnarra;
+    Image tbckg;
+    string url;
+    List<int> indescription = new List<int>();
+    string source;
+    bool isfolder = false;
+    Dropdown dpimages;
+    Dropdown dpnarrat;
+    int narrat_value;
+    public void imnarrat()
+    {
+        narrat_value = dpnarrat.value;
+    }
+    Transform internetthings;
+    Transform folderthings;
+    bool musiced = false;
+
+    public void setup_internetthing()
+    {
+        url = cvoptions.transform.Find("urlthing").GetComponent<InputField>().text;
+        if (url == null || !url.Contains("imgur")) return;
+        WebClient x = new WebClient();
+        source = x.DownloadString(@url);
+        List<int> indedc = AllIndexesOf(source, "animated").ToList();
+        List<int> indhash = AllIndexesOf(source, "hash").ToList();
+        List<int> indext = AllIndexesOf(source, "ext").ToList();
+        indescription = new List<int>();
+        tnarration = cvoptions.transform.Find("urlthings").GetChild(0).GetComponent<Toggle>().isOn;
+        if (tnarration)
+        {
+            narrationspeed = float.Parse(cvoptions.transform.Find("urlthings").GetChild(1).GetComponent<InputField>().text);
+            indescription = AllIndexesOf(source, "description").ToList();
+            indescription.OrderBy(ax => ax);
+            descriptions = new List<string>();
+        }
+        Debug.Log(indescription.Count);
+        imagefiles = new List<string>();
+        foreach (int a in indedc)
+        {
+            int ed = indhash.Last(ad => ad < a);
+            int iquote = source.IndexOf('"', ed + 5);
+            int endquote = source.IndexOf('"', iquote + 1);
+            string b = source.Substring(iquote + 1, endquote - iquote - 1);
+            int xd = AllIndexesOf(source, b).Last();
+            xd = indext.First(ad => ad > xd);
+            iquote = source.IndexOf('"', xd + 4);
+            endquote = source.IndexOf('"', iquote + 1);
+            string c = source.Substring(iquote + 1, endquote - iquote - 1);
+            bool isprom = source.Substring(ed, a - ed).Contains("is_promoted");
+            if (!url.Contains(b) && !isprom)
+            {
+                string ad = "http://i.imgur.com/" + b + c;
+                imagefiles.Add(ad);
+            }
+        }
+        imagefiles = imagefiles.Distinct().ToList();
+        Debug.Log(imagefiles.Count);
+        //}
+        setup_images(false);
+    }
+
+    List<Sprite> st_sprites = new List<Sprite>();
+    void setup_images(bool folder)
+    {
+        if (folder)
+        {
+            foreach (string s in imagefiles)
+            {
+                string pathTemp = s;
+                Sprite NewSprite = new Sprite();
+                Texture2D SpriteTexture = LoadTexture(pathTemp);
+                NewSprite = Sprite.Create(SpriteTexture, new Rect(0, 0, SpriteTexture.width, SpriteTexture.height), new Vector2(0, 0), 100);
+                NewSprite.name = Path.GetFileName(pathTemp);
+                st_sprites.Add(NewSprite);
+                Destroy(NewSprite);
+            }
+        }
+        if (!folder)
+        {
+
+            foreach (string s in imagefiles)
+            {
+                string ad = s;
+                var webClient = new WebClient();
+
+                byte[] URLInBytes = webClient.DownloadData(ad);
+                Texture2D Tex2D = new Texture2D(2, 2);
+                Tex2D.LoadImage(URLInBytes);
+                Sprite NewSprite = Sprite.Create(Tex2D, new Rect(0, 0, Tex2D.width, Tex2D.height), new Vector2(0, 0), 100);
+                NewSprite.name = Path.GetFileName(ad);
+                st_sprites.Add(NewSprite);
+                //      Debug.Log(NewSprite.name);
+                Destroy(NewSprite);
+                ///find the description at each time. here.
+                string e = NewSprite.name;
+                e = e.Substring(0, e.Length - 4);
+                ///Debug.Log(DIMAGE.sprite.name);
+                int a = AllIndexesOf(source, e).OrderBy(ax => ax).Last();
+                int id = indescription.First(ax => ax > a);
+                Debug.Log(id + "  " + e + "     " + a);
+                int iquote = source.IndexOf('"', id + 12);
+                int endquote = source.IndexOf('"', iquote + 1);
+                string eed = source.Substring(iquote + 1, endquote - iquote - 1);
+                if (eed != "width" && eed != "logo_hash")
+                {
+                    movspeed = narrationspeed;
+                    descriptions.Add(eed);
+                    Debug.Log(eed);
+                    tnarra.enabled = true;
+                    tbckg.enabled = true;
+                    return;
+                }
+
+            }
+        }
+        reset_choices();
+    }
+
+    public void clear_all()
+    {
+        foreach (Transform t in tpai)
+            if (t != tfilho) Destroy(t.gameObject);
+    }
+
+    public void clearimages()
+    {
+        clear_all();
+        st_sprites = new List<Sprite>();
+        reset_choices();
+    }
+    public void clearmusic()
+    {
+        aaudios = new List<AudioClip>();
+    }
+    public void clearnarration()
+    {
+        naudios = new List<AudioClip>();
+    }
+    public void set_btntime(Transform t)
+    {
+        int a = t.GetComponent<Dropdown>().value;
+        if (a == 1) getnewaudio(t);
+        if (naudios.Count > 0 && a > 0)
+        {
+            t.transform.parent.GetChild(3).GetComponent<InputField>().text = naudios[a - 1].length.ToString();
+        }
+    }
+    Transform tpai;
+    Transform tfilho;
+
+    public void mYStart()
+    {
+        narrated = cvoptions.transform.Find("tognarration").GetComponent<Toggle>().isOn;
+        musiced = cvoptions.transform.Find("tog_music").GetComponent<Toggle>().isOn;
+        if (imagefiles.Count == 0) return;
+        Debug.Log(imagefiles.Count);
+        if (musiced && aaudios.Count == 0) return;
+        if (narrated && naudios.Count == 0) return;
+        ///this is for audio narration XD
+        movspeed = float.Parse(cvoptions.transform.GetChild(2).GetComponent<InputField>().text);
+        image_roster = 0;
+        audioint = 1;
+        image_scale();
+        if (musiced)
+        {
+            ads.clip = aaudios[0];
+            ads.Play();
+        }
+        cvoptions.SetActive(false);
+        started = true;
+    }
+    Texture2D tex;
+    Sprite prefabsprite;
+    AudioClip clip;
+    Transform img;
+    public void getrct(Transform im)
+    {
+        img = im;
+        print(im.name);
+        rct.position = new Vector2(cvoptions.transform.position.x, cvoptions.transform.position.y);
+        //  reset_choices();
+    }
+    public void close()
+    {
+        rct.position = new Vector2(0, -5200);
+    }
+    void reset_choices()
+    {
+        foreach (Transform t in tx.parent) if (t.GetSiblingIndex() > 2) Destroy(t.gameObject);
+        if (st_sprites.Count > 0)
+        {
+            foreach (Sprite s in st_sprites)
+            {
+                int a = tx.parent.childCount;
+                int c = a % 4;
+                int b = a / 4;
+                Instantiate(tx.gameObject, new Vector3(tx.parent.GetChild(0).position.x + c * 180, tx.parent.GetChild(0).position.x - b * 80, 0)
+                    , Quaternion.identity, tx.parent);
+                tx.parent.GetChild(a).GetChild(2).gameObject.SetActive(false);
+                tx.parent.GetChild(a).GetChild(1).GetComponent<Image>().sprite = s;
+            }
+
+        }
+        if (vds.Count > 0)
+        {
+            foreach (VideoClip v in vds)
+            {
+                int a = tx.parent.childCount;
+                int c = a % 4;
+                int b = a / 4;
+                Instantiate(tx.gameObject, new Vector3(tx.parent.GetChild(0).position.x + c * 180, tx.parent.GetChild(0).position.x - b * 80, 0)
+                    , Quaternion.identity, tx.parent);
+                tx.parent.GetChild(a).GetChild(1).gameObject.SetActive(false);
+                tx.parent.GetChild(a).GetChild(2).GetComponent<VideoPlayer>().clip = v;
+                tx.parent.GetChild(a).GetChild(2).GetComponent<VideoPlayer>().Play();
+            }
+            // Destroy(tx.parent.GetChild(a).GetChild(1).gameObject);
+        }
+    }
+
+
+    public void setthing(Transform bt)
+    {
+        img.parent.GetChild(7).gameObject.SetActive(bt.GetChild(1).gameObject.activeInHierarchy);
+        img.parent.GetChild(8).gameObject.SetActive(bt.GetChild(2).gameObject.activeInHierarchy);
+        if (bt.GetChild(1).gameObject.activeInHierarchy)
+        {
+            img.parent.GetChild(7).GetComponent<Image>().sprite = bt.GetChild(1).GetComponent<Image>().sprite;
+
+        }
+        else
+        {
+            img.parent.GetChild(8).GetComponent<VideoPlayer>().clip = bt.GetChild(2).GetComponent<VideoPlayer>().clip;
+            img.parent.GetChild(8).GetComponent<VideoPlayer>().Play();
+        }
+    }
+    Transform tx;
+    public void getnimg()
+    {
+        OpenFileDialog opf = new OpenFileDialog();
+        opf.Title = "Select Image";
+        opf.Filter = "*.jpg|*.png";
+        if (opf.ShowDialog() == DialogResult.OK)
+        {
+            string pathTemp = Path.GetDirectoryName(opf.FileName);
+            Sprite NewSprite = new Sprite();
+            Texture2D SpriteTexture = LoadTexture(pathTemp);
+            NewSprite = Sprite.Create(SpriteTexture, new Rect(0, 0, SpriteTexture.width, SpriteTexture.height), new Vector2(0, 0), 100);
+            NewSprite.name = Path.GetFileName(pathTemp);
+            st_sprites.Add(NewSprite);
+            Destroy(NewSprite);
+        }
+        reset_choices();
+    }
+    public void add_filho()
+    {
+        print(tfilho.name);
+        Instantiate(tfilho.gameObject, tpai);// as GameObject;
+        tpai.GetChild(tpai.childCount - 1).transform.position = new Vector3(tfilho.position.x, tfilho.position.y - 200 * (tpai.childCount - 1), 0);
+        tpai.GetComponent<RectTransform>().sizeDelta += new Vector2(0, 200);
+        Debug.Log(tpai.childCount);
+        print(tpai.childCount);
+    }
+    public void remove_filho()
+    {
+        int tp = tpai.childCount;
+        if (tpai.GetChild(tp - 1) != tfilho)
+        {
+            Destroy(tpai.GetChild(tp - 1).gameObject);
+            tpai.GetComponent<RectTransform>().sizeDelta += new Vector2(0, 200);
+        }
+        Debug.Log(tpai.childCount);
+    }
+    public void genvid()
+    {
+        OpenFileDialog opf = new OpenFileDialog();
+        opf.Title = "Select Image";
+        opf.Filter = "*.mov|*.mp4|*.ogg";
+        if (opf.ShowDialog() == DialogResult.OK)
+        {
+            string otpth = Path.GetDirectoryName(opf.FileName);
+            if (Path.GetExtension(opf.FileName) != "mp4")
+            {
+                var path = "temp_videos/" + Path.GetFileName(opf.FileName);
+                print(Path.GetExtension(path));
+                path = Path.ChangeExtension(path, "mp4");
+                var output = new MemoryStream();
+
+                ffMpeg.ConvertMedia(Path.GetDirectoryName(opf.FileName), output, Format.mp4);
+
+                output.Seek(0, SeekOrigin.Begin);
+
+                using (var file = File.Create(path))
+                {
+                    output.Seek(0, SeekOrigin.Begin);
+                    output.Position = 0;
+                    output.WriteTo(file);
+                    file.Close();
+                }
+                otpth = path;
+            }
+
+            vp.url = otpth;
+            vp.Prepare();
+
+            while (!vp.isPrepared) { }///aaaaaaaaaaaaaaaaaa save me
+            vds.Add(vp.clip);
+
+        }
+        reset_choices();
+    }
+
+    public void getnewaudio(Transform t)
+    {
+        OpenFileDialog opf = new OpenFileDialog();
+        opf.Title = "select music";
+        opf.Filter = "*.mp3|*.wav|*.ogg";
+        if (opf.ShowDialog() == DialogResult.OK)
+        {
+            string otpth = Path.GetDirectoryName(opf.FileName);
+            string ext = otpth.Substring(otpth.Length - 3);
+
+            if (ext == "mp3")
+            {
+                Directory.CreateDirectory(System.IO.Path.GetTempPath() + @"\MusicalDefense");
+                Mp3ToWav(otpth, System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong.wav");
+                ext = "wav";
+            }
+            else
+            {
+                Directory.CreateDirectory(System.IO.Path.GetTempPath() + @"\MusicalDefense");
+                File.WriteAllBytes(System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong." + ext, File.ReadAllBytes(otpth)); ///Path.getfilename(e)
+            }
+            WWW www = new WWW("file://" + System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong." + ext);
+            AudioClip a = www.GetAudioClip();
+            while (a.loadState != AudioDataLoadState.Loaded) { Debug.Log("still in loop"); }
+
+            naudios.Add(a);
+            set_audiothings();
+            t.GetChild(2).GetComponent<Dropdown>().value = naudios.Count + 1;
+            //t.GetComponent<Dropdown>().value = naudios.Count;
+            t.transform.parent.GetChild(3).GetComponent<InputField>().text = a.length.ToString();
+        }
+        // reset_choices();
+    }
+
+
+    public void setaudio()
+    {
+        FolderBrowserDialog fole = new FolderBrowserDialog();
+        fole.Description = "select music folder";
+        fole.ShowDialog();
+        filesmp3 = System.IO.Directory.GetFiles(fole.SelectedPath, "*.mp3");
+        fileswav = System.IO.Directory.GetFiles(fole.SelectedPath, "*.wav");
+        string[] filesogg = System.IO.Directory.GetFiles(fole.SelectedPath, "*.ogg");
+        List<string> files = filesmp3.ToList();
+        files.AddRange(fileswav);
+        files.AddRange(filesogg);
+        files.OrderBy(x => x);
+        foreach (string e in files)
+        {
+
+            string ext = e.Substring(e.Length - 3);
+
+            if (ext == "mp3")
+            {
+                Directory.CreateDirectory(System.IO.Path.GetTempPath() + @"\MusicalDefense");
+                Mp3ToWav(e, System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong.wav");
+                ext = "wav";
+            }
+            else
+            {
+                Directory.CreateDirectory(System.IO.Path.GetTempPath() + @"\MusicalDefense");
+                File.WriteAllBytes(System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong." + ext, File.ReadAllBytes(e)); ///Path.getfilename(e)
+            }
+            WWW www = new WWW("file://" + System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong." + ext);
+            AudioClip a = www.GetAudioClip();
+            while (a.loadState != AudioDataLoadState.Loaded) { Debug.Log("still in loop"); }
+            aaudios.Add(a);
+        }
+    }
+    public RectTransform panelRectTransform;
+    public void setimages()
+    {
+        FolderBrowserDialog fole = new FolderBrowserDialog();
+        fole.Description = "select image folder";
+        fole.ShowDialog();
+        string[] files = Directory.GetFiles(fole.SelectedPath);
+
+        filesjpg = System.IO.Directory.GetFiles(fole.SelectedPath, "*.jpg");
+        filespng = System.IO.Directory.GetFiles(fole.SelectedPath, "*.png");
+        imagefiles = new List<string>();
+        imagefiles.AddRange(filesjpg);
+        imagefiles.AddRange(filespng);
+        imagefiles.OrderBy(x => x);
+        setup_images(true);
+    }
+    // Dropdown fontdp;
+    public List<Font> plist;
+    public void setfont(Transform t)
+    {
+        int a = t.GetComponent<Dropdown>().value;
+        Font b = plist[a];
+        t.GetChild(0).GetComponent<Text>().font = b;
+        //  cvimages.transform.GetChild(3).GetComponent<Text>().font = b;
+
+    }
+
+
+    public void setbackground()
+    {
+        OpenFileDialog file = new OpenFileDialog();
+
+        //  file.Filter = "Ogg Vorbis files (.ogg)|*.ogg|Wave files (.wav)|*.wav|Mp3 files (.mp3)|*.mp3";
+        //  file.FilterIndex = 3;
+        file.Title = "background Selection => .jpg or .png";
+        file.ShowDialog();
+
+        if (file.FileName.Substring(file.FileName.Length - 3) != "jpg" && file.FileName.Substring(file.FileName.Length - 3) != "png") return;
+        Debug.Log(Path.GetDirectoryName(file.FileName));
+        print(Path.GetDirectoryName(file.FileName) + file.FileName);
+        string pathTemp = file.InitialDirectory + file.FileName; //Path.GetDirectoryName(file.FileName)
+                                                                 //File.path;
+                                                                 //pathPreFix + 
+
+        Sprite NewSprite = new Sprite();
+        Texture2D SpriteTexture = LoadTexture(pathTemp);
+
+        NewSprite = Sprite.Create(SpriteTexture, new Rect(0, 0, SpriteTexture.width, SpriteTexture.height), new Vector2(0, 0), 100);
+        NewSprite.name = Path.GetFileName(pathTemp);
+        cvimages.transform.GetChild(2).GetComponent<Image>().sprite = NewSprite;
+        // DIMAGE.sprite = NewSprite;
+        //  DIMAGE.name = NewSprite.name;
+        //   simagess.Add(NewSprite);
+        //a;
+        // }
+        //  Debug.Log(NewSprite.name);
+        Destroy(NewSprite);
+    }
+
+    public void setnarration()
+    {
+        //  Debug.Log("tthings");
+
+        //  samples = new float[sampleCount];
+        FolderBrowserDialog fole = new FolderBrowserDialog();
+        fole.Description = "select audio narration folder";
+        // aget_narration.transform.GetChild(1).GetComponent<Text>().text = fole.SelectedPath;
+
+        //   fole.
+        fole.ShowDialog();
+        filesmp3 = System.IO.Directory.GetFiles(fole.SelectedPath, "*.mp3");
+        fileswav = System.IO.Directory.GetFiles(fole.SelectedPath, "*.wav");
+        string[] filesogg = System.IO.Directory.GetFiles(fole.SelectedPath, "*.ogg");
+
+        List<string> files = filesmp3.ToList();// Directory.GetFiles(fole.SelectedPath);
+        files.AddRange(fileswav);
+        files.AddRange(filesogg);
+        files.OrderBy(x => x);
+        // naudios = new List<AudioClip>();
+        foreach (string e in files)
+        {
+
+            // char[] chars = new char[3] { file.FileName[file.FileName.Length - 3], file.FileName[file.FileName.Length - 2], file.FileName[file.FileName.Length - 1] };
+
+            string ext = e.Substring(e.Length - 3);
+            //new string(chars);
+
+            if (ext == "mp3")
+            {
+                Directory.CreateDirectory(System.IO.Path.GetTempPath() + @"\MusicalDefense");
+                Mp3ToWav(e, System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong.wav");
+                ext = "wav";
+            }
+            else
+            {
+                Directory.CreateDirectory(System.IO.Path.GetTempPath() + @"\MusicalDefense");
+                File.WriteAllBytes(System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong." + ext, File.ReadAllBytes(e)); ///Path.getfilename(e)
+            }
+
+            WWW www = new WWW("file://" + System.IO.Path.GetTempPath() + @"\MusicalDefense\currentsong." + ext);
+            AudioClip a = www.GetAudioClip();
+            a.name = Path.GetFileName(e).Substring(0, e.Length - 3);
+            while (a.loadState != AudioDataLoadState.Loaded)
+            {
+                Debug.Log("still in loop");
+                //  yield return www;
+            }
+            Debug.Log("loaded");
+            naudios.Add(a);
+            // ads.clip = a;
+            //  ads.Play();
+        }
+
+        set_audiothings();
+
+    }
+    void set_audiothings()
+    {
+        foreach (Transform t in tpai)
+        {
+            t.GetChild(2).GetComponent<Dropdown>().value = 0;
+            t.GetChild(2).GetComponent<Dropdown>().options = new List<Dropdown.OptionData>(naudios.Count + 1);
+            int i = 0;
+            foreach (Dropdown.OptionData dop in t.GetChild(2).GetComponent<Dropdown>().options)
+            {
+                if (i == 0) dop.text = "no narration";
+                if (i == 1) dop.text = "get new audio";
+                if (i >= 2) dop.text = naudios[i - 2].name;
+                i++;
+            }
+        }
+    }
+
+    public FFTWindow FFTMode;
+    public int sampleCount;
+    public Transform[] cubies;
+    float[] samples;
+    FFMpegConverter ffMpeg = new FFMpegConverter();
+    List<VideoClip> vds = new List<VideoClip>();
+    VideoPlayer vp;
+    RectTransform rct;
+    public void clear_videos()
+    {
+        vds = new List<VideoClip>();
+        reset_choices();
+    }
+    //List<string> 
+    public void get_videos()
+    {
+        FolderBrowserDialog fole = new FolderBrowserDialog();
+        fole.Description = "select video narration folder";
+        fole.ShowDialog();
+        List<string> filesv = new List<string>();
+        filesv.AddRange(System.IO.Directory.GetFiles(fole.SelectedPath, "*.mp4"));
+        filesv.AddRange(System.IO.Directory.GetFiles(fole.SelectedPath, "*.ogg"));
+        filesv.AddRange(System.IO.Directory.GetFiles(fole.SelectedPath, "*.mov"));
+
+        foreach (string t in filesv)
+        {
+            string otpth;
+            if (Path.GetExtension(t) != "mp4")
+            {
+                var path = "temp_videos/" + Path.GetFileName(t);
+                print(Path.GetExtension(path));
+                path = Path.ChangeExtension(path, "mp4");
+                var output = new MemoryStream();
+
+                ffMpeg.ConvertMedia(t, output, Format.mp4);
+
+                output.Seek(0, SeekOrigin.Begin);
+
+                using (var file = File.Create(path))
+                {
+                    output.Seek(0, SeekOrigin.Begin);
+                    output.Position = 0;
+                    output.WriteTo(file);
+                    file.Close();
+                }
+                otpth = path;
+            }
+            else otpth = t;
+
+            vp.url = otpth;
+            vp.Prepare();
+            while (!vp.isPrepared) { }
+            vds.Add(vp.clip);
+
+        }
+
+        reset_choices();
+    }
+
+
+    public static void Mp3ToWav(string mp3File, string outputFile)
+    {
+        using (NAudio.Wave.Mp3FileReader reader = new NAudio.Wave.Mp3FileReader(mp3File))
+        {
+            NAudio.Wave.WaveFileWriter.CreateWaveFile(outputFile, reader);
+        }
+    }
+
+
+    bool allloaded = false;
+    public Texture2D LoadTexture(string FilePath)
+    {
+
+        Texture2D Tex2D;
+        byte[] FileData;
+
+        if (File.Exists(FilePath))
+        {
+            FileData = File.ReadAllBytes(FilePath);
+            Tex2D = new Texture2D(2, 2);           // Create new "empty" texture
+            if (Tex2D.LoadImage(FileData))           // Load the imagedata into the texture (size is set automatically)
+                return Tex2D;                 // If data = readable -> return texture
+        }
+        return null;                     // Return null if load failed
+    }
+
+    public IEnumerable<int> AllIndexesOf(string str, string value)
+    {
+        if (String.IsNullOrEmpty(value))
+            throw new ArgumentException("the string to find may not be empty", "value");
+        for (int index = 0; ; index += value.Length)
+        {
+            index = str.IndexOf(value, index);
+            if (index == -1)
+                break;
+            yield return index;
+        }
+    }
+
+
+
+    int audioint = 0;
+
+
+    Image DIMAGE;
+    AudioSource ads;
+    AudioSource nds;
+    int image_roster = 1;
+    float movspeed = 0;
+    //  float mholder = 0;
+    float atime = 0;
+    bool started = false;
+    bool narrating = false;
+    bool setup = false;
+
+
+    public void change_audio_narration()
+    {
+        ads.volume = cvoptions.transform.Find("snarration").GetComponent<Slider>().value;
+
+    }
+
+    public void change_audio_music()
+    {
+        ads.volume = cvoptions.transform.Find("smusic").GetComponent<Slider>().value;
+
+    }
+
+    void image_scale()
+    {
+        DIMAGE.SetNativeSize();
+        DIMAGE.transform.localScale = new Vector3(1, 1, 1);
+        Vector2 imx = DIMAGE.sprite.bounds.size;
+        //Vector2 ims = Camera.main..bounds.size;
+        float worldScreenHeight = (float)(Camera.main.orthographicSize * 2.0);
+        float worldScreenWidth = worldScreenHeight / UnityEngine.Screen.height * UnityEngine.Screen.width;
+        float camAspectRatio = Camera.main.aspect;
+        float newLocalScale;
+
+
+        float screenAspect = (float)UnityEngine.Screen.width / (float)UnityEngine.Screen.height;
+        float cameraHeight = Camera.main.orthographicSize * 2;
+        Bounds bounds = new Bounds(
+            Camera.main.transform.position,
+            new Vector3(cameraHeight * screenAspect, cameraHeight, 0));
+        // return bounds;
+        Vector2 ims = bounds.size;
+        Vector2 duf = new Vector2(imx.x - ims.x, imx.y - ims.y);
+        float imxscale = imx.x / imx.y;
+        if (duf.x > duf.y)
+        {
+
+        }
+        else
+        {
+
+        }
+
+
+        if (camAspectRatio >= 1.45f)
+        {
+            if (imxscale >= 1.45f)
+                newLocalScale = (worldScreenWidth / DIMAGE.sprite.bounds.size.y);
+            else
+                newLocalScale = (worldScreenHeight / DIMAGE.sprite.bounds.size.x);
+        }
+        else
+        {
+            if (imxscale >= 1.45f)
+                newLocalScale = (worldScreenWidth / DIMAGE.sprite.bounds.size.x);
+            else
+                newLocalScale = (worldScreenHeight / DIMAGE.sprite.bounds.size.y);
+        }
+
+
+
+
+        DIMAGE.transform.localScale = new Vector3(newLocalScale * 0.6f, newLocalScale * 0.6f, 1);
+    }
+
+
+
+}
