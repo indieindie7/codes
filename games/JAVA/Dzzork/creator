@@ -1,0 +1,91 @@
+/*
+ * this is a projecto to try outputing classes as scripts for the game
+ */
+package dzzork;
+
+import java.util.*;
+import java.io.*;
+import java.nio.file.*;
+
+/**
+ *
+ * @author lonis
+ */
+public class creator {
+
+    public static void main(String[] args) throws FileNotFoundException {
+        setup();
+        output(s);
+    }
+    public static script s = new script();
+
+    static void setup() {
+        s = new script();
+        s.salas = new ArrayList<>();
+        s.add_sala("first name", "a weird place full of mannequins, a red glows fills the room and shines on the dirty white walls. Their");
+        s.add_obj(new objetos("cube", "a weird cube", 0));
+
+        s.add_obj(new objetos("chair", "a weird red and black chair, with some strings of flesh over it", 0));
+
+        s.add_obj(new objetos("chest", "a black chest covered in leather and metal", 0));
+
+        s.salas.add(new Sala("rua", "liberdade", 0));
+
+    }
+
+    static void output(script s) throws FileNotFoundException {
+        try {
+            FileOutputStream fs = new FileOutputStream("chapter1.sala");
+            ObjectOutputStream os = new ObjectOutputStream(fs);
+            os.writeObject(s);
+            os.close();
+
+        } catch (Exception x) {
+            x.printStackTrace();
+        }
+    }
+}
+
+class script implements Serializable {
+
+    public List<Sala> salas;// = new ArrayList<Sala>();
+
+    public void add_sala(String a, String b) {
+        salas.add(new Sala(a, b, salas.size()));
+    }
+
+    public void add_obj(objetos o) {
+        Sala s = salas.get(salas.size() - 1);
+        s.objjetos.add(o);
+        salas.set(s.place, s);
+    }
+
+    public void add_act(Acao a) {
+        Sala s = salas.get(salas.size() - 1);
+        objetos o = s.objjetos.get(s.objjetos.size() - 1);
+        o.acoes.add(a);
+        s.objjetos.set(o.place, o);
+        salas.set(s.place, s);
+    }
+
+    public void add_cod(Condicao c) {
+        Sala s = salas.get(salas.size() - 1);
+        objetos o = s.objjetos.get(s.objjetos.size() - 1);
+        Acao a = s.objjetos.get(s.objjetos.size() - 1).acoes.get(s.objjetos.get(s.objjetos.size() - 1).acoes.size() - 1);
+        a.CONDICAO.add(c);
+        o.acoes.set(a.place, a);
+        s.objjetos.set(o.place, o);
+        salas.set(s.place, s);
+    }
+
+    public void add_eff(Efeito c) {
+        Sala s = salas.get(salas.size() - 1);
+        objetos o = s.objjetos.get(s.objjetos.size() - 1);
+        Acao a = s.objjetos.get(s.objjetos.size() - 1).acoes.get(s.objjetos.get(s.objjetos.size() - 1).acoes.size() - 1);
+        a.Efeito.add(c);
+        o.acoes.set(a.place, a);
+        s.objjetos.set(o.place, o);
+        salas.set(s.place, s);
+    }
+
+}
