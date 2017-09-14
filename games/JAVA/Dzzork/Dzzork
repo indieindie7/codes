@@ -1,17 +1,13 @@
 /*
- *this game has been made on JAVA using NETBEANS ide
- * this tool/game was made by TC BRAGA, for more
- *This is a java class, run at your own risk. this has been an interesting project, imma try make some other stuff
- *
- *the tool side is to load a script for the game, the game is a zork-style game
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
  */
 package dzzork;
 
 import static dzzork.Dzzork.EFEITO.usar;
 import static dzzork.Dzzork.sj;
-import static dzzork.action_caller.editTextArea;
-import static dzzork.action_caller.myString;
-import static dzzork.action_caller.uneditedTextArea;
+
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Container;
@@ -19,6 +15,7 @@ import java.awt.KeyboardFocusManager;
 import java.awt.event.KeyEvent;
 import java.util.*;
 import java.io.*;
+import java.io.FileInputStream;
 import java.nio.file.*;
 import javax.swing.BorderFactory;
 import javax.swing.JFrame;
@@ -54,8 +51,9 @@ public class Dzzork extends JFrame {
      */
     public static void main(String[] args) throws IOException {
         settuper();
-        comand_settup("C:\\Users\\lonis\\Desktop\\script_dzzork.txt".trim().replaceAll("\r*\n*", "").replaceAll(" ", ""));
+       // comand_settup("C:\\Users\\lonis\\Desktop\\script_dzzork.txt".trim().replaceAll("\r*\n*", "").replaceAll(" ", ""));
         print_intro();
+        //script sc = new script();
     }
     public static screen_caller sc;
 
@@ -71,7 +69,7 @@ public class Dzzork extends JFrame {
     static void print_intro() {
         output_message("hello user");
         output_message("load or loading game, how god knos :/");
-     }
+    }
 
     static void game_function(String enter) throws IOException {
         java.util.List<String> s = String_separator(enter, " ");
@@ -81,7 +79,6 @@ public class Dzzork extends JFrame {
             i = oj(my_sala, s);
             if (aj(i, s) != null) {
                 output_message("nao entendi, olhe melhor " + i.Name);
-                //    + System.lineSeparator() + myString
                 System.out.println("nao entendi, olhe melhor " + i.Name);
                 i = null;
             }
@@ -89,7 +86,6 @@ public class Dzzork extends JFrame {
         if (i != null) {
             Acao a = aj(i, s);
             output_message(return_message(a, i));
-            //   System.out.println(return_message(a));
         } else {
             switch (s.get(0)) {
                 case "olhar":
@@ -101,9 +97,9 @@ public class Dzzork extends JFrame {
                                 zdo += " " + asa.Verbo + " : " + asa.descricao;
                             }
                             output_message("  " + zdo);
-                                  } else {
+                        } else {
                             String a = "";
-                            for (objetos sd : my_sala.objetos) {
+                            for (objetos sd : my_sala.objjetos) {
                                 a += sd.Name + " : " + sd.Descricao;
                             }
                             output_message(my_sala.subname + " : " + my_sala.descricao + ",  " + a);
@@ -121,88 +117,23 @@ public class Dzzork extends JFrame {
                     break;
             }
         }
-        //  game_function();
     }
 ////////////////
 ///////////////
 
-    static void comand_settup(String sv) throws IOException {
+    static void comand_settup(String sv) throws IOException, ClassNotFoundException {
         String FILE_NAME = sv;
+        FileInputStream fis = new FileInputStream(sv+".script");
+        ObjectInputStream oi = new ObjectInputStream(fis);
+       // Object o1 = oi.readObject();
+        script s = (script) oi.readObject();
+        
         output_message("loading " + sv);
-        File f = new File(FILE_NAME);
+       
+        salas = s.salas;
 
-        Sala Msalas = null;
-        if (salas.size() > 0) {
-            salas.get(salas.size() - 1);
-        }
-        objetos Mobj = null;
-        if (Msalas.objetos.size() > 0) {
-            Mobj = Msalas.objetos.get(Msalas.objetos.size() - 1);
-        }
-        Acao Mac = null;
-        if (Mobj.acoes.size() > 0) {
-            Mac = Mobj.acoes.get(Mobj.acoes.size() - 1);
-        }
 
-        java.util.List<String> rd = Files.readAllLines(Paths.get(FILE_NAME));
-        for (String r : rd) {//here read  text files
-            String[] io = r.split(";");//.trim();
-            for (int w = 0; w < io.length; w++) {
-                io[w] = io[w].trim();
-            }
-            switch (io[0]) {
-//ref// sala; uma descricao da sala; um nome da sala
-//ref// objeto; um nome da sala;nome obj; descricao obj
-//ref// verbo; nome verbo;desc verbo
-//ref// mensagem;failmessage;passmessage
-//ref// condicao;NOM_sala2,nom obj2;cond descric
-//ref// efeito;tipoefeito ;/[usar]/um nome da sala2,nom obj2/[passar]/nomsala;/[usar]/efeit descric *( sem : /|[EFEITO])*
-                case "sala":
-                    salas.add(new Sala(io[1], io[2], salas.size()));
-                    output_message("sala adicionada");
-                    break;
-                case "objeto":
-
-                    Msalas.objetos.add(new objetos(io[1], io[2], Msalas.objetos.size()));// , io[3]
-                    salas.set(Msalas.place, Msalas);
-                    output_message("objeto adicionada");
-                    break;
-                case "verbo":
-
-                    Mobj.acoes.add(new Acao(io[1], io[2], Mobj.acoes.size()));
-                    Msalas.objetos.set(Mobj.place, Mobj);
-                    salas.set(Msalas.place, Msalas);
-                    output_message("acao adicionada");
-                    break;
-                case "menssagem":
-
-                    Mac.fail = io[2];
-                    Mac.pass = io[3];
-                    Mobj.acoes.set(Mac.place, Mac);
-                    Msalas.objetos.set(Mobj.place, Mobj);
-                    salas.set(Msalas.place, Msalas);
-                    output_message("menssagem adicionada");
-                    break;
-                case "condicao":
-
-                    Mac.CONDICAO.add(new Condicao(io[1], io[2]));
-                    Mobj.acoes.set(Mac.place, Mac);
-                    Msalas.objetos.set(Mobj.place, Mobj);
-                    salas.set(Msalas.place, Msalas);
-                    output_message("condicao adicionada");
-                    break;
-                case "efeito":
-
-                    Mac.Efeito.add(new Efeito(io[1], io[2], io[3], Mac.Efeito.size()));
-                    Mobj.acoes.set(Mac.place, Mac);
-                    Msalas.objetos.set(Mobj.place, Mobj);
-                    salas.set(Msalas.place, Msalas);
-                    output_message("efeito adicionada");
-                    break;
-
-            }
-
-        }
+        /////////////////////
         output_message("file loaded, vide salas conta :" + salas.size());
         if (salas.size() > 0) {
             output_message(salas.get(0).descricao);
@@ -227,8 +158,6 @@ public class Dzzork extends JFrame {
                 break;
             }
         }
-        //if(int z = x )
-
         for (int z = x;
                 z < sname.size()
                 && z < isname.size(); z++) {
@@ -260,7 +189,7 @@ public class Dzzork extends JFrame {
     }
 
     static objetos oj(Sala s, java.util.List<String> x) {
-        return s.objetos.stream().filter(w -> name_get(x, w.Name)).findFirst().get();
+        return s.objjetos.stream().filter(w -> name_get(x, w.Name)).findFirst().get();
     }
 
     static Acao aj(objetos o, java.util.List<String> x) {
@@ -277,18 +206,13 @@ public class Dzzork extends JFrame {
 
                 switch (y.efeito) {
                     case usar:
-                        //    Sala s = sj(y.nom_sala);//).findFirst().get();
                         objetos o = oj(my_sala, String_separator(y.Target_obj, " "));
-
                         o.Descricao = y.descricao;
                         Sala sa = sj(String_separator(y.nom_sala, " "));
-                        sa.objetos.set(o.place, o);
+                        sa.objjetos.set(o.place, o);
                         salas.set(sa.place, sa);
-
                         e.Efeito.remove(y.place);
-
                         break;
-
                     case passar:
                         my_sala = sj(String_separator(y.nom_sala, " "));
                         break;
@@ -300,7 +224,7 @@ public class Dzzork extends JFrame {
             } else {
                 i.acoes.remove(e.place);
             }
-            my_sala.objetos.set(i.place, i);
+            my_sala.objjetos.set(i.place, i);
             salas.set(my_sala.place, my_sala);
             return e.pass;
         } else {
@@ -308,21 +232,21 @@ public class Dzzork extends JFrame {
         }
 
     }
-//////////////////
-    ///////////////////////
-    ////////////////////
-    //////////////////////
-    ////////////////////// CLASSES
 
     static boolean condition_met(Condicao c) {
         return salas.stream()
-                .anyMatch(w -> w.subname.equals(c.nom_sala) && w.objetos
+                .anyMatch(w -> w.subname.equals(c.nom_sala) && w.objjetos
                 .stream()
                 .anyMatch(y -> y.Name.equals(c.nom_sala) && y.Descricao.equals(c.Descricao)));
 
     }
 
 }
+//////////////////
+///////////////////////
+////////////////////
+//////////////////////
+////////////////////// CLASSES
 
 class Sala {
 
@@ -332,15 +256,18 @@ class Sala {
         place = i;
     }
 
+    public void add_objeto(objetos o) {
+        objjetos.add(o);
+    }
     public String descricao;
-    public java.util.List<objetos> objetos = new ArrayList<>();
+    public java.util.List<objetos> objjetos = new ArrayList<>();
     public String subname;
     public int place;
 }
 
 class objetos {
 
-    public objetos(String s, String d, int i) {//, String e
+    public objetos(String s, String d, int i) {
         Name = s;
         Descricao = d;
         place = i;
@@ -368,7 +295,7 @@ class Acao {
     public java.util.List<Condicao> CONDICAO = new ArrayList<>();
     public String pass;
     public String fail;
-    public java.util.List<Efeito> Efeito = new ArrayList<>();// EFEITO;
+    public java.util.List<Efeito> Efeito = new ArrayList<>();
     public int place;
     public String descricao;
 }
@@ -399,7 +326,7 @@ class Efeito {
                 break;
 
             case passar:
-                nom_sala = o1;// sj();
+                nom_sala = o1;
                 break;
             default:
                 System.out.println("krill me");
@@ -416,9 +343,9 @@ class screen_caller extends JFrame {
 
     JFrame frame;
     public static JTextField editTextArea = new JTextField("Type Here");
-
     public static JTextArea uneditedTextArea = new JTextArea(" the old text is rere");
     public static String myString;
+
     public void settuper() throws IOException {
         keymappingf();
         g();
