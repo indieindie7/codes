@@ -5,13 +5,16 @@ import java.util.Scanner;
 
 public class Loja_de_produtos {
 
+    //////////// Variaveis
     static double[] precos;
     static String[] nomes;
     static int[] vendas;
     static Scanner entrada;
     static int index = 0;
     static int index_vendas = 0;
-
+    static boolean close = false;
+    static int menu_opcao = 0;
+    ///////////////
     static void menu_print(int a) {
         //Print do menu
         switch (a) {
@@ -26,13 +29,12 @@ public class Loja_de_produtos {
                 System.out.println("----");
                 System.out.println("== == == == == == == == == == == == == == == == ==");
                 System.out.println("      Digite uma opção:   ");
-                int menu_opcao = entrada.nextInt();
+                menu_opcao = entrada.nextInt();
                 if (menu_opcao < 1 || menu_opcao > 5) {
                     System.out.println("Digite um número entre 1 a 5");
                     menu_opcao = entrada.nextInt();
                 }
-                menu_print(menu_opcao);
-                break;
+                return;
             case 1:
 //Cadastrar Produto
                 if (index == 10) {
@@ -65,7 +67,6 @@ public class Loja_de_produtos {
                     System.out.println("+++++++++++++++++++++++++++++++");
                     index++;
                 }
-                // menu_print(0);
                 break;
             case 2:
             case 3:
@@ -77,7 +78,6 @@ public class Loja_de_produtos {
                     System.out.println("Há 0 produtos cadastrados, não há como fazer vendas.");
                     System.out.println("Por favor cadastre um produto.");
                     System.out.println("============================");
-                    //  menu_print(0);
                     break;
                 } else {
                     System.out.println("============================");
@@ -87,7 +87,6 @@ public class Loja_de_produtos {
                     System.out.println(a == 2 ? "Listagem realizada com sucesso. " : " " + index + (index == 1 ? " produto cadastrado." : " produtos cadastrados."));
                     System.out.println("============================");
                     if (a == 2) {
-                        //  menu_print(0);
                         break;
                     }
 
@@ -105,7 +104,6 @@ public class Loja_de_produtos {
                 System.out.println("+++++++++++++++++++++++++++++++");
                 System.out.println("Venda realizada com sucesso!");
                 System.out.println("+++++++++++++++++++++++++++++++");
-                //     menu_print(0);
                 break;
             case 4:
 //Relatório de Vendas
@@ -113,12 +111,10 @@ public class Loja_de_produtos {
                 double soma = 0;
                 if (index == 0) {
                     System.out.println("Não há produtos cadastrados, logo não há vendas.");
-                    //     menu_print(0);
                     break;
                 }
                 if (index_vendas == 0) {
                     System.out.println("Não houve vendas");
-                    //   menu_print(0);
                     break;
                 }
                 for (int i = 0; i < index; i++) {
@@ -137,20 +133,17 @@ public class Loja_de_produtos {
                 System.out.println("=====================================");
                 System.out.println("TOTAL GERAL DAS VENDAS: " + soma);
                 System.out.println("=====================================");
-                //    menu_print(0);
                 break;
             case 5:
 //Fechar
                 System.out.println("=====================================");
                 System.out.println("           FECHANDO                  ");
                 System.out.println("=====================================");
+                close = true;
                 return;
         }
-        System.out.print(a);
-        if (a != 5 && a != 0) {
-            menu_print(0);
-        }
-        //  menu_print(0);
+           menu_opcao = 0;
+        
     }
 
     public static void main(String[] args) {
@@ -164,7 +157,10 @@ public class Loja_de_produtos {
         System.out.println("Giovanni Ramos Alves                RA: 21027075");
         System.out.println("Nelson Aparecido Andre Junior       RA: 20684219 ");
         System.out.println("Ana Cristina Fasciana Mascelloni    RA: 21009380 ");
-        menu_print(0);
+        while(!close){
+       menu_print(menu_opcao);
+        }
+        
 
     }
 }
