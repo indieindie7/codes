@@ -1,7 +1,6 @@
 package Loja_de_produtos;
 
 import java.util.Scanner;
-//import java.util.*;
 
 public class Loja_de_produtos {
 
