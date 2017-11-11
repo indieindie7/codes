@@ -5,14 +5,14 @@ import java.util.Scanner;
 public class Loja_de_produtos {
 
     //////////// Variaveis
-    static double[] precos;
-    static String[] nomes;
-    static int[] vendas;
-    static Scanner entrada;
-    static int index = 0;
-    static int index_vendas = 0;
-    static boolean close = false;
-    static int menu_opcao = 0;
+    static double[] precos;         //array de  precos dos   produtos
+    static String[] nomes;          //array de  nome dos     produtos
+    static int[] vendas;            //array de  vendas
+    static Scanner entrada;         //Variavel  Scanner
+    static int index = 0;           //indice para   entrada     dos produtos
+    static int index_vendas = 0;    //indice para   entrada     das vendas
+    static boolean close = false;   //boolean   de      parada de   execucao      do codigo
+    static int menu_opcao = 0;      //indice    de      menu    digitado
     ///////////////
     static void menu_print(int a) {
         //Print do menu
