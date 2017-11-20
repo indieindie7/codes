@@ -14,11 +14,12 @@ public class Loja_de_produtos {
     static boolean close = false;   //boolean   de      parada de   execucao      do codigo
     static int menu_opcao = 0;      //indice    de      menu    digitado
     ///////////////
-    static void menu_print(int a) {
-        //Print do menu
+
+    static void menu_print(int a) { //Funcao principal do Menu
+
         switch (a) {
             case 0:
-//PRINT do Menu
+                //PRINT do Menu
                 System.out.println("============== Menu de Opções ===================== ");
                 System.out.println("1 – Cadastrar produto");
                 System.out.println("2 – Listar produtos");
@@ -36,7 +37,7 @@ public class Loja_de_produtos {
                 }
                 return;
             case 1:
-//Cadastrar Produto
+                //Cadastrar Produto
                 if (index == 10) {
                     System.out.println("============================");
                     System.out.println("  Lista de Produtos cheia   ");
@@ -73,12 +74,12 @@ public class Loja_de_produtos {
                 }
                 break;
             case 2:
-                 //Listagem de Produtos
+            //Listagem de Produtos
             case 3:
-                 //Venda de Produtos - Começa com a listagem para lembrar o usuario dos codigos
-                 
-                    //Lista dos produtos
-               if (index == 0) {
+                //Venda de Produtos - Começa com a listagem para lembrar o usuario dos codigos
+
+                //Lista dos produtos
+                if (index == 0) {
                     //Caso nenhum produto cadastrado
                     System.out.println("============================");
                     System.out.println("Há 0 produtos cadastrados, não há como fazer vendas.");
@@ -94,12 +95,11 @@ public class Loja_de_produtos {
                     System.out.println(a == 2 ? "Listagem realizada com sucesso. " : " " + index + (index == 1 ? " produto cadastrado." : " produtos cadastrados."));
                     System.out.println("============================");
 
-
                 }
-                    if (a == 2) {
-                        //Termina aqui se opcao foi Listagem de Produtos
-                        break;
-                    }
+                if (a == 2) {
+                    //Termina aqui se opcao foi Listagem de Produtos
+                    break;
+                }
                 //Venda de Produtos
                 System.out.println("============================");
                 System.out.println("Digite o codigo do produto que foi vendido");
@@ -117,7 +117,7 @@ public class Loja_de_produtos {
                 System.out.println("+++++++++++++++++++++++++++++++");
                 break;
             case 4:
-//Relatório de Vendas
+                //Relatório de Vendas
                 System.out.println("=== Relatório de Vendas ===");
                 double soma = 0;
                 if (index == 0) {
@@ -148,15 +148,15 @@ public class Loja_de_produtos {
                 System.out.println("=====================================");
                 break;
             case 5:
-//Fechar
+                //Fechar
                 System.out.println("=====================================");
                 System.out.println("           FECHANDO                  ");
                 System.out.println("=====================================");
                 close = true;
                 return;
         }
-           menu_opcao = 0;
-        
+        menu_opcao = 0;
+
     }
 
     public static void main(String[] args) {
@@ -169,10 +169,9 @@ public class Loja_de_produtos {
         System.out.println("Gilmar da Silva Almeida Junior      RA: 21033057");
         System.out.println("Giovanni Ramos Alves                RA: 21027075");
         //Para de funcionar se close for colocado como false na Opção 5
-         while(!close){
-       menu_print(menu_opcao);
+        while (!close) {
+            menu_print(menu_opcao);
         }
-        
 
     }
 }
