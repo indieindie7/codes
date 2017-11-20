@@ -31,6 +31,7 @@ public class Loja_de_produtos {
                 menu_opcao = entrada.nextInt();
                 if (menu_opcao < 1 || menu_opcao > 5) {
                     System.out.println("Digite um número entre 1 a 5");
+                    //Pedido de Opcao ao Usuario
                     menu_opcao = entrada.nextInt();
                 }
                 return;
@@ -46,19 +47,23 @@ public class Loja_de_produtos {
                     System.out.println("Adicione um produto na lista");
                     System.out.println("============================");
                     System.out.println("Digite o nome do Produto:");
+                    //Pedido de entrada do nome do novo Produto
                     nomes[index] = entrada.nextLine();
                     while (nomes[index].equals("")) {
                         System.out.println("O nome não pode ser vazio, digite o nome do produto novamente:");
+                        //Nova tentativa de entrada do nome do novo Produto
                         nomes[index] = entrada.nextLine();
                     }
                     if (nomes[index].equalsIgnoreCase("x")) {
                         return;
                     }
                     System.out.println("Digite o valor do Produto:");
+                    //Pedido de entrada do preço do novo Produo
                     precos[index] = entrada.nextDouble();
                     while (precos[index] <= 0) {
                         System.out.println("Valor não pode ser menor ou igual a zero");
                         System.out.println("Digite o valor do Produto:");
+                        //Nova tentativa de entrada do preço do novo Produo
                         precos[index] = entrada.nextDouble();
                     }
                     System.out.println("+++++++++++++++++++++++++++++++");
@@ -68,34 +73,41 @@ public class Loja_de_produtos {
                 }
                 break;
             case 2:
+                 //Listagem de Produtos
             case 3:
-                //Listagem de Produtos
-
-//Venda de Produtos
-                if (index == 0) {
+                 //Venda de Produtos - Começa com a listagem para lembrar o usuario dos codigos
+                 
+                    //Lista dos produtos
+               if (index == 0) {
+                    //Caso nenhum produto cadastrado
                     System.out.println("============================");
                     System.out.println("Há 0 produtos cadastrados, não há como fazer vendas.");
                     System.out.println("Por favor cadastre um produto.");
                     System.out.println("============================");
                     break;
                 } else {
+                    //Caso produtos cadastrados
                     System.out.println("============================");
                     for (int i = 0; i < index; i++) {
                         System.out.println(i + 1 + " - " + nomes[i] + " | Preço: R$ " + precos[i]);
                     }
                     System.out.println(a == 2 ? "Listagem realizada com sucesso. " : " " + index + (index == 1 ? " produto cadastrado." : " produtos cadastrados."));
                     System.out.println("============================");
-                    if (a == 2) {
-                        break;
-                    }
+
 
                 }
-
+                    if (a == 2) {
+                        //Termina aqui se opcao foi Listagem de Produtos
+                        break;
+                    }
+                //Venda de Produtos
                 System.out.println("============================");
                 System.out.println("Digite o codigo do produto que foi vendido");
+                //Pedido do codigo
                 int indice_temp = entrada.nextInt() - 1;
                 while (indice_temp < 0 || indice_temp > index - 1) {
                     System.out.println("O codigo não pode ser menor que 1 ou maior que 10, digite o codigo novamente");
+                    //Nova tentativa de pedido do codigo
                     indice_temp = entrada.nextInt() - 1;
                 }
                 vendas[index_vendas] = indice_temp;
@@ -119,6 +131,8 @@ public class Loja_de_produtos {
                 for (int i = 0; i < index; i++) {
                     double venda_atual = 0;
                     for (int j = 0; j < index_vendas; j++) {
+                        //comparacao de i(indice) com vendas[j]
+                        //se verdadeiro, operação é realizado
                         venda_atual += i == vendas[j] ? 1 : 0;
                     }
                     System.out.println("===> CÓDIGO: " + (i + 1));
@@ -154,9 +168,8 @@ public class Loja_de_produtos {
         System.out.println("Tiago Campanário Braga              RA: 20029522");
         System.out.println("Gilmar da Silva Almeida Junior      RA: 21033057");
         System.out.println("Giovanni Ramos Alves                RA: 21027075");
-        System.out.println("Nelson Aparecido Andre Junior       RA: 20684219 ");
-        System.out.println("Ana Cristina Fasciana Mascelloni    RA: 21009380 ");
-        while(!close){
+        //Para de funcionar se close for colocado como false na Opção 5
+         while(!close){
        menu_print(menu_opcao);
         }
         
