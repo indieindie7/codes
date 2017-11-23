@@ -15,6 +15,24 @@ public class Loja_de_produtos {
     static int menu_opcao = 0;      //indice    de      menu    digitado
     ///////////////
 
+
+    public static void main(String[] args) {
+        precos = new double[10];
+        nomes = new String[10];
+        vendas = new int[100];
+        entrada = new Scanner(System.in);
+
+        System.out.println("Tiago Campanário Braga              RA: 20029522");
+        System.out.println("Gilmar da Silva Almeida Junior      RA: 21033057");
+        System.out.println("Giovanni Ramos Alves                RA: 21027075");
+        //Para de funcionar se close for colocado como false na Opção 5
+        while (!close) {
+            menu_print(menu_opcao);
+        }
+
+    }
+    
+    
     static void menu_print(int a) { //Funcao principal do Menu
 
         switch (a) {
@@ -156,22 +174,6 @@ public class Loja_de_produtos {
                 return;
         }
         menu_opcao = 0;
-
-    }
-
-    public static void main(String[] args) {
-        precos = new double[10];
-        nomes = new String[10];
-        vendas = new int[100];
-        entrada = new Scanner(System.in);
-
-        System.out.println("Tiago Campanário Braga              RA: 20029522");
-        System.out.println("Gilmar da Silva Almeida Junior      RA: 21033057");
-        System.out.println("Giovanni Ramos Alves                RA: 21027075");
-        //Para de funcionar se close for colocado como false na Opção 5
-        while (!close) {
-            menu_print(menu_opcao);
-        }
 
     }
 }
