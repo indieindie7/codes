@@ -15,7 +15,7 @@ public class Loja_de_produtos {
     static int menu_opcao = 0;      //indice    de      menu    digitado
     ///////////////
 
-
+///FUNCAO MAIN
     public static void main(String[] args) {
         precos = new double[10];
         nomes = new String[10];
@@ -32,7 +32,8 @@ public class Loja_de_produtos {
 
     }
     
-    
+    ///FUNCAO MENU_PRINT
+    //Funcao principal do codigo
     static void menu_print(int a) { //Funcao principal do Menu
 
         switch (a) {
