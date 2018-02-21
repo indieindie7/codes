@@ -1,0 +1,24 @@
+void sun_shadows(out float a,vec2 sun,vec2 planet,float thick,vec2 uv){
+   
+    vec2 d = uv - sun*iResolution.xy;
+    vec2 f = sun*iResolution.xy - planet;
+   float A = dot(d,d);
+        //d.Dot( d ) ;
+float b = dot(2.*f,d) ;
+float c = dot(f,f) - thick*thick;
+
+float discriminant = b*b-4.*A*c;
+    if(discriminant >0.){
+          discriminant = sqrt( discriminant );
+
+
+  float t1 = (-b - discriminant)/(2.*A);
+  float t2 = (-b + discriminant)/(2.*A);
+        
+    if( t1 >= 0. && t2 <= 1. )
+  {
+  a= 0.;
+  }
+    }
+
+}
