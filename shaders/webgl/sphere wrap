@@ -26,3 +26,6 @@
                texture(iChannel0,texture_coordinate);//*cosTheta;
 
    /////////////////////////
+   
+   tried implementing for rotation, it failed. this is not a proper rotation, but a texture wrap simulating a sphere
+   v'=vcosθ+(r×v)sinθ+r(v⋅r)(1−cosθ)
