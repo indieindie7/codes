@@ -1,0 +1,28 @@
+ /////////////////////
+ if(length(fragCoord - iResolution.xy/2.) < radius){
+
+        vec2 uv2 = fragCoord - iResolution.xy/2.;
+
+    
+        float z = sqrt( pow(radius,2.) - pow(uv2.x,2.) - pow(uv2.y,2.));
+
+        vec3 n_normal = normalize(vec3(uv2,z) );
+    //  	n_normal =
+    //        normalize( n_normal*cos(iTime) + (axis*n_normal)*sin(iTime)+ axis*(axis*n_normal)*(1. - cos(iTime)));
+        
+            vec2 texture_coordinate;
+    texture_coordinate.x = 0.5 - atan(n_normal.z, n_normal.x) * M_1_2PI;
+    texture_coordinate.y = 0.5 - asin(-n_normal.y) * M_1_PI;
+
+    //    texture_coordinate.x += iTime/18.;
+    texture_coordinate.x *=scalex;
+    texture_coordinate.y *=scaley;
+        
+
+ vec3 l = normalize( l_dir );
+        float cosTheta = clamp( dot( n_normal,l ), 0.,1. );
+        
+           fragColor = // vec4(n_normal,1.);
+               texture(iChannel0,texture_coordinate);//*cosTheta;
+
+   /////////////////////////
