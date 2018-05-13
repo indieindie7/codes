@@ -66,7 +66,7 @@ Mesh mesh2, mesh;
 
                 f.transform.localPosition = mesh.vertices[j];
                 //  int id = offset + j;
-                vertices.Add(f.transform.localPosition + p.transform.position - transform.position);
+                vertices.Add(f.transform.position - transform.position);
 
             }
         }
