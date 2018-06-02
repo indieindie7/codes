@@ -1,4 +1,6 @@
-     ///DELAUNAY // RThis is a failed delaunay mesh generator for unity. imma go and start again but in a simpler way
+     ///DELAUNAY // This is a failed delaunay mesh generator for unity. imma go and start again but in a simpler way
+// This was supposed to work and help me generate a city, but sadly it didnt work, i used S-Hull as a source
+///http://www.s-hull.org/paper/s_hull.pdf
         List<triangle> trinagulos = new List<triangle>();
         // triangle tg = new triangle(0,1,2);
       ///   retorno:
