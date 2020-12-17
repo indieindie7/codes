@@ -1,0 +1,175 @@
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using UnityEngine;
+using System.Linq;
+using UnityEngine.UI;
+using TMPro;
+class letter
+{
+    internal char self;
+    internal int totalCount;
+    internal Dictionary<letter, int> jumpchance;
+    internal letter(char s)
+    {
+        self = s;
+        jumpchance = new Dictionary<letter, int>();
+        totalCount = 0;
+    }
+    internal void addLeter(letter c)
+    {
+        totalCount++;
+        //  Debug.Log(c.self);
+        if (jumpchance.ContainsKey(c)) jumpchance[c]++;
+        else jumpchance.Add(c, 1);
+    }
+}
+public class MarkovNameGenerator : MonoBehaviour
+{
+    StreamReader reader;
+    Dictionary<letter, int> markovStartNames, markovStartCities;
+    int nameCount, cityCount;
+    List<letter> markovChainNames, markovChainCities;
+    void Start()
+    {
+        string path = "Assets/Resources/names.txt";
+        reader = new StreamReader(path);
+        markovStartNames = new Dictionary<letter, int>();
+        markovChainNames = new List<letter>();
+        markovStartCities = new Dictionary<letter, int>();
+        markovChainCities = new List<letter>();
+        string line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            MarkovCreatorNames(line.Split('—')[0]);
+        }
+        path = "Assets/Resources/cities.txt";
+        reader = new StreamReader(path);
+        while ((line = reader.ReadLine()) != null)
+        {
+            MarkovCreatorCities(line.Split(' ')[0]);
+        }
+        reader.Close();
+    }
+    void MarkovCreatorNames(string entrada)
+    {
+      //  Debug.Log(entrada);
+        if (!markovChainNames.Exists(x => x.self == entrada[0]))
+        {
+            letter a = new letter(entrada[0]);
+            markovStartNames.Add(a, 1);
+            markovChainNames.Add(a);
+        }
+        else
+        {
+            letter start = markovChainNames.Find(x => x.self == entrada[0]);
+            markovStartNames[start]++;
+        }
+        nameCount++;
+        for (int i = 0; i < entrada.Length - 1; i++) // char c in entrada.ToCharArray())
+        {
+            if (!markovChainNames.Exists(x => x.self == entrada[i + 1]))
+            {
+                letter a = new letter(entrada[i + 1]);
+                markovChainNames.Add(a);
+            }
+            letter next = markovChainNames.Find(x => x.self == entrada[i + 1]);
+            markovChainNames.Find(x => x.self == entrada[i]).addLeter(next);
+        }
+    }
+    void MarkovCreatorCities(string entrada)
+    {
+        Debug.Log(entrada);
+        if (!markovChainCities.Exists(x => x.self == entrada[0]))
+        {
+            letter a = new letter(entrada[0]);
+            markovStartCities.Add(a, 1);
+            markovChainCities.Add(a);
+        }
+        else
+        {
+            letter start = markovChainCities.Find(x => x.self == entrada[0]);
+            if (start == null) return;
+            markovStartCities[start]++;
+        }
+        cityCount++;
+        for (int i = 0; i < entrada.Length - 1; i++) // char c in entrada.ToCharArray())
+        {
+            if (!markovChainCities.Exists(x => x.self == entrada[i + 1]))
+            {
+                letter a = new letter(entrada[i + 1]);
+                markovChainCities.Add(a);
+            }
+            letter next = markovChainCities.Find(x => x.self == entrada[i + 1]);
+            markovChainCities.Find(x => x.self == entrada[i]).addLeter(next);
+        }
+    }
+    public void NewName()
+    {
+        TMP_InputField name = GameObject.Find("Name").GetComponent<TMP_InputField>();
+        TMP_InputField parent = GameObject.Find("Parent").GetComponent<TMP_InputField>();
+        TMP_InputField city = GameObject.Find("City").GetComponent<TMP_InputField>();
+        string texto = "";
+        int Rng = Random.Range(0, nameCount);
+        int num = 0;
+        foreach (letter e in markovStartNames.Keys)
+        {
+            if (Rng > num && Rng <= num + markovStartNames[e])
+            {
+                texto += e.self;
+                texto = markovRecursion(e, texto);
+                break;
+            }
+            num += markovStartNames[e];
+        }
+        // Debug.Log(texto);
+        name.text = texto;
+        texto = "";
+        num = 0;
+        Rng = Random.Range(0, nameCount);
+        foreach (letter e in markovStartNames.Keys)
+        {
+            if (Rng > num && Rng <= num + markovStartNames[e])
+            {
+                texto += e.self;
+                texto = markovRecursion(e, texto);
+                break;
+            }
+            num += markovStartNames[e];
+        }
+        parent.text = texto;
+        //  Debug.Log(texto);
+        texto = "";
+        Rng = Random.Range(0, cityCount);
+        num = 0;
+        foreach (letter e in markovStartCities.Keys)
+        {
+            if (Rng > num && Rng <= num + markovStartCities[e])
+            {
+                texto += e.self;
+                texto = markovRecursion(e, texto);
+                break;
+            }
+            num += markovStartCities[e];
+        }
+        city.text = texto;
+        //   Debug.Log(texto);
+    }
+    string markovRecursion(letter current, string entrada)
+    {
+        int Rng = Random.Range(0, current.totalCount);
+        int num = 0;
+        if (current.self != ' ')
+            foreach (letter e in current.jumpchance.Keys)
+            {
+                if (Rng > num && Rng <= num + current.jumpchance[e])
+                {
+                    entrada += e.self;
+                    entrada = markovRecursion(e, entrada);
+                    break;
+                }
+                num += current.jumpchance[e];
+            }
+        return entrada;
+    }
+}
