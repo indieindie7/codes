@@ -1,0 +1,3 @@
+based on publicly available code, i improved and did some changes. this is a prototype of a dialogue system based around graphic editor with nodes inside of unity. 
+I tried to make something highly customizeable and focused on ease of use, i will actually simplify it and lean the structure more on world states for changing dinamically the dialogue trees.
+just because thats a better way to visualize instead of having various trees
