@@ -1,3 +1,7 @@
 based on publicly available code, i improved and did some changes. this is a prototype of a dialogue system based around graphic editor with nodes inside of unity. 
 I tried to make something highly customizeable and focused on ease of use, i will actually simplify it and lean the structure more on world states for changing dinamically the dialogue trees.
 just because thats a better way to visualize instead of having various trees
+the codes are inside the dialogues folder, just make a empty project, drag and drop into it and have a look around. similar to other works and also available for free.
+theres a preview image here also showing a fully realized version of this.
+
+simple can be powerful, and i will use myself a much simpler version of this.
