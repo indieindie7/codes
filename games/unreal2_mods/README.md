@@ -10,6 +10,7 @@ without SOverhaul.
 |---|---|
 | [U2SoftShadows](U2SoftShadows) | Every character gets up to 3 soft shadows, one per nearby light. Shadows fade in and out as characters move between lights and fade from the feet to the head, and outdoors the sun always casts one. Built on the engine's own ShadowProjector. |
 | [U2SkipCutscenes](U2SkipCutscenes) | Press Space to fast-forward cutscenes and conversations. They are sped up, never cut short, so every event still fires. Skipping stops at dialogue choices and never happens mid-fight. |
+| [U2SkipScenes](U2SkipScenes) | The scenes-only version of U2SkipCutscenes: skips letterboxed cutscenes but leaves walk-around conversations alone. Install one or the other. |
 
 Each folder contains:
 - the compiled package (`System/*.u`)

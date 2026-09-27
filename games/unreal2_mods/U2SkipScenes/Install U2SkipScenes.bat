@@ -1,5 +1,5 @@
 @echo off
-rem U2SkipCutscenes installer. Double-click to install; "Uninstall U2SkipCutscenes.bat" removes it.
+rem U2SkipScenes installer. Double-click to install; "Uninstall U2SkipScenes.bat" removes it.
 rem The batch part only launches the PowerShell script embedded below the marker line.
 setlocal
 set "U2SC_SELF=%~f0"
@@ -16,8 +16,8 @@ exit /b %RC%
 $ErrorActionPreference = 'Stop'
 $mode = $env:U2SC_MODE
 $here = $env:U2SC_HERE.TrimEnd('\')
-$mutator = 'U2SkipCutscenes.SkipCutscenes'
-$files = @('System\U2SkipCutscenes.u', 'UIScripts\SkipCutscenes.ui')
+$mutator = 'U2SkipScenes.SkipScenes'
+$files = @('System\U2SkipScenes.u', 'UIScripts\SkipCutscenes.ui')
 $ansi = [Text.Encoding]::Default
 
 function Say($msg, $color = 'Gray') { Write-Host $msg -ForegroundColor $color }
@@ -77,7 +77,7 @@ catch { Fail "Can't write to the game folder. Right-click this .bat and choose '
 if (-not (Test-Path $userIni)) { Fail 'System\User.ini does not exist yet. Start the game once, quit, then run this again.' }
 
 if ($mode -eq 'install') {
-    Say "`nInstalling U2SkipCutscenes..." 'Cyan'
+    Say "`nInstalling U2SkipScenes..." 'Cyan'
     foreach ($f in $files) {
         $src = Join-Path $here $f
         if (-not (Test-Path $src)) { Fail "$f is missing next to this installer (expected $src)." }
@@ -96,13 +96,13 @@ if ($mode -eq 'install') {
             if ($lines[$i] -match '^\s*Mutator\s*=(.*)$') {
                 $found = $true
                 $list = @($Matches[1].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-                if ($list -contains 'U2SkipScenes.SkipScenes') {
-                    $list = @($list | Where-Object { $_ -ne 'U2SkipScenes.SkipScenes' })
+                if ($list -contains 'U2SkipCutscenes.SkipCutscenes') {
+                    $list = @($list | Where-Object { $_ -ne 'U2SkipCutscenes.SkipCutscenes' })
                     $lines[$i] = 'Mutator=' + ($list -join ',')
-                    Say '  removed the other skip version (U2SkipScenes.SkipScenes) - use one or the other'
+                    Say '  removed the other skip version (U2SkipCutscenes.SkipCutscenes) - use one or the other'
                 }
                 if ($list -contains $mutator) { Say '  Mutator line already present' }
-                else { $lines[$i] = 'Mutator=' + (($list + $mutator) -join ','); Say '  added U2SkipCutscenes to the existing Mutator line' }
+                else { $lines[$i] = 'Mutator=' + (($list + $mutator) -join ','); Say '  added U2SkipScenes to the existing Mutator line' }
                 break
             }
         }
@@ -117,7 +117,7 @@ if ($mode -eq 'install') {
     Say "`nDone! Start the game and press SPACE during a cutscene to fast-forward it." 'Green'
 }
 else {
-    Say "`nUninstalling U2SkipCutscenes..." 'Cyan'
+    Say "`nUninstalling U2SkipScenes..." 'Cyan'
     $lines = Read-Ini $userIni
     $r = Section-Range $lines 'DefaultPlayer'
     if ($r) {
@@ -125,12 +125,12 @@ else {
             if ($lines[$i] -match '^\s*Mutator\s*=(.*)$') {
                 $list = @($Matches[1].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne $mutator })
                 if ($list.Count) { $lines[$i] = 'Mutator=' + ($list -join ',') } else { $lines.RemoveAt($i) }
-                Say '  removed U2SkipCutscenes from the Mutator line'
+                Say '  removed U2SkipScenes from the Mutator line'
             }
         }
     }
     $muted = $false; $vol = $null
-    while ($r = Section-Range $lines 'U2SkipCutscenes.SkipCutscenes') {
+    while ($r = Section-Range $lines 'U2SkipScenes.SkipScenes') {
         # if a crash ever left the sound muted mid-skip, put it back
         for ($k = $r[0]; $k -le $r[1]; $k++) {
             if ($lines[$k] -match '^bMutedBySkip=true') { $muted = $true }
@@ -146,7 +146,7 @@ else {
         for ($k = 0; $k -lt $g.Count; $k++) { if ($g[$k] -match '^SoundVolume=0(\.0+)?$') { $g[$k] = "SoundVolume=$vol"; Say "  restored sound volume to $vol" } }
         Write-Ini $gameIni $g
     }
-    $otherInstalled = (Get-Content $userIni -Raw) -match 'U2SkipScenes\.SkipScenes'
+    $otherInstalled = (Get-Content $userIni -Raw) -match 'U2SkipCutscenes\.SkipCutscenes'
     foreach ($f in $files) {
         if ($otherInstalled -and $f -like '*.ui') { Say "  kept $f (the other skip version uses it)"; continue }
         $p = Join-Path $game $f

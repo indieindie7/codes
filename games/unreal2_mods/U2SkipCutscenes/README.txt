@@ -32,6 +32,9 @@ Good to know:
   running, so the mod starts working at the next level change. Saves made
   with the mod installed have it straight away.
 
+Prefer to only skip cutscenes and never conversations? Use U2SkipScenes
+instead (a separate download), or set bSkipConversations=false below.
+
 Only uses the game's own packages. Works with or without SOverhaul and with
 U2SoftShadows.
 
@@ -75,6 +78,7 @@ SkipSpeed=12.0           ; how many times faster a skipped scene plays
 MinSceneTime=0.5         ; presses in the first half-second of a scene are ignored
 bMuteWhileSkipping=true  ; mute sound effects/voices while fast-forwarding
 bShowPrompt=true         ; show "Press SPACE to skip"
+bSkipConversations=true  ; false = only skip cutscenes, not walk-around conversations
 (bMutedBySkip / SavedSoundVolume are internal - leave them alone)
 
 The prompt's position and text are in UIScripts\SkipCutscenes.ui.

@@ -17,6 +17,8 @@
 //   shot                     take one screenshot now
 //   mark TEXT                write a marker to the log
 //   travel URL               switch level (e.g. travel DM-Labs?Mutator=...)
+//   give WEAPONCLASS         give a weapon with full ammo and switch to it
+//   spawnproj CLASS           spawn a projectile as if the player fired it
 //   quit
 //   @MAPNAME <step>          run the step only on that map
 //=============================================================================
@@ -115,6 +117,12 @@ function ReleaseAll()
 	PI.bHoldFire = false;
 	PI.bHoldAltFire = false;
 	PI.bHoldJump = false;
+	// a real key-up clears these; our virtual buttons must do it themselves
+	if (PC != None)
+	{
+		PC.bFire = 0;
+		PC.bAltFire = 0;
+	}
 	TurnYaw = 0;
 	TurnPitch = 0;
 }
@@ -204,6 +212,18 @@ function StartStep()
 		StepLength = 120;
 		Cmd = "WAIT";
 		break;
+	case "GIVE":
+		GiveWeaponWithAmmo(RestOf(1));
+		StepLength = 1.5;   // let the weapon come up
+		Cmd = "WAIT";
+		break;
+	case "STATUS":
+		if (PC.Pawn != None)
+			Log("PilotDriver: status weapon="$PC.Pawn.Weapon$" pending="$PC.Pawn.PendingWeapon$" ammo="$Eval2(PC.Pawn.Weapon != None && PC.Pawn.Weapon.AmmoType != None, PC.Pawn.Weapon.AmmoType)$" hasammo="$(PC.Pawn.Weapon != None && PC.Pawn.Weapon.HasAmmo()));
+		break;
+	case "SPAWNPROJ":
+		SpawnPlayerProjectile(RestOf(1));
+		break;
 	case "SHOTS":
 		ShotInterval = ArgF(1, 0);
 		NextShot = 0;
@@ -220,6 +240,57 @@ function StartStep()
 		break;
 	default:
 		Log("PilotDriver: unknown step '"$Args[0]$"' - skipped");
+	}
+}
+
+// give a weapon (full ammo) and switch to it
+function GiveWeaponWithAmmo(string ClassName)
+{
+	local class<Weapon> WC;
+	local Inventory Inv;
+
+	if (PC.Pawn == None)
+		return;
+	WC = class<Weapon>(DynamicLoadObject(ClassName, class'Class', true));
+	if (WC == None)
+	{
+		Log("PilotDriver: no weapon class "$ClassName);
+		return;
+	}
+	PC.Pawn.GiveWeapon(ClassName);
+	for (Inv = PC.Pawn.Inventory; Inv != None; Inv = Inv.Inventory)
+		if (Weapon(Inv) != None && Weapon(Inv).AmmoType != None)
+			Weapon(Inv).AmmoType.AmmoAmount = Weapon(Inv).AmmoType.MaxAmmo;
+	PC.GetWeapon(WC);
+	Log("PilotDriver: gave "$ClassName);
+}
+
+function string Eval2(bool b, Object O)
+{
+	if (b && O != None)
+		return string(O.Name)$"("$Ammunition(O).AmmoAmount$")";
+	return "none";
+}
+
+// spawn a projectile as if the player had fired it (for testing projectile mods)
+function SpawnPlayerProjectile(string ClassName)
+{
+	local class<Projectile> PCl;
+	local Projectile P;
+
+	if (PC.Pawn == None)
+		return;
+	PCl = class<Projectile>(DynamicLoadObject(ClassName, class'Class', true));
+	if (PCl == None)
+	{
+		Log("PilotDriver: no projectile class "$ClassName);
+		return;
+	}
+	P = Spawn(PCl, PC.Pawn,, PC.Pawn.Location + vector(PC.Rotation) * 80 + vect(0,0,30), PC.Rotation);
+	if (P != None)
+	{
+		P.Instigator = PC.Pawn;
+		Log("PilotDriver: spawned "$P.Class.Name$" speed="$int(VSize(P.Velocity)));
 	}
 }
 

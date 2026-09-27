@@ -426,8 +426,10 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
     game runs unfocused and the real keyboard/mouse are never touched. Frames
     come from the game's own screenshots."""
     # "ini Section Key=Value" lines set values in the throwaway pilot config only
-    ini_overrides = [rest for _, cmd, rest in steps if cmd == "ini"]
-    steps = [st for st in steps if st[1] != "ini"]
+    ini_overrides = [(cmd, rest) for _, cmd, rest in steps if cmd in ("ini", "userini")]
+    # "mutators A,B" = load exactly these mods (instead of the installed ones)
+    exact = [rest for _, cmd, rest in steps if cmd == "mutators"]
+    steps = [st for st in steps if st[1] not in ("ini", "userini", "mutators")]
     game_map = steps.pop(0)[2] if steps and steps[0][1] == "map" else "m01a"
     driver_steps = [f"{cmd} {rest}".strip() for _, cmd, rest in steps]
     # let the last screenshots land before the game closes
@@ -437,18 +439,20 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
     shot_interval = next((float(s.split()[1]) for s in driver_steps if s.startswith("shots ")), 0.5)
 
     extra = re.search(r"Mutator=([^?]+)", game_map)
-    mutators = default_mutators() + (extra[1].split(",") if extra else [])
+    base = [m for m in exact[-1].split(",") if m] if exact else default_mutators()
+    mutators = base + (extra[1].split(",") if extra else [])
     mutators = list(dict.fromkeys(m for m in mutators if m != "U2PilotDriver.PilotDriver")) + ["U2PilotDriver.PilotDriver"]
     run_id = os.path.basename(run_dir)
     # the unknown ?PilotRun= option is ignored by the game but marks this launch in the log
     url = f"{game_map.split('?')[0]}?Mutator={','.join(mutators)}?PilotRun={run_id}"
     existing = set(glob.glob(os.path.join(GAME_SYSTEM, "Shot*.bmp")))
     ini_args = make_pilot_inis()
-    for o in ini_overrides:
+    for kind, o in ini_overrides:
         section, kv = o.split(" ", 1)
         key, value = kv.split("=", 1)
-        set_ini_keys(os.path.join(GAME_SYSTEM, PILOT_INI), section, {key.strip(): value.strip()})
-        log(f"pilot ini: [{section}] {key.strip()}={value.strip()}")
+        target = PILOT_USER_INI if kind == "userini" else PILOT_INI
+        set_ini_keys(os.path.join(GAME_SYSTEM, target), section, {key.strip(): value.strip()})
+        log(f"pilot {kind}: [{section}] {key.strip()}={value.strip()}")
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     si.wShowWindow = 4   # SW_SHOWNOACTIVATE: show the window without taking focus

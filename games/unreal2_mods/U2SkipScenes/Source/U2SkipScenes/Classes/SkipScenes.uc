@@ -1,17 +1,13 @@
 //=============================================================================
-// U2SkipCutscenes - press Space (or Fire) during a letterboxed cutscene, or
-// during a conversation you're in while no enemy is after you, to fast-forward
-// through it.
+// U2SkipScenes - the scenes-only version of U2SkipCutscenes: press Space (or
+// Fire) during a letterboxed cutscene to fast-forward it (dialogue inside the
+// cutscene included). Conversations you can walk around in are left alone.
+// Generated from U2SkipCutscenes/SkipCutscenes.uc with bSkipConversations=False;
+// install one or the other, not both.
 //
-// Scenes are fast-forwarded rather than cut off: game time runs SkipSpeed
-// times faster until the scene ends, so every event the scene triggers (doors,
-// spawns, dialogue, the hand-back to the player) still happens in order.
-// Sound effects/voices are muted while skipping so lines don't pile up, and
-// a "Press SPACE to skip" prompt shows while a scene plays.
-//
-// Tunable in User.ini under [U2SkipCutscenes.SkipCutscenes].
+// Tunable in User.ini under [U2SkipScenes.SkipScenes].
 //=============================================================================
-class SkipCutscenes extends Mutator
+class SkipScenes extends Mutator
 	config(User);
 
 var config float SkipSpeed;          // how much faster time runs while skipping
@@ -144,16 +140,16 @@ event Tick(float DeltaTime)
 			bWasPressed = SkipPressed();   // a button already held from gameplay isn't a skip
 			ShowPrompt(true);
 			if (bScene)
-				Log("U2SkipCutscenes: skippable scene started: "$RunningScene()$" (len "$RunningSceneLength()$"s)");
+				Log("U2SkipScenes: skippable scene started: "$RunningScene()$" (len "$RunningSceneLength()$"s)");
 			else
-				Log("U2SkipCutscenes: skippable conversation started: "$Talk.Topic);
+				Log("U2SkipScenes: skippable conversation started: "$Talk.Topic);
 		}
 		SceneTime += RealDelta;
 		bPressed = SkipPressed() || (bTalk && JustJumped());
 		// scenes chained back to back (like the intro) keep skipping after one press
 		if (bScene && ChainTime >= 0 && ChainTime < 1.5 && ChainAllows(RunningSceneManager()))
 		{
-			Log("U2SkipCutscenes: next scene follows straight on - skipping it too");
+			Log("U2SkipScenes: next scene follows straight on - skipping it too");
 			bPressed = true;
 			bWasPressed = false;
 			SceneTime = MinSceneTime;
@@ -161,7 +157,7 @@ event Tick(float DeltaTime)
 		// a conversation told in several chunks keeps skipping after one press
 		if (bTalk && TalkChainTime >= 0 && TalkChainTime < 3.0 && TalkChainAllows(Talk))
 		{
-			Log("U2SkipCutscenes: conversation continues - skipping the next part too");
+			Log("U2SkipScenes: conversation continues - skipping the next part too");
 			bPressed = true;
 			bWasPressed = false;
 			SceneTime = MinSceneTime;
@@ -359,13 +355,13 @@ function RescueSceneTriggers()
 					continue;
 				if (SubActionTrigger(SA) != None && SubActionTrigger(SA).EventName != '')
 				{
-					Log("U2SkipCutscenes: rescuing skipped scene trigger "$SubActionTrigger(SA).EventName);
+					Log("U2SkipScenes: rescuing skipped scene trigger "$SubActionTrigger(SA).EventName);
 					SA.Status = SASTATUS_Expired;
 					SM.TriggerEvent(SubActionTrigger(SA).EventName, SM, None);
 				}
 				else if (SubActionConsoleCommand(SA) != None && SubActionConsoleCommand(SA).Command != "")
 				{
-					Log("U2SkipCutscenes: rescuing skipped scene command "$SubActionConsoleCommand(SA).Command);
+					Log("U2SkipScenes: rescuing skipped scene command "$SubActionConsoleCommand(SA).Command);
 					SA.Status = SASTATUS_Expired;
 					PC.ConsoleCommand(SubActionConsoleCommand(SA).Command);
 				}
@@ -426,7 +422,7 @@ function ForceActions(DialogNode N, DialogSession S)
 	local int i;
 	local array<float> A, B, C, D, E;
 
-	Log("U2SkipCutscenes: rescuing "$N.NumPendingActions()$" dropped dialogue action(s) from "$N.Name);
+	Log("U2SkipScenes: rescuing "$N.NumPendingActions()$" dropped dialogue action(s) from "$N.Name);
 	for (i = 0; i < N.NodeEvents.Length; i++)  { A[i] = N.NodeEvents[i].PercentDelay;  N.NodeEvents[i].PercentDelay = -1000; }
 	for (i = 0; i < N.NodeAnims.Length; i++)   { B[i] = N.NodeAnims[i].PercentDelay;   N.NodeAnims[i].PercentDelay = -1000; }
 	for (i = 0; i < N.NPCControls.Length; i++) { C[i] = N.NPCControls[i].PercentDelay; N.NPCControls[i].PercentDelay = -1000; }
@@ -547,7 +543,7 @@ function StartSkipping()
 			PC.ConsoleCommand("set ini:Engine.Engine.AudioDevice SoundVolume 0");
 		}
 	}
-	Log("U2SkipCutscenes: skipping scene (x"$SkipSpeed$") fire="$PC.bFire$" alt="$PC.bAltFire$" jump="$PC.bPressedJump$" after "$SceneTime$"s");
+	Log("U2SkipScenes: skipping scene (x"$SkipSpeed$") fire="$PC.bFire$" alt="$PC.bAltFire$" jump="$PC.bPressedJump$" after "$SceneTime$"s");
 }
 
 function StopSkipping()
@@ -571,7 +567,7 @@ function StopSkipping()
 		DE.AllowSlomo = OldAllowSlomo;
 	if (bMutedBySkip)
 		RestoreSound();
-	Log("U2SkipCutscenes: scene over, back to normal speed");
+	Log("U2SkipScenes: scene over, back to normal speed");
 }
 
 function RestoreSound()
@@ -586,7 +582,7 @@ function RestoreSound()
 	bMutedBySkip = false;
 	bPendingRestore = false;
 	SaveConfig();
-	Log("U2SkipCutscenes: sound volume restored to "$SavedSoundVolume);
+	Log("U2SkipScenes: sound volume restored to "$SavedSoundVolume);
 }
 
 event Destroyed()
@@ -605,6 +601,6 @@ defaultproperties
 	ChainTime=-1.000000
 	TalkChainTime=-1.000000
 	bShowPrompt=True
-	bSkipConversations=True
+	bSkipConversations=False
 	RemoteRole=ROLE_None
 }
