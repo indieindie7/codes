@@ -13,6 +13,7 @@
 //   fire SECONDS / altfire SECONDS / jump
 //   crouch 1|0 / run 1|0     (run is on by default, like the real keyboard)
 //   walk 1|0                 hold the Walking key (Shift); same as run 0|1
+//   lean L|R|F|U [SECS]      hold a lean key (Q/E/...)
 //   console COMMAND          any console command (cheats, summon, ...)
 //   shots INTERVAL           take an in-game screenshot every INTERVAL s (0 = off)
 //   shot                     take one screenshot now
@@ -119,6 +120,9 @@ function ReleaseAll()
 	PI.bHoldFire = false;
 	PI.bHoldAltFire = false;
 	PI.bHoldJump = false;
+	if (PI.HoldButton != '' && PC != None)
+		PC.SetPropertyText(string(PI.HoldButton), "0");
+	PI.HoldButton = '';
 	// a real key-up clears these; our virtual buttons must do it themselves
 	if (PC != None)
 	{
@@ -201,6 +205,16 @@ function StartStep()
 	case "RUN":    // the Walking key (bRun) held = walk, as in the original game
 		PI.WantRun = byte(ArgF(1, 1) == 0);
 		break;
+	case "LEAN":   // lean L|R|F|U SECS: hold a lean key
+		switch (Caps(Args[1]))
+		{
+		case "L": PI.HoldButton = 'bLeanLeft'; break;
+		case "R": PI.HoldButton = 'bLeanRight'; break;
+		case "F": PI.HoldButton = 'bLeanForward'; break;
+		default:  PI.HoldButton = 'bLeanUp';
+		}
+		StepLength = ArgF(2, 1);
+		break;
 	case "WALK":
 		PI.WantRun = byte(ArgF(1, 1) != 0);
 		break;
@@ -226,7 +240,7 @@ function StartStep()
 		break;
 	case "STATUS":
 		if (PC.Pawn != None)
-			Log("PilotDriver: status weapon="$PC.Pawn.Weapon$" pending="$PC.Pawn.PendingWeapon$" ammo="$Eval2(PC.Pawn.Weapon != None && PC.Pawn.Weapon.AmmoType != None, PC.Pawn.Weapon.AmmoType)$" hasammo="$(PC.Pawn.Weapon != None && PC.Pawn.Weapon.HasAmmo()));
+			Log("PilotDriver: status weapon="$PC.Pawn.Weapon$" pending="$PC.Pawn.PendingWeapon$" ammo="$Eval2(PC.Pawn.Weapon != None && PC.Pawn.Weapon.AmmoType != None, PC.Pawn.Weapon.AmmoType)$" hasammo="$(PC.Pawn.Weapon != None && PC.Pawn.Weapon.HasAmmo())$" lean="$PC.GetPropertyText("LeanDir")$" leanoffset="$PC.GetPropertyText("LeanOffset"));
 		break;
 	case "SPAWN":
 		SpawnInFront(Args[1], ArgF(2, 150));

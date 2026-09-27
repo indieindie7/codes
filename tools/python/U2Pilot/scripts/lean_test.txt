@@ -1,0 +1,14 @@
+background
+map DM-Labs
+wait 1
+status
+shot
+lean L 0.6
+status
+shot
+wait 1
+lean R 0.6
+status
+shot
+wait 1
+status

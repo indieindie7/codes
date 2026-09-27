@@ -49,6 +49,7 @@ Background steps:
 | `fire SECS` / `altfire SECS` / `jump` | press buttons |
 | `crouch 1\|0` / `run 1\|0` | set the stance toggles (`run 0` = hold the Walking key) |
 | `walk 1\|0` | hold / release the Walking key (Shift) |
+| `lean L\|R\|F\|U [SECS]` | hold a lean key (`status` logs the lean direction) |
 | `give CLASS` | give a weapon with full ammo and switch to it |
 | `status` | log the current weapon, pending weapon and ammo |
 | `spawn CLASS [DIST]` | spawn any actor DIST (150) units in front of the player |
