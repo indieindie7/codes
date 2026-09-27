@@ -1,0 +1,13 @@
+background
+map DM-Labs
+wait 1
+run 0
+wait 0.3
+shot
+move 1 0 1.5
+shot
+run 1
+wait 0.5
+shot
+move 1 0 1.5
+shot

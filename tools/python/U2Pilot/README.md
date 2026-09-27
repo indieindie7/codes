@@ -47,7 +47,12 @@ Background steps:
 | `move FWD STRAFE SECS` | hold movement (-1..1) |
 | `turn YAW PITCH SECS` | turn the view (degrees) |
 | `fire SECS` / `altfire SECS` / `jump` | press buttons |
-| `crouch 1\|0` / `run 1\|0` | set the stance toggles |
+| `crouch 1\|0` / `run 1\|0` | set the stance toggles (`run 0` = hold the Walking key) |
+| `walk 1\|0` | hold / release the Walking key (Shift) |
+| `give CLASS` | give a weapon with full ammo and switch to it |
+| `status` | log the current weapon, pending weapon and ammo |
+| `spawn CLASS [DIST]` | spawn any actor DIST (150) units in front of the player |
+| `spawnproj CLASS` | spawn a projectile as if the player fired it |
 | `console CMD` | run a console command |
 | `shots INTERVAL` / `shot` | take a screenshot every INTERVAL seconds / take one now |
 | `travel URL` / `servertravel URL` | change level |

@@ -12,6 +12,7 @@
 //   turn YAW PITCH SECONDS   (degrees, spread over SECONDS)
 //   fire SECONDS / altfire SECONDS / jump
 //   crouch 1|0 / run 1|0     (run is on by default, like the real keyboard)
+//   walk 1|0                 hold the Walking key (Shift); same as run 0|1
 //   console COMMAND          any console command (cheats, summon, ...)
 //   shots INTERVAL           take an in-game screenshot every INTERVAL s (0 = off)
 //   shot                     take one screenshot now
@@ -19,6 +20,7 @@
 //   travel URL               switch level (e.g. travel DM-Labs?Mutator=...)
 //   give WEAPONCLASS         give a weapon with full ammo and switch to it
 //   spawnproj CLASS           spawn a projectile as if the player fired it
+//   spawn CLASS [DIST]       spawn any actor DIST (150) units in front of the player
 //   quit
 //   @MAPNAME <step>          run the step only on that map
 //=============================================================================
@@ -178,11 +180,13 @@ function StartStep()
 		break;
 	case "FIRE":
 		PI.bHoldFire = true;
+		PC.bFire = 1;   // weapons check PressingFire() before firing
 		PC.Fire();
 		StepLength = ArgF(1, 0.1);
 		break;
 	case "ALTFIRE":
 		PI.bHoldAltFire = true;
+		PC.bAltFire = 1;
 		PC.AltFire();
 		StepLength = ArgF(1, 0.1);
 		break;
@@ -194,7 +198,10 @@ function StartStep()
 	case "CROUCH":
 		PI.WantCrouch = byte(ArgF(1, 1) != 0);
 		break;
-	case "RUN":
+	case "RUN":    // the Walking key (bRun) held = walk, as in the original game
+		PI.WantRun = byte(ArgF(1, 1) == 0);
+		break;
+	case "WALK":
 		PI.WantRun = byte(ArgF(1, 1) != 0);
 		break;
 	case "CONSOLE":
@@ -221,6 +228,9 @@ function StartStep()
 		if (PC.Pawn != None)
 			Log("PilotDriver: status weapon="$PC.Pawn.Weapon$" pending="$PC.Pawn.PendingWeapon$" ammo="$Eval2(PC.Pawn.Weapon != None && PC.Pawn.Weapon.AmmoType != None, PC.Pawn.Weapon.AmmoType)$" hasammo="$(PC.Pawn.Weapon != None && PC.Pawn.Weapon.HasAmmo()));
 		break;
+	case "SPAWN":
+		SpawnInFront(Args[1], ArgF(2, 150));
+		break;
 	case "SPAWNPROJ":
 		SpawnPlayerProjectile(RestOf(1));
 		break;
@@ -241,6 +251,28 @@ function StartStep()
 	default:
 		Log("PilotDriver: unknown step '"$Args[0]$"' - skipped");
 	}
+}
+
+// spawn any actor Dist units in front of the player's eyes, facing them
+function SpawnInFront(string ClassName, float Dist)
+{
+	local class<Actor> AC;
+	local Actor A;
+	local vector Loc;
+	local rotator R;
+
+	AC = class<Actor>(DynamicLoadObject(ClassName, class'Class'));
+	if (AC == None || PC.Pawn == None)
+	{
+		Log("PilotDriver: spawn failed, no class "$ClassName);
+		return;
+	}
+	R = PC.Pawn.GetViewRotation();
+	Loc = PC.Pawn.Location + vect(0,0,1) * PC.Pawn.EyeHeight + vector(R) * Dist;
+	R.Yaw += 32768;
+	R.Pitch = 0;
+	A = Spawn(AC,,, Loc, R);
+	Log("PilotDriver: spawned "$A$" at "$Loc);
 }
 
 // give a weapon (full ammo) and switch to it
