@@ -1,0 +1,15 @@
+# Smoke test: start "Hell - Descent" (m01a), walk, look around, shoot, record it.
+map m01a
+waitlevel            # wait for the level to load
+waitplay             # wait out the intro cutscene
+record start
+key w 2              # walk forward 2 s
+look 600 0 1.5       # turn right
+click left 1         # fire for 1 s
+look -1200 0 2       # sweep left
+key s 1              # back up
+shot midpoint
+look 600 0 1
+wait 1
+record stop
+quit

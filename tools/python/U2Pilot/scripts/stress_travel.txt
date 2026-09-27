@@ -1,0 +1,8 @@
+background
+map TutA
+@TutA wait 3
+@TutA jump
+@TutA wait 1
+@TutA travel PD_Avalon?Mutator=U2SoftShadows.SSShadowMutator,U2SkipCutscenes.SkipCutscenes,U2PilotDriver.PilotDriver
+@PD_Avalon wait 3
+@PD_Avalon travel TutA?Mutator=U2SoftShadows.SSShadowMutator,U2SkipCutscenes.SkipCutscenes,U2PilotDriver.PilotDriver

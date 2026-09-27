@@ -1,0 +1,12 @@
+background
+map m01a?Mutator=U2Stealth.StealthProbe
+waitcontrol 60
+shots 0.5
+move 1 0 1        # run forward
+turn 180 0 1      # about-face
+move 1 0 1
+crouch 1
+move 1 0 2        # crouch-walk
+crouch 0
+fire 1
+quit

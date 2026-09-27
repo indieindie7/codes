@@ -1,0 +1,15 @@
+background
+ini U2AI.ScriptControllerBase DebugMode=0
+map CS_Intro?Mutator=U2Stealth.DialogProbe
+@CS_Intro wait 4
+@CS_Intro jump
+@CS_Intro wait 5000
+@CS_Titles wait 3
+@CS_Titles jump
+@CS_Titles wait 5000
+@TutA shots 5
+@TutA wait 20
+@TutA jump
+@TutA waitcontrol 90
+@TutA wait 3
+@TutA quit

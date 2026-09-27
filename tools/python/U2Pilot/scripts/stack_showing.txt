@@ -1,0 +1,11 @@
+background
+ini WinDrv.WindowsClient WindowedViewportX=1600
+ini WinDrv.WindowsClient WindowedViewportY=900
+map CS_Intro
+@CS_Intro wait 3
+@CS_Intro mark no-press
+@CS_Intro wait 0.5
+@CS_Intro travel CS_Titles?Mutator=U2SoftShadows.SSShadowMutator,U2SkipCutscenes.SkipCutscenes,U2PilotDriver.PilotDriver
+@CS_Titles wait 3
+@CS_Titles shot
+@CS_Titles quit

@@ -1,0 +1,35 @@
+### U2SkipCutscenes: the "Press SPACE to skip" prompt shown during cutscenes ###
+
+[SkipPrompt]
+Class=FixedSizeContainer
+Alignment=HardCenter,HardCenter
+Size=1024,768
+Component=SkipPromptText
+
+[SkipPromptText]
+Class=TextArea
+Text=Press SPACE to skip
+Font=UI_Fonts.EuroExt14
+ForceWrap=false
+Color=WHITE
+Size=260,24
+Location=740,722
+Style=Alpha
+Alpha=200
+
+[SkipPromptEsc]
+Class=FixedSizeContainer
+Alignment=HardCenter,HardCenter
+Size=1024,768
+Component=SkipPromptEscText
+
+[SkipPromptEscText]
+Class=TextArea
+Text=Press ESC to skip
+Font=UI_Fonts.EuroExt14
+ForceWrap=false
+Color=WHITE
+Size=260,24
+Location=740,722
+Style=Alpha
+Alpha=200

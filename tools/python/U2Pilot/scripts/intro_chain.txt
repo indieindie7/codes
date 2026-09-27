@@ -1,0 +1,6 @@
+background
+map CS_Intro
+@CS_Intro wait 4
+@CS_Intro jump
+@CS_Intro wait 1500
+@CS_Intro quit

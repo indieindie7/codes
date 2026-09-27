@@ -1,0 +1,10 @@
+background
+map TutA?Mutator=U2Stealth.DialogProbe
+shots 5
+wait 40
+jump
+waitcontrol 90
+wait 2
+jump
+wait 6
+shot
