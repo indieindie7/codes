@@ -425,6 +425,16 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
     """Background mode: the in-game PilotDriver mutator plays the steps, so the
     game runs unfocused and the real keyboard/mouse are never touched. Frames
     come from the game's own screenshots."""
+    # the game overwrites Unreal2.log on launch: keep the user's last session log
+    # (unless it's from an earlier pilot run) so a real crash/hang can still be read
+    try:
+        head = open(GAME_LOG, encoding="latin-1", errors="replace").read(4000)
+        if "PilotRun=" not in head:
+            keep = os.path.join(GAME_SYSTEM, "Unreal2.user-last.log")
+            shutil.copy(GAME_LOG, keep)
+            log(f"saved the user's previous game log to {keep}")
+    except OSError:
+        pass
     # "ini Section Key=Value" lines set values in the throwaway pilot config only
     ini_overrides = [(cmd, rest) for _, cmd, rest in steps if cmd in ("ini", "userini")]
     # "mutators A,B" = load exactly these mods (instead of the installed ones)
@@ -444,7 +454,9 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
     mutators = list(dict.fromkeys(m for m in mutators if m != "U2PilotDriver.PilotDriver")) + ["U2PilotDriver.PilotDriver"]
     run_id = os.path.basename(run_dir)
     # the unknown ?PilotRun= option is ignored by the game but marks this launch in the log
-    url = f"{game_map.split('?')[0]}?Mutator={','.join(mutators)}?PilotRun={run_id}"
+    # keep the map's other options (e.g. Atlantis?MissionCompleted=2)
+    opts = "".join("?" + o for o in game_map.split("?")[1:] if o and not o.lower().startswith("mutator="))
+    url = f"{game_map.split('?')[0]}{opts}?Mutator={','.join(mutators)}?PilotRun={run_id}"
     existing = set(glob.glob(os.path.join(GAME_SYSTEM, "Shot*.bmp")))
     ini_args = make_pilot_inis()
     for kind, o in ini_overrides:
