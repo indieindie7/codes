@@ -22,4 +22,5 @@ Each folder contains:
 
 The mods were built and tested with
 [U2Pilot](../../tools/python/U2Pilot), a harness that plays and records the
-game from inside.
+game from inside. [U2EdBridge](../../tools/C/U2EdBridge) drives UnrealEd from
+scripts (map import/export, rebuild, save) without clicking through the editor.

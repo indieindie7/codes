@@ -1,0 +1,5 @@
+bin/*.pdb
+bin/*.lib
+bin/*.log
+bin/*.locked-old
+__pycache__/
