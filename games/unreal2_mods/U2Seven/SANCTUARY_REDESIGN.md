@@ -115,15 +115,63 @@ Same beats as the mod's Episode 1, placed in this space.
    light across them. Aida: "Three hundred people. Nothing moves."
 4. The Nave. Strip lights flicker on ahead of the player one by one. Every
    door is open. Every light is on.
-5. The Works. The first Izarians, and the mid-episode line about the leash.
+5. The Works. The first Keepers, coming up through the floor grates from
+   under the colony. Replaces the mid-episode Izarian line; see The Keepers.
 6. The Well down to the block. Where the episode's artifact is found, in a
    marine's hands, as the log later says.
 
-## Enemy read
+## The Keepers: the first enemy
 
-Izarians in this palette are dark against rust and nearly invisible in the
-under-colony shadow. Give them one bright thing (eyes, a weapon glow) so the
-player can find them, or the halls stop being fair.
+Sanctuary's first enemy is human. Not the Izarians.
+
+**Who they are.** Descendants of a first-wave colony ship that failed here
+generations before Sanctuary was founded. Nobody at Command remembers it.
+They live in the ravines beyond the plain and they have been keeping the
+blocks buried the whole time. The colonists built on top of their graveyard
+and then dug into it.
+
+**What happened.** The Keepers did not kill the colonists. The dig did, when
+the pylon crew broke the top of a block; what came up is never shown, only
+the result: three hundred people dead where they stood, no wounds. The
+Keepers arrived after, to bury the block again. When Dalton lands they are
+still under the colony doing it. The player fights them without knowing any
+of this, and the mod never spells it out. Aida notices the gear; Meyer's
+recording in Episode 5 is the only other hint.
+
+**Look.** Fallout's tribal rule: bone and hide over colony scrap, and the
+scrap should be recognisable. A ration tin as a pauldron, cable as binding,
+a rebreather mask worn as a face plate with the hose cut off, warning-stripe
+fabric as sashes. Body paint in the grey-green of the blocks, applied in
+straight bands, the only geometric thing about them. Skull-like masks for the
+front line, Yaaxil style; bare faces for the ones who carry tools instead of
+weapons. No glow anywhere on them. They are the one faction in the story
+that does not want the artifacts to do anything.
+
+**Read against the palette.** Dark figures against rust and shadow is the
+problem the Izarians had. Solve it with the paint: the grey-green bands are
+the brightest cool colour on the map, so a Keeper is visible as a striped
+shape even in the under-colony dark. Their eyes do not glow.
+
+**Fight.** Melee and thrown weapons, hit-and-run, from grates and galleries
+rather than doorways. They use the Library-style side galleries the halls
+already have. They break off when they can, which no other Unreal II enemy
+does, and the player should notice.
+
+**Assets.** Unreal II has human enemy rigs (the Liandri and Axon
+mercenaries). Keepers are reskins of those plus attached props, not new
+skeletons. Still new art, and the mod is source-only today.
+
+**Story change.** The Sanctuary mid-line is replaced:
+
+    AIDA    Those are people, Dalton. That's colony gear. Old colony gear.
+    DALTON  Then who's holding the leash?
+    (beat)
+
+Dalton's question is now wrong, and the story never corrects him out loud.
+Izarians and Skaarj still appear from Episode 2 on as written.
+
+The colonists in the intro bridge stay unwounded. Don't add Keeper weapons
+near the bodies; the player should not be able to pin it on them.
 
 ## Prompts
 
@@ -166,6 +214,14 @@ clean, new, glossy, people`
 > looking down a vertical steel shaft inside a colossal pylon, lift cage,
 > ladders, at the bottom the flat top of an ancient stone block lit by work
 > lamps, chalk marks and a tarp on the stone, {style}
+
+**A Keeper**
+> full body concept of a tribal human warrior wearing bone and hide over
+> scavenged colony scrap, a ration tin as a shoulder plate, cable bindings,
+> a cut-down rebreather mask worn as a face plate, faded warning-stripe
+> sash, straight bands of grey-green body paint, skull mask, thrown spear,
+> no glowing parts, rust coloured background, character sheet, {style}
+> Negative: {shared}, glowing eyes, sci-fi armour, clean, futuristic
 
 **Landing pad**
 > a rusted circular landing pad on dark cracked ground under a gothic arched
