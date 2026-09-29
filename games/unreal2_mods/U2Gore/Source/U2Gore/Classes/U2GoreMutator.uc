@@ -37,14 +37,14 @@ function MutatorTakeDamage(out int ActualDamage, Pawn Victim, Pawn InstigatedBy,
 		Overkill = ActualDamage - Victim.Health;
 		Manager.SpawnGoreForDeath(Victim, DamageType, HitLocation, Momentum, Overkill);
 
-		HRC = Manager.GetHitController(Victim);
-		if (HRC != None)
+		if (Overkill >= 0) // this hit kills - hand the corpse to full ragdoll instead of tracking loose bones
 		{
-			if (Overkill >= 0) // this hit kills - hand the corpse to full ragdoll instead of tracking loose bones
+			HRC = Manager.GetHitController(Victim);
+			if (HRC != None)
 				HRC.GoToFullRagdoll();
-			else
-				HRC.ReactToHit(HitLocation, Momentum, ActualDamage);
 		}
+		else
+			Manager.ReactToNonLethalHit(Victim, HitLocation, Momentum, ActualDamage); // spurt always, stagger only for weak-tier enemies
 	}
 
 	if (NextMutator != None)

@@ -11,19 +11,24 @@
 //=============================================================================
 class U2GoreManager extends Info;
 
-var array<class<U2Gib> >     GibClasses;      // body-part variants, randomized per death
+var array<class<U2Gib> >        GibClasses;   // body-part variants, randomized per death
 var array<class<U2BloodDecal> > DecalClasses; // splat variants, randomized per hit
+var array<class<U2BloodSpurt> > SpurtClasses; // wound-spurt variants, randomized per hit
 
 var array<U2Gib>        LiveGibs;
 var array<U2BloodDecal> LiveDecals;
+var array<U2BloodSpurt> LiveSpurts;
 var array<U2HitReactionController> HitControllers;
 
 var int   MaxGibs;          // oldest is destroyed once this is exceeded
 var int   MaxDecals;
+var int   MaxSpurts;
 var int   GibsPerDeath;
-var float GibThreshold;     // overkill damage (damage - remaining health) needed to gib
+var float GibThreshold;      // overkill damage (damage - remaining health) needed to gib
 var float GibSpeedMin;
 var float GibSpeedMax;
+var float MinSpurtDamage;    // below this, a non-lethal hit gets no spurt/stagger at all
+var float WeakHealthThreshold; // Pawns with HealthMax at or below this get the stagger lock; above, spurt only
 
 event PostBeginPlay()
 {
@@ -72,6 +77,32 @@ function SpawnGoreForDeath(Pawn P, class<DamageType> DamageType, vector HitLocat
 	SpawnGibs(P, HitLocation, Momentum);
 }
 
+function bool IsWeakTier(Pawn P)
+{
+	return P != None && P.HealthMax > 0 && P.HealthMax <= WeakHealthThreshold;
+}
+
+// Call this from a non-lethal hit (Overkill < 0 in the mutator). Every
+// qualifying hit gets the wound spurt - that's the "proof of damage
+// landing" feedback. Only weak-tier enemies also get the stagger lock;
+// tough enemies keep taking hits without losing their threat/pacing.
+function ReactToNonLethalHit(Pawn Victim, vector HitLocation, vector Momentum, int Damage)
+{
+	local U2HitReactionController HRC;
+
+	if (Victim == None || Damage < MinSpurtDamage)
+		return;
+
+	SpawnBloodSpurt(HitLocation, Normal(Momentum) * -1);
+
+	if (!IsWeakTier(Victim))
+		return; // cosmetic only for tough enemies - see header comment on the tradeoff
+
+	HRC = GetHitController(Victim);
+	if (HRC != None)
+		HRC.ReactToHit(HitLocation, Momentum, Damage); // re-checks its own StaggerThreshold
+}
+
 function SpawnGibs(Pawn P, vector HitLocation, vector Momentum)
 {
 	local int i;
@@ -114,10 +145,27 @@ function SpawnBloodDecal(vector HitLocation, vector HitNormal)
 	Track(D);
 }
 
+function SpawnBloodSpurt(vector HitLocation, vector HitNormal)
+{
+	local U2BloodSpurt S;
+	local class<U2BloodSpurt> SpurtClass;
+
+	if (SpurtClasses.Length == 0)
+		return;
+
+	SpurtClass = SpurtClasses[Rand(SpurtClasses.Length)];
+	S = Spawn(SpurtClass,,, HitLocation, Rotator(HitNormal));
+	if (S == None)
+		return;
+
+	Track(S);
+}
+
 function Track(Actor A)
 {
 	local U2Gib G;
 	local U2BloodDecal D;
+	local U2BloodSpurt S;
 
 	G = U2Gib(A);
 	if (G != None)
@@ -142,6 +190,19 @@ function Track(Actor A)
 				LiveDecals[0].Destroy();
 			LiveDecals.Remove(0, 1);
 		}
+		return;
+	}
+
+	S = U2BloodSpurt(A);
+	if (S != None)
+	{
+		LiveSpurts[LiveSpurts.Length] = S;
+		if (LiveSpurts.Length > MaxSpurts)
+		{
+			if (LiveSpurts[0] != None)
+				LiveSpurts[0].Destroy();
+			LiveSpurts.Remove(0, 1);
+		}
 	}
 }
 
@@ -149,9 +210,12 @@ defaultproperties
 {
 	MaxGibs=64
 	MaxDecals=48
+	MaxSpurts=32
 	GibsPerDeath=5
 	GibThreshold=40.0
 	GibSpeedMin=150.0
 	GibSpeedMax=400.0
+	MinSpurtDamage=8.0
+	WeakHealthThreshold=100.0
 	RemoteRole=ROLE_None
 }
