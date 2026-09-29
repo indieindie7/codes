@@ -1,0 +1,5 @@
+# U2Seven: Sanctuary's second map must jump to Marsh
+map M08A2?Mutator=U2Seven.SevenStory
+@MM_MARSH waitcontrol 180
+@MM_MARSH wait 3
+@MM_MARSH quit

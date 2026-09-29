@@ -1,0 +1,14 @@
+# look at the Izarian variants (front) and the Frankenstein mutants (behind)
+map HoverTest?Mutator=U2Hover.ModelLineup
+waitcontrol 60
+wait 1.5
+turn 0 -6 0.2
+shot
+wait 0.6
+shot
+turn 180 0 0.8
+wait 0.8
+shot
+wait 0.6
+shot
+quit

@@ -13,8 +13,13 @@ without SOverhaul.
 | [U2Patches](U2Patches) | **For SOverhaul users:** byte patches no mutator can make, each applied or restored on its own. `movement` undoes SOverhaul's movement (speed 1000 back to 263, Shift walks instead of sprinting); `nolean` removes leaning. |
 | [U2CombatOnly](U2CombatOnly) | Unreal II as back-to-back combat missions: New Game starts at Sanctuary, and the tutorial, every Atlantis stop and the planet arrival/departure maps are skipped, following the game's own mission order through to the ending. |
 | [U2SkipScenes](U2SkipScenes) | The scenes-only version of U2SkipCutscenes: skips letterboxed cutscenes but leaves walk-around conversations alone. Install one or the other. |
+| [U2Enemies](U2Enemies) | Rule-of-cool enemies: agile Skaarj that jump-dodge, melee Skaarj Berserkers, Izarian domes that breach (extra damage, fluid spray, suffocation, panic) and feral Izarians that charge like Rage's mutants. |
+| [U2Seven](U2Seven) | "The Seven": a new story arc and level flow over the untouched maps. Nine combat episodes with Piper-voiced radio lines and subtitles. Source only; the voices are generated locally. |
+| [U2UTWeapons](U2UTWeapons) | Unreal Tournament's Flak Cannon, Ripper and Bio Rifle rebuilt for Unreal II, each replacing a stock weapon. Source only; UT's models, textures and sounds are not in this repo. |
+| [U2WeaponTune](U2WeaponTune) | Faster player projectiles, so bolts keep up with the game's fast movement. Enemy shots are unchanged. |
+| [U2Hover](U2Hover) | Work in progress: a drivable Manta-style hover bike and a generated hills test map built through U2EdBridge. Source only. |
 
-Each folder contains:
+Each folder contains (the source-only ones are marked above):
 - the compiled package (`System/*.u`)
 - the UnrealScript source
 - a README with manual install steps

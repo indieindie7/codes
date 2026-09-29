@@ -1,0 +1,21 @@
+# U2Enemies: breach an Izarian's dome, then check the agile Skaarj
+map M08A1?Mutator=U2Enemies.EnemyMutator
+waitcontrol 180
+shots 0.3
+spawn U2Pawns.U2Izarian 650
+wait 1
+dump U2Izarian Health Location CollisionHeight
+fire 0.6
+dump DomeLeak EndTime bPanic
+dump U2Izarian Health
+wait 2
+dump U2Izarian Health
+wait 2
+dump U2Izarian Health
+spawn U2Pawns.U2SkaarjLight 900
+wait 0.5
+dump U2SkaarjLight bJumpDodges PostDodgeDelay LeapHighOdds RandomCloseDodgeOdds
+fire 2.5
+wait 2
+dump U2SkaarjLight Health Location
+quit

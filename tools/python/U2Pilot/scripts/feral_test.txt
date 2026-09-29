@@ -1,0 +1,15 @@
+# U2Enemies: a feral Izarian rushing an idle player
+userini U2Enemies.EnemyMutator FeralOdds=1.0
+map HoverTest?Mutator=U2Enemies.EnemyMutator
+waitcontrol 60
+wait 1.5
+shots 0.25
+spawn U2Pawns.U2Izarian 900
+dump U2Izarian Tag GroundSpeed MeleeOdds Location
+wait 3
+dump U2Izarian Location
+dump U2PlayerSP Health Location
+wait 4
+dump U2Izarian Location
+dump U2PlayerSP Health
+quit

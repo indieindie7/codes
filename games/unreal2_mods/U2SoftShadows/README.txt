@@ -78,6 +78,8 @@ GradientLength=600        ; longest the feet-to-head fade may stretch
 GradientScale=1.1         ; lower = the fade is stronger/shorter, higher = more shadow at the head
 SunResolution=128         ; sun shadow softness: 64 very soft, 128 soft, 256 sharp
 LightResolution=0         ; lamp shadow texture size, 0 = game setting
+CullDistance=3000         ; characters further from you than this cast no shadows
+UnseenTime=1              ; nor do characters off screen for this many seconds
 
 
 UNINSTALL

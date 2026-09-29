@@ -1,0 +1,19 @@
+# screenshots of the Flak Cannon for the release page
+map M08A1
+waitcontrol 180
+turn 25 -4 0.3
+give U2Weapons.weaponInvShotgun
+give U2UTFlak.WeaponInvUTFlak
+wait 1
+console switchweapon 3
+wait 2
+status
+shot
+fire 0.1
+wait 0.12
+shot
+wait 1.5
+altfire 0.1
+wait 0.3
+shot
+quit

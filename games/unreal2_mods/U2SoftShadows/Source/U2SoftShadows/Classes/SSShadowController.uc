@@ -17,16 +17,18 @@ var config int GradientLength;   // longest the feet-to-head fade may stretch, i
 var config float GradientScale;  // fade length relative to the shadow (lower = stronger fade)
 var config int SunResolution;    // sun shadow texture size: 64 very soft, 128 soft, 256 sharp
 var config int LightResolution;  // lamp shadow texture size, 0 = character's own (512/256)
+var config float CullDistance;   // characters farther than this from the player cast no shadows
+var config float UnseenTime;     // nor do characters off screen for this long (seconds)
+
+var SSShadowManager Manager;
+var bool bCulled;
 
 var array<SSLightShadow> Shadows;
-var array<Light> LightList;
-var Light SunLightActor;
 var array<Actor> Chosen;
 var array<float> ChosenPriority;
 
 function Initialize()
 {
-	local Light L;
 	local SSLightShadow S;
 	local int i;
 
@@ -36,16 +38,10 @@ function Initialize()
 		return;
 	}
 
-	// static lights never move, so collect them once; the sun is kept apart
-	foreach AllActors(class'Light', L)
+	if (Manager == None)
 	{
-		if (L.LightEffect != LE_Sunlight)
-		{
-			if (CastsLight(L))
-				LightList[LightList.Length] = L;
-		}
-		else if (SunLightActor == None || L.LightBrightness > SunLightActor.LightBrightness)
-			SunLightActor = L;
+		Destroy();
+		return;
 	}
 
 	for (i = 0; i < MaxShadows; i++)
@@ -70,7 +66,9 @@ function Initialize()
 	}
 
 	SelectLights();
-	SetTimer(UpdateFrequency, true);
+	// start at a random point in the cycle so controllers don't all update in
+	// the same frame; Timer switches to the regular rate
+	SetTimer(UpdateFrequency * (0.2 + 0.8 * FRand()), false);
 }
 
 event Tick(float DeltaTime)
@@ -86,11 +84,32 @@ event Timer()
 		Destroy();
 		return;
 	}
+	if (TimerRate != UpdateFrequency)
+		SetTimer(UpdateFrequency, true);
 	SelectLights();
 }
 
+// far away or out of sight for a while: no shadows, no light searches. The
+// player's own character always keeps them (it's never drawn in first person)
+function bool ShouldCull()
+{
+	local PlayerController V;
+	local vector ViewLoc;
+
+	V = Manager.Viewer;
+	if (V == None || Pawn(Owner).Controller == V)
+		return false;
+	if (V.Pawn != None)
+		ViewLoc = V.Pawn.Location;
+	else
+		ViewLoc = V.Location;
+	if (VSize(Owner.Location - ViewLoc) > CullDistance)
+		return true;
+	return Level.TimeSeconds - Owner.LastRenderTime > UnseenTime;
+}
+
 // a light worth considering at all: switched on and actually bright
-function bool CastsLight(Actor A)
+static function bool CastsLight(Actor A)
 {
 	return A.LightType != LT_None && A.LightBrightness > 0 && A.LightRadius > 0 && !A.bUnlit;
 }
@@ -130,9 +149,9 @@ function bool SunVisible()
 {
 	local vector ToSun, Head;
 
-	if (SunLightActor == None)
+	if (Manager.SunLightActor == None)
 		return false;
-	ToSun = -vector(SunLightActor.Rotation) * 16384;
+	ToSun = -vector(Manager.SunLightActor.Rotation) * 16384;
 	Head = Owner.Location;
 	Head.Z += Owner.CollisionHeight * 0.8;
 	return FastTrace(Owner.Location + ToSun, Owner.Location) || FastTrace(Head + ToSun, Head);
@@ -169,26 +188,40 @@ function SelectLights()
 	local array<int> Held;
 	local bool bFound;
 
-	if (Owner == None)
+	if (Owner == None || Manager == None)
 		return;
 	SetLocation(Owner.Location);
+
+	if (ShouldCull())
+	{
+		if (!bCulled)
+		{
+			bCulled = true;
+			for (i = 0; i < Shadows.Length; i++)
+				if (Shadows[i] != None)
+					Shadows[i].SetLight(None);   // fades out, then frees its texture
+		}
+		return;
+	}
+	bCulled = false;
 
 	Chosen.Length = 0;
 	ChosenPriority.Length = 0;
 
-	for (i = 0; i < LightList.Length; i++)
+	for (i = 0; i < Manager.StaticLights.Length; i++)
 	{
-		A = LightList[i];
+		A = Manager.StaticLights[i];
 		if (A == None)
 			continue;
 		Score = LightScore(A);
 		if (Score > 0 && LightReaches(A.Location))
 			Offer(A, Score);
 	}
-	// moving lights (muzzle flashes, flares, lamps on actors); projectiles skipped
-	foreach DynamicActors(class'Actor', A)
+	Manager.RefreshDynamicLights();
+	for (i = 0; i < Manager.DynamicLights.Length; i++)
 	{
-		if (!A.bDynamicLight || A.LightEffect == LE_Sunlight || Projectile(A) != None || !CastsLight(A))
+		A = Manager.DynamicLights[i];
+		if (A == None || A.bDeleteMe)
 			continue;
 		Score = LightScore(A);
 		if (Score > 0 && LightReaches(A.Location))
@@ -202,7 +235,7 @@ function SelectLights()
 			Chosen.Remove(MaxShadows - 1, Chosen.Length - (MaxShadows - 1));
 			ChosenPriority.Remove(MaxShadows - 1, ChosenPriority.Length - (MaxShadows - 1));
 		}
-		Chosen[Chosen.Length] = SunLightActor;
+		Chosen[Chosen.Length] = Manager.SunLightActor;
 	}
 
 	// shadows already heading for a chosen light keep it
@@ -265,6 +298,8 @@ defaultproperties
 	GradientScale=1.100000
 	SunResolution=128
 	LightResolution=0
+	CullDistance=3000.000000
+	UnseenTime=1.000000
 	bHidden=True
 	RemoteRole=ROLE_None
 }

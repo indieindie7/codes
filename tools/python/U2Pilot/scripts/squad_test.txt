@@ -1,0 +1,18 @@
+# SquadTest: six marines wearing crew/marine models spawn in front of the
+# player and are ordered to follow. Watch them stand, walk after the player,
+# then fight a Skaarj.
+map HoverTest?Mutator=U2Hover.HoverMutator,U2Hover.SquadTest
+waitcontrol 60
+shots 0.4
+wait 2
+dump U2MarineLight Location Mesh Health
+turn 180 0 1
+move 1 0 2.5
+turn 180 0 1
+wait 2
+dump U2MarineLight Location Health
+spawn U2Pawns.U2SkaarjLight 1400
+wait 6
+dump U2MarineLight Location Health
+dump U2SkaarjLight Location Health
+quit

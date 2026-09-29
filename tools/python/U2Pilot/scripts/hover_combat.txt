@@ -1,0 +1,21 @@
+# U2Hover gun test: board the bike, spawn a Skaarj straight ahead and shoot it
+# from the bike.
+map HoverTest?Mutator=U2Hover.HoverMutator
+waitcontrol 60
+shots 0.3
+move 1 0 1.6
+wait 1
+dump HoverBike bIsDriven Location
+turn 180 0 0.6
+spawn U2Pawns.U2SkaarjLight 800
+turn 0 -4 0.2
+wait 0.5
+dump U2SkaarjLight Location Health
+fire 1.5
+dump U2SkaarjLight Location Health
+fire 1.5
+dump U2SkaarjLight Location Health
+fire 2
+dump U2SkaarjLight Location Health
+status
+quit

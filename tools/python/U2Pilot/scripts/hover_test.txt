@@ -1,0 +1,24 @@
+# U2Hover: walk into the hover bike to get on on the generated HoverTest map, drive over
+# the hills, hop, get off.
+map HoverTest?Mutator=U2Hover.HoverMutator
+waitcontrol 60
+shots 0.5
+wait 1.5
+dump HoverBike Location Rotation bIsDriven bOnGround
+move 1 0 1.6
+wait 1
+dump HoverBike bIsDriven Location
+move 1 0 3
+dump HoverBike Location Velocity bOnGround
+turn 70 0 1
+move 1 0 3
+dump HoverBike Location Velocity bOnGround
+altfire 0.2
+wait 0.6
+dump HoverBike Location Velocity bOnGround
+move 1 0.5 4
+dump HoverBike Location Velocity bOnGround
+jump
+wait 1.5
+dump HoverBike bIsDriven Location
+quit

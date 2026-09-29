@@ -7,12 +7,50 @@ class SSShadowManager extends Info;
 
 var array<SSShadowController> Controllers;
 
+// shared by every controller, so a new character costs no level-wide search:
+// static lights and the sun are collected once, moving lights once per sweep
+var array<Light> StaticLights;
+var Light SunLightActor;
+var array<Actor> DynamicLights;
+var float DynamicScanTime;
+var PlayerController Viewer;
+
 event PostBeginPlay()
 {
+	local Light L;
+
 	Super.PostBeginPlay();
 	Log("U2SoftShadows: manager active on "$Level.Title);
+	foreach AllActors(class'Light', L)
+	{
+		if (L.LightEffect != LE_Sunlight)
+		{
+			if (class'SSShadowController'.static.CastsLight(L))
+				StaticLights[StaticLights.Length] = L;
+		}
+		else if (SunLightActor == None || L.LightBrightness > SunLightActor.LightBrightness)
+			SunLightActor = L;
+	}
 	// first sweep after the level's temporary precache pawns are gone
 	SetTimer(0.5, true);
+}
+
+// moving lights (muzzle flashes, flares, lamps on actors), refreshed at most
+// every 0.15 s however many controllers ask; projectiles skipped
+function RefreshDynamicLights()
+{
+	local Actor A;
+
+	if (Level.TimeSeconds - DynamicScanTime >= 0.15 || DynamicScanTime == 0)
+	{
+		DynamicScanTime = Level.TimeSeconds;
+		DynamicLights.Length = 0;
+		foreach DynamicActors(class'Actor', A)
+			if (A.bDynamicLight && A.LightEffect != LE_Sunlight && Projectile(A) == None
+				&& class'SSShadowController'.static.CastsLight(A))
+				DynamicLights[DynamicLights.Length] = A;
+	}
+
 }
 
 event Timer()
@@ -20,6 +58,18 @@ event Timer()
 	local Pawn P;
 	local int i;
 	local bool bHasShadow;
+	local Controller C;
+
+	if (Viewer == None || Viewer.bDeleteMe)
+	{
+		Viewer = None;
+		for (C = Level.ControllerList; C != None; C = C.NextController)
+			if (PlayerController(C) != None)
+			{
+				Viewer = PlayerController(C);
+				break;
+			}
+	}
 
 	// drop controllers whose character has gone
 	for (i = Controllers.Length - 1; i >= 0; i--)
@@ -75,6 +125,7 @@ function Adopt(Pawn P)
 	if (C == None)
 		return;
 	C.Instigator = P;
+	C.Manager = Self;
 	C.Initialize();
 	Controllers[Controllers.Length] = C;
 	Log("U2SoftShadows: multi-light shadows for "$P.Name$" ("$C.MaxShadows$" max)");

@@ -1,0 +1,14 @@
+# U2Enemies: shoot an Izarian in the dome at close range
+map M08A1?Mutator=U2Enemies.EnemyMutator
+waitcontrol 180
+wait 2.5
+shots 0.25
+spawn U2Pawns.U2Izarian 380
+fire 0.8
+dump DomeLeak EndTime bPanic
+dump U2Izarian22 Health
+wait 2
+dump U2Izarian22 Health
+wait 3
+dump U2Izarian22 Health
+quit
