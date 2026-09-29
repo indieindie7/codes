@@ -16,6 +16,7 @@ var array<class<U2BloodDecal> > DecalClasses; // splat variants, randomized per 
 
 var array<U2Gib>        LiveGibs;
 var array<U2BloodDecal> LiveDecals;
+var array<U2HitReactionController> HitControllers;
 
 var int   MaxGibs;          // oldest is destroyed once this is exceeded
 var int   MaxDecals;
@@ -28,6 +29,34 @@ event PostBeginPlay()
 {
 	Super.PostBeginPlay();
 	Log("U2Gore: manager active on "$Level.Title);
+	SetTimer(2.0, true); // low-frequency: just pruning stale hit controllers
+}
+
+event Timer()
+{
+	local int i;
+
+	for (i = HitControllers.Length - 1; i >= 0; i--)
+		if (HitControllers[i] == None || HitControllers[i].Owner == None || HitControllers[i].Owner.bDeleteMe)
+			HitControllers.Remove(i, 1); // GoToFullRagdoll() already Destroy()s itself; this just drops dangling refs
+}
+
+// One controller per living Pawn, created on first need rather than swept
+// for like SSShadowManager does with shadows - we already have the Pawn
+// reference at hand wherever damage is being dispatched.
+function U2HitReactionController GetHitController(Pawn P)
+{
+	local int i;
+	local U2HitReactionController C;
+
+	for (i = 0; i < HitControllers.Length; i++)
+		if (HitControllers[i] != None && HitControllers[i].Owner == P)
+			return HitControllers[i];
+
+	C = U2HitReactionController(Spawn(class'U2HitReactionController', P,, P.Location, P.Rotation));
+	if (C != None)
+		HitControllers[HitControllers.Length] = C;
+	return C;
 }
 
 // Call this from Pawn.Died() (or your kill-notify hook) with the killing

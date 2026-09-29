@@ -1,7 +1,10 @@
 //=============================================================================
-// U2Gore - reference only. This is not meant to be spawned or extended
-// directly; copy the three pieces below (LastHitMomentum capture, the
-// GoreManager lookup, and the Died() call) into your own monster/player
+// U2Gore - reference only, and now the FALLBACK path. U2GoreMutator's
+// MutatorTakeDamage is the primary hook (no Pawn subclassing needed), but
+// that depends on Unreal2 actually routing damage through the mutator
+// chain the way UT2003/UT2004 do, which is unverified here. If it doesn't
+// fire in your game, copy the three pieces below (LastHitMomentum capture,
+// the GoreManager lookup, and the Died() call) into your own monster/player
 // Pawn subclasses wherever they currently sit in your class hierarchy.
 //
 // Why TakeDamage is overridden too: stock Pawn.Died(Killer, damageType,
