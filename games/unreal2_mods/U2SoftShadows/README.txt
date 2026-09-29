@@ -1,4 +1,4 @@
-U2SoftShadows 1.1 - multi-light soft character shadows for Unreal II: The Awakening
+U2SoftShadows 1.2 - multi-light soft character shadows for Unreal II: The Awakening
 ===================================================================================
 
 Every character gets up to 3 shadows, one per nearby light, instead of the
@@ -123,5 +123,8 @@ CREDITS
 
 CHANGES
 -------
+1.2 - performance: no more stutter when enemies spawn, and higher frame rates
+      in big fights. Characters far away (CullDistance) or off screen
+      (UnseenTime) drop their shadows; lights are gathered once per level.
 1.1 - added Install/Uninstall .bat files (no change to the add-on itself)
 1.0 - first release
