@@ -25,6 +25,7 @@ function SetupInitalPositions()
 	Super.SetupInitalPositions();
 	for (i = 0; i < NumSliders; i++)
 		Sliders[i].SetAssociatedLabel(Labels[NumBools + i]);
+	class'ModPanel'.static.AddTo(self);
 }
 
 function SetLocalGuiOptions(bool Reset)

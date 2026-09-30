@@ -14,12 +14,16 @@ event bool OpenMenu(string NewMenuName, optional string Param1, optional string 
 		bStarted = true;
 		class'ModSettings'.static.Startup(ViewportOwner.Actor);
 	}
+	// The pages are named through their classes, not strings, on purpose: a level change
+	// collects every script class nothing refers to, and the engine then fails to load it
+	// again (the page would silently not open from the pause menu). These references keep
+	// the pages alive for as long as this controller is.
 	if (NewMenuName ~= "Interface.MenuPauseOptionsVideo")
-		NewMenuName = "AdventMod.ModVideoOptions";
+		NewMenuName = string(class'ModVideoOptions');
 	else if (NewMenuName ~= "Interface.MenuPCOptions")
-		NewMenuName = "AdventMod.ModPCOptions";
+		NewMenuName = string(class'ModPCOptions');
 	else if (NewMenuName ~= "Interface.MenuPauseOptionsAudio")
-		NewMenuName = "AdventMod.ModAudioOptions";
+		NewMenuName = string(class'ModAudioOptions');
 	if (!Super.OpenMenu(NewMenuName, Param1, Param2, Param3, bHide))
 		return false;
 	if (!bDebugOpened)

@@ -34,9 +34,11 @@ No stock game file is replaced.
   - `ModVideoOptions`, `ModPCOptions`, `ModAudioOptions` extend the stock pages;
     `ModDisplayOptions` is a new page. An options page has at most 7 rows
     (toggles first, then up to 3 sliders).
+  - `ModPanel` adds a translucent panel behind a page (the game's labels are dark
+    grey and unreadable over a dark scene); colour in `[AdventMod.ModPanel]`.
   - `ModSettings` holds the saved settings, the FOV code and the bridge to native code.
-  - `ModMutator` runs in every level (the menu controller is never ticked) and
-    keeps the FOV applied. The game adds the keys of `[DefaultPlayer]` to every
+  - `ModMutator` runs in every level (the menu controller is never ticked), also
+    while paused (`bAlwaysTick`), and keeps the FOV applied. The game adds the keys of `[DefaultPlayer]` to every
     level URL and its GameInfo loads `Mutator=` from it.
   - `ModTestCommandlet`: `AdventUCC AdventMod.ModTestCommandlet` returns 7 when
     the native bridge works.
@@ -50,27 +52,17 @@ No stock game file is replaced.
 
 ## Install
 
-`build.ps1` compiles and copies `AdventMod.u`, `AdventMod.int` and
-`AdventNative.dll` into the game's `System` folder. Then, once, in
-`System\Mydefault.ini` (back it up first):
+Players: `Install AdventMod.bat` (see `README.txt`, the player's readme). It
+finds the game, backs up what it changes, copies `System\AdventMod.u`,
+`AdventMod.int` and `AdventNative.dll`, and adds the configuration lines to
+`Mydefault.ini` and `MyDefUser.ini` (and to their copies in `System\Defaults`,
+which the launcher's "Default" button restores from). `Uninstall AdventMod.bat`
+removes exactly those lines and files. The launcher itself only rewrites its
+own settings line by line, so the mod's lines survive it.
 
-    [Engine.Engine]
-    GUIController=AdventMod.ModGUIController
-
-    [AdventMod.ModGUIController]
-    bModAuthor=true
-    bEmulatedJoypad=false
-    bHideMousecursor=false
-    bJoyMouse=false
-    bJoyDeadZone=0.3
-
-and in `System\MyDefUser.ini` (back it up too):
-
-    [DefaultPlayer]
-    Mutator=AdventMod.ModMutator
-
-Uninstall: remove those lines and the three files (plus `AdventMod.ini`,
-`AdventNative.log` and the `<game>\AdventMod` source folder).
+Developers: `build.ps1` compiles with AdventUCC, builds the DLL and installs
+into the game; `package.py` makes the release zips (with and without the .bat
+files) in Downloads.
 
 ## Tested
 

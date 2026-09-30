@@ -118,11 +118,33 @@ static int HandleCommand(const wchar_t* Cmd)
 	return 0;
 }
 
+/* One of the mod's own classes failed to load quietly: ask again with LOAD_Throw
+   and note the engine's reason (it throws the message as a const TCHAR*). */
+static int NoteThrown(EXCEPTION_POINTERS* E)
+{
+	if (E->ExceptionRecord->ExceptionCode == 0xE06D7363 && E->ExceptionRecord->NumberParameters >= 2 && E->ExceptionRecord->ExceptionInformation[1])
+		Note(L"load failed: %ls", *(const wchar_t**)E->ExceptionRecord->ExceptionInformation[1]);
+	else
+		Note(L"load failed: exception %08X", E->ExceptionRecord->ExceptionCode);
+	return EXCEPTION_EXECUTE_HANDLER;
+}
+
+static void WhyNot(void* Class, void* Outer, const wchar_t* Name, const wchar_t* File, void* Sandbox)
+{
+	__try { if (!RealSLO(Class, Outer, Name, File, 0x8 | 0x2, Sandbox)) Note(L"load failed without a reason: %ls", Name); }
+	__except (NoteThrown(GetExceptionInformation())) { }
+}
+
 static void* __cdecl HookSLO(void* Class, void* Outer, const wchar_t* Name, const wchar_t* File, DWORD Flags, void* Sandbox)
 {
+	void* Result;
+
 	if (Name && !Outer && !_wcsnicmp(Name, L"AdventNative.", 13))
 		return HandleCommand(Name + 13) ? Class : NULL;
-	return RealSLO(Class, Outer, Name, File, Flags, Sandbox);
+	Result = RealSLO(Class, Outer, Name, File, Flags, Sandbox);
+	if (!Result && Name && !_wcsnicmp(Name, L"AdventMod.", 10))
+		WhyNot(Class, Outer, Name, File, Sandbox);
+	return Result;
 }
 
 /* Core's exports are jump thunks: point one at our function, keep the real one */

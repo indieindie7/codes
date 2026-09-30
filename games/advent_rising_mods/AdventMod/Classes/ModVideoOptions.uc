@@ -43,6 +43,7 @@ function SetupInitalPositions()
 	for (i = 0; i < NumSliders; i++)
 		Sliders[i].SetAssociatedLabel(Labels[NumBools + i]);
 	Button3.Caption = LstrOpen;
+	class'ModPanel'.static.AddTo(self);
 }
 
 function SetLocalGuiOptions(bool Reset)
@@ -114,7 +115,8 @@ simulated function Timer()
 		// the page has faded out: show the next one (the base class would open its reset prompt)
 		bLoadNextMenu = false;
 		bOpenMore = false;
-		Controller.OpenMenu("AdventMod.ModDisplayOptions");
+		// by class, not by string: see ModGUIController.OpenMenu
+		Controller.OpenMenu(string(class'ModDisplayOptions'));
 		curState = MENU_STATE_IDLE;
 	}
 	Super.Timer();

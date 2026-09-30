@@ -9,13 +9,17 @@ public class K { [DllImport("user32.dll")] public static extern void keybd_event
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int i);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
+  public struct POINT { public int X, Y; }
   [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint c, uint t);
   public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   // keys go to the game's window only (never global input: the user may be working in another app)
   public static void Tap(IntPtr h, byte vk) { uint sc = MapVirtualKey(vk, 0); PostMessage(h, 0x100, (IntPtr)vk, (IntPtr)(1 | (sc << 16))); System.Threading.Thread.Sleep(80); PostMessage(h, 0x101, (IntPtr)vk, (IntPtr)unchecked((int)(0xC0000001 | (sc << 16)))); } }
 "@
-function Shot($name) { $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height; $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size); $bmp.Save("$shots\$name"); $g.Dispose(); $bmp.Dispose() }
+# the game's client area, asked from the window itself (works while other windows cover it)
+function Shot($name) { $h = (Get-Process advent).MainWindowHandle; $c = New-Object K+RECT; [void][K]::GetClientRect($h, [ref]$c); $bmp = New-Object System.Drawing.Bitmap $c.R, $c.B; $g = [System.Drawing.Graphics]::FromImage($bmp); $dc = $g.GetHdc(); [void][K]::PrintWindow($h, $dc, 3); $g.ReleaseHdc($dc); $bmp.Save("$shots\$name"); $g.Dispose(); $bmp.Dispose() }
 function Win($p) { $r = New-Object K+RECT; $c = New-Object K+RECT; [void][K]::GetWindowRect($p.MainWindowHandle, [ref]$r); [void][K]::GetClientRect($p.MainWindowHandle, [ref]$c); "window {0}x{1} at {2},{3} client {4}x{5} caption={6}" -f ($r.R-$r.L), ($r.B-$r.T), $r.L, $r.T, $c.R, $c.B, [bool]([K]::GetWindowLong($p.MainWindowHandle, -16) -band 0xC00000) }
 $saved = Get-Content "$S\Mydefault.ini"; $savedUser = Get-Content "$S\MyDefUser.ini"
 (@('[AdventMod.ModSettings]') + $Ini) | Set-Content "$S\AdventMod.ini" -Encoding ascii

@@ -24,6 +24,12 @@ function PreSetInitalPositions()
 	Resolution.MaxValue = n - First;
 }
 
+function SetupInitalPositions()
+{
+	Super.SetupInitalPositions();
+	class'ModPanel'.static.AddTo(self);
+}
+
 function SetLocalGuiOptions(bool Reset)
 {
 	local string Cur;

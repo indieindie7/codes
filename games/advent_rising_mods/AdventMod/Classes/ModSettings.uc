@@ -14,6 +14,8 @@ var config bool bVSync, bTrilinear, bWidescreen;
 var config int FOV;                   // the third-person camera's field of view (the game's own is 75)
 var config bool bDebugFOV;            // testing: note every FOV change in AdventNative.log
 var int DebugMovers;
+var config string DebugLevelMenu;     // testing: a menu class ModMutator opens DebugMenuDelay seconds into a level,
+var config float DebugMenuDelay;      // then takes a screenshot (console "shot") 4 seconds later
 var config string DebugCommands;      // testing: console commands (separated by |) run at the title menu, results in AdventNative.log
 var config string DebugOpenMenu;      // testing: a menu class to open right after the title menu
 var config string DebugActions;       // testing: steps run on that menu (see ModGUIController.RunDebug)

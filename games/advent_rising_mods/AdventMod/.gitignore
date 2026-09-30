@@ -1,5 +1,3 @@
 obj/
-System/*.dll
 System/*.exp
 System/*.lib
-System/*.u
