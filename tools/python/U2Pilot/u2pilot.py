@@ -481,7 +481,8 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
         hwnd, _ = find_window(game.pid)
         fg = user32.GetForegroundWindow()
         if hwnd:
-            hide_offscreen(hwnd)
+            if not os.environ.get("U2PILOT_VISIBLE"):   # set to keep the window on the desktop
+                hide_offscreen(hwnd)
             if fg == hwnd:
                 stole_focus += 1
                 give_focus_back(hwnd, prev_fg)
