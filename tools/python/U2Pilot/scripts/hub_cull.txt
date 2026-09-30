@@ -1,0 +1,23 @@
+# hub_cull: camera culling. Dummies in front and behind; shadow controller counts
+# looking one way, right after turning, and after settling.
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub view on
+console hub dummy
+turn 180 0 0.5
+console hub dummy
+turn 180 0 0.5
+wait 1.5
+console hub info
+shot
+turn 180 0 0.4
+wait 0.2
+console hub info
+turn 180 0 0.4
+wait 0.15
+console hub info
+shot
+wait 0.5
+console hub info
+quit

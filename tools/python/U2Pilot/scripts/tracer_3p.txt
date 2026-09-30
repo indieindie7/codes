@@ -1,0 +1,16 @@
+# tracer_3p: third-person camera; mercs' fire converging on the player should show as lines
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+console hub view on
+spawn U2Pawns.U2MercJapLight 700
+turn 25 0 0.2
+spawn U2Pawns.U2MercJapLight 800
+turn -12 0 0.2
+wait 2
+shots 0.07
+wait 3
+dump PulseLineGenerator bOn Base Owner Connections
+quit

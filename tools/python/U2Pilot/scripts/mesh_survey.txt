@@ -1,0 +1,5 @@
+map PrairieSurvey?Mutator=U2TestHub.HubMutator
+waitcontrol 90
+wait 3
+dump StaticMeshActor StaticMesh
+quit

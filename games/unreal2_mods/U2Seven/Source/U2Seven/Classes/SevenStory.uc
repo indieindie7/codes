@@ -65,6 +65,11 @@ event PostBeginPlay()
 	}
 
 	Episode = EpisodeFor(MapOf(Level.GetLocalURL()));
+	// Sanctuary's opening is redirected: quiet colony, held first wave
+	if (bStory && Caps(MapOf(Level.GetLocalURL())) == "M08A1")
+		Spawn(class'SevenSanctuary');
+	if (Left(Caps(MapOf(Level.GetLocalURL())), 7) == "PRAIRIE")
+		Spawn(class'SevenPrairie');
 	bIntroWanted = bStory && Episode > 0 && Episode != LastIntroEp;
 	if (bIntroWanted)
 		Log("U2Seven: episode "$Episode$" - intro queued");
@@ -277,6 +282,31 @@ function float CueStart(int Cue)
 		if (class'SevenScript'.default.Lines[i].Ep == Episode && class'SevenScript'.default.Lines[i].Cue == Cue)
 			return class'SevenScript'.default.Lines[i].CueDelay;
 	return 0;
+}
+
+// play one line by episode and cue (the board's Aida lines are episode 99)
+function Say(int Ep, int Cue)
+{
+	local int i;
+	local PlayerController PC;
+
+	PC = ThePlayer();
+	if (PC == None)
+		return;
+	for (i = 0; i < class'SevenScript'.default.Lines.Length; i++)
+		if (class'SevenScript'.default.Lines[i].Ep == Ep && class'SevenScript'.default.Lines[i].Cue == Cue)
+		{
+			PlayLine(PC, i);
+			return;
+		}
+}
+
+// the mission board's number keys, bound through the console: "seven 1" etc.
+function Choose(int N)
+{
+	local SevenBoard B;
+	foreach DynamicActors(class'SevenBoard', B)
+		B.Choose(N);
 }
 
 function PlayLine(PlayerController PC, int i)

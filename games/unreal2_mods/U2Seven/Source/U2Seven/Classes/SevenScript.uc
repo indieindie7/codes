@@ -108,6 +108,17 @@ class SevenScript extends Info;
 #exec AUDIO IMPORT FILE=Sounds\E9C0_08.wav NAME=E9C0_08 GROUP=VO
 #exec AUDIO IMPORT FILE=Sounds\E10C0_01.wav NAME=E10C0_01 GROUP=VO
 #exec AUDIO IMPORT FILE=Sounds\E10C0_03.wav NAME=E10C0_03 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C0_00.wav NAME=E99C0_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C1_00.wav NAME=E99C1_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C2_00.wav NAME=E99C2_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C3_00.wav NAME=E99C3_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C4_00.wav NAME=E99C4_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C5_00.wav NAME=E99C5_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C6_00.wav NAME=E99C6_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C7_00.wav NAME=E99C7_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C8_00.wav NAME=E99C8_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C9_00.wav NAME=E99C9_00 GROUP=VO
+#exec AUDIO IMPORT FILE=Sounds\E99C10_00.wav NAME=E99C10_00 GROUP=VO
 
 struct SevenLine
 {
@@ -268,6 +279,17 @@ defaultproperties
 	Lines(135)=(Ep=10,Cue=0,CueDelay=0.0,Speaker="DALTON",Text="Marshal's log.",Snd=Sound'E10C0_01',Dur=1.73)
 	Lines(136)=(Ep=10,Cue=0,CueDelay=0.0,Speaker="",Text="",Snd=None,Dur=1.50)
 	Lines(137)=(Ep=10,Cue=0,CueDelay=0.0,Speaker="DALTON",Text="Nothing to report.",Snd=Sound'E10C0_03',Dur=1.67)
+	Lines(138)=(Ep=99,Cue=0,CueDelay=0.0,Speaker="AIDA",Text="Dalton. I have work for you, if you want it.",Snd=Sound'E99C0_00',Dur=2.81)
+	Lines(139)=(Ep=99,Cue=1,CueDelay=0.0,Speaker="AIDA",Text="The landing yard. Something's moved in since we did. Clear it.",Snd=Sound'E99C1_00',Dur=3.86)
+	Lines(140)=(Ep=99,Cue=2,CueDelay=0.0,Speaker="AIDA",Text="The upper walkways. Movement on the thermals, fast. Watch above you.",Snd=Sound'E99C2_00',Dur=4.58)
+	Lines(141)=(Ep=99,Cue=3,CueDelay=0.0,Speaker="AIDA",Text="There's a nest under the colony. Aim for the domes, Marshal. It's where they breathe.",Snd=Sound'E99C3_00',Dur=4.46)
+	Lines(142)=(Ep=99,Cue=4,CueDelay=0.0,Speaker="AIDA",Text="The marsh. A pack is hunting out there. Hunt it back.",Snd=Sound'E99C4_00',Dur=3.28)
+	Lines(143)=(Ep=99,Cue=5,CueDelay=0.0,Speaker="AIDA",Text="Isaak found a log. A marine's. He says you should hear it where it was made.",Snd=Sound'E99C5_00',Dur=4.55)
+	Lines(144)=(Ep=99,Cue=6,CueDelay=0.0,Speaker="AIDA",Text="Nothing left standing. Come home.",Snd=Sound'E99C6_00',Dur=2.39)
+	Lines(145)=(Ep=99,Cue=7,CueDelay=0.0,Speaker="AIDA",Text="Nothing left standing. Come home.",Snd=Sound'E99C7_00',Dur=2.44)
+	Lines(146)=(Ep=99,Cue=8,CueDelay=0.0,Speaker="AIDA",Text="The nest is quiet. Come home.",Snd=Sound'E99C8_00',Dur=2.22)
+	Lines(147)=(Ep=99,Cue=9,CueDelay=0.0,Speaker="AIDA",Text="That's the pack. Come home.",Snd=Sound'E99C9_00',Dur=2.06)
+	Lines(148)=(Ep=99,Cue=10,CueDelay=0.0,Speaker="AIDA",Text="So that's what he held. Come home, Dalton.",Snd=Sound'E99C10_00',Dur=2.92)
 	EpisodeMaps(0)=(Ep=1,Map="M08A1")
 	EpisodeMaps(1)=(Ep=2,Map="MM_MARSH")
 	EpisodeMaps(2)=(Ep=3,Map="M01A")

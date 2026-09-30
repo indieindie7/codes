@@ -50,6 +50,16 @@ BUILDING
   Classes\SevenStory.uc  the mutator: level flow + playback
   Then compile with UCC (EditPackages=U2Seven).
 
+WORK IN PROGRESS (shelved 2026-09)
+  SevenSanctuary   Sanctuary redesign: quiet arrival, gore without creatures,
+                   a dying survivor, scripted encounters
+  SevenCinematic   simple camera-path cinematics
+  SevenPrairie     the generated Prairie map (see ../U2Prairie): crash site,
+                   the ship in pieces, Aida's console
+  SevenBoard / SevenMissions  Aida's mission board: replay missions/dungeons
+  SevenProp        static meshes spawned at level start
+  Design docs: CONCEPT_ART.md, SANCTUARY_REDESIGN.md, SANCTUARY_REFERENCES.md
+
 NOT IN THIS REPO: the compiled U2Seven.u and the voice WAVs. The voices are
 generated locally with Piper TTS: build_voices.py renders every line from
 story.py and writes Classes\SevenScript.uc; then compile with ucc make.

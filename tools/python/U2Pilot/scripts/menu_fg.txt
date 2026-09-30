@@ -1,0 +1,12 @@
+# menu_fg (foreground): open Options > Shadows in-game and grab the window
+map M08A1
+waitlevel
+waitplay
+wait 2
+console SendEvent ShowMenuOptions
+wait 2
+shot options
+console SendEvent Options.Shadows
+wait 2
+shot shadows
+quit

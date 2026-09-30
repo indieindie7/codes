@@ -1,0 +1,17 @@
+# kick_tick: rifle bursts (view kick per shot), then a kill by the player (hit/kill tick)
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+give U2Weapons.weaponInvAssaultRifle
+wait 0.5
+mark KICK
+fire 0.8
+wait 1
+spawn U2Pawns.U2MercJapLight 200
+wait 1
+mark TICK
+console hub kill 400
+wait 1
+quit

@@ -1,0 +1,13 @@
+# hub_tiers: dummies at three distances; which tier does each get?
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub view on
+turn 0 -8 0.2
+spawn U2Pawns.U2MarineLight 300
+spawn U2Pawns.U2MarineLight 1500
+spawn U2Pawns.U2MarineLight 2500
+wait 2
+console hub info
+shot
+quit

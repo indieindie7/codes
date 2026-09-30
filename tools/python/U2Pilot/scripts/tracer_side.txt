@@ -1,0 +1,18 @@
+# tracer_side: a marine draws merc fire; the player watches from the side for the tracer lines
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+spawn U2Pawns.U2MarineLight 500
+turn 12 0 0.2
+spawn U2Pawns.U2MercJapLight 1100
+turn -12 0 0.2
+move 0 1 1.5
+turn -45 0 0.5
+wait 1
+shots 0.1
+wait 1
+dump PulseLineGenerator Location LifeSpan DrawType
+wait 2.5
+quit

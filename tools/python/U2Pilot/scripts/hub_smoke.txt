@@ -1,0 +1,27 @@
+# hub_smoke: exercises every U2TestHub command once (lights & shadows station)
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub help
+console hub view on
+console hub lamp 220 45 200
+wait 1.5
+console hub info
+shot
+console hub shadows stock
+wait 1
+shot
+console hub shadows off
+wait 1
+shot
+console hub shadows mod
+wait 2
+console hub info
+shot
+console hub lamp clear
+console hub dummy
+console hub probe
+wait 1.5
+shot
+console hub bogus
+quit

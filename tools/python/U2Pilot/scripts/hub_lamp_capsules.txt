@@ -1,0 +1,30 @@
+userini U2SoftShadows.SSShadowController bCapsules=True
+userini U2SoftShadows.SSShadowController MaxShadows=0
+userini U2SoftShadows.SSShadowController bHardToSoft=False
+userini U2SoftShadows.SSShadowController bContactShadow=False
+# hub_lamp_default: my shadows on their defaults vs the game's own, same lamp scene
+
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub view on
+console hub lamp 220 45 200
+wait 2
+console hub info
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+console hub shadows stock
+wait 1.5
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+quit

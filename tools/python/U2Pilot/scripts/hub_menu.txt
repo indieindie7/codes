@@ -1,0 +1,11 @@
+# hub_menu: open Options > Shadows in-game and screenshot the add-on's page
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console SendEvent ShowMenuOptions
+wait 1.5
+shot
+console SendEvent Options.Shadows
+wait 1.5
+shot
+quit

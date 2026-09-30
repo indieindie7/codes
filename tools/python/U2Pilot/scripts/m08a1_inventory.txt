@@ -1,0 +1,18 @@
+# m08a1_inventory: what the first level is made of (for the redesign)
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 1
+dump SceneManager Tag Event bIsRunning
+dump ActorFactory Tag Event Prototype
+dump U2Izarian Tag Event Location Health
+dump U2Skaarj Tag Event Location
+dump Colonist Tag Location Health
+dump Scientist Tag Location Health
+dump Frank Location
+dump DialogTrigger Tag Event
+dump ScriptedTrigger Tag Event
+dump Trigger Tag Event
+dump Dispatcher Tag OutEvents
+dump PlayerStart Location
+dump U2PlayerSP Location
+quit

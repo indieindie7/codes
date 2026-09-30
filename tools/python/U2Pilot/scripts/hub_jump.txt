@@ -1,0 +1,11 @@
+# hub_jump: the contact shadow while jumping (should lighten, spread, then go)
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub view on
+turn 0 -25 0.3
+wait 0.5
+shots 0.12
+jump
+wait 1.3
+quit

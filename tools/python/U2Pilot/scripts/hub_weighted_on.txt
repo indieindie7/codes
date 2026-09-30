@@ -1,0 +1,25 @@
+userini U2SoftShadows.SSShadowController bWeightedPick=True
+# hub_weighted: four equal lamps around three dummies; which lights does each pick?
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub view on
+console hub lamp 200 40 260
+turn 90 0 0.3
+console hub lamp 200 40 260
+turn 90 0 0.3
+console hub lamp 200 40 260
+turn 90 0 0.3
+console hub lamp 200 40 260
+turn 90 0 0.3
+console hub dummy
+turn 30 0 0.2
+console hub dummy
+turn -60 0 0.2
+console hub dummy
+turn 30 0 0.2
+wait 2
+console hub lights
+wait 2
+console hub lights
+quit

@@ -1,0 +1,8 @@
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub view on
+console hub dummy
+wait 1
+console hub bones
+quit

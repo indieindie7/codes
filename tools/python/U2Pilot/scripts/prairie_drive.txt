@@ -1,0 +1,34 @@
+# prairie_drive: board the bike at the crash and drive EAST for 90 s at the prairie cruise speed
+map Prairie?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 90
+wait 2
+console god
+console hub tpto HoverBike 120
+wait 0.5
+move 1 0 1.0
+wait 0.5
+dump HoverBike DriverPawn MaxSpeed
+turn 90 0 0.5
+move 1 0 10
+dump HoverBike Location Velocity
+move 1 0 10
+dump HoverBike Location Velocity
+move 1 0 10
+dump HoverBike Location Velocity
+shot
+move 1 0 10
+dump HoverBike Location Velocity
+move 1 0 10
+dump HoverBike Location Velocity
+shot
+move 1 0 10
+dump HoverBike Location Velocity
+move 1 0 10
+dump HoverBike Location Velocity
+shot
+move 1 0 10
+dump HoverBike Location Velocity
+move 1 0 10
+dump HoverBike Location Velocity
+shot
+quit

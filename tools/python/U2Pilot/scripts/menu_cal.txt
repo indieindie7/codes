@@ -1,0 +1,24 @@
+# menu_cal (foreground): pause menu; calibrate the UI cursor vs relative mouse motion
+map M08A1
+waitlevel
+waitplay
+wait 2
+console SendEvent ShowMenus
+wait 1.5
+shot c0
+look 0 100 0.3
+wait 0.5
+shot c1
+look 100 0 0.3
+wait 0.5
+shot c2
+look -100 -100 0.3
+wait 0.5
+click left 0.15
+wait 1.5
+shot c3
+key esc 0.1
+wait 0.5
+key esc 0.1
+wait 1
+quit

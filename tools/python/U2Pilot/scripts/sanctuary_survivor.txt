@@ -1,0 +1,24 @@
+# sanctuary_survivor: victims after setup, then the dying-survivor beat, with a look at the tableau
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 4
+console BeMyMonkey
+console god
+dump U2CivilianScientist0 Health bHidden
+dump U2CivilianScientist3 Health bHidden
+dump U2ColonistHumanMaleA Health bHidden
+console hub tpto U2CivilianScientist3 700
+wait 1
+console hub view on
+shot
+console hub tpto U2CivilianScientist3 350
+wait 1
+shot
+wait 2
+shot
+dump U2CivilianScientist3 Health
+console hub tpto U2ColonistHumanMaleA0 350
+wait 1
+shot
+dump U2Izarian17 bHidden
+quit

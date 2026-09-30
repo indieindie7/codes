@@ -1,0 +1,15 @@
+userini U2FairFights.FairFights bTokens=False
+# token_test: four mercs for 15 s; hits on the player with timestamps and token flags
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+spawn U2Pawns.U2MercJapLight 700
+turn 30 0 0.2
+spawn U2Pawns.U2MercJapLight 850
+turn -60 0 0.3
+spawn U2Pawns.U2MercJapLight 1000
+turn 30 0 0.2
+spawn U2Pawns.U2MercJapLight 1150
+mark FIGHT
+wait 15
+quit

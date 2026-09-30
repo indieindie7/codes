@@ -9,6 +9,24 @@ A line is (speaker, text). Speakers: DALTON AIDA NEBAN ISAAK HAWKINS MEYER.
 Special entries: ("BEAT", seconds) = silence, ("STATIC", seconds) = radio static.
 """
 
+# Aida's mission board (the vendor): episode 99 has no maps, so it never plays
+# as an intro; its cues are spoken by SevenBoard. Cue 0: greeting. Cues 1-5:
+# the offer for each mission (in SevenMissions order). Cues 11-15: the debrief.
+BOARD = dict(ep=99, title="Board", maps=[], intro=[
+        ("AIDA", "Dalton. I have work for you, if you want it."),
+    ], mids=[
+        (0, [("AIDA", "The landing yard. Something's moved in since we did. Clear it.")]),
+        (0, [("AIDA", "The upper walkways. Movement on the thermals, fast. Watch above you.")]),
+        (0, [("AIDA", "There's a nest under the colony. Aim for the domes, Marshal. It's where they breathe.")]),
+        (0, [("AIDA", "The marsh. A pack is hunting out there. Hunt it back.")]),
+        (0, [("AIDA", "Isaak found a log. A marine's. He says you should hear it where it was made.")]),
+        (0, [("AIDA", "Nothing left standing. Come home.")]),
+        (0, [("AIDA", "Nothing left standing. Come home.")]),
+        (0, [("AIDA", "The nest is quiet. Come home.")]),
+        (0, [("AIDA", "That's the pack. Come home.")]),
+        (0, [("AIDA", "So that's what he held. Come home, Dalton.")]),
+    ])
+
 EPISODES = [
     dict(ep=1, title="Sanctuary", maps=["M08A1"], intro=[
         ("DALTON", "Marshal's log. Sanctuary went quiet three days ago. Quiet is an answer."),
@@ -205,6 +223,8 @@ EPISODES = [
 # original dialogue to silence (voice and subtitle), by .dlg file under
 # <game>\Dialog. The conversations still run, very quickly, so the events they
 # fire (objectives, hatches opening) still happen.
+EPISODES.append(BOARD)
+
 MUTE = [
     # Danny Miller, the technician on the security cameras all through Sanctuary
     ("M08A", ["Sanctuary_15G", "Sanctuary_16G", "Sanctuary_16bG", "Sanctuary_17G", "Sanctuary_17bG",

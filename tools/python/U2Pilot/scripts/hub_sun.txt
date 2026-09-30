@@ -1,0 +1,15 @@
+# hub_sun: do the mod's SUN shadows render? Outdoor hover map, third person.
+map HoverTest?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 60
+wait 2
+console hub view on
+wait 1
+console hub info
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+console hub shadows stock
+wait 1
+shot
+quit

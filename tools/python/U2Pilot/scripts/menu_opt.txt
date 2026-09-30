@@ -1,0 +1,18 @@
+# menu_opt (foreground): pause menu -> move onto Options -> click -> capture
+map M08A1
+waitlevel
+waitplay
+wait 2
+console SendEvent ShowMenus
+wait 1.5
+look 48 38 0.3
+wait 0.5
+shot o0
+click left 0.15
+wait 1.5
+shot o1
+key esc 0.1
+wait 0.5
+key esc 0.1
+wait 1
+quit

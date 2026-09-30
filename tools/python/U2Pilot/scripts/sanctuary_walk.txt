@@ -1,0 +1,27 @@
+# sanctuary_walk: the redesigned opening, teleporting along the path
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 4
+console BeMyMonkey
+console god
+dump U2CivilianScientist0 Health
+dump U2CivilianScientist3 Health
+dump U2ColonistHumanMaleA Health
+console hub tp -730 5000 6530
+wait 1
+console hub tp -1300 4400 6500
+wait 1
+console hub tp -1100 2900 6160
+wait 1
+console hub tpto U2CivilianScientist0 600
+wait 1
+console hub tpto U2CivilianScientist0 300
+wait 4
+dump U2CivilianScientist0 Health
+console hub tpto U2Izarian23 900
+wait 4
+dump U2Izarian bHidden
+console hub tpto U2Izarian23 300
+wait 3
+dump U2Izarian bHidden
+quit

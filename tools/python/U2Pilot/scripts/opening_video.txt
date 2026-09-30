@@ -1,0 +1,6 @@
+# opening_video (foreground): record the pod arrival and the opening cinematic
+map M08A1
+waitlevel
+record start
+wait 80
+quit

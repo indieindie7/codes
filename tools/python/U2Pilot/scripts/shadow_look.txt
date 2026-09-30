@@ -1,0 +1,29 @@
+# shadow_look: close-up screenshots of character shadows for judging quality.
+# Friendly marines stand still near the player; third-person view shows the
+# player's own shadows too.
+map M08A1
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+turn 0 -20 0.2
+spawn U2Pawns.U2MarineLight 220
+turn 35 0 0.2
+spawn U2Pawns.U2MarineLight 300
+turn -35 0 0.2
+wait 1.5
+shot
+dump SSLightShadow Owner AssignedLight Fade ShadowTexture MaxTraceDistance Location
+console behindview 1
+wait 1
+shot
+turn 120 0 0.6
+wait 0.7
+shot
+turn 120 0 0.6
+wait 0.7
+shot
+move 1 0 1.2
+wait 0.5
+shot
+quit

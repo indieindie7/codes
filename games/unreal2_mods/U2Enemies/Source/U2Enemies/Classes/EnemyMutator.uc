@@ -36,6 +36,7 @@ struct PendingBoost
 	var float SpeedMul, HealthMul, ApplyAt;
 };
 var array<PendingBoost> Boosts;
+var bool bDesignedSpawn;            // set by a director around its own spawns: no random variants
 var array<Pawn> Ferals;
 
 event PostBeginPlay()
@@ -62,10 +63,10 @@ function bool CheckReplacement(Actor Other, out byte bSuperRelevant)
 		MakeAgile(U2PawnBasic(Other));
 	// only light Skaarj have the blade set-up for it; level-scripted ones
 	// (a Tag or Event wires them to the level) keep their behaviour
-	if (BerserkerOdds > 0 && Other.IsA('U2SkaarjLight') && U2PawnBasic(Other) != None
+	if (!bDesignedSpawn && BerserkerOdds > 0 && Other.IsA('U2SkaarjLight') && U2PawnBasic(Other) != None
 		&& Other.Tag == Other.Class.Name && Other.Event == '' && FRand() < BerserkerOdds)
 		MakeBerserker(U2PawnBasic(Other));
-	if (FeralOdds > 0 && Other.IsA('U2Izarian') && U2PawnBasic(Other) != None && IsUnarmoured(Pawn(Other))
+	if (!bDesignedSpawn && FeralOdds > 0 && Other.IsA('U2Izarian') && U2PawnBasic(Other) != None && IsUnarmoured(Pawn(Other))
 		&& Other.Tag == Other.Class.Name && Other.Event == '' && FRand() < FeralOdds)
 		MakeFeral(U2PawnBasic(Other));
 	return true;

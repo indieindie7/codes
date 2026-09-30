@@ -1,0 +1,24 @@
+map Prairie?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 90
+wait 2
+console BeMyMonkey
+console god
+console hub tp -20000 4000 0
+wait 0.5
+console hub view on
+console hub mesh Mission_05M.Misc.generic_rock_01 3
+turn 40 0 0.3
+console hub mesh Terran_DecoM.Crates.Terran_Dropship_01 0.3
+turn 40 0 0.3
+console hub mesh Mission_05M.debris_sheet_003.Crashed_Transport 1
+turn -40 -5 0.4
+wait 0.5
+shot
+turn 0 0 0.1
+console hub tp -20800 4000 0
+wait 0.5
+shot
+dump Wreck0 bStatic bCollideActors bBlockActors bWorldGeometry Region
+dump Rock0 bStatic bCollideActors bBlockActors bWorldGeometry Region StaticMesh
+dump StaticMeshActor DrawType Style bHidden Location
+quit

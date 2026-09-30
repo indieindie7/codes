@@ -1,0 +1,14 @@
+# hub_diag: full projector state, mod shadow vs the game's own, same spot
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub view on
+console hub lamp 220 45 200
+wait 2
+console hub info
+shot
+console hub shadows stock
+wait 2
+console hub info
+shot
+quit
