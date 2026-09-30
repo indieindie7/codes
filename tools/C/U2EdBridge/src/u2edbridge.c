@@ -21,9 +21,20 @@
  * safe answer for "save changes?"-style prompts; "!answer yes" flips it.
  *
  * Commands starting with '!' are handled by the bridge itself:
- *   !ping           -> pong
- *   !answer yes|no  how to answer Yes/No message boxes
- *   !quit           terminate the editor (nothing is saved)
+ *   !ping                -> pong
+ *   !answer yes|no       how to answer Yes/No message boxes
+ *   !quit                terminate the editor (nothing is saved)
+ *   !screenshot <path>   save the active viewport's back buffer as a 24-bit BMP
+ *
+ * !screenshot works by hooking d3d8.dll's Direct3DCreate8 import (same IAT-patch
+ * technique as the message box hooks below) to catch the IDirect3DDevice8 the
+ * editor creates, then patching that one instance's own CreateDevice slot so any
+ * *later* device (e.g. after a Reset, or a freshly opened viewport) is caught
+ * too. Capturing the frame itself is GetBackBuffer -> CreateImageSurface (system
+ * memory) -> CopyRects -> LockRect, the standard D3D8 way to read back a render
+ * target that mustn't be locked directly. If several devices exist (e.g. a mesh
+ * browser preview pane), whichever was created or reset most recently wins;
+ * there is no per-viewport selection.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -38,6 +49,46 @@
 
 typedef int (TC *ExecFn)(void *self, const wchar_t *cmd, void *ar);
 typedef void (TC *SerializeFn)(void *self, const wchar_t *v, int ev);
+
+/* --- D3D8 screenshot support ---
+ * COM vtable methods use __stdcall with an explicit "this" (unlike the C++
+ * thiscall virtuals above), so these typedefs take self as a normal first
+ * argument. Indices are from d3d8.h (IDirect3D8::CreateDevice = 15,
+ * IDirect3DDevice8::GetBackBuffer/CreateImageSurface/CopyRects = 16/27/28,
+ * IDirect3DSurface8::GetDesc/LockRect/UnlockRect = 8/9/10; Release on any
+ * interface = 2). D3DFORMAT/D3DPOOL/etc. fields are all DWORD-sized enums, so
+ * a plain DWORD is layout-compatible without pulling in real d3d8 headers. */
+typedef void *(WINAPI *D3DCreate8Fn)(UINT sdkVersion);
+typedef HRESULT (WINAPI *CreateDeviceFn)(void *self, UINT adapter, DWORD deviceType, HWND hFocus,
+                                          DWORD behaviorFlags, void *presentParams, void **outDevice);
+typedef HRESULT (WINAPI *GetBackBufferFn)(void *self, UINT which, DWORD type, void **outSurface);
+typedef HRESULT (WINAPI *CreateImageSurfaceFn)(void *self, UINT w, UINT h, DWORD format, void **outSurface);
+typedef HRESULT (WINAPI *CopyRectsFn)(void *self, void *src, const RECT *srcRects, UINT rectCount,
+                                       void *dst, const POINT *dstPoints);
+typedef HRESULT (WINAPI *SurfGetDescFn)(void *self, void *outDesc);
+typedef HRESULT (WINAPI *SurfLockRectFn)(void *self, void *outLocked, const RECT *rect, DWORD flags);
+typedef HRESULT (WINAPI *SurfUnlockRectFn)(void *self);
+typedef ULONG (WINAPI *D3DReleaseFn)(void *self);
+
+typedef struct { DWORD Format, Type, Usage, Pool, Size, MultiSampleType; UINT Width, Height; } D3DSurfaceDescMin;
+typedef struct { LONG Pitch; void *pBits; } D3DLockedRectMin;
+
+#define D3DCALL(obj, idx, Ty) (((Ty)((*(void ***)(obj))[idx])))
+#define D3DFMT_A8R8G8B8 21
+#define D3DFMT_X8R8G8B8 22
+#define D3DFMT_R5G6B5   23
+
+static void *g_device;             /* the most recently created/reset IDirect3DDevice8 */
+static void *g_patchedD3DVtbl;     /* which IDirect3D8 vtable already has our CreateDevice hook */
+static D3DCreate8Fn g_realD3DCreate8;
+static CreateDeviceFn g_origCreateDevice;
+
+/* GetProcAddress is hooked too: an IAT patch on Direct3DCreate8 only catches
+   code that imports it by name at link time. If the renderer instead does
+   GetProcAddress(hD3D8, "Direct3DCreate8") and calls through the returned
+   pointer, that call never goes near any IAT slot we could have patched. */
+typedef FARPROC (WINAPI *GetProcAddressFn)(HMODULE mod, LPCSTR name);
+static GetProcAddressFn g_realGetProcAddress;
 
 /* --- state shared between the pipe thread and the main thread --- */
 static HWND g_main;              /* a window owned by the editor's main thread */
@@ -249,6 +300,267 @@ static void PatchMessageBoxes(void)
 	CloseHandle(snap);
 }
 
+/* --- D3D8 device capture: IAT-patch Direct3DCreate8, then patch the returned
+   IDirect3D8 object's own CreateDevice slot (a class-wide vtable, so patching
+   it once covers every device that class ever creates) --- */
+
+static HRESULT WINAPI HookCreateDevice(void *self, UINT adapter, DWORD deviceType, HWND hFocus,
+                                        DWORD behaviorFlags, void *presentParams, void **outDevice)
+{
+	HRESULT hr = g_origCreateDevice(self, adapter, deviceType, hFocus, behaviorFlags, presentParams, outDevice);
+	if (SUCCEEDED(hr) && outDevice && *outDevice)
+	{
+		g_device = *outDevice;
+		BLog("captured IDirect3DDevice8 %p", g_device);
+	}
+	return hr;
+}
+
+static void *WINAPI HookDirect3DCreate8(UINT sdkVersion)
+{
+	void *d3d = g_realD3DCreate8 ? g_realD3DCreate8(sdkVersion) : NULL;
+	if (d3d && *(void ***)d3d != g_patchedD3DVtbl)
+	{
+		void **vtbl = *(void ***)d3d;
+		DWORD old;
+		g_origCreateDevice = (CreateDeviceFn)vtbl[15];
+		VirtualProtect(vtbl, sizeof(void *) * 16, PAGE_READWRITE, &old);
+		vtbl[15] = (void *)HookCreateDevice;
+		VirtualProtect(vtbl, sizeof(void *) * 16, old, &old);
+		g_patchedD3DVtbl = vtbl;
+		BLog("patched IDirect3D8 CreateDevice at vtbl %p", (void *)vtbl);
+	}
+	return d3d;
+}
+
+/* mirrors PatchModule/PatchMessageBoxes below but for one import (Direct3DCreate8)
+   in one module (d3d8.dll's own importers); kept separate rather than folded into
+   the message-box patcher so that code stays untouched */
+static void PatchD3DCreateInModule(HMODULE mod, HMODULE self, HMODULE d3d8)
+{
+	BYTE *base = (BYTE *)mod;
+	IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+	IMAGE_NT_HEADERS *nt;
+	IMAGE_DATA_DIRECTORY *dir;
+	IMAGE_IMPORT_DESCRIPTOR *imp;
+	if (mod == self || mod == d3d8 || dos->e_magic != IMAGE_DOS_SIGNATURE) return;
+	nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
+	dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+	if (!dir->VirtualAddress) return;
+	for (imp = (IMAGE_IMPORT_DESCRIPTOR *)(base + dir->VirtualAddress); imp->Name; imp++)
+	{
+		void **slot = (void **)(base + imp->FirstThunk);
+		for (; *slot; slot++)
+			if (*slot == (void *)g_realD3DCreate8)
+			{
+				DWORD old;
+				BLog("PatchD3DCreate: found Direct3DCreate8 import in module %p, patching", (void *)mod);
+				VirtualProtect(slot, sizeof(void *), PAGE_READWRITE, &old);
+				*slot = (void *)HookDirect3DCreate8;
+				VirtualProtect(slot, sizeof(void *), old, &old);
+			}
+	}
+}
+
+/* re-run before every command (like PatchMessageBoxes) to catch modules loaded
+   since, and called once as early as possible from DllMain to win the race
+   against the editor's own startup creating its first device */
+static void PatchD3DCreate(void)
+{
+	HMODULE d3d8 = GetModuleHandleW(L"d3d8.dll");
+	HMODULE self = NULL;
+	MODULEENTRY32W me;
+	HANDLE snap;
+	static int everLogged;
+	if (!d3d8) { if (!everLogged++) BLog("PatchD3DCreate: d3d8.dll not loaded yet"); return; }
+	if (!g_realD3DCreate8)
+		g_realD3DCreate8 = (D3DCreate8Fn)GetProcAddress(d3d8, "Direct3DCreate8");
+	if (!g_realD3DCreate8) { if (!everLogged++) BLog("PatchD3DCreate: Direct3DCreate8 export not found"); return; }
+	if (!everLogged++) BLog("PatchD3DCreate: d3d8.dll %p, Direct3DCreate8 %p, scanning modules", (void *)d3d8, (void *)g_realD3DCreate8);
+	snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+	if (snap == INVALID_HANDLE_VALUE) return;
+	GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+	                   (LPCWSTR)PatchD3DCreate, &self);
+	me.dwSize = sizeof(me);
+	if (Module32FirstW(snap, &me))
+		do
+			PatchD3DCreateInModule(me.hModule, self, d3d8);
+		while (Module32NextW(snap, &me));
+	CloseHandle(snap);
+}
+
+/* --- GetProcAddress("Direct3DCreate8") hook: covers dynamic resolution that
+   the Direct3DCreate8 IAT patch above can't see --- */
+
+static FARPROC WINAPI HookGetProcAddress(HMODULE mod, LPCSTR name)
+{
+	FARPROC real = g_realGetProcAddress(mod, name);
+	if (real && (ULONG_PTR)name > 0xFFFF && !lstrcmpA(name, "Direct3DCreate8"))
+	{
+		if (!g_realD3DCreate8)
+		{
+			g_realD3DCreate8 = (D3DCreate8Fn)real;
+			BLog("captured real Direct3DCreate8 %p via GetProcAddress", (void *)real);
+		}
+		return (FARPROC)HookDirect3DCreate8;
+	}
+	return real;
+}
+
+static void PatchGetProcAddressInModule(HMODULE mod, HMODULE self, HMODULE k32)
+{
+	BYTE *base = (BYTE *)mod;
+	IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+	IMAGE_NT_HEADERS *nt;
+	IMAGE_DATA_DIRECTORY *dir;
+	IMAGE_IMPORT_DESCRIPTOR *imp;
+	if (mod == self || mod == k32 || dos->e_magic != IMAGE_DOS_SIGNATURE) return;
+	nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
+	dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+	if (!dir->VirtualAddress) return;
+	for (imp = (IMAGE_IMPORT_DESCRIPTOR *)(base + dir->VirtualAddress); imp->Name; imp++)
+	{
+		void **slot = (void **)(base + imp->FirstThunk);
+		for (; *slot; slot++)
+			if (*slot == (void *)g_realGetProcAddress)
+			{
+				DWORD old;
+				VirtualProtect(slot, sizeof(void *), PAGE_READWRITE, &old);
+				*slot = (void *)HookGetProcAddress;
+				VirtualProtect(slot, sizeof(void *), old, &old);
+			}
+	}
+}
+
+/* like PatchD3DCreate: re-run before every command to catch modules loaded
+   since, and called once as early as possible from DllMain */
+static void PatchGetProcAddress(void)
+{
+	HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
+	HMODULE self = NULL;
+	MODULEENTRY32W me;
+	HANDLE snap;
+	if (!g_realGetProcAddress)
+		g_realGetProcAddress = (GetProcAddressFn)GetProcAddress(k32, "GetProcAddress");
+	if (!g_realGetProcAddress) return;
+	snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+	if (snap == INVALID_HANDLE_VALUE) return;
+	GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+	                   (LPCWSTR)PatchGetProcAddress, &self);
+	me.dwSize = sizeof(me);
+	if (Module32FirstW(snap, &me))
+		do
+			PatchGetProcAddressInModule(me.hModule, self, k32);
+		while (Module32NextW(snap, &me));
+	CloseHandle(snap);
+}
+
+/* --- screenshot capture: GetBackBuffer -> CreateImageSurface (system memory,
+   lockable) -> CopyRects -> LockRect, then a hand-rolled 24-bit BMP writer.
+   D3DFMT_A8R8G8B8/X8R8G8B8 store bytes in memory as B,G,R,(A) on a little-endian
+   machine, which is exactly a 24-bit BMP's pixel order once the 4th byte is
+   dropped -- no color conversion needed for the common 32bpp case. */
+
+static int WriteBMP(const wchar_t *path, void *bits, LONG pitch, UINT width, UINT height, DWORD format)
+{
+	HANDLE f;
+	DWORD w, rowBytes, dataSize;
+	BYTE fileHdr[14], infoHdr[40], *row, *src, *dst;
+	UINT y, x;
+	int bypp;
+
+	if (format == D3DFMT_A8R8G8B8 || format == D3DFMT_X8R8G8B8) bypp = 4;
+	else if (format == D3DFMT_R5G6B5) bypp = 2;
+	else { CapLine(L"bridge: unsupported back buffer format for screenshot"); return 0; }
+
+	rowBytes = (width * 3 + 3) & ~3u;
+	dataSize = rowBytes * height;
+
+	f = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (f == INVALID_HANDLE_VALUE) { CapLine(L"bridge: could not create screenshot file"); return 0; }
+
+	memset(fileHdr, 0, sizeof(fileHdr));
+	fileHdr[0] = 'B'; fileHdr[1] = 'M';
+	*(DWORD *)(fileHdr + 2) = 14 + 40 + dataSize;
+	*(DWORD *)(fileHdr + 10) = 14 + 40;
+
+	memset(infoHdr, 0, sizeof(infoHdr));
+	*(DWORD *)(infoHdr + 0) = 40;
+	*(LONG *)(infoHdr + 4) = (LONG)width;
+	*(LONG *)(infoHdr + 8) = -(LONG)height;   /* negative height = top-down, matches D3D's memory layout */
+	*(WORD *)(infoHdr + 12) = 1;
+	*(WORD *)(infoHdr + 14) = 24;
+
+	WriteFile(f, fileHdr, sizeof(fileHdr), &w, NULL);
+	WriteFile(f, infoHdr, sizeof(infoHdr), &w, NULL);
+
+	row = (BYTE *)HeapAlloc(GetProcessHeap(), 0, rowBytes);
+	if (!row) { CloseHandle(f); return 0; }
+
+	for (y = 0; y < height; y++)
+	{
+		src = (BYTE *)bits + (size_t)y * pitch;
+		dst = row;
+		memset(row, 0, rowBytes);
+		if (bypp == 4)
+			for (x = 0; x < width; x++) { dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2]; dst += 3; src += 4; }
+		else
+			for (x = 0; x < width; x++)
+			{
+				WORD p = *(WORD *)src;
+				BYTE r5 = (BYTE)((p >> 11) & 0x1F), g6 = (BYTE)((p >> 5) & 0x3F), b5 = (BYTE)(p & 0x1F);
+				dst[0] = (BYTE)((b5 * 527 + 23) >> 6);
+				dst[1] = (BYTE)((g6 * 259 + 33) >> 6);
+				dst[2] = (BYTE)((r5 * 527 + 23) >> 6);
+				dst += 3; src += 2;
+			}
+		WriteFile(f, row, rowBytes, &w, NULL);
+	}
+	HeapFree(GetProcessHeap(), 0, row);
+	CloseHandle(f);
+	return 1;
+}
+
+static int DoScreenshot(const wchar_t *path)
+{
+	void *backbuf = NULL, *sysSurf = NULL;
+	D3DSurfaceDescMin desc;
+	D3DLockedRectMin lr;
+	HRESULT hr;
+	int ok = 0;
+
+	if (!g_device) { CapLine(L"bridge: no D3D8 device captured yet (open or refresh a viewport, then retry)"); return 0; }
+
+	hr = D3DCALL(g_device, 16, GetBackBufferFn)(g_device, 0, 0, &backbuf);
+	if (FAILED(hr) || !backbuf) { CapLine(L"bridge: GetBackBuffer failed"); return 0; }
+
+	memset(&desc, 0, sizeof(desc));
+	D3DCALL(backbuf, 8, SurfGetDescFn)(backbuf, &desc);
+
+	hr = D3DCALL(g_device, 27, CreateImageSurfaceFn)(g_device, desc.Width, desc.Height, desc.Format, &sysSurf);
+	if (SUCCEEDED(hr) && sysSurf)
+	{
+		hr = D3DCALL(g_device, 28, CopyRectsFn)(g_device, backbuf, NULL, 0, sysSurf, NULL);
+		if (SUCCEEDED(hr))
+		{
+			memset(&lr, 0, sizeof(lr));
+			hr = D3DCALL(sysSurf, 9, SurfLockRectFn)(sysSurf, &lr, NULL, 0);
+			if (SUCCEEDED(hr))
+			{
+				ok = WriteBMP(path, lr.pBits, lr.Pitch, desc.Width, desc.Height, desc.Format);
+				D3DCALL(sysSurf, 10, SurfUnlockRectFn)(sysSurf);
+			}
+			else CapLine(L"bridge: LockRect failed");
+		}
+		else CapLine(L"bridge: CopyRects failed");
+		D3DCALL(sysSurf, 2, D3DReleaseFn)(sysSurf);
+	}
+	else CapLine(L"bridge: CreateImageSurface failed");
+	D3DCALL(backbuf, 2, D3DReleaseFn)(backbuf);
+	if (ok) CapLine(L"screenshot saved");
+	return ok;
+}
+
 /* --- running a request on the main thread --- */
 
 static int RunBang(const wchar_t *cmd)
@@ -261,7 +573,8 @@ static int RunBang(const wchar_t *cmd)
 		return 1;
 	}
 	if (!_wcsicmp(cmd, L"!quit")) { BLog("quit requested"); TerminateProcess(GetCurrentProcess(), 0); return 1; }
-	CapLine(L"unknown bridge command (!ping, !answer yes|no, !quit)");
+	if (!_wcsnicmp(cmd, L"!screenshot ", 12)) return DoScreenshot(cmd + 12);
+	CapLine(L"unknown bridge command (!ping, !answer yes|no, !quit, !screenshot <path>)");
 	return 0;
 }
 
@@ -271,6 +584,8 @@ static void RunRequest(void)
 	if (InterlockedCompareExchange(&g_state, 2, 1) != 1)
 		return;
 	PatchMessageBoxes();
+	PatchGetProcAddress();
+	PatchD3DCreate();
 	g_capLen = 0;
 	InterlockedExchange(&g_capturing, 1);
 	if (g_req[0] == L'!')
@@ -508,6 +823,12 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
 		GetModuleFileNameA(inst, g_logPath, MAX_PATH);
 		slash = strrchr(g_logPath, '\\');
 		lstrcpyA(slash ? slash + 1 : g_logPath, "U2EdBridge.log");
+		/* as early as possible: the editor's own (pre-existing) main thread keeps
+		   running while this DllMain executes on the freshly injected thread, so
+		   every millisecond before this hook is armed is a chance to miss the
+		   editor's first Direct3DCreate8 call */
+		PatchGetProcAddress();
+		PatchD3DCreate();
 		t = CreateThread(NULL, 0, Main, NULL, 0, NULL);
 		if (t) CloseHandle(t);
 	}

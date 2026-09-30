@@ -145,27 +145,36 @@ class Editor:
     # --- lifetime ---
     @classmethod
     def start(cls, timeout=180):
-        """Launch UnrealEd, load the bridge and wait until it answers."""
+        """Launch UnrealEd with the bridge already loaded, and wait until it answers.
+
+        Launches CREATE_SUSPENDED and injects before the first ResumeThread,
+        so the bridge (and anything it hooks, e.g. the D3D8 device capture for
+        !screenshot) is in place before UnrealEd's own main thread runs a
+        single instruction -- a pid-based post-hoc injection loses that race,
+        since UnrealEd creates its D3D8 device in the same synchronous init
+        that creates its main window."""
         if _running("Unreal2.exe"):
             raise BridgeError("the game is running; close it first (the editor needs dgVoodoo off)")
         if _running("UnrealEd.exe"):
             raise BridgeError("UnrealEd is already running; use Editor.attach() or close it")
         dgvoodoo_off()
+        pid = None
         try:
-            proc = subprocess.Popen([os.path.join(SYSTEM, "UnrealEd.exe")], cwd=SYSTEM)
+            pid = launch_suspended(os.path.join(SYSTEM, "UnrealEd.exe"),
+                                    os.path.join(BIN, "U2EdBridge.dll"), SYSTEM)
             deadline = time.time() + timeout
-            while not _has_window(proc.pid):
-                if proc.poll() is not None:
-                    raise BridgeError("UnrealEd exited during startup (code %s)" % proc.returncode)
+            while not _has_window(pid):
+                if not _alive(pid):
+                    raise BridgeError("UnrealEd exited during startup")
                 if time.time() > deadline:
                     raise BridgeError("UnrealEd showed no window in %ds" % timeout)
                 time.sleep(0.5)
-            inject(proc.pid)
-            ed = cls(proc.pid)
+            ed = cls(pid)
             ed.wait_ready(max(10, deadline - time.time()))
             return ed
         except BaseException:
-            _kill(proc.pid)
+            if pid:
+                _kill(pid)
             time.sleep(1)
             dgvoodoo_on()
             raise
@@ -276,11 +285,25 @@ class Editor:
 
 
 def inject(pid):
+    """Post-hoc injection into an already-running process. Kept for attaching
+    to an editor started outside this tool; Editor.start() itself uses
+    launch_suspended() instead, since this path can lose the race against
+    whatever the target does before its first window appears."""
     exe = os.path.join(BIN, "u2edinject.exe")
     dll = os.path.join(BIN, "U2EdBridge.dll")
     r = subprocess.run([exe, str(pid), dll], capture_output=True, text=True)
     if r.returncode:
         raise BridgeError("injection failed: " + (r.stderr or r.stdout).strip())
+
+
+def launch_suspended(exe_path, dll, cwd, timeout=30):
+    """Launch exe_path CREATE_SUSPENDED in cwd, inject dll before it runs,
+    then resume it. Returns the new process id."""
+    injector = os.path.join(BIN, "u2edinject.exe")
+    r = subprocess.run([injector, "launch", exe_path, dll, cwd], capture_output=True, text=True, timeout=timeout)
+    if r.returncode:
+        raise BridgeError("launch+injection failed: " + (r.stderr or r.stdout).strip())
+    return int(r.stdout.strip())
 
 
 def main(argv):
