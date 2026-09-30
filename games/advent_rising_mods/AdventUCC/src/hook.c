@@ -100,6 +100,28 @@ static void __fastcall WarnSerialize(void* This, void* Edx, const wchar_t* V, in
 	RealWarnSerialize(This, Edx, V, Event);
 }
 
+/* ADVENTUCC_LOG=1: also print the engine log (script Log/Warn lines end up there) */
+static void* LogVtbl[32];
+static Serialize_t RealLogSerialize;
+
+static void __fastcall LogSerialize(void* This, void* Edx, const wchar_t* V, int Event)
+{
+	Say(L"Log: %ls", V ? V : L"");
+	RealLogSerialize(This, Edx, V, Event);
+}
+
+static void TapLog(void)
+{
+	void*** PLog = (void***)Sym("?GLog@@3PAVFOutputDevice@@A");
+	void** Obj;
+	if (!PLog || !*PLog || !GetEnvironmentVariableW(L"ADVENTUCC_LOG", NULL, 0)) return;
+	Obj = (void**)*PLog;
+	memcpy(LogVtbl, *Obj, sizeof(LogVtbl));
+	RealLogSerialize = (Serialize_t)LogVtbl[0];
+	LogVtbl[0] = (void*)LogSerialize;
+	*Obj = LogVtbl;
+}
+
 static void TapWarn(void)
 {
 	void*** PWarn = (void***)Sym("?GWarn@@3PAVFFeedbackContext@@A");
@@ -129,6 +151,7 @@ static int RunCommandlet(void)
 	SetInt("?GIsUCC@@3HA", 1); SetInt("?GIsEditor@@3HA", 1); SetInt("?GIsScriptable@@3HA", 1);
 	SetInt("?GIsClient@@3HA", 1); SetInt("?GIsServer@@3HA", 1); SetInt("?GLazyLoad@@3HA", 1);
 	TapWarn();
+	TapLog();
 	RealExportToOutputDevice = (ExportToOutputDevice_t)Redirect("?ExportToOutputDevice@UExporter@@SAXPAVUObject@@PAV1@AAVFOutputDevice@@PBGH@Z", HookExportToOutputDevice);
 
 	Base = ((Getter_t)Sym("?StaticClass@UCommandlet@@SAPAVUClass@@XZ"))();

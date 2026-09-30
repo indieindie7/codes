@@ -1,0 +1,160 @@
+/* AdventNative.dll - native helpers for AdventMod (Advent Rising).
+
+   UnrealScript can't change the window, and a script package can only have
+   native functions through a full native class. Instead the engine loads this
+   DLL by itself: a DynamicLoadObject("AdventNative.X") finds no AdventNative.u
+   and falls back to the package's DLL. Once loaded we redirect Core.dll's
+   UObject::StaticLoadObject export, and every later
+   DynamicLoadObject("AdventNative.<Command>", class'Class', true) is a call
+   into HandleCommand: it returns the class (script sees non-None = true) or
+   NULL (None = false). */
+#include <windows.h>
+#include <wchar.h>
+#include <stdio.h>
+#include <stdarg.h>
+
+__declspec(dllexport) wchar_t GPackage[] = L"AdventNative";
+
+typedef void* (__cdecl *StaticLoadObject_t)(void* Class, void* Outer, const wchar_t* Name, const wchar_t* File, DWORD Flags, void* Sandbox);
+static StaticLoadObject_t RealSLO;
+
+/* AdventNative.log, next to the game's own log */
+static void Note(const wchar_t* Fmt, ...)
+{
+	static wchar_t Line[1024];
+	char Utf8[2048];
+	va_list A;
+	HANDLE F;
+	DWORD N;
+	va_start(A, Fmt);
+	_vsnwprintf(Line, 1020, Fmt, A);
+	va_end(A);
+	Line[1020] = 0;
+	wcscat(Line, L"\r\n");
+	F = CreateFileW(L"AdventNative.log", FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (F == INVALID_HANDLE_VALUE) return;
+	N = WideCharToMultiByte(CP_UTF8, 0, Line, -1, Utf8, sizeof(Utf8), NULL, NULL);
+	if (N > 1) WriteFile(F, Utf8, N - 1, &N, NULL);
+	CloseHandle(F);
+}
+
+/* ------------------------------------------------------------ borderless */
+
+static HWND GameWindow;
+static int Borderless;
+static LONG SavedStyle, SavedExStyle;
+static RECT SavedRect;
+
+static BOOL CALLBACK FindWindowProc(HWND H, LPARAM L)
+{
+	DWORD Pid;
+	RECT R;
+	GetWindowThreadProcessId(H, &Pid);
+	if (Pid != GetCurrentProcessId() || !IsWindowVisible(H) || GetWindow(H, GW_OWNER)) return TRUE;
+	GetWindowRect(H, &R);
+	if (R.right - R.left < 320) return TRUE;
+	GameWindow = H;
+	return FALSE;
+}
+
+static int SetBorderless(int On)
+{
+	MONITORINFO Mi = { sizeof(Mi) };
+	if (!GameWindow || !IsWindow(GameWindow)) { GameWindow = NULL; EnumWindows(FindWindowProc, 0); }
+	if (!GameWindow) { Note(L"borderless: no game window found"); return 0; }
+	if (On && !Borderless)
+	{
+		SavedStyle = GetWindowLongW(GameWindow, GWL_STYLE);
+		SavedExStyle = GetWindowLongW(GameWindow, GWL_EXSTYLE);
+		GetWindowRect(GameWindow, &SavedRect);
+		GetMonitorInfoW(MonitorFromWindow(GameWindow, MONITOR_DEFAULTTONEAREST), &Mi);
+		SetWindowLongW(GameWindow, GWL_STYLE, (SavedStyle & ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)) | WS_POPUP);
+		SetWindowLongW(GameWindow, GWL_EXSTYLE, SavedExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE));
+		SetWindowPos(GameWindow, HWND_TOP, Mi.rcMonitor.left, Mi.rcMonitor.top, Mi.rcMonitor.right - Mi.rcMonitor.left, Mi.rcMonitor.bottom - Mi.rcMonitor.top, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+		Borderless = 1;
+		Note(L"borderless on: %dx%d at %d,%d", Mi.rcMonitor.right - Mi.rcMonitor.left, Mi.rcMonitor.bottom - Mi.rcMonitor.top, Mi.rcMonitor.left, Mi.rcMonitor.top);
+	}
+	else if (!On && Borderless)
+	{
+		SetWindowLongW(GameWindow, GWL_STYLE, SavedStyle);
+		SetWindowLongW(GameWindow, GWL_EXSTYLE, SavedExStyle);
+		/* a window that was already screen-sized (the game remembers its last size) would
+		   come back larger than the screen: give it a normal centred window instead */
+		GetMonitorInfoW(MonitorFromWindow(GameWindow, MONITOR_DEFAULTTONEAREST), &Mi);
+		if (SavedRect.right - SavedRect.left >= Mi.rcMonitor.right - Mi.rcMonitor.left)
+		{
+			int W = (Mi.rcWork.right - Mi.rcWork.left) * 5 / 6, Ht = (Mi.rcWork.bottom - Mi.rcWork.top) * 5 / 6;
+			SavedRect.left = Mi.rcWork.left + (Mi.rcWork.right - Mi.rcWork.left - W) / 2;
+			SavedRect.top = Mi.rcWork.top + (Mi.rcWork.bottom - Mi.rcWork.top - Ht) / 2;
+			SavedRect.right = SavedRect.left + W;
+			SavedRect.bottom = SavedRect.top + Ht;
+		}
+		SetWindowPos(GameWindow, HWND_NOTOPMOST, SavedRect.left, SavedRect.top, SavedRect.right - SavedRect.left, SavedRect.bottom - SavedRect.top, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+		Borderless = 0;
+		Note(L"borderless off");
+	}
+	return 1;
+}
+
+/* ------------------------------------------------------------ commands */
+
+static int HandleCommand(const wchar_t* Cmd)
+{
+	if (!_wcsicmp(Cmd, L"Init")) return 1;
+	if (!_wcsnicmp(Cmd, L"Note:", 5)) { Note(L"%ls", Cmd + 5); return 1; }
+	if (!_wcsicmp(Cmd, L"BorderlessOn")) return SetBorderless(1);
+	if (!_wcsicmp(Cmd, L"BorderlessOff")) return SetBorderless(0);
+	if (!_wcsicmp(Cmd, L"IsBorderless")) return Borderless;
+	if (!_wcsnicmp(Cmd, L"Fits:", 5))
+	{
+		/* does WxH fit on the screen the game is on? */
+		MONITORINFO Mi = { sizeof(Mi) };
+		int W = 0, Ht = 0;
+		if (swscanf(Cmd + 5, L"%dx%d", &W, &Ht) != 2) return 0;
+		if (!GameWindow || !IsWindow(GameWindow)) { GameWindow = NULL; EnumWindows(FindWindowProc, 0); }
+		if (!GetMonitorInfoW(MonitorFromWindow(GameWindow, MONITOR_DEFAULTTOPRIMARY), &Mi)) return 0;
+		return W <= Mi.rcMonitor.right - Mi.rcMonitor.left && Ht <= Mi.rcMonitor.bottom - Mi.rcMonitor.top;
+	}
+	return 0;
+}
+
+static void* __cdecl HookSLO(void* Class, void* Outer, const wchar_t* Name, const wchar_t* File, DWORD Flags, void* Sandbox)
+{
+	if (Name && !Outer && !_wcsnicmp(Name, L"AdventNative.", 13))
+		return HandleCommand(Name + 13) ? Class : NULL;
+	return RealSLO(Class, Outer, Name, File, Flags, Sandbox);
+}
+
+/* Core's exports are jump thunks: point one at our function, keep the real one */
+static void* Redirect(HMODULE Core, const char* Name, void* To)
+{
+	BYTE* Thunk = (BYTE*)GetProcAddress(Core, Name);
+	void* Real;
+	DWORD Old;
+	if (!Thunk || Thunk[0] != 0xE9) return NULL;
+	Real = Thunk + 5 + *(LONG*)(Thunk + 1);
+	if (!VirtualProtect(Thunk, 5, PAGE_EXECUTE_READWRITE, &Old)) return NULL;
+	*(LONG*)(Thunk + 1) = (LONG)((BYTE*)To - (Thunk + 5));
+	VirtualProtect(Thunk, 5, Old, &Old);
+	FlushInstructionCache(GetCurrentProcess(), Thunk, 5);
+	return Real;
+}
+
+BOOL WINAPI DllMain(HINSTANCE H, DWORD Reason, LPVOID R)
+{
+	if (Reason == DLL_PROCESS_ATTACH)
+	{
+		HMODULE Core = GetModuleHandleW(L"Core.dll");
+		DisableThreadLibraryCalls(H);
+		if (Core && !RealSLO)
+		{
+			HMODULE Pin;
+			RealSLO = (StaticLoadObject_t)Redirect(Core, "?StaticLoadObject@UObject@@SAPAV1@PAVUClass@@PAV1@PBG2KPAVUPackageMap@@@Z", HookSLO);
+			/* the hook points into this DLL: never unload it */
+			GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)HookSLO, &Pin);
+			DeleteFileW(L"AdventNative.log");
+			Note(L"AdventNative loaded, hook %ls", RealSLO ? L"ready" : L"FAILED");
+		}
+	}
+	return TRUE;
+}
