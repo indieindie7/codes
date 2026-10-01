@@ -31,6 +31,8 @@ exec function Wardrobe(optional string Args)
 		PC.ClientSetBehindView(!PC.bBehindView);
 	else if (Cmd == "LIST")
 		WM.List(PC);
+	else if (Cmd == "MEASURE")
+		WM.StartMeasure(PC);
 	else if (Cmd == "BODY")
 		WM.SetBody(!WM.bFirstPersonBody, PC);
 	else if (Cmd == "OPENED" || Cmd == "CLOSED")
@@ -43,5 +45,5 @@ exec function Wardrobe(optional string Args)
 			PC.myHUD.PausedMessage = PC.myHUD.default.PausedMessage;
 	}
 	else
-		PC.ClientMessage("wardrobe wear NAME | next | prev | view | list | body   (F6: menu)");
+		PC.ClientMessage("wardrobe wear NAME | next | prev | view | list | body | measure   (F6: menu)");
 }

@@ -1,0 +1,23 @@
+# Ripper ammo: given alone (must bring its own rounds), fire, reload, alt fire
+background
+map HoverTest
+waitcontrol 180
+wait 2
+turn 30 -3 0.3
+give U2UTFlak.WeaponInvUTRipper
+wait 1
+status
+inv
+shot
+fire 1.0
+wait 0.5
+status
+console reload
+wait 3
+status
+shot
+altfire 0.2
+wait 1
+status
+shot
+quit

@@ -1,0 +1,66 @@
+//=============================================================================
+// BodyController - the game's player controller, plus your own body in first
+// person (WardrobeMutator makes the game use it when bFirstPersonBody is on).
+//
+// The engine never draws the "view actor" the camera belongs to; in first
+// person that's your character. Here the game works out its camera exactly as
+// always (the view target stays your character, so the first-person weapon and
+// everything else that checks "viewing self" behave as before) and only the view
+// actor handed to the renderer changes, to a hidden helper (FirstPersonBody), so
+// your character is drawn - with its head and arms hidden and the camera moved
+// to where its eyes are.
+//
+// The renderer also skips what the view actor owns, like the held weapon: with
+// the helper as view actor the weapon would be drawn in the world as well as on
+// top of the view, so it is hidden from the world while the body is shown (the
+// first-person drawing on top doesn't depend on that).
+//=============================================================================
+class BodyController extends U2PlayerNetTestController;
+
+var FirstPersonBody Body;
+var Weapon HiddenWeapon;         // the weapon hidden from the world (to give back)
+var bool bWeaponWasHidden;
+
+function HideWeapon(Weapon W)
+{
+	if (W == HiddenWeapon)
+		return;
+	ShowWeapon();
+	if (W == None)
+		return;
+	HiddenWeapon = W;
+	bWeaponWasHidden = W.bHidden;
+	W.bHidden = true;
+}
+
+function ShowWeapon()
+{
+	if (HiddenWeapon != None && !HiddenWeapon.bDeleteMe)
+		HiddenWeapon.bHidden = bWeaponWasHidden;
+	HiddenWeapon = None;
+}
+
+event PlayerCalcView(out Actor ViewActor, out vector CameraLocation, out rotator CameraRotation)
+{
+	Super.PlayerCalcView(ViewActor, CameraLocation, CameraRotation);
+	if (Body == None || Body.bDeleteMe)
+	{
+		ShowWeapon();
+		return;
+	}
+	if (ViewActor == Pawn && Pawn != None && !bBehindView && Pawn.Health > 0)
+	{
+		ViewActor = Body;
+		CameraLocation = Body.Show(Pawn, CameraLocation);
+		HideWeapon(Pawn.Weapon);
+	}
+	else
+	{
+		Body.Hide();
+		ShowWeapon();
+	}
+}
+
+defaultproperties
+{
+}

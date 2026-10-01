@@ -1,0 +1,7 @@
+# outfit height in cutscenes: TutA's opening and an Atlantis visit
+background
+map TutA
+wait 30
+shots 2
+wait 90
+quit

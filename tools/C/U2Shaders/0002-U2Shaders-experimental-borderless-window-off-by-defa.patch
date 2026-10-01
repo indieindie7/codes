@@ -1,0 +1,163 @@
+From 1497fc6fdea0f49250ff72707773cfc780a93f45 Mon Sep 17 00:00:00 2001
+From: indieindie7 <lonisquasar@gmail.com>
+Date: Thu, 1 Oct 2026 08:34:11 -0300
+Subject: [PATCH] U2Shaders: experimental borderless window (off by default)
+
+borderless=1 in System\U2Shaders.ini strips the game window's frame and
+covers its monitor from a background thread. Off by default: it caused
+intermittent runtime aborts; dgVoodoo's fake fullscreen is the working route.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ source/borderless.hpp     | 103 ++++++++++++++++++++++++++++++++++++++
+ source/d3d8to9_base.cpp   |   5 ++
+ source/d3d8to9_device.cpp |   1 +
+ 3 files changed, 109 insertions(+)
+ create mode 100644 source/borderless.hpp
+
+diff --git a/source/borderless.hpp b/source/borderless.hpp
+new file mode 100644
+index 0000000..1ea1ad6
+--- /dev/null
++++ b/source/borderless.hpp
+@@ -0,0 +1,103 @@
++/**
++ * Borderless window for Unreal II (U2Shaders fork).
++ *
++ * In windowed mode the game window loses its frame and covers its whole monitor,
++ * like a fullscreen game but without the mode switch. Unreal II follows a window
++ * resize by resizing its viewport, so the picture renders at the monitor's size.
++ *
++ * Done from a background thread with asynchronous window requests, checked every
++ * two seconds (the game restyles its window on resolution changes): the game
++ * rebuilds its renderer on a resize, which must not happen inside CreateDevice or
++ * Present (that crashed the game in UD3DRenderDevice::Present).
++ *
++ * Experimental, off by default (it caused intermittent runtime aborts; dgVoodoo's
++ * fake fullscreen is the working route): "borderless=1" in System\U2Shaders.ini
++ * turns it on.
++ */
++
++#pragma once
++
++#include <Windows.h>
++#include <string>
++
++namespace U2Borderless
++{
++	// shared state (function statics: the project builds as C++14, no inline variables)
++	inline HWND &Window() { static HWND W = nullptr; return W; }
++	inline int &Enabled() { static int E = -1; return E; }   // -1 = not read yet
++
++	inline bool IsEnabled()
++	{
++		if (Enabled() >= 0)
++			return Enabled() != 0;
++		Enabled() = 0;
++		char Path[MAX_PATH] = {};
++		HMODULE Self = nullptr;
++		GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
++			reinterpret_cast<LPCSTR>(&IsEnabled), &Self);
++		GetModuleFileNameA(Self, Path, MAX_PATH);
++		std::string Ini(Path);
++		Ini = Ini.substr(0, Ini.find_last_of("\\/") + 1) + "U2Shaders.ini";
++		FILE *F = nullptr;
++		if (!fopen_s(&F, Ini.c_str(), "r") && F)
++		{
++			char Line[256];
++			while (fgets(Line, sizeof(Line), F))
++				if (!_strnicmp(Line, "borderless=", 11))
++					Enabled() = atoi(Line + 11);
++			fclose(F);
++		}
++		return Enabled() != 0;
++	}
++
++	// strip the frame and cover the window's monitor (no-op when already so)
++	inline void Apply(HWND W)
++	{
++		if (W == nullptr || !IsWindow(W) || IsIconic(W))
++			return;                                 // gone, or minimised (alt-tab): leave it be
++		MONITORINFO M = { sizeof(M) };
++		if (!GetMonitorInfo(MonitorFromWindow(W, MONITOR_DEFAULTTONEAREST), &M))
++			return;
++		const RECT &R = M.rcMonitor;
++		const LONG Style = GetWindowLong(W, GWL_STYLE);
++		const LONG Want = (Style & ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_BORDER | WS_DLGFRAME)) | WS_POPUP;
++		const LONG Ex = GetWindowLong(W, GWL_EXSTYLE);
++		const LONG WantEx = Ex & ~(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME | WS_EX_STATICEDGE);
++		RECT Now = {};
++		GetWindowRect(W, &Now);
++		if (Style == Want && Ex == WantEx && EqualRect(&Now, &R))
++			return;
++		SetWindowLong(W, GWL_STYLE, Want);
++		SetWindowLong(W, GWL_EXSTYLE, WantEx);
++		SetWindowPos(W, HWND_TOP, R.left, R.top, R.right - R.left, R.bottom - R.top,
++			SWP_FRAMECHANGED | SWP_NOOWNERZORDER | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS);
++	}
++
++	inline DWORD WINAPI Watch(LPVOID)
++	{
++		Sleep(1500);                                // let the device settle first
++		for (;;)
++		{
++			const HWND W = Window();
++			if (W != nullptr && !IsWindow(W))
++				return 0;                           // the game's window is gone
++			Apply(W);
++			Sleep(2000);
++		}
++	}
++
++	// the device's window: remember it and start watching it (once)
++	inline void Remember(HWND W)
++	{
++		if (W == nullptr || !IsEnabled())
++			return;
++		const bool First = Window() == nullptr;
++		Window() = W;
++		if (First)
++		{
++			const HANDLE T = CreateThread(nullptr, 0, Watch, nullptr, 0, nullptr);
++			if (T)
++				CloseHandle(T);
++		}
++	}
++}
+diff --git a/source/d3d8to9_base.cpp b/source/d3d8to9_base.cpp
+index 997a523..180d04e 100644
+--- a/source/d3d8to9_base.cpp
++++ b/source/d3d8to9_base.cpp
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include "d3d8to9.hpp"
++#include "borderless.hpp"
+ 
+ static const D3DFORMAT AdapterFormats[] = {
+ 	D3DFMT_A8R8G8B8,
+@@ -191,5 +192,9 @@ HRESULT STDMETHODCALLTYPE Direct3D8::CreateDevice(UINT Adapter, D3DDEVTYPE Devic
+ 	// Set default vertex declaration
+ 	DeviceInterface->SetFVF(D3DFVF_XYZ);
+ 
++	// windowed: borderless, covering the monitor (U2Shaders.ini borderless=0 turns it off)
++	if (PresentParams.Windowed)
++		U2Borderless::Remember(PresentParams.hDeviceWindow != nullptr ? PresentParams.hDeviceWindow : hFocusWindow);
++
+ 	return D3D_OK;
+ }
+diff --git a/source/d3d8to9_device.cpp b/source/d3d8to9_device.cpp
+index dbb5e40..63a4a36 100644
+--- a/source/d3d8to9_device.cpp
++++ b/source/d3d8to9_device.cpp
+@@ -5,6 +5,7 @@
+ 
+ #include "d3dx9.hpp"
+ #include "d3d8to9.hpp"
++#include "borderless.hpp"
+ #include <regex>
+ #include <assert.h>
+ #include "u2shaders.hpp"
+-- 
+2.54.0.windows.1
+

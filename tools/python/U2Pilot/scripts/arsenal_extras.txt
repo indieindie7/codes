@@ -1,0 +1,30 @@
+background
+map HoverTest
+waitcontrol 180
+wait 2
+turn 30 -3 0.3
+give U2Weapons.weaponInvLaserRifle
+wait 1.5
+status
+shot
+fire 0.15
+wait 0.1
+shot
+wait 2
+give U2Weapons.weaponInvSkaarjGlove
+wait 1.5
+status
+shot
+fire 0.15
+wait 0.1
+shot
+wait 2
+give U2Weapons.weaponInvMindClaw
+wait 1.5
+status
+shot
+fire 0.15
+wait 0.1
+shot
+wait 2
+quit

@@ -62,23 +62,6 @@ Component=WardrobeItem03
 Component=WardrobeItem04
 Component=WardrobeItem05
 Component=WardrobeItem06
-Component=WardrobeItem07
-Component=WardrobeItem08
-Component=WardrobeItem09
-Component=WardrobeItem10
-Component=WardrobeItem11
-Component=WardrobeItem12
-Component=WardrobeItem13
-Component=WardrobeItem14
-Component=WardrobeItem15
-Component=WardrobeItem16
-Component=WardrobeItem17
-Component=WardrobeItem18
-Component=WardrobeItem19
-Component=WardrobeItem20
-Component=WardrobeItem21
-Component=WardrobeItem22
-Component=WardrobeItem23
 Component=WardrobePrev
 Component=WardrobeNext
 Component=WardrobeView
@@ -96,8 +79,8 @@ Color=255,255,255,192
 
 [WardrobeItem01]
 Class=Button
-Text=Dalton (off duty)
-Action=ConsoleCommand,wardrobe wear Dalton (off duty)
+Text=Malcolm (UT2004)
+Action=ConsoleCommand,wardrobe wear Malcolm (UT2004)
 Size=170,20
 Location=0,64
 Font=Engine.smallfont
@@ -107,8 +90,8 @@ Color=255,255,255,192
 
 [WardrobeItem02]
 Class=Button
-Text=Aida
-Action=ConsoleCommand,wardrobe wear Aida
+Text=Merc (UT2004)
+Action=ConsoleCommand,wardrobe wear Merc (UT2004)
 Size=170,20
 Location=0,88
 Font=Engine.smallfont
@@ -118,8 +101,8 @@ Color=255,255,255,192
 
 [WardrobeItem03]
 Class=Button
-Text=Isaak
-Action=ConsoleCommand,wardrobe wear Isaak
+Text=Merc woman (UT2004)
+Action=ConsoleCommand,wardrobe wear Merc woman (UT2004)
 Size=170,20
 Location=0,112
 Font=Engine.smallfont
@@ -129,8 +112,8 @@ Color=255,255,255,192
 
 [WardrobeItem04]
 Class=Button
-Text=Ne'Ban
-Action=ConsoleCommand,wardrobe wear Ne'Ban
+Text=Egyptian (UT2004)
+Action=ConsoleCommand,wardrobe wear Egyptian (UT2004)
 Size=170,20
 Location=0,136
 Font=Engine.smallfont
@@ -140,8 +123,8 @@ Color=255,255,255,192
 
 [WardrobeItem05]
 Class=Button
-Text=Hawkins
-Action=ConsoleCommand,wardrobe wear Hawkins
+Text=Necris (UT2004)
+Action=ConsoleCommand,wardrobe wear Necris (UT2004)
 Size=170,20
 Location=0,160
 Font=Engine.smallfont
@@ -151,197 +134,10 @@ Color=255,255,255,192
 
 [WardrobeItem06]
 Class=Button
-Text=Colonist
-Action=ConsoleCommand,wardrobe wear Colonist
-Size=170,20
-Location=0,184
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem07]
-Class=Button
-Text=Marine
-Action=ConsoleCommand,wardrobe wear Marine
-Size=170,20
-Location=0,208
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem08]
-Class=Button
-Text=Heavy Marine
-Action=ConsoleCommand,wardrobe wear Heavy Marine
-Size=170,20
-Location=0,232
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem09]
-Class=Button
-Text=Liandri Angel
-Action=ConsoleCommand,wardrobe wear Liandri Angel
-Size=170,20
-Location=180,40
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem10]
-Class=Button
-Text=Izanagi Heavy
-Action=ConsoleCommand,wardrobe wear Izanagi Heavy
-Size=170,20
-Location=180,64
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem11]
-Class=Button
-Text=Izanagi Scout
-Action=ConsoleCommand,wardrobe wear Izanagi Scout
-Size=170,20
-Location=180,88
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem12]
-Class=Button
-Text=Skaarj
-Action=ConsoleCommand,wardrobe wear Skaarj
-Size=170,20
-Location=180,112
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem13]
-Class=Button
-Text=Izarian
-Action=ConsoleCommand,wardrobe wear Izarian
-Size=170,20
-Location=180,136
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem14]
-Class=Button
-Text=Kai
-Action=ConsoleCommand,wardrobe wear Kai
-Size=170,20
-Location=180,160
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem15]
-Class=Button
-Text=Mutant
-Action=ConsoleCommand,wardrobe wear Mutant
-Size=170,20
-Location=180,184
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem16]
-Class=Button
-Text=Malcolm (UT2004)
-Action=ConsoleCommand,wardrobe wear Malcolm (UT2004)
-Size=170,20
-Location=180,208
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem17]
-Class=Button
-Text=Merc (UT2004)
-Action=ConsoleCommand,wardrobe wear Merc (UT2004)
-Size=170,20
-Location=180,232
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem18]
-Class=Button
-Text=Necris (UT2004)
-Action=ConsoleCommand,wardrobe wear Necris (UT2004)
-Size=170,20
-Location=360,40
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem19]
-Class=Button
-Text=Egyptian (UT2004)
-Action=ConsoleCommand,wardrobe wear Egyptian (UT2004)
-Size=170,20
-Location=360,64
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem20]
-Class=Button
-Text=Merc woman (UT2004)
-Action=ConsoleCommand,wardrobe wear Merc woman (UT2004)
-Size=170,20
-Location=360,88
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem21]
-Class=Button
-Text=Gen Mo'Kai (UT2004)
-Action=ConsoleCommand,wardrobe wear Gen Mo'Kai (UT2004)
-Size=170,20
-Location=360,112
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem22]
-Class=Button
-Text=Robot (UT2004)
-Action=ConsoleCommand,wardrobe wear Robot (UT2004)
-Size=170,20
-Location=360,136
-Font=Engine.smallfont
-UpImage=DarkGray
-DownImage=Gray
-Color=255,255,255,192
-
-[WardrobeItem23]
-Class=Button
 Text=Juggernaut (UT2004)
 Action=ConsoleCommand,wardrobe wear Juggernaut (UT2004)
 Size=170,20
-Location=360,160
+Location=0,184
 Font=Engine.smallfont
 UpImage=DarkGray
 DownImage=Gray

@@ -18,7 +18,30 @@ var config string Outfit;                 // label of the outfit worn ("" = the 
 var config array<string> Labels;          // what the menu shows
 var config array<string> Meshes;          // Golem mesh for each label, e.g. GlmMalcolmG.Malcolm
 
-var config bool bFirstPersonBody;      // see your own body in first person (FirstPersonBody)
+var config bool bFirstPersonBody;      // see your own body in first person (BodyController + FirstPersonBody)
+var config bool bMatchHeight;          // scale a new outfit to the height of the Dalton it replaces
+
+// measured heights of every model, standing, at DrawScale 1: the head and left
+// foot bones relative to the actor's drawn origin ("wardrobe measure" fills them)
+var config array<string> CalMeshes;
+var config array<float> CalHeads, CalFeet;
+var array<string> MeasureList;         // "wardrobe measure" in progress: models still to measure
+var int MeasureStep;
+var Pawn MeasurePawn;
+var Mesh MeasureOldMesh;
+var PlayerController MeasurePC;
+
+// a dressed character's original size, and whether its outfit has been fitted yet
+struct Fit
+{
+	var Pawn P;
+	var float Head, Foot;                // the original model's head and foot bone heights (world)
+	var float Scale;                     // its DrawScale
+	var vector PrePivot;
+	var Mesh Orig;                       // the model it replaced
+	var bool bFitted;
+};
+var array<Fit> Fits;
 
 var Mesh Wanted;
 
@@ -26,6 +49,13 @@ event PostBeginPlay()
 {
 	Super.PostBeginPlay();
 	LoadWanted();
+	// own body in first person: the game spawns players from this class (before
+	// anyone logs in, which comes after the mutators); only the game's usual
+	// controller is replaced, never another mod's
+	if (bFirstPersonBody && Level.Game != None && (Level.Game.PlayerControllerClass == None
+		|| Level.Game.PlayerControllerClass == class'U2PlayerNetTestController')
+		&& Level.Game.PlayerControllerClassName ~= "U2.U2PlayerNetTestController")
+		Level.Game.PlayerControllerClass = class'BodyController';
 	SetTimer(0.25, true);     // cutscene stand-ins are spawned mid-level
 }
 
@@ -71,21 +101,207 @@ function bool IsDalton(Pawn P, PlayerController PC)
 // textures over the new model), or give the game's own Dalton back
 function Dress(Pawn P)
 {
+	local int i;
+
 	if (P == None)
 		return;
+	i = FitIndex(P);
 	if (Wanted != None)
 	{
 		if (P.Mesh != Wanted)
 		{
+			// measure the model being replaced (only the game's own: an outfit
+			// change keeps the first measurement)
+			if (i < 0 && bMatchHeight)
+			{
+				i = Fits.Length;
+				Fits.Length = i + 1;
+				Fits[i].P = P;
+				Fits[i].Scale = P.DrawScale;
+				Fits[i].PrePivot = P.PrePivot;
+				Fits[i].Orig = P.Mesh;
+				if (!Measure(P, Fits[i].Head, Fits[i].Foot))
+					Fits[i].Head = -1;
+			}
+			else if (i >= 0)
+			{
+				P.SetDrawScale(Fits[i].Scale);
+				P.PrePivot = Fits[i].PrePivot;
+			}
+			if (i >= 0)
+				Fits[i].bFitted = false;
 			P.Mesh = Wanted;
 			P.Skins.Length = 0;
+			if (i >= 0 && FitMeasured(i))
+				Fits[i].bFitted = true;
 		}
+		else if (i >= 0 && !Fits[i].bFitted)
+			FitHeight(i);           // a tick later: the new model's bones are posed now
 	}
 	else if (P.Mesh != P.default.Mesh)
 	{
 		P.Mesh = P.default.Mesh;
 		P.Skins = P.default.Skins;
+		if (i >= 0)
+		{
+			P.SetDrawScale(Fits[i].Scale);
+			P.PrePivot = Fits[i].PrePivot;
+			Fits.Remove(i, 1);
+		}
 	}
+}
+
+function int FitIndex(Pawn P)
+{
+	local int i;
+
+	for (i = Fits.Length - 1; i >= 0; i--)
+		if (Fits[i].P == None || Fits[i].P.bDeleteMe)
+			Fits.Remove(i, 1);
+	for (i = 0; i < Fits.Length; i++)
+		if (Fits[i].P == P)
+			return i;
+	return -1;
+}
+
+// head and foot bone heights of P's current model (world space)
+function bool Measure(Pawn P, out float Head, out float Foot)
+{
+	local int H, F;
+
+	H = P.MeshGetNodeNamed("Merc Head");
+	F = P.MeshGetNodeNamed("Merc L Foot");
+	if (H == 0 || F == 0)
+		return false;
+	Head = P.MeshNodeGetTranslation(H, MESHNODEREL_World).Z;
+	Foot = P.MeshNodeGetTranslation(F, MESHNODEREL_World).Z;
+	return Head - Foot > 10;
+}
+
+// the measured head and foot of model M (per unit of DrawScale), if known
+function bool Measured(Mesh M, out float Head, out float Foot)
+{
+	local int i;
+	local string S;
+
+	S = string(M);
+	for (i = 0; i < CalMeshes.Length; i++)
+		if (CalMeshes[i] ~= S && i < CalHeads.Length && i < CalFeet.Length)
+		{
+			Head = CalHeads[i];
+			Foot = CalFeet[i];
+			return Head - Foot > 10;
+		}
+	return false;
+}
+
+// from the measurements: the new model exactly as tall as the Dalton it
+// replaced (head to foot, standing), its feet where his were. Doesn't depend on
+// the pose either is in at the moment (a cutscene can dress him mid-gesture).
+function bool FitMeasured(int i)
+{
+	local Pawn P;
+	local float H0, F0, H1, F1, S;
+
+	P = Fits[i].P;
+	if (!Measured(Fits[i].Orig, H0, F0) || !Measured(P.Mesh, H1, F1))
+		return false;
+	S = Fits[i].Scale * (H0 - F0) / (H1 - F1);
+	P.SetDrawScale(S);
+	P.PrePivot = Fits[i].PrePivot + vect(0,0,1) * (Fits[i].Scale * F0 - S * F1);
+	Log("U2Wardrobe: fitted "$P.Name$" ("$Fits[i].Orig$" -> "$P.Mesh$") scale "$Fits[i].Scale$" -> "$S);
+	return true;
+}
+
+// "wardrobe measure": put each model on the player in turn (seen from behind,
+// so it is drawn and its bones posed), standing still, and record its height
+function StartMeasure(PlayerController PC)
+{
+	local int i;
+
+	if (PC.Pawn == None)
+		return;
+	MeasureList.Length = 0;
+	MeasureList[0] = "GlmCharactersG.PlayerGame";
+	MeasureList[1] = "GlmCharactersG.PlayerAtlantis";
+	for (i = 1; i < Meshes.Length; i++)
+		MeasureList[MeasureList.Length] = Meshes[i];
+	MeasurePC = PC;
+	MeasurePawn = PC.Pawn;
+	MeasureOldMesh = PC.Pawn.Mesh;
+	MeasureStep = 0;
+	PC.ClientSetBehindView(true);
+	PC.ClientMessage("wardrobe: measuring "$MeasureList.Length$" models, stand still");
+}
+
+function MeasureTick()
+{
+	local Pawn P;
+	local int k, j;
+	local float Head, Foot, S, Z;
+	local Mesh M;
+
+	P = MeasurePawn;
+	if (P == None || P.bDeleteMe)
+	{
+		MeasureList.Length = 0;
+		return;
+	}
+	k = MeasureStep / 3;              // 3 timer steps per model: put on, wait, measure
+	if (k >= MeasureList.Length)
+	{
+		MeasureList.Length = 0;
+		P.Mesh = MeasureOldMesh;
+		Fits.Length = 0;
+		SaveConfig();
+		MeasurePC.ClientSetBehindView(false);
+		MeasurePC.ClientMessage("wardrobe: measured, saved to U2Wardrobe.ini");
+		return;
+	}
+	if (MeasureStep % 3 == 0)
+	{
+		M = Mesh(DynamicLoadObject(MeasureList[k], class'Mesh', true));
+		if (M != None)
+			P.Mesh = M;
+	}
+	else if (MeasureStep % 3 == 2 && string(P.Mesh) ~= MeasureList[k] && Measure(P, Head, Foot))
+	{
+		S = P.DrawScale;
+		Z = P.Location.Z + P.PrePivot.Z;
+		for (j = 0; j < CalMeshes.Length; j++)
+			if (CalMeshes[j] ~= MeasureList[k])
+				break;
+		CalMeshes[j] = MeasureList[k];
+		CalHeads[j] = (Head - Z) / S;
+		CalFeet[j] = (Foot - Z) / S;
+		Log("U2Wardrobe: measured "$MeasureList[k]$" head "$CalHeads[j]$" foot "$CalFeet[j]
+			$" height "$(CalHeads[j] - CalFeet[j])$" (scale "$S$", collision "$P.CollisionHeight$")");
+	}
+	else if (MeasureStep % 3 == 2)
+		Log("U2Wardrobe: can't measure "$MeasureList[k]);
+	MeasureStep++;
+}
+
+// scale the outfit so its head stands where the replaced model's did, feet
+// kept on the same spot: the cutscene cameras are framed for Dalton's head
+// (on the Atlantis he is a taller stand-in than the player character)
+function FitHeight(int i)
+{
+	local Pawn P;
+	local float Head, Foot, R, NewFoot;
+
+	Fits[i].bFitted = true;
+	P = Fits[i].P;
+	if (Fits[i].Head < 0 || !Measure(P, Head, Foot))
+		return;
+	R = FClamp((Fits[i].Head - Fits[i].Foot) / (Head - Foot), 0.8, 1.5);
+	if (Abs(R - 1.0) < 0.03)
+		return;
+	// scaling is about the actor's origin: put the feet back where they were
+	NewFoot = P.Location.Z + (Foot - P.Location.Z) * R;
+	P.SetDrawScale(Fits[i].Scale * R);
+	P.PrePivot = Fits[i].PrePivot + vect(0,0,1) * (Fits[i].Foot - NewFoot);
+	Log("U2Wardrobe: fitted "$P.Name$" x"$R);
 }
 
 function DressAll(PlayerController PC)
@@ -132,26 +348,25 @@ function Step(int Dir, PlayerController PC)
 
 function SetBody(bool bOn, PlayerController PC)
 {
-	local FirstPersonBody B;
-
 	bFirstPersonBody = bOn;
 	SaveConfig();
-	if (!bOn)
-		foreach DynamicActors(class'FirstPersonBody', B)
-			B.Destroy();
-	PC.ClientMessage("first-person body: "$bOn);
+	if (BodyController(PC) != None)
+	{
+		if (!bOn && BodyController(PC).Body != None)
+			BodyController(PC).Body.Destroy();
+		PC.ClientMessage("first-person body: "$bOn);
+	}
+	else
+		PC.ClientMessage("first-person body: "$bOn$" (from the next level)");
 }
 
 function GiveBody(PlayerController PC)
 {
-	local FirstPersonBody B;
+	local BodyController B;
 
-	foreach DynamicActors(class'FirstPersonBody', B)
-		if (B.PC == PC)
-			return;
-	B = Spawn(class'FirstPersonBody', PC);     // owned by the controller: ticks after it (no aim lag)
-	if (B != None)
-		B.Start(PC);
+	B = BodyController(PC);
+	if (B != None && (B.Body == None || B.Body.bDeleteMe))
+		B.Body = Spawn(class'FirstPersonBody', PC);
 }
 
 function List(PlayerController PC)
@@ -170,6 +385,11 @@ event Timer()
 	local int i;
 	local bool bHas;
 
+	if (MeasureList.Length > 0)
+	{
+		MeasureTick();
+		return;
+	}
 	for (C = Level.ControllerList; C != None; C = C.NextController)
 	{
 		PC = PlayerController(C);
@@ -196,6 +416,32 @@ defaultproperties
 {
 	RemoteRole=ROLE_None
 	bFirstPersonBody=True
+	bMatchHeight=True
+	// measured with "wardrobe measure" (standing, DrawScale 1)
+	CalMeshes(0)="GlmCharactersG.PlayerGame"
+	CalHeads(0)=45.405
+	CalFeet(0)=-47.150
+	CalMeshes(1)="GlmCharactersG.PlayerAtlantis"
+	CalHeads(1)=65.939
+	CalFeet(1)=-59.668
+	CalMeshes(2)="GlmMalcolmG.Malcolm"
+	CalHeads(2)=44.314
+	CalFeet(2)=-42.666
+	CalMeshes(3)="GlmMercMaleAG.MercMaleA"
+	CalHeads(3)=45.101
+	CalFeet(3)=-42.347
+	CalMeshes(4)="GlmMercFemaleAG.MercFemaleA"
+	CalHeads(4)=42.299
+	CalFeet(4)=-42.303
+	CalMeshes(5)="GlmEgyptMaleAG.EgyptMaleA"
+	CalHeads(5)=43.676
+	CalFeet(5)=-42.028
+	CalMeshes(6)="GlmNightMaleAG.NightMaleA"
+	CalHeads(6)=42.410
+	CalFeet(6)=-42.168
+	CalMeshes(7)="GlmJuggMaleAG.JuggMaleA"
+	CalHeads(7)=42.915
+	CalFeet(7)=-37.867
 	// OUTFITS-BEGIN (generated by make_wardrobe_ui.py)
 	Labels(0)="Dalton"
 	Meshes(0)="GlmCharactersG.PlayerGame"

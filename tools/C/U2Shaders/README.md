@@ -5,6 +5,7 @@ A fork of [crosire/d3d8to9](https://github.com/crosire/d3d8to9) (BSD 2-clause, s
 
 - `0001-...patch`: the fork as one commit on top of d3d8to9 `255338f` (apply with `git am`).
 - `u2shaders.hpp`: the new code (also in the patch).
+- `0002-...patch`: optional experimental borderless window (`borderless.hpp`, off by default; `borderless=1` in U2Shaders.ini). Apply after 0001.
 - `shaders/`: the HLSL files (installed to `<game>\System\U2Shaders\`):
   - `core.hlsl`: the Liandri heavy's translucent core (plasma noise after Inigo Quilez, MIT; rim glow; refraction).
   - `pcss_map.hlsl` / `pcss_proj.hlsl`: contact-hardening character shadows (PCSS, after NVIDIA /

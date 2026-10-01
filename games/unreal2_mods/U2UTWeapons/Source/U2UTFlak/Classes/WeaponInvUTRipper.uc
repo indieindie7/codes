@@ -129,10 +129,43 @@ simulated event Tick(float DeltaTime)
 {
 	Super.Tick(DeltaTime);
 	TickRipAnim(DeltaTime);
-	// the Ripper takes over the rifle's ammo (PickupAmmoCount=0, so the engine
-	// never links any): hook it up to the Assault Rifle rounds being carried
-	if (AmmoType == None && Pawn(Owner) != None)
-		AmmoType = Ammunition(Pawn(Owner).FindInventoryType(AmmoName));
+	LinkAmmo();
+}
+
+// the Ripper takes over the rifle's ammo (PickupAmmoCount=0, so the engine
+// never links any): hook it up to the Assault Rifle rounds being carried. With
+// none carried (the Ripper given on its own) it brings a rifle's worth itself,
+// else it showed 000 and reloading hit a None
+simulated function LinkAmmo()
+{
+	if (AmmoType != None && !AmmoType.bDeleteMe || Pawn(Owner) == None)
+		return;
+	AmmoType = Ammunition(Pawn(Owner).FindInventoryType(AmmoName));
+	if (AmmoType == None && Role == ROLE_Authority)
+	{
+		PickupAmmoCount = class'weaponInvAssaultRifle'.default.PickupAmmoCount;
+		GiveAmmo(Pawn(Owner));
+		PickupAmmoCount = 0;
+	}
+}
+
+function GiveTo(Pawn Other, optional bool bDontTryToSwitch)
+{
+	Super.GiveTo(Other, bDontTryToSwitch);
+	LinkAmmo();
+}
+
+simulated function bool HasAnyAmmo()
+{
+	LinkAmmo();
+	return Super.HasAnyAmmo();
+}
+
+simulated function Reload()
+{
+	LinkAmmo();
+	if (AmmoType != None)
+		Super.Reload();
 }
 
 // a disc costs 3 rounds (the rifle's own alt fire cost 5)
