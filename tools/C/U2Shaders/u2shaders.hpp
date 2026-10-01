@@ -113,6 +113,8 @@ public:
 				;
 			else if (sscanf_s(Line, " pcssdebug=%f", &PcssDebug) == 1)
 				;
+			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
+				;
 			else if (sscanf_s(Line, " tint=%x", &Hash) == 1)
 			{
 				U2Rule R;
@@ -128,8 +130,8 @@ public:
 			}
 		}
 		fclose(F);
-		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g)", (int)Log, (unsigned)Rules.size(), (int)Pcss,
-			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3]);
+		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (int)Pcss,
+			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3], ShadowTint[0], ShadowTint[1], ShadowTint[2]);
 		if (Log)
 		{
 			CreateDirectoryA((Dir + "U2Shaders").c_str(), nullptr);
@@ -438,10 +440,12 @@ public:
 	//                    between them and the ground, filters, and applies the two fades
 	// The engine's own shadow blur must be off (WinDrv BlurShadows=False): it would mix the
 	// stored distances. pcssparams=A B C D goes to c2 (search radius, min radius, radius per
-	// unit of gap, max radius; UV units).
+	// unit of gap, max radius; UV units). shadowtint=R G B goes to c5: how strongly the
+	// projector darkens each channel (1 1 1 = the engine's grey; lower blue = bluer shadows).
 	bool Pcss = false;
 	U2Rule MapRule, ProjRule;
 	float PcssParams[4] = { 0.05f, 0.004f, 0.0006f, 0.06f };
+	float ShadowTint[4] = { 1, 1, 1, 1 };   // w = 1 tells pcss_proj.hlsl the tint is set
 	float PcssDebug = 0;          // pcssdebug=1: colour the shadows by the measured gap
 	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector
 	DWORD OldCWE = 0;
@@ -713,6 +717,8 @@ public:
 		}
 		Dev->SetPixelShaderConstantF(0, c[0], 4);
 		Dev->SetPixelShaderConstantF(4, zrow, 1);
+		if (proj)
+			Dev->SetPixelShaderConstantF(5, ShadowTint, 1);   // restored with c0-c7 in End()
 		if (!map)
 		{
 			// camera-space position on TEXCOORD3 for the receiver depth

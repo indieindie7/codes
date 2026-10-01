@@ -1,4 +1,4 @@
-From d294a7321617d91e0dd8527085737472af13a4ca Mon Sep 17 00:00:00 2001
+From be1bf3fdb26b321c9eab6e63515229860ed7055f Mon Sep 17 00:00:00 2001
 From: indieindie7 <lonisquasar@gmail.com>
 Date: Wed, 30 Sep 2026 23:10:11 -0300
 Subject: [PATCH] U2Shaders: per-draw HLSL shaders and contact-hardening
@@ -14,12 +14,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  shaders/core.hlsl          |  67 +++
  shaders/debug.hlsl         |   8 +
  shaders/pcss_map.hlsl      |  17 +
- shaders/pcss_proj.hlsl     |  87 ++++
+ shaders/pcss_proj.hlsl     |  92 ++++
  source/d3d8to9.hpp         |   6 +
  source/d3d8to9_device.cpp  |  35 ++
  source/d3d8to9_texture.cpp |   2 +
- source/u2shaders.hpp       | 942 +++++++++++++++++++++++++++++++++++++
- 8 files changed, 1164 insertions(+)
+ source/u2shaders.hpp       | 948 +++++++++++++++++++++++++++++++++++++
+ 8 files changed, 1175 insertions(+)
  create mode 100644 shaders/core.hlsl
  create mode 100644 shaders/debug.hlsl
  create mode 100644 shaders/pcss_map.hlsl
@@ -138,10 +138,10 @@ index 0000000..84e199a
 +}
 diff --git a/shaders/pcss_proj.hlsl b/shaders/pcss_proj.hlsl
 new file mode 100644
-index 0000000..6e57e26
+index 0000000..cc39274
 --- /dev/null
 +++ b/shaders/pcss_proj.hlsl
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,92 @@
 +// Shadow projector pass with contact hardening (percentage-closer soft shadows).
 +// Sharp where the body meets the ground, softer the farther the shadowing part is from it.
 +//
@@ -167,6 +167,7 @@ index 0000000..6e57e26
 +float4 P     : register(c2);    // search radius, min radius, radius per unit of gap, max radius (UV)
 +float4 Texel : register(c3);    // 1/width, 1/height of the shadow map
 +float4 Zrow  : register(c4);    // camera space -> world height
++float4 Tint  : register(c5);    // how strongly each channel darkens (shadowtint=, 1 1 1 = grey)
 +
 +#define SEARCH_TAPS 12
 +#define LIT 0.9                 // sharp-map alpha above this: no blocker
@@ -215,7 +216,11 @@ index 0000000..6e57e26
 +		lit += tex2D(Sharp, uv + Tap(j, SEARCH_TAPS, cs2) * (radius * 0.6)).a;
 +	}
 +	lit /= 2 * SEARCH_TAPS;
-+	float3 col = blockers > 0 ? 0.502 * lit : TF.rgb;
++	// the shadow darkens each channel by its tint weight: 1 1 1 is the engine's grey, a lower
++	// blue weight leaves more blue in the shadow (cool fill light). Tint.w is 1 only from a
++	// d3d8.dll that sets c5; an older one leaves it 0, and the shadow stays grey
++	float3 weight = Tint.w > 0.5 ? Tint.rgb : 1;
++	float3 col = blockers > 0 ? 0.502 * saturate(1 - (1 - lit) * weight) : TF.rgb;
 +
 +	// debug views (pcssdebug=N): 1 gap as colour (red touching .. blue 128 units up)
 +	if (Info.y > 0.5 && Info.y < 1.5 && blockers > 0)
@@ -386,10 +391,10 @@ index 6b87e59..7d9af6e 100644
  HRESULT STDMETHODCALLTYPE Direct3DTexture8::QueryInterface(REFIID riid, void **ppvObj)
 diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
 new file mode 100644
-index 0000000..973bae8
+index 0000000..6fda51a
 --- /dev/null
 +++ b/source/u2shaders.hpp
-@@ -0,0 +1,942 @@
+@@ -0,0 +1,948 @@
 +/**
 + * U2Shaders - replace the fixed-function look of chosen surfaces with HLSL pixel shaders.
 + *
@@ -505,6 +510,8 @@ index 0000000..973bae8
 +				;
 +			else if (sscanf_s(Line, " pcssdebug=%f", &PcssDebug) == 1)
 +				;
++			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
++				;
 +			else if (sscanf_s(Line, " tint=%x", &Hash) == 1)
 +			{
 +				U2Rule R;
@@ -520,8 +527,8 @@ index 0000000..973bae8
 +			}
 +		}
 +		fclose(F);
-+		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g)", (int)Log, (unsigned)Rules.size(), (int)Pcss,
-+			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3]);
++		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (int)Pcss,
++			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3], ShadowTint[0], ShadowTint[1], ShadowTint[2]);
 +		if (Log)
 +		{
 +			CreateDirectoryA((Dir + "U2Shaders").c_str(), nullptr);
@@ -830,10 +837,12 @@ index 0000000..973bae8
 +	//                    between them and the ground, filters, and applies the two fades
 +	// The engine's own shadow blur must be off (WinDrv BlurShadows=False): it would mix the
 +	// stored distances. pcssparams=A B C D goes to c2 (search radius, min radius, radius per
-+	// unit of gap, max radius; UV units).
++	// unit of gap, max radius; UV units). shadowtint=R G B goes to c5: how strongly the
++	// projector darkens each channel (1 1 1 = the engine's grey; lower blue = bluer shadows).
 +	bool Pcss = false;
 +	U2Rule MapRule, ProjRule;
 +	float PcssParams[4] = { 0.05f, 0.004f, 0.0006f, 0.06f };
++	float ShadowTint[4] = { 1, 1, 1, 1 };   // w = 1 tells pcss_proj.hlsl the tint is set
 +	float PcssDebug = 0;          // pcssdebug=1: colour the shadows by the measured gap
 +	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector
 +	DWORD OldCWE = 0;
@@ -1105,6 +1114,8 @@ index 0000000..973bae8
 +		}
 +		Dev->SetPixelShaderConstantF(0, c[0], 4);
 +		Dev->SetPixelShaderConstantF(4, zrow, 1);
++		if (proj)
++			Dev->SetPixelShaderConstantF(5, ShadowTint, 1);   // restored with c0-c7 in End()
 +		if (!map)
 +		{
 +			// camera-space position on TEXCOORD3 for the receiver depth
@@ -1333,5 +1344,5 @@ index 0000000..973bae8
 +	bool WasFixedFunction = false;
 +};
 -- 
-2.54.0.windows.1
+2.43.0
 

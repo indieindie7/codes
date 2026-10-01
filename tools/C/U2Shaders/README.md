@@ -19,6 +19,14 @@ Game `System` folder: this `d3d8.dll` + dgVoodoo 2's `D3D9.dll` (as `d3d9.dll`),
     pcss=1
     shader=cfdd1328 core.hlsl
 
+Optional, with `pcss=1`: `shadowtint=R G B` sets how strongly the shadow darkens each colour
+channel. `1 1 1` (default) is the engine's grey; lowering blue gives cool, bluish shadows, e.g.
+
+    shadowtint=1.1 1.0 0.75
+
+Needs a `d3d8.dll` built from this source (the one in this folder predates it). With an older
+dll the new `pcss_proj.hlsl` still works and draws grey shadows.
+
 ## How Unreal II's character shadows work (what the PCSS hooks)
 
 1. The silhouette is drawn into a sharp render target A (flat colour 128, shadow in **alpha**).
