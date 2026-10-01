@@ -50,6 +50,21 @@ decals work (their projected coordinates are kept). To find a decal's hash, run 
 shoot a wall, and look in `U2Shaders\dump\` (each alpha-blended texture is saved as
 `<hash>_<w>x<h>.dds`). Needs `ps_2_a` (ddx/ddy).
 
+Parallax walls and floors: `surface=<hash> world_parallax.hlsl` gives a solid level surface
+depth the same way: mortar, tile gaps, panel seams and grates look recessed when seen at an
+angle. The texture's brightness is its height (dark = deep), so use it on textures whose dark
+parts are gaps, not on ones whose dark parts are just colour (signs, dirt). The fork measures
+each texture once (its typical brightness = the surface, its darkest few percent = the bottom;
+`U2Shaders.log`: "surface <hash>: brightness levels ..."), so there is nothing to tune per
+texture; `DEPTH` in the shader sets how deep, in world units, and the effect fades out with
+distance (`FADE_START`/`FADE_END`), where it would only shimmer. A pixel shader replaces the
+texture stages, so the shader redoes them: the texture, times the vertex lighting, times the
+lightmap on stage 1. Other stage setups are drawn as before and logged once ("stage setup not
+supported", with the setup: send me that line). It only works if the surface's own texture is
+on stage 0; if Unreal II puts the lightmap there, the rule never matches. To find a wall's
+hash, run with `charprobe=1`: every texture of a solid on-screen draw is saved in
+`U2Shaders\dump\`, and `chars.txt` lists how each was drawn.
+
 Probe, logging only: `charprobe=1` records how every opaque on-screen draw is lit (fixed-function
 lighting, lights, material, ambient, vertex blending, texture stages) and whether shadow
 silhouettes were drawn earlier in the frame, in `System\U2Shaders\dump\chars.txt`, and saves each
@@ -75,12 +90,13 @@ Build: `MSBuild d3d8to9.vcxproj -p:Configuration=Release -p:Platform=Win32 -p:Pl
 Or without Visual Studio: `./build-mingw.sh` (Linux/WSL with `g++-mingw-w64-i686`) clones
 d3d8to9, applies the patch and builds `build/d3d8.dll`, standalone (no VC++ runtime needed).
 `d3d8-mingw.dll` in this folder is that build of the current source (shadow tint, probes,
-decal rule, post-processing). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
+decal rule, post-processing, parallax walls). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
 is the older MSVC build that has been. To try it, install it as `d3d8.dll`.
 
 `test/run.sh` runs the built DLL outside the game under 32-bit Wine with a virtual display:
 a small Direct3D 8 program (`test/probe_test.cpp`) draws a shadow silhouette, a lit textured
-wall and a bullet-hole decal, so the probes log and the decal rule compiles and draws. It
+wall and a bullet-hole decal, so the probes log and the decal rule compiles and draws, then
+post-processing, then a lightmapped brick wall with and without `surface=`. It
 proves the code runs, not that it looks right in Unreal II (Wine's d3d9 is not dgVoodoo).
 
 ## Checking shaders without the game

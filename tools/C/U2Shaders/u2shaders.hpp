@@ -12,6 +12,12 @@
  *                                 the same, but the draw keeps its own blending (no frame
  *                                 copy in s1): the shader returns what the texture would
  *                                 have, so overlapping decals still layer
+ *     surface=1a2b3c4d world_parallax.hlsl
+ *                                 a solid surface (wall, floor) drawn with parallax: the
+ *                                 shader redoes the texture stages (texture x vertex colour
+ *                                 x lightmap in s1, see SurfaceBegin); the lightmap and the
+ *                                 texture's panning are left as they are. c2 = how the stages
+ *                                 combine, c3 = the texture's brightness levels
  *     post=1                      bloom, sharpening and colour grading before the HUD
  *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
  *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
@@ -57,6 +63,9 @@ struct U2Rule
 	DWORD Hash = 0;
 	std::string File;          // empty = the built-in tint
 	bool KeepBlend = false;    // decal=: the draw keeps its own blending, no frame copy
+	bool Surface = false;      // surface=: solid draws only, see SurfaceBegin
+	bool Refused = false;      // surface=: an unsupported stage setup was logged once
+	float Levels[4] = {};      // surface=: the texture's brightness levels (see TextureLevels)
 	IDirect3DPixelShader9 *PS = nullptr;
 	bool Tried = false;
 };
@@ -164,6 +173,14 @@ public:
 				R.Hash = Hash;
 				R.File = Name;
 				R.KeepBlend = true;
+				Rules.push_back(R);
+			}
+			else if (sscanf_s(Line, " surface=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
+			{
+				U2Rule R;
+				R.Hash = Hash;
+				R.File = Name;
+				R.Surface = true;
 				Rules.push_back(R);
 			}
 		}
@@ -422,6 +439,8 @@ public:
 				Rule = &R;
 		if (Rule == nullptr)
 			return false;
+		if (Rule->Surface)
+			return SurfaceBegin(Dev, *Rule, FixedFunction);
 		// only the see-through parts: an atlas is often shared with solid ones
 		DWORD Blending = 0;
 		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blending);
@@ -508,7 +527,7 @@ public:
 	float PcssParams[4] = { 0.05f, 0.004f, 0.0006f, 0.06f };
 	float ShadowTint[4] = { 1, 1, 1, 1 };   // w = 1 tells pcss_proj.hlsl the tint is set
 	float PcssDebug = 0;          // pcssdebug=1: colour the shadows by the measured gap
-	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector
+	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector, 5 solid surface
 	DWORD OldCWE = 0;
 	std::map<void *, D3DMATRIX> MapViews;   // shadow-map surface -> the light's view it was drawn with
 	IDirect3DSurface9 *MapTarget = nullptr; // the shadow map drawn last (compared only, not referenced)
@@ -818,8 +837,162 @@ public:
 		return true;
 	}
 
+	// surface=: a solid world surface drawn with parallax (world_parallax.hlsl). A pixel shader
+	// replaces all the texture stages, so the shader redoes what they did; only the usual setups
+	// are taken (stage 0: the texture, alone or times the vertex colour; stage 1: nothing, or a
+	// second texture such as the lightmap times the result), as c2 = (vertex colour factor,
+	// stage 1 factor; 0 = not used). Anything else is drawn as before and noted once in the log.
+	// Stages 0 and 1 keep their own coordinates and transforms (panning, the lightmap's
+	// mapping); stage 2's coordinates carry the camera-space position (TEXCOORD2).
+	static float ModulateFactor(DWORD Op)
+	{
+		return Op == D3DTOP_MODULATE ? 1.0f : Op == D3DTOP_MODULATE2X ? 2.0f : Op == D3DTOP_MODULATE4X ? 4.0f : 0.0f;
+	}
+	static bool ArgsAre(DWORD A1, DWORD A2, DWORD X, DWORD Y)
+	{
+		return (A1 == X && A2 == Y) || (A1 == Y && A2 == X);   // no modifiers (complement, alpha replicate)
+	}
+	// The brightness a surface's texture mostly has (its median: taken as the surface itself) and
+	// its darkest few percent (the bottom of its gaps), so world_parallax.hlsl needs no tuning per
+	// texture. Read once from the top mip: 32-bit textures per pixel, DXT per block (the mean of
+	// its two end colours). Other formats: false, and the shader uses its own settings.
+	bool TextureLevels(IDirect3DTexture9 *Tex, float &Flat, float &Deep)
+	{
+		D3DSURFACE_DESC Desc;
+		D3DLOCKED_RECT Lock;
+		if (FAILED(Tex->GetLevelDesc(0, &Desc)))
+			return false;
+		const bool Dxt1 = Desc.Format == D3DFMT_DXT1;
+		const bool Dxt = Dxt1 || Desc.Format == D3DFMT_DXT2 || Desc.Format == D3DFMT_DXT3 || Desc.Format == D3DFMT_DXT4 || Desc.Format == D3DFMT_DXT5;
+		if (!(Desc.Format == D3DFMT_A8R8G8B8 || Desc.Format == D3DFMT_X8R8G8B8 || Dxt) || FAILED(Tex->LockRect(0, &Lock, nullptr, D3DLOCK_READONLY)))
+			return false;
+		unsigned Hist[256] = {}, Count = 0;
+		auto Add = [&](unsigned r, unsigned g, unsigned b) { Hist[(r * 77 + g * 151 + b * 29) >> 8]++; Count++; };
+		const BYTE *Bits = static_cast<const BYTE *>(Lock.pBits);
+		if (Dxt)
+		{
+			const UINT Bw = (std::max)(1u, Desc.Width / 4), Bh = (std::max)(1u, Desc.Height / 4), Size = Dxt1 ? 8 : 16;
+			for (UINT y = 0; y < Bh; y++)
+				for (UINT x = 0; x < Bw; x++)
+				{
+					const BYTE *B = Bits + y * Lock.Pitch + x * Size + (Dxt1 ? 0 : 8);
+					const unsigned c0 = B[0] | (B[1] << 8), c1 = B[2] | (B[3] << 8);
+					Add((((c0 >> 11) & 31) + ((c1 >> 11) & 31)) * 255 / 62, (((c0 >> 5) & 63) + ((c1 >> 5) & 63)) * 255 / 126,
+						((c0 & 31) + (c1 & 31)) * 255 / 62);
+				}
+		}
+		else
+			for (UINT y = 0; y < Desc.Height; y++)
+				for (UINT x = 0; x < Desc.Width; x++)
+				{
+					const BYTE *P = Bits + y * Lock.Pitch + x * 4;
+					Add(P[2], P[1], P[0]);
+				}
+		Tex->UnlockRect(0);
+		if (Count == 0)
+			return false;
+		int DeepAt = -1, FlatAt = -1;
+		for (unsigned i = 0, Sum = 0; i < 256; i++)
+		{
+			Sum += Hist[i];
+			if (DeepAt < 0 && Sum * 100 >= Count * 4)
+				DeepAt = i;
+			if (FlatAt < 0 && Sum * 2 >= Count)
+				FlatAt = i;
+		}
+		// a low-contrast texture gets little depth, not its small differences stretched to full depth
+		Flat = (FlatAt + 0.5f) / 255;
+		Deep = (std::min)((DeepAt + 0.5f) / 255, Flat - 0.15f);
+		return true;
+	}
+
+	bool SurfaceBegin(IDirect3DDevice9 *Dev, U2Rule &R, bool FixedFunction)
+	{
+		DWORD Blending = 0;
+		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blending);
+		if (Blending || !FixedFunction || Offscreen(Dev))
+			return false;
+		DWORD op[3] = {}, a1[3] = {}, a2[3] = {};
+		for (DWORD st = 0; st < 3; st++)
+		{
+			Dev->GetTextureStageState(st, D3DTSS_COLOROP, &op[st]);
+			Dev->GetTextureStageState(st, D3DTSS_COLORARG1, &a1[st]);
+			Dev->GetTextureStageState(st, D3DTSS_COLORARG2, &a2[st]);
+		}
+		float Vert = -1, Second = -1;
+		if (op[0] == D3DTOP_SELECTARG1 && a1[0] == D3DTA_TEXTURE)
+			Vert = 0;
+		else if (ModulateFactor(op[0]) > 0 && (ArgsAre(a1[0], a2[0], D3DTA_TEXTURE, D3DTA_DIFFUSE) || ArgsAre(a1[0], a2[0], D3DTA_TEXTURE, D3DTA_CURRENT)))
+			Vert = ModulateFactor(op[0]);    // on stage 0, CURRENT is the vertex colour
+		if (op[1] == D3DTOP_DISABLE)
+			Second = 0;
+		else if (ModulateFactor(op[1]) > 0 && ArgsAre(a1[1], a2[1], D3DTA_TEXTURE, D3DTA_CURRENT) && op[2] == D3DTOP_DISABLE)
+			Second = ModulateFactor(op[1]);
+		if (Vert < 0 || Second < 0)
+		{
+			if (!R.Refused)
+				Message("surface %08x: stage setup not supported, drawn as before (st0 op %u %x %x | st1 op %u %x %x | st2 op %u)",
+					R.Hash, op[0], a1[0], a2[0], op[1], a1[1], a2[1], op[2]);
+			R.Refused = true;
+			return false;
+		}
+		const bool First = !R.Tried;
+		IDirect3DPixelShader9 *PS = Compile(Dev, R);
+		if (PS == nullptr)
+			return false;
+		if (First)
+		{
+			IDirect3DTexture9 *Tex = nullptr;
+			if (SUCCEEDED(Dev->GetTexture(0, reinterpret_cast<IDirect3DBaseTexture9 **>(&Tex))) && Tex != nullptr)
+			{
+				if (TextureLevels(Tex, R.Levels[0], R.Levels[1]))
+				{
+					R.Levels[3] = 1;
+					Message("surface %08x: brightness levels %.2f (surface) %.2f (deepest)", R.Hash, R.Levels[0], R.Levels[1]);
+				}
+				else
+					Message("surface %08x: texture format not read, using the shader's own levels", R.Hash);
+				Tex->Release();
+			}
+		}
+
+		Dev->GetPixelShader(&OldPS);
+		Dev->GetPixelShaderConstantF(0, OldConst[0], 8);
+		static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+		Dev->GetTextureStageState(2, D3DTSS_TEXCOORDINDEX, &OldTCI[2]);
+		Dev->GetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[2]);
+		Dev->GetTransform(D3DTS_TEXTURE2, &OldTexMat[2]);
+		Dev->SetTextureStageState(2, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION | 2);
+		Dev->SetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
+		Dev->SetTransform(D3DTS_TEXTURE2, &Identity);
+
+		float Const[4][4] = {};
+		Const[0][0] = (GetTickCount() % 3600000) / 1000.0f;
+		Const[0][1] = 1;
+		Const[0][2] = SceneW ? 1.0f / SceneW : 0;
+		Const[0][3] = SceneH ? 1.0f / SceneH : 0;
+		Const[2][0] = Vert;
+		Const[2][1] = Second;
+		memcpy(Const[3], R.Levels, sizeof(R.Levels));
+		Dev->SetPixelShaderConstantF(0, Const[0], 4);
+		Dev->SetPixelShader(PS);
+		Mode = 5;
+		return true;
+	}
+
 	void End(IDirect3DDevice9 *Dev)
 	{
+		if (Mode == 5)
+		{
+			Dev->SetPixelShader(OldPS);
+			Dev->SetPixelShaderConstantF(0, OldConst[0], 8);
+			Dev->SetTextureStageState(2, D3DTSS_TEXCOORDINDEX, OldTCI[2]);
+			Dev->SetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, OldTTF[2]);
+			Dev->SetTransform(D3DTS_TEXTURE2, &OldTexMat[2]);
+			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
+			Mode = 0;
+			return;
+		}
 		if (Mode == 4)
 		{
 			Dev->SetRenderState(D3DRS_COLORWRITEENABLE, OldCWE);

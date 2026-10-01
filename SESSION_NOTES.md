@@ -26,6 +26,10 @@ whole session, so each item says how far it has been checked.
 8. **Post-processing:** with the new dll, add `post=1` and `postsplit=1` to `U2Shaders.ini`, copy
    `post_*.hlsl` into `System\U2Shaders\`, and check that the HUD stays crisp (left half
    processed, right half not); then tune `bloom=`, `grade=`, `colour=`, `sharpen=`.
+9. **Parallax walls:** with `charprobe=1` (item 2), pick a brick/tile/panel wall texture from
+   `System\U2Shaders\dump\`, add `surface=<hash> world_parallax.hlsl`, copy the shader in, and
+   look at the wall at an angle. If `U2Shaders.log` says "stage setup not supported", that
+   line says how U2 draws walls; the shader needs to learn that setup.
 
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
@@ -83,6 +87,11 @@ compiled (needs the game's packages).
 - **`decal=<hash> file` + `decal_parallax.hlsl`:** bullet holes that look sunken into the wall
   (parallax occlusion, F.E.A.R.-style); no lights needed, works on projector decals and on
   walls without normals; keeps the decal's own blending so overlapping holes still layer.
+- **`surface=<hash> file` + `world_parallax.hlsl`:** the same depth on solid walls and floors
+  (mortar, seams, grates recessed). Height = the texture's brightness, levels measured per
+  texture by the dll, so no tuning; redoes texture x vertex light x lightmap; fades with
+  distance. Tested under Wine on a lightmapped brick wall. Unknown: how U2 really sets up its
+  wall draws (the shader only handles the common setups and logs any other).
 - **`post=1`:** bloom, sharpening, exposure, colour balance, saturation, contrast and vignette on
   the finished 3D frame, applied right before the first 2D draw so the HUD stays crisp (or at
   Present when there is no HUD); every device state is restored afterwards. Tested under Wine:
@@ -93,7 +102,7 @@ compiled (needs the game's packages).
   also caught a staircase artifact in the first decal version, now fixed.
 
 Shader budgets now: `pcss_proj` 356/512 slots, **31/32 temp registers** (`ps_2_b`, the limit
-any further penumbra change must fit); `decal_parallax` 178/512 (`ps_2_a`).
+any further penumbra change must fit); `decal_parallax` 178/512, `world_parallax` 226/512 (`ps_2_a`).
 
 ### U2Destruct (`games/unreal2_mods/U2Destruct`): probe, not compiled
 

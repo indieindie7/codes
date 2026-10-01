@@ -3,6 +3,8 @@
 //   1. a shadow-silhouette-style draw into an offscreen target (untextured, TFACTOR, no blend)
 //   2. an opaque, textured, fixed-function-lit wall (two D3D lights, material, ambient)
 //   3. an alpha-blended bullet-hole decal on the wall (decal= rule -> decal_parallax.hlsl)
+// Modes "wall" / "wallflat": instead, a brick wall drawn the way level geometry is (texture x
+// vertex colour on stage 0, a lightmap times 2 on stage 1), with and without the surface= rule.
 // Writes U2Shaders.ini itself (the decal's hash computed the way u2shaders.hpp does).
 #include <windows.h>
 #include <d3d8.h>
@@ -15,10 +17,12 @@ struct SV { float x, y, z, rhw; };
 
 static D3DMATRIX Ident() { D3DMATRIX m = {}; m._11 = m._22 = m._33 = m._44 = 1; return m; }
 
-static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, bool decal, DWORD *hashOut)
+enum Kind { CHECKER, DECAL, BRICK, LIGHTMAP };
+static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, Kind kind, DWORD *hashOut)
 {
 	IDirect3DTexture8 *T = nullptr;
-	if (FAILED(D->CreateTexture(64, 64, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &T)))
+	// bricks with a full mip chain, like game textures (the parallax reads a smaller mip for height)
+	if (FAILED(D->CreateTexture(64, 64, kind == BRICK ? 0 : 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &T)))
 		return nullptr;
 	D3DLOCKED_RECT L;
 	T->LockRect(0, &L, nullptr, 0);
@@ -26,7 +30,21 @@ static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, bool decal, DWORD *hashOu
 		for (int x = 0; x < 64; x++)
 		{
 			DWORD c;
-			if (decal)
+			if (kind == BRICK)
+			{
+				// 32x16 bricks, every other row offset, 2-texel dark mortar; a little noise on the faces
+				int row = y / 16, bx = (x + (row & 1) * 16) % 32, by = y % 16;
+				bool mortar = bx < 2 || by < 2;
+				int n = ((x * 73 + y * 151) % 17) - 8;
+				c = mortar ? 0xFF282420 : 0xFF000000 | ((150 + n) << 16) | ((80 + n) << 8) | (60 + n);
+			}
+			else if (kind == LIGHTMAP)
+			{
+				// bright towards the top left, darker to the bottom right (x2 on stage 1: 0x80 = unchanged)
+				int l = 0x40 + (127 - x - y) * 0x50 / 127;
+				c = 0xFF000000 | (l << 16) | (l << 8) | l;
+			}
+			else if (kind == DECAL)
 			{
 				float r = std::hypot((x + 0.5f) / 64 - 0.5f, (y + 0.5f) / 64 - 0.5f);
 				float a = std::pow(std::fmax(0.f, 1 - r / 0.32f), 0.6f);
@@ -47,6 +65,29 @@ static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, bool decal, DWORD *hashOu
 		*hashOut = H ? H : 1;
 	}
 	T->UnlockRect(0);
+	for (UINT lv = 1; lv < T->GetLevelCount(); lv++)
+	{
+		// box-filter each mip from the one above
+		D3DLOCKED_RECT A, B;
+		T->LockRect(lv - 1, &A, nullptr, D3DLOCK_READONLY);
+		T->LockRect(lv, &B, nullptr, 0);
+		const int w = 64 >> lv;
+		for (int y = 0; y < w; y++)
+			for (int x = 0; x < w; x++)
+			{
+				DWORD out = 0;
+				for (int ch = 0; ch < 32; ch += 8)
+				{
+					DWORD sum = 0;
+					for (int k = 0; k < 4; k++)
+						sum += (((DWORD *)((BYTE *)A.pBits + (y * 2 + k / 2) * A.Pitch))[x * 2 + k % 2] >> ch) & 0xFF;
+					out |= (sum / 4) << ch;
+				}
+				((DWORD *)((BYTE *)B.pBits + y * B.Pitch))[x] = out;
+			}
+		T->UnlockRect(lv);
+		T->UnlockRect(lv - 1);
+	}
 	return T;
 }
 
@@ -55,7 +96,9 @@ int main(int argc, char **argv)
 	// modes: (none) decal rule on | flat: no rules | post: post=1 with postsplit, a bright
 	// light panel in 3D and a HUD box + crosshair in 2D drawn after it
 	const bool postMode = argc >= 2 && strcmp(argv[1], "post") == 0;
-	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode);
+	const bool wallMode = argc >= 2 && strncmp(argv[1], "wall", 4) == 0;
+	const bool useWallRule = wallMode && strcmp(argv[1], "wall") == 0;
+	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode && !wallMode);
 	WNDCLASSA wc = {}; wc.lpfnWndProc = DefWindowProcA; wc.hInstance = GetModuleHandle(nullptr); wc.lpszClassName = "u2t";
 	RegisterClassA(&wc);
 	HWND hw = CreateWindowA("u2t", "u2t", WS_OVERLAPPEDWINDOW, 0, 0, 320, 240, nullptr, nullptr, wc.hInstance, nullptr);
@@ -70,12 +113,14 @@ int main(int argc, char **argv)
 	HRESULT hr = D3D->CreateDevice(0, D3DDEVTYPE_HAL, hw, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &D);
 	if (FAILED(hr)) { printf("CreateDevice failed %08lx\n", hr); return 1; }
 
-	DWORD decalHash = 0;
-	IDirect3DTexture8 *Wall = MakeTex(D, false, nullptr), *Hole = MakeTex(D, true, &decalHash);
+	DWORD decalHash = 0, brickHash = 0;
+	IDirect3DTexture8 *Wall = MakeTex(D, CHECKER, nullptr), *Hole = MakeTex(D, DECAL, &decalHash);
+	IDirect3DTexture8 *Brick = MakeTex(D, BRICK, &brickHash), *Light = MakeTex(D, LIGHTMAP, nullptr);
 	FILE *F = fopen("U2Shaders.ini", "w");
 	fprintf(F, "charprobe=1\n");
 	if (useDecalRule) fprintf(F, "decal=%08lx decal_parallax.hlsl\n", decalHash);
 	if (postMode) fprintf(F, "post=1\npostsplit=1\nbloom=0.7 1.0\n");
+	if (useWallRule) fprintf(F, "surface=%08lx world_parallax.hlsl\n", brickHash);
 	fclose(F);
 	printf("decal hash %08lx, rule %s\n", decalHash, useDecalRule ? "on" : "off");
 
@@ -135,8 +180,31 @@ int main(int argc, char **argv)
 		D->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
 		D->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
 		D->SetVertexShader(FVF);
-		D->SetTexture(0, Wall);
-		D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, wall, sizeof(V));
+		if (wallMode)
+		{
+			// level geometry: texture x vertex lighting, then the lightmap x2 (same coordinates, scaled down)
+			D3DMATRIX lm = Ident(); lm._11 = 0.2f; lm._22 = 0.25f;
+			D->SetTransform(D3DTS_TEXTURE1, &lm);
+			D->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 0);
+			D->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT2);
+			D->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
+			D->SetTextureStageState(1, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+			D->SetTextureStageState(1, D3DTSS_COLORARG2, D3DTA_CURRENT);
+			D->SetTextureStageState(0, D3DTSS_MIPFILTER, D3DTEXF_LINEAR);
+			D->SetTextureStageState(0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
+			D->SetTextureStageState(0, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
+			D->SetTexture(0, Brick);
+			D->SetTexture(1, Light);
+			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, wall, sizeof(V));
+			D->SetTexture(1, nullptr);
+			D->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+			D->SetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+		}
+		else
+		{
+			D->SetTexture(0, Wall);
+			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, wall, sizeof(V));
+		}
 
 		D->SetRenderState(D3DRS_LIGHTING, FALSE);
 		D->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
@@ -145,7 +213,8 @@ int main(int argc, char **argv)
 		D->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
 		D->SetRenderState(D3DRS_ZFUNC, D3DCMP_ALWAYS);
 		D->SetTexture(0, Hole);
-		D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, hole, sizeof(V));
+		if (!wallMode)
+			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, hole, sizeof(V));
 		D->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
 		D->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
 
@@ -182,7 +251,9 @@ int main(int argc, char **argv)
 			D3DLOCKED_RECT LR;
 			if (Sys && SUCCEEDED(Sys->LockRect(&LR, nullptr, D3DLOCK_READONLY)))
 			{
-				FILE *B = fopen(postMode ? "frame_post.bmp" : useDecalRule ? "frame_parallax.bmp" : "frame_flat.bmp", "wb");
+				const char *name = postMode ? "frame_post.bmp" : wallMode ? (useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
+					: useDecalRule ? "frame_parallax.bmp" : "frame_flat.bmp";
+				FILE *B = fopen(name, "wb");
 				BITMAPFILEHEADER fh = {}; BITMAPINFOHEADER ih = {};
 				fh.bfType = 0x4D42; fh.bfOffBits = sizeof(fh) + sizeof(ih);
 				fh.bfSize = fh.bfOffBits + bd.Width * bd.Height * 4;

@@ -1,4 +1,4 @@
-From f125048b32ce5878265a2598e94f22080420dd3b Mon Sep 17 00:00:00 2001
+From 09667dd06ccdd853a23f1ed585a76201ee5b5a18 Mon Sep 17 00:00:00 2001
 From: indieindie7 <lonisquasar@gmail.com>
 Date: Wed, 30 Sep 2026 23:10:11 -0300
 Subject: [PATCH] U2Shaders: per-draw HLSL shaders and contact-hardening
@@ -21,11 +21,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  shaders/post_blur.hlsl      |   13 +
  shaders/post_bright.hlsl    |   16 +
  shaders/post_final.hlsl     |   32 +
+ shaders/world_parallax.hlsl |   93 +++
  source/d3d8to9.hpp          |    6 +
  source/d3d8to9_device.cpp   |   35 +
  source/d3d8to9_texture.cpp  |    2 +
- source/u2shaders.hpp        | 1329 +++++++++++++++++++++++++++++++++++
- 14 files changed, 1693 insertions(+)
+ source/u2shaders.hpp        | 1502 +++++++++++++++++++++++++++++++++++
+ 15 files changed, 1959 insertions(+)
  create mode 100755 build-mingw/d3d8.dll
  create mode 100644 build-mingw/res.o
  create mode 100644 shaders/core.hlsl
@@ -36,6 +37,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  create mode 100644 shaders/post_blur.hlsl
  create mode 100644 shaders/post_bright.hlsl
  create mode 100644 shaders/post_final.hlsl
+ create mode 100644 shaders/world_parallax.hlsl
  create mode 100644 source/u2shaders.hpp
 
 diff --git a/build-mingw/d3d8.dll b/build-mingw/d3d8.dll
@@ -10361,6 +10363,105 @@ index 0000000..af4441f
 +	c = (Texel.z > 0.5 && uv.x > 0.5) ? original : c;
 +	return float4(saturate(c), 1);
 +}
+diff --git a/shaders/world_parallax.hlsl b/shaders/world_parallax.hlsl
+new file mode 100644
+index 0000000..e23f01b
+--- /dev/null
++++ b/shaders/world_parallax.hlsl
+@@ -0,0 +1,93 @@
++// Walls and floors with depth: parallax occlusion on a solid world surface, so mortar lines,
++// panel seams and grates look recessed when seen at an angle. Same method as
++// decal_parallax.hlsl, without its light direction or a separate height map.
++//
++// Use with surface=<hash> world_parallax.hlsl. The shader replaces the texture stages, so it
++// redoes what they did (the fork passes which setup it found in c2): the texture, times the
++// vertex colour, times the lightmap. The lightmap is not shifted, only the texture.
++//
++// The texture's own brightness stands in for height: dark = recessed. That suits textures
++// whose dark parts are gaps (bricks, tiles, panels, grates) and looks wrong on ones whose
++// dark parts are just colour (painted signs, dirt): leave those without a rule. The fork
++// measures each texture once (c3): its typical brightness counts as the surface itself, its
++// darkest few percent as the bottom, so most of a texture stays flat and only its gaps sink
++// (a fully bumpy surface swims). FLAT_ABOVE / DEEP_BELOW are used when it could not measure
++// (an unusual texture format), or always with AUTO_LEVELS 0.
++//
++// For a different texture, copy this file, adjust the settings and point that texture's
++// rule at the copy. Needs ddx/ddy: ps_2_a.
++
++sampler2D Tex    : register(s0);   // the surface's texture
++sampler2D Second : register(s1);   // stage 1's texture (usually the lightmap)
++float4    Info    : register(c0);  // time, 1, 1/width, 1/height
++float4    Combine : register(c2);  // x: vertex colour factor, y: stage 1 factor (0 = not used)
++float4    Levels  : register(c3);  // the texture's surface brightness, deepest brightness, 0, 1 = measured
++
++#define DEPTH 2.0                  // how deep the deepest part looks, in world units
++#define STEPS 8                    // search steps into the surface
++#define AUTO_LEVELS 1              // 1: the measured levels (c3), 0: the two below
++#define FLAT_ABOVE 0.45            // brightness at or above this is the surface itself
++#define DEEP_BELOW 0.12            // brightness at or below this is the deepest
++#define HEIGHT_BLUR 1.0            // read the height from a smaller mip: smooths texture noise
++#define CAVITY 0.3                 // how much darker the deepest parts are (0-1)
++#define FADE_START 400.0           // distance (world units) where the effect starts to fade
++#define FADE_END 1200.0            // and where it is gone (far away it only shimmers)
++
++float DepthOf(float2 uv, float2 levels)
++{
++	float l = dot(tex2Dbias(Tex, float4(uv, 0, HEIGHT_BLUR)).rgb, float3(0.30, 0.59, 0.11));
++	return saturate((levels.x - l) / (levels.x - levels.y));
++}
++
++float4 main(float2 uv : TEXCOORD0, float2 t1 : TEXCOORD1, float3 pos : TEXCOORD2,
++            float4 diffuse : COLOR0) : COLOR
++{
++	// the surface's normal, and how the texture coordinates change per world unit along it
++	float3 dpx = ddx(pos), dpy = ddy(pos);
++	float2 dux = ddx(uv), duy = ddy(uv);
++	float3 v = normalize(-pos);
++	float3 n = normalize(cross(dpx, dpy));
++	n = dot(n, v) < 0 ? -n : n;
++	float3 px = cross(dpy, n), py = cross(n, dpx);
++	float det = dot(px, dpx);
++	float3 gu = (px * dux.x + py * duy.x) / det;     // gradient of u
++	float3 gv = (px * dux.y + py * duy.y) / det;     // gradient of v
++
++	float2 levels = AUTO_LEVELS && Levels.w > 0.5 ? Levels.xy : float2(FLAT_ABOVE, DEEP_BELOW);
++	float fade = saturate((FADE_END - length(pos)) / (FADE_END - FADE_START));
++	float2 perDepth = -float2(dot(v, gu), dot(v, gv)) / max(dot(v, n), 0.25) * (DEPTH * fade);
++
++	// first step where the view ray is below the height map, the crossing interpolated
++	// between that step and the one before
++	float gapPrev = DepthOf(uv, levels);
++	float found = step(gapPrev, 0);
++	float2 hit = found > 0 ? uv : uv + perDepth;
++	float hitDepth = found > 0 ? 0 : 1;
++	float2 atPrev = uv;
++	for (int i = 1; i <= STEPS; i++)
++	{
++		float layer = (float)i / STEPS;
++		float2 at = uv + perDepth * layer;
++		float gap = DepthOf(at, levels) - layer;
++		float now = step(gap, 0) * (1 - found);
++		float w = gapPrev / max(gapPrev - gap, 0.0001);
++		hit = lerp(hit, lerp(atPrev, at, w), now);
++		hitDepth = lerp(hitDepth, layer - (1 - w) / STEPS, now);
++		found = max(found, now);
++		gapPrev = gap;
++		atPrev = at;
++	}
++
++	// what the texture stages did, at the shifted place (each stage clamps, as they do)
++	float4 t = tex2D(Tex, hit);
++	float3 c = t.rgb * (1 - CAVITY * hitDepth * fade);
++	float a = t.a;
++	if (Combine.x > 0)
++	{
++		c = saturate(c * diffuse.rgb * Combine.x);
++		a *= diffuse.a;
++	}
++	if (Combine.y > 0)
++		c = saturate(c * tex2D(Second, t1).rgb * Combine.y);
++	return float4(c, a);
++}
 diff --git a/source/d3d8to9.hpp b/source/d3d8to9.hpp
 index f864ffb..3f0bbba 100644
 --- a/source/d3d8to9.hpp
@@ -10518,10 +10619,10 @@ index 6b87e59..7d9af6e 100644
  HRESULT STDMETHODCALLTYPE Direct3DTexture8::QueryInterface(REFIID riid, void **ppvObj)
 diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
 new file mode 100644
-index 0000000..17bdb62
+index 0000000..87cff1a
 --- /dev/null
 +++ b/source/u2shaders.hpp
-@@ -0,0 +1,1329 @@
+@@ -0,0 +1,1502 @@
 +/**
 + * U2Shaders - replace the fixed-function look of chosen surfaces with HLSL pixel shaders.
 + *
@@ -10536,6 +10637,12 @@ index 0000000..17bdb62
 + *                                 the same, but the draw keeps its own blending (no frame
 + *                                 copy in s1): the shader returns what the texture would
 + *                                 have, so overlapping decals still layer
++ *     surface=1a2b3c4d world_parallax.hlsl
++ *                                 a solid surface (wall, floor) drawn with parallax: the
++ *                                 shader redoes the texture stages (texture x vertex colour
++ *                                 x lightmap in s1, see SurfaceBegin); the lightmap and the
++ *                                 texture's panning are left as they are. c2 = how the stages
++ *                                 combine, c3 = the texture's brightness levels
 + *     post=1                      bloom, sharpening and colour grading before the HUD
 + *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
 + *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
@@ -10581,6 +10688,9 @@ index 0000000..17bdb62
 +	DWORD Hash = 0;
 +	std::string File;          // empty = the built-in tint
 +	bool KeepBlend = false;    // decal=: the draw keeps its own blending, no frame copy
++	bool Surface = false;      // surface=: solid draws only, see SurfaceBegin
++	bool Refused = false;      // surface=: an unsupported stage setup was logged once
++	float Levels[4] = {};      // surface=: the texture's brightness levels (see TextureLevels)
 +	IDirect3DPixelShader9 *PS = nullptr;
 +	bool Tried = false;
 +};
@@ -10688,6 +10798,14 @@ index 0000000..17bdb62
 +				R.Hash = Hash;
 +				R.File = Name;
 +				R.KeepBlend = true;
++				Rules.push_back(R);
++			}
++			else if (sscanf_s(Line, " surface=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
++			{
++				U2Rule R;
++				R.Hash = Hash;
++				R.File = Name;
++				R.Surface = true;
 +				Rules.push_back(R);
 +			}
 +		}
@@ -10946,6 +11064,8 @@ index 0000000..17bdb62
 +				Rule = &R;
 +		if (Rule == nullptr)
 +			return false;
++		if (Rule->Surface)
++			return SurfaceBegin(Dev, *Rule, FixedFunction);
 +		// only the see-through parts: an atlas is often shared with solid ones
 +		DWORD Blending = 0;
 +		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blending);
@@ -11032,7 +11152,7 @@ index 0000000..17bdb62
 +	float PcssParams[4] = { 0.05f, 0.004f, 0.0006f, 0.06f };
 +	float ShadowTint[4] = { 1, 1, 1, 1 };   // w = 1 tells pcss_proj.hlsl the tint is set
 +	float PcssDebug = 0;          // pcssdebug=1: colour the shadows by the measured gap
-+	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector
++	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector, 5 solid surface
 +	DWORD OldCWE = 0;
 +	std::map<void *, D3DMATRIX> MapViews;   // shadow-map surface -> the light's view it was drawn with
 +	IDirect3DSurface9 *MapTarget = nullptr; // the shadow map drawn last (compared only, not referenced)
@@ -11342,8 +11462,162 @@ index 0000000..17bdb62
 +		return true;
 +	}
 +
++	// surface=: a solid world surface drawn with parallax (world_parallax.hlsl). A pixel shader
++	// replaces all the texture stages, so the shader redoes what they did; only the usual setups
++	// are taken (stage 0: the texture, alone or times the vertex colour; stage 1: nothing, or a
++	// second texture such as the lightmap times the result), as c2 = (vertex colour factor,
++	// stage 1 factor; 0 = not used). Anything else is drawn as before and noted once in the log.
++	// Stages 0 and 1 keep their own coordinates and transforms (panning, the lightmap's
++	// mapping); stage 2's coordinates carry the camera-space position (TEXCOORD2).
++	static float ModulateFactor(DWORD Op)
++	{
++		return Op == D3DTOP_MODULATE ? 1.0f : Op == D3DTOP_MODULATE2X ? 2.0f : Op == D3DTOP_MODULATE4X ? 4.0f : 0.0f;
++	}
++	static bool ArgsAre(DWORD A1, DWORD A2, DWORD X, DWORD Y)
++	{
++		return (A1 == X && A2 == Y) || (A1 == Y && A2 == X);   // no modifiers (complement, alpha replicate)
++	}
++	// The brightness a surface's texture mostly has (its median: taken as the surface itself) and
++	// its darkest few percent (the bottom of its gaps), so world_parallax.hlsl needs no tuning per
++	// texture. Read once from the top mip: 32-bit textures per pixel, DXT per block (the mean of
++	// its two end colours). Other formats: false, and the shader uses its own settings.
++	bool TextureLevels(IDirect3DTexture9 *Tex, float &Flat, float &Deep)
++	{
++		D3DSURFACE_DESC Desc;
++		D3DLOCKED_RECT Lock;
++		if (FAILED(Tex->GetLevelDesc(0, &Desc)))
++			return false;
++		const bool Dxt1 = Desc.Format == D3DFMT_DXT1;
++		const bool Dxt = Dxt1 || Desc.Format == D3DFMT_DXT2 || Desc.Format == D3DFMT_DXT3 || Desc.Format == D3DFMT_DXT4 || Desc.Format == D3DFMT_DXT5;
++		if (!(Desc.Format == D3DFMT_A8R8G8B8 || Desc.Format == D3DFMT_X8R8G8B8 || Dxt) || FAILED(Tex->LockRect(0, &Lock, nullptr, D3DLOCK_READONLY)))
++			return false;
++		unsigned Hist[256] = {}, Count = 0;
++		auto Add = [&](unsigned r, unsigned g, unsigned b) { Hist[(r * 77 + g * 151 + b * 29) >> 8]++; Count++; };
++		const BYTE *Bits = static_cast<const BYTE *>(Lock.pBits);
++		if (Dxt)
++		{
++			const UINT Bw = (std::max)(1u, Desc.Width / 4), Bh = (std::max)(1u, Desc.Height / 4), Size = Dxt1 ? 8 : 16;
++			for (UINT y = 0; y < Bh; y++)
++				for (UINT x = 0; x < Bw; x++)
++				{
++					const BYTE *B = Bits + y * Lock.Pitch + x * Size + (Dxt1 ? 0 : 8);
++					const unsigned c0 = B[0] | (B[1] << 8), c1 = B[2] | (B[3] << 8);
++					Add((((c0 >> 11) & 31) + ((c1 >> 11) & 31)) * 255 / 62, (((c0 >> 5) & 63) + ((c1 >> 5) & 63)) * 255 / 126,
++						((c0 & 31) + (c1 & 31)) * 255 / 62);
++				}
++		}
++		else
++			for (UINT y = 0; y < Desc.Height; y++)
++				for (UINT x = 0; x < Desc.Width; x++)
++				{
++					const BYTE *P = Bits + y * Lock.Pitch + x * 4;
++					Add(P[2], P[1], P[0]);
++				}
++		Tex->UnlockRect(0);
++		if (Count == 0)
++			return false;
++		int DeepAt = -1, FlatAt = -1;
++		for (unsigned i = 0, Sum = 0; i < 256; i++)
++		{
++			Sum += Hist[i];
++			if (DeepAt < 0 && Sum * 100 >= Count * 4)
++				DeepAt = i;
++			if (FlatAt < 0 && Sum * 2 >= Count)
++				FlatAt = i;
++		}
++		// a low-contrast texture gets little depth, not its small differences stretched to full depth
++		Flat = (FlatAt + 0.5f) / 255;
++		Deep = (std::min)((DeepAt + 0.5f) / 255, Flat - 0.15f);
++		return true;
++	}
++
++	bool SurfaceBegin(IDirect3DDevice9 *Dev, U2Rule &R, bool FixedFunction)
++	{
++		DWORD Blending = 0;
++		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blending);
++		if (Blending || !FixedFunction || Offscreen(Dev))
++			return false;
++		DWORD op[3] = {}, a1[3] = {}, a2[3] = {};
++		for (DWORD st = 0; st < 3; st++)
++		{
++			Dev->GetTextureStageState(st, D3DTSS_COLOROP, &op[st]);
++			Dev->GetTextureStageState(st, D3DTSS_COLORARG1, &a1[st]);
++			Dev->GetTextureStageState(st, D3DTSS_COLORARG2, &a2[st]);
++		}
++		float Vert = -1, Second = -1;
++		if (op[0] == D3DTOP_SELECTARG1 && a1[0] == D3DTA_TEXTURE)
++			Vert = 0;
++		else if (ModulateFactor(op[0]) > 0 && (ArgsAre(a1[0], a2[0], D3DTA_TEXTURE, D3DTA_DIFFUSE) || ArgsAre(a1[0], a2[0], D3DTA_TEXTURE, D3DTA_CURRENT)))
++			Vert = ModulateFactor(op[0]);    // on stage 0, CURRENT is the vertex colour
++		if (op[1] == D3DTOP_DISABLE)
++			Second = 0;
++		else if (ModulateFactor(op[1]) > 0 && ArgsAre(a1[1], a2[1], D3DTA_TEXTURE, D3DTA_CURRENT) && op[2] == D3DTOP_DISABLE)
++			Second = ModulateFactor(op[1]);
++		if (Vert < 0 || Second < 0)
++		{
++			if (!R.Refused)
++				Message("surface %08x: stage setup not supported, drawn as before (st0 op %u %x %x | st1 op %u %x %x | st2 op %u)",
++					R.Hash, op[0], a1[0], a2[0], op[1], a1[1], a2[1], op[2]);
++			R.Refused = true;
++			return false;
++		}
++		const bool First = !R.Tried;
++		IDirect3DPixelShader9 *PS = Compile(Dev, R);
++		if (PS == nullptr)
++			return false;
++		if (First)
++		{
++			IDirect3DTexture9 *Tex = nullptr;
++			if (SUCCEEDED(Dev->GetTexture(0, reinterpret_cast<IDirect3DBaseTexture9 **>(&Tex))) && Tex != nullptr)
++			{
++				if (TextureLevels(Tex, R.Levels[0], R.Levels[1]))
++				{
++					R.Levels[3] = 1;
++					Message("surface %08x: brightness levels %.2f (surface) %.2f (deepest)", R.Hash, R.Levels[0], R.Levels[1]);
++				}
++				else
++					Message("surface %08x: texture format not read, using the shader's own levels", R.Hash);
++				Tex->Release();
++			}
++		}
++
++		Dev->GetPixelShader(&OldPS);
++		Dev->GetPixelShaderConstantF(0, OldConst[0], 8);
++		static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
++		Dev->GetTextureStageState(2, D3DTSS_TEXCOORDINDEX, &OldTCI[2]);
++		Dev->GetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[2]);
++		Dev->GetTransform(D3DTS_TEXTURE2, &OldTexMat[2]);
++		Dev->SetTextureStageState(2, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION | 2);
++		Dev->SetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
++		Dev->SetTransform(D3DTS_TEXTURE2, &Identity);
++
++		float Const[4][4] = {};
++		Const[0][0] = (GetTickCount() % 3600000) / 1000.0f;
++		Const[0][1] = 1;
++		Const[0][2] = SceneW ? 1.0f / SceneW : 0;
++		Const[0][3] = SceneH ? 1.0f / SceneH : 0;
++		Const[2][0] = Vert;
++		Const[2][1] = Second;
++		memcpy(Const[3], R.Levels, sizeof(R.Levels));
++		Dev->SetPixelShaderConstantF(0, Const[0], 4);
++		Dev->SetPixelShader(PS);
++		Mode = 5;
++		return true;
++	}
++
 +	void End(IDirect3DDevice9 *Dev)
 +	{
++		if (Mode == 5)
++		{
++			Dev->SetPixelShader(OldPS);
++			Dev->SetPixelShaderConstantF(0, OldConst[0], 8);
++			Dev->SetTextureStageState(2, D3DTSS_TEXCOORDINDEX, OldTCI[2]);
++			Dev->SetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, OldTTF[2]);
++			Dev->SetTransform(D3DTS_TEXTURE2, &OldTexMat[2]);
++			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
++			Mode = 0;
++			return;
++		}
 +		if (Mode == 4)
 +		{
 +			Dev->SetRenderState(D3DRS_COLORWRITEENABLE, OldCWE);
