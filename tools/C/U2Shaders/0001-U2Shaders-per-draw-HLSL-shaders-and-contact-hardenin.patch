@@ -1,4 +1,4 @@
-From 5221689ba0398359b1cf6ebc813a83f0831822fc Mon Sep 17 00:00:00 2001
+From a58a74ff91b900fc5c3379f974584dca3b0251ba Mon Sep 17 00:00:00 2001
 From: indieindie7 <lonisquasar@gmail.com>
 Date: Wed, 30 Sep 2026 23:10:11 -0300
 Subject: [PATCH] U2Shaders: per-draw HLSL shaders and contact-hardening
@@ -11,17 +11,19 @@ snapshot of it, blocker search + gap-scaled filter in the projector pass.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
- shaders/core.hlsl          |   67 +++
- shaders/debug.hlsl         |    8 +
- shaders/pcss_map.hlsl      |   17 +
- shaders/pcss_proj.hlsl     |   92 +++
- source/d3d8to9.hpp         |    6 +
- source/d3d8to9_device.cpp  |   35 ++
- source/d3d8to9_texture.cpp |    2 +
- source/u2shaders.hpp       | 1098 ++++++++++++++++++++++++++++++++++++
- 8 files changed, 1325 insertions(+)
+ shaders/core.hlsl           |   67 +++
+ shaders/debug.hlsl          |    8 +
+ shaders/decal_parallax.hlsl |   70 +++
+ shaders/pcss_map.hlsl       |   17 +
+ shaders/pcss_proj.hlsl      |   92 +++
+ source/d3d8to9.hpp          |    6 +
+ source/d3d8to9_device.cpp   |   35 ++
+ source/d3d8to9_texture.cpp  |    2 +
+ source/u2shaders.hpp        | 1122 +++++++++++++++++++++++++++++++++++
+ 9 files changed, 1419 insertions(+)
  create mode 100644 shaders/core.hlsl
  create mode 100644 shaders/debug.hlsl
+ create mode 100644 shaders/decal_parallax.hlsl
  create mode 100644 shaders/pcss_map.hlsl
  create mode 100644 shaders/pcss_proj.hlsl
  create mode 100644 source/u2shaders.hpp
@@ -112,6 +114,82 @@ index 0000000..6a6da29
 +{
 +	// red: fixed-function flag; green: depth in 500 units; blue: normal z
 +	return float4(Info.y, saturate(pos.z / 500.0), normal.z * 0.5 + 0.5, 1);
++}
+diff --git a/shaders/decal_parallax.hlsl b/shaders/decal_parallax.hlsl
+new file mode 100644
+index 0000000..af9e123
+--- /dev/null
++++ b/shaders/decal_parallax.hlsl
+@@ -0,0 +1,70 @@
++// Bullet holes (and other wall decals) that look sunken into the surface: parallax occlusion,
++// as F.E.A.R.'s impact marks read as damage. No light direction needed: the depth shows by
++// looking at the decal at an angle, and the inside of the hole darkens with depth.
++//
++// Use with decal=<hash> decal_parallax.hlsl: the draw keeps its own blending, so this returns
++// what the texture itself would have (decals then still layer over each other).
++//
++// The decal's own texture doubles as its depth map (the fork has no second texture):
++//   ALPHA_DECAL 1  alpha decals (the hole drawn over the wall): more opaque = deeper
++//   ALPHA_DECAL 0  modulating decals (the wall multiplied by the texture, white = no change):
++//                  darker = deeper
++// For the other kind, copy this file, flip the setting and point that texture's rule at it.
++//
++// The surface's direction and the texture's axes come from screen-space derivatives of the
++// position and texture coordinates, so the walls' vertices need no normals (level geometry
++// often has none). Needs ddx/ddy: ps_2_a.
++
++sampler2D Tex  : register(s0);   // the decal
++float4    Info : register(c0);   // time, 1 = positions valid (fixed function), 1/width, 1/height
++float4    Mode : register(c1);   // x: 1 = projected texture coordinates (projector decals)
++
++#define ALPHA_DECAL 1
++#define DEPTH 3.0                 // how deep the deepest part looks, in world units
++#define STEPS 8                   // search steps into the surface
++#define CAVITY 0.5                // how much darker the bottom of the hole is (0-1)
++
++float DepthOf(float4 t)
++{
++	return ALPHA_DECAL ? t.a : 1 - dot(t.rgb, float3(0.30, 0.59, 0.11));
++}
++
++float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
++{
++	float2 uv = Mode.x > 0.5 ? t0.xy / t0.z : t0.xy;
++
++	// the surface's normal, and how the texture coordinates change per world unit along it
++	float3 dpx = ddx(pos), dpy = ddy(pos);
++	float2 dux = ddx(uv), duy = ddy(uv);
++	float3 v = normalize(-pos);
++	float3 n = normalize(cross(dpx, dpy));
++	n = dot(n, v) < 0 ? -n : n;
++	float3 px = cross(dpy, n), py = cross(n, dpx);
++	float det = dot(px, dpx);
++	float3 gu = (px * dux.x + py * duy.x) / det;     // gradient of u
++	float3 gv = (px * dux.y + py * duy.y) / det;     // gradient of v
++
++	// following the view ray down into the surface: the texture coordinates per unit of depth
++	float2 perDepth = -float2(dot(v, gu), dot(v, gv)) / max(dot(v, n), 0.25);
++	if (Info.y < 0.5)
++		perDepth = 0;                               // no positions (vertex shader draw): flat
++
++	// first step where the ray is below the surface the depth map describes
++	float2 hit = uv + perDepth * DEPTH;
++	float hitDepth = 1;
++	float found = 0;
++	for (int i = 0; i <= STEPS; i++)
++	{
++		float layer = (float)i / STEPS;
++		float2 at = uv + perDepth * (layer * DEPTH);
++		float d = DepthOf(tex2D(Tex, at));
++		float now = step(d, layer) * (1 - found);
++		hit = lerp(hit, at, now);
++		hitDepth = lerp(hitDepth, d, now);
++		found = max(found, now);
++	}
++
++	float4 decal = tex2D(Tex, hit);
++	float shade = 1 - CAVITY * hitDepth;
++	return ALPHA_DECAL ? float4(decal.rgb * shade, decal.a) : float4(decal.rgb * shade, 1);
 +}
 diff --git a/shaders/pcss_map.hlsl b/shaders/pcss_map.hlsl
 new file mode 100644
@@ -391,10 +469,10 @@ index 6b87e59..7d9af6e 100644
  HRESULT STDMETHODCALLTYPE Direct3DTexture8::QueryInterface(REFIID riid, void **ppvObj)
 diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
 new file mode 100644
-index 0000000..3cba872
+index 0000000..a0afe7d
 --- /dev/null
 +++ b/source/u2shaders.hpp
-@@ -0,0 +1,1098 @@
+@@ -0,0 +1,1122 @@
 +/**
 + * U2Shaders - replace the fixed-function look of chosen surfaces with HLSL pixel shaders.
 + *
@@ -405,6 +483,10 @@ index 0000000..3cba872
 + *                                 save each one to U2Shaders\dump\<hash>_<w>x<h>.dds
 + *     tint=1a2b3c4d               draw everything using that texture in flat magenta
 + *     shader=1a2b3c4d core.hlsl   draw it with U2Shaders\core.hlsl (entry "main", ps_2_a)
++ *     decal=1a2b3c4d decal_parallax.hlsl
++ *                                 the same, but the draw keeps its own blending (no frame
++ *                                 copy in s1): the shader returns what the texture would
++ *                                 have, so overlapping decals still layer
 + *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
 + *                                 U2Shaders\dump\chars.txt, and whether scene depth can be
 + *                                 read as a texture (U2Shaders.log; logging only, see ProbeDraw)
@@ -416,6 +498,7 @@ index 0000000..3cba872
 + *     TEXCOORD2     camera-space position
 + *     COLOR0        the vertex lighting
 + *     c0            (time in seconds, 1 if normals/positions are valid, 1/width, 1/height)
++ *     c1.x          1 if TEXCOORD0 is projected (projector decals): divide .xy by .z
 + *     c4..c7        the projection matrix (rows), to turn a position into a screen place
 + *
 + * While a shader draws, alpha blending is off: the shader has the frame behind it in s1
@@ -446,6 +529,7 @@ index 0000000..3cba872
 +{
 +	DWORD Hash = 0;
 +	std::string File;          // empty = the built-in tint
++	bool KeepBlend = false;    // decal=: the draw keeps its own blending, no frame copy
 +	IDirect3DPixelShader9 *PS = nullptr;
 +	bool Tried = false;
 +};
@@ -528,6 +612,14 @@ index 0000000..3cba872
 +				U2Rule R;
 +				R.Hash = Hash;
 +				R.File = Name;
++				Rules.push_back(R);
++			}
++			else if (sscanf_s(Line, " decal=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
++			{
++				U2Rule R;
++				R.Hash = Hash;
++				R.File = Name;
++				R.KeepBlend = true;
 +				Rules.push_back(R);
 +			}
 +		}
@@ -793,7 +885,8 @@ index 0000000..3cba872
 +		if (PS == nullptr)
 +			return false;
 +
-+		CopyScene(Dev);
++		if (!Rule->KeepBlend)
++			CopyScene(Dev);
 +
 +		Dev->GetPixelShader(&OldPS);
 +		Dev->GetTexture(1, &OldTex1);
@@ -806,11 +899,16 @@ index 0000000..3cba872
 +			Dev->GetSamplerState(1, Samp[i], &OldSamp1[i]);
 +			Dev->SetSamplerState(1, Samp[i], SampValue[i]);
 +		}
++		bool Projected = false;
 +		if (FixedFunction)
 +		{
-+			// raw texture coordinates on stage 0 (no panning): the shader animates itself
++			// raw texture coordinates on stage 0 (no panning): the shader animates itself.
++			// Projector draws (decals) keep their transform: it is the projection itself,
++			// and the shader divides by z (c1.x = 1), as pixel shaders ignore PROJECTED
 +			Dev->GetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[0]);
-+			Dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
++			Projected = (OldTTF[0] & D3DTTFF_PROJECTED) != 0;
++			if (!Projected)
++				Dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 +			static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
 +			for (DWORD s = 1; s <= 2; s++)
 +			{
@@ -828,14 +926,18 @@ index 0000000..3cba872
 +		Const[0][1] = FixedFunction ? 1.0f : 0.0f;
 +		Const[0][2] = SceneW ? 1.0f / SceneW : 0;
 +		Const[0][3] = SceneH ? 1.0f / SceneH : 0;
++		Const[1][0] = Projected ? 1.0f : 0.0f;
 +		D3DMATRIX Proj;
 +		Dev->GetTransform(D3DTS_PROJECTION, &Proj);
 +		for (int r = 0; r < 4; r++)
 +			for (int c = 0; c < 4; c++)
 +				Const[4 + r][c] = Proj.m[r][c];
 +		Dev->SetPixelShaderConstantF(0, Const[0], 8);
-+		Dev->SetTexture(1, SceneTex);
-+		Dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
++		if (!Rule->KeepBlend)
++		{
++			Dev->SetTexture(1, SceneTex);
++			Dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
++		}
 +		Dev->SetPixelShader(PS);
 +		WasFixedFunction = FixedFunction;
 +		Mode = 1;

@@ -27,6 +27,16 @@ channel. `1 1 1` (default) is the engine's grey; lowering blue gives cool, bluis
 Needs a `d3d8.dll` built from this source (the one in this folder predates it). With an older
 dll the new `pcss_proj.hlsl` still works and draws grey shadows.
 
+Parallax bullet holes: `decal=<hash> decal_parallax.hlsl` draws that decal texture as if sunken
+into the wall (parallax occlusion, as in F.E.A.R.): the depth shows when the wall is seen at an
+angle, and the inside darkens with depth. No light direction needed. Unlike `shader=`, a
+`decal=` rule keeps the draw's own blending, so overlapping decals still layer. The texture
+doubles as its depth map: `ALPHA_DECAL 1` (alpha decals, more opaque = deeper) or `0`
+(modulating decals, darker = deeper); `DEPTH` sets how deep it looks, in world units. Projector
+decals work (their projected coordinates are kept). To find a decal's hash, run with `log=1`,
+shoot a wall, and look in `U2Shaders\dump\` (each alpha-blended texture is saved as
+`<hash>_<w>x<h>.dds`). Needs `ps_2_a` (ddx/ddy).
+
 Probe, logging only: `charprobe=1` records how every opaque on-screen draw is lit (fixed-function
 lighting, lights, material, ambient, vertex blending, texture stages) and whether shadow
 silhouettes were drawn earlier in the frame, in `System\U2Shaders\dump\chars.txt`, and saves each

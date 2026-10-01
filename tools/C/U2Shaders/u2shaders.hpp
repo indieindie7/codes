@@ -8,6 +8,10 @@
  *                                 save each one to U2Shaders\dump\<hash>_<w>x<h>.dds
  *     tint=1a2b3c4d               draw everything using that texture in flat magenta
  *     shader=1a2b3c4d core.hlsl   draw it with U2Shaders\core.hlsl (entry "main", ps_2_a)
+ *     decal=1a2b3c4d decal_parallax.hlsl
+ *                                 the same, but the draw keeps its own blending (no frame
+ *                                 copy in s1): the shader returns what the texture would
+ *                                 have, so overlapping decals still layer
  *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
  *                                 U2Shaders\dump\chars.txt, and whether scene depth can be
  *                                 read as a texture (U2Shaders.log; logging only, see ProbeDraw)
@@ -19,6 +23,7 @@
  *     TEXCOORD2     camera-space position
  *     COLOR0        the vertex lighting
  *     c0            (time in seconds, 1 if normals/positions are valid, 1/width, 1/height)
+ *     c1.x          1 if TEXCOORD0 is projected (projector decals): divide .xy by .z
  *     c4..c7        the projection matrix (rows), to turn a position into a screen place
  *
  * While a shader draws, alpha blending is off: the shader has the frame behind it in s1
@@ -49,6 +54,7 @@ struct U2Rule
 {
 	DWORD Hash = 0;
 	std::string File;          // empty = the built-in tint
+	bool KeepBlend = false;    // decal=: the draw keeps its own blending, no frame copy
 	IDirect3DPixelShader9 *PS = nullptr;
 	bool Tried = false;
 };
@@ -131,6 +137,14 @@ public:
 				U2Rule R;
 				R.Hash = Hash;
 				R.File = Name;
+				Rules.push_back(R);
+			}
+			else if (sscanf_s(Line, " decal=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
+			{
+				U2Rule R;
+				R.Hash = Hash;
+				R.File = Name;
+				R.KeepBlend = true;
 				Rules.push_back(R);
 			}
 		}
@@ -396,7 +410,8 @@ public:
 		if (PS == nullptr)
 			return false;
 
-		CopyScene(Dev);
+		if (!Rule->KeepBlend)
+			CopyScene(Dev);
 
 		Dev->GetPixelShader(&OldPS);
 		Dev->GetTexture(1, &OldTex1);
@@ -409,11 +424,16 @@ public:
 			Dev->GetSamplerState(1, Samp[i], &OldSamp1[i]);
 			Dev->SetSamplerState(1, Samp[i], SampValue[i]);
 		}
+		bool Projected = false;
 		if (FixedFunction)
 		{
-			// raw texture coordinates on stage 0 (no panning): the shader animates itself
+			// raw texture coordinates on stage 0 (no panning): the shader animates itself.
+			// Projector draws (decals) keep their transform: it is the projection itself,
+			// and the shader divides by z (c1.x = 1), as pixel shaders ignore PROJECTED
 			Dev->GetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[0]);
-			Dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+			Projected = (OldTTF[0] & D3DTTFF_PROJECTED) != 0;
+			if (!Projected)
+				Dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 			static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
 			for (DWORD s = 1; s <= 2; s++)
 			{
@@ -431,14 +451,18 @@ public:
 		Const[0][1] = FixedFunction ? 1.0f : 0.0f;
 		Const[0][2] = SceneW ? 1.0f / SceneW : 0;
 		Const[0][3] = SceneH ? 1.0f / SceneH : 0;
+		Const[1][0] = Projected ? 1.0f : 0.0f;
 		D3DMATRIX Proj;
 		Dev->GetTransform(D3DTS_PROJECTION, &Proj);
 		for (int r = 0; r < 4; r++)
 			for (int c = 0; c < 4; c++)
 				Const[4 + r][c] = Proj.m[r][c];
 		Dev->SetPixelShaderConstantF(0, Const[0], 8);
-		Dev->SetTexture(1, SceneTex);
-		Dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+		if (!Rule->KeepBlend)
+		{
+			Dev->SetTexture(1, SceneTex);
+			Dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+		}
 		Dev->SetPixelShader(PS);
 		WasFixedFunction = FixedFunction;
 		Mode = 1;
