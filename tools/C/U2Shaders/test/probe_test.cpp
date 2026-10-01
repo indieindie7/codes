@@ -52,7 +52,10 @@ static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, bool decal, DWORD *hashOu
 
 int main(int argc, char **argv)
 {
-	const bool useDecalRule = argc < 2 || strcmp(argv[1], "flat") != 0;
+	// modes: (none) decal rule on | flat: no rules | post: post=1 with postsplit, a bright
+	// light panel in 3D and a HUD box + crosshair in 2D drawn after it
+	const bool postMode = argc >= 2 && strcmp(argv[1], "post") == 0;
+	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode);
 	WNDCLASSA wc = {}; wc.lpfnWndProc = DefWindowProcA; wc.hInstance = GetModuleHandle(nullptr); wc.lpszClassName = "u2t";
 	RegisterClassA(&wc);
 	HWND hw = CreateWindowA("u2t", "u2t", WS_OVERLAPPEDWINDOW, 0, 0, 320, 240, nullptr, nullptr, wc.hInstance, nullptr);
@@ -72,6 +75,7 @@ int main(int argc, char **argv)
 	FILE *F = fopen("U2Shaders.ini", "w");
 	fprintf(F, "charprobe=1\n");
 	if (useDecalRule) fprintf(F, "decal=%08lx decal_parallax.hlsl\n", decalHash);
+	if (postMode) fprintf(F, "post=1\npostsplit=1\nbloom=0.7 1.0\n");
 	fclose(F);
 	printf("decal hash %08lx, rule %s\n", decalHash, useDecalRule ? "on" : "off");
 
@@ -144,6 +148,28 @@ int main(int argc, char **argv)
 		D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, hole, sizeof(V));
 		D->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
 		D->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+
+		if (postMode)
+		{
+			// a bright light panel in the 3D scene (should bloom), straddling the screen's middle
+			V lamp[4] = { P(-6, 22, 0.1f, 0, 0), P(6, 22, 0.1f, 1, 0), P(-6, 16, 0.1f, 0, 1), P(6, 16, 0.1f, 1, 1) };
+			D->SetTexture(0, nullptr);
+			D->SetRenderState(D3DRS_TEXTUREFACTOR, 0xFFFFFFFF);
+			D->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+			D->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
+			D->SetVertexShader(FVF);
+			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, lamp, sizeof(V));
+			// the HUD after it, pre-transformed: a box at the bottom left and a crosshair (must stay sharp)
+			SV box[4] = { { 10, 200, 0, 1 }, { 110, 200, 0, 1 }, { 10, 230, 0, 1 }, { 110, 230, 0, 1 } };
+			SV cross1[4] = { { 150, 119, 0, 1 }, { 170, 119, 0, 1 }, { 150, 121, 0, 1 }, { 170, 121, 0, 1 } };
+			SV cross2[4] = { { 159, 110, 0, 1 }, { 161, 110, 0, 1 }, { 159, 130, 0, 1 }, { 161, 130, 0, 1 } };
+			D->SetRenderState(D3DRS_ZENABLE, FALSE);
+			D->SetVertexShader(D3DFVF_XYZRHW);
+			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, box, sizeof(SV));
+			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, cross1, sizeof(SV));
+			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, cross2, sizeof(SV));
+			D->SetRenderState(D3DRS_ZENABLE, TRUE);
+		}
 		D->EndScene();
 
 		if (frame == 319)
@@ -156,7 +182,7 @@ int main(int argc, char **argv)
 			D3DLOCKED_RECT LR;
 			if (Sys && SUCCEEDED(Sys->LockRect(&LR, nullptr, D3DLOCK_READONLY)))
 			{
-				FILE *B = fopen(useDecalRule ? "frame_parallax.bmp" : "frame_flat.bmp", "wb");
+				FILE *B = fopen(postMode ? "frame_post.bmp" : useDecalRule ? "frame_parallax.bmp" : "frame_flat.bmp", "wb");
 				BITMAPFILEHEADER fh = {}; BITMAPINFOHEADER ih = {};
 				fh.bfType = 0x4D42; fh.bfOffBits = sizeof(fh) + sizeof(ih);
 				fh.bfSize = fh.bfOffBits + bd.Width * bd.Height * 4;

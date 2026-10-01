@@ -27,6 +27,19 @@ channel. `1 1 1` (default) is the engine's grey; lowering blue gives cool, bluis
 Needs a `d3d8.dll` built from this source (the one in this folder predates it). With an older
 dll the new `pcss_proj.hlsl` still works and draws grey shadows.
 
+Post-processing: `post=1` adds bloom, sharpening and colour grading to the finished 3D frame,
+applied just before the HUD (the first 2D draw of the frame) so the HUD stays crisp; menu-only
+frames are left alone. Settings (defaults shown):
+
+    bloom=0.75 0.5            threshold (brightness that starts to glow), intensity
+    grade=1.05 1.05 1.0 0.25  saturation, contrast, exposure, vignette
+    colour=1 1 1              colour balance (r g b multipliers)
+    sharpen=0.25              0 = off
+    postsplit=1               only the left half is processed, to compare
+
+`U2Shaders.log` says how the HUD start was detected ("post: applied before a 2D draw ...").
+If the HUD gets bloomed in game, that detection missed and needs a look.
+
 Parallax bullet holes: `decal=<hash> decal_parallax.hlsl` draws that decal texture as if sunken
 into the wall (parallax occlusion, as in F.E.A.R.): the depth shows when the wall is seen at an
 angle, and the inside darkens with depth. No light direction needed. Unlike `shader=`, a
@@ -62,7 +75,7 @@ Build: `MSBuild d3d8to9.vcxproj -p:Configuration=Release -p:Platform=Win32 -p:Pl
 Or without Visual Studio: `./build-mingw.sh` (Linux/WSL with `g++-mingw-w64-i686`) clones
 d3d8to9, applies the patch and builds `build/d3d8.dll`, standalone (no VC++ runtime needed).
 `d3d8-mingw.dll` in this folder is that build of the current source (shadow tint, probes,
-decal rule). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
+decal rule, post-processing). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
 is the older MSVC build that has been. To try it, install it as `d3d8.dll`.
 
 `test/run.sh` runs the built DLL outside the game under 32-bit Wine with a virtual display:
