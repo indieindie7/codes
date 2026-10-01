@@ -26,6 +26,19 @@ whole session, so each item says how far it has been checked.
 8. **Post-processing:** with the new dll, add `post=1` and `postsplit=1` to `U2Shaders.ini`, copy
    `post_*.hlsl` into `System\U2Shaders\`, and check that the HUD stays crisp (left half
    processed, right half not); then tune `bloom=`, `grade=`, `colour=`, `sharpen=`.
+9. **Parallax walls:** with `charprobe=1` (item 2), pick a brick/tile/panel wall texture from
+   `System\U2Shaders\dump\`, add `surface=<hash> world_parallax.hlsl`, copy the shader in, and
+   look at the wall at an angle. If `U2Shaders.log` says "stage setup not supported", that
+   line says how U2 draws walls; the shader needs to learn that setup.
+10. **Character lighting:** add `charlight=1`, copy `char_light.hlsl`, look at characters in a lit
+    area. If they look lit from below, the world isn't Z-up in the draws (needs a fix). Any
+    "charlight: setup not supported" log line: send it.
+11. **Blender round trip (U2Blender):** with U2EdBridge, `MAP EXPORT` a map to T3D, import it
+    in Blender (add-on in `tools/python/U2Blender`), export it unchanged, `MAP IMPORT` + `MAP
+    REBUILD` + save under a new name, play it. Does it come back whole?
+12. **Lightmap capture + bake:** `lmcapture=1`, walk through a level, check the log says
+    "lmcapture: N lightmaps" (0 = U2 doesn't draw lightmaps on stage 1). Then
+    `bake_lightmaps.py --capture ... --t3d ...` and the `replace=` lines.
 
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
@@ -83,6 +96,21 @@ compiled (needs the game's packages).
 - **`decal=<hash> file` + `decal_parallax.hlsl`:** bullet holes that look sunken into the wall
   (parallax occlusion, F.E.A.R.-style); no lights needed, works on projector decals and on
   walls without normals; keeps the decal's own blending so overlapping holes still layer.
+- **`surface=<hash> file` + `world_parallax.hlsl`:** the same depth on solid walls and floors
+  (mortar, seams, grates recessed). Height = the texture's brightness, levels measured per
+  texture by the dll, so no tuning; redoes texture x vertex light x lightmap; fades with
+  distance. Tested under Wine on a lightmapped brick wall. Unknown: how U2 really sets up its
+  wall draws (the shader only handles the common setups and logs any other).
+- **`replace=<hash> file.dds`:** our texture in place of the game's, on stages 0-3 (lightmaps
+  too), per draw and undone after it. The way in for Blender bakes and reworked skins.
+- **`charlight=1` + `char_light.hlsl`:** characters lit per pixel from the game's own lights,
+  Valve-style (wrapped diffuse, hemisphere ambient, rim). Self-shadowing is the next step.
+- **`lmcapture=1`:** records the level's lightmapped triangles (world space, lightmap UVs) for
+  baking elsewhere; the device keeps buffer copies while it's on.
+- **U2Blender (`tools/python/U2Blender`):** Blender add-on, T3D maps in and out (brushes with
+  texture alignment, lights, static meshes, every other actor kept as text; untouched actors
+  come back word for word). `bake_lightmaps.py`: Cycles GI bake from an lmcapture into DDS +
+  `replace=` lines. Both tested headless (bpy) and the bake end to end on the Wine test wall.
 - **`post=1`:** bloom, sharpening, exposure, colour balance, saturation, contrast and vignette on
   the finished 3D frame, applied right before the first 2D draw so the HUD stays crisp (or at
   Present when there is no HUD); every device state is restored afterwards. Tested under Wine:
@@ -93,7 +121,7 @@ compiled (needs the game's packages).
   also caught a staircase artifact in the first decal version, now fixed.
 
 Shader budgets now: `pcss_proj` 356/512 slots, **31/32 temp registers** (`ps_2_b`, the limit
-any further penumbra change must fit); `decal_parallax` 178/512 (`ps_2_a`).
+any further penumbra change must fit); `decal_parallax` 178/512, `world_parallax` 226/512 (`ps_2_a`).
 
 ### U2Destruct (`games/unreal2_mods/U2Destruct`): probe, not compiled
 

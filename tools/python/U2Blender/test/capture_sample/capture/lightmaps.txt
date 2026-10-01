@@ -1,0 +1,2 @@
+# hash width height stage1_op triangles   (op: 4 modulate, 5 modulate x2, 6 modulate x4)
+e5d228fd 64 64 5 2

@@ -1,4 +1,4 @@
-From f125048b32ce5878265a2598e94f22080420dd3b Mon Sep 17 00:00:00 2001
+From 65335492cfe608b959592f6fbbf9fb833bf1c8d5 Mon Sep 17 00:00:00 2001
 From: indieindie7 <lonisquasar@gmail.com>
 Date: Wed, 30 Sep 2026 23:10:11 -0300
 Subject: [PATCH] U2Shaders: per-draw HLSL shaders and contact-hardening
@@ -11,23 +11,28 @@ snapshot of it, blocker search + gap-scaled filter in the projector pass.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
- build-mingw/d3d8.dll        |  Bin 0 -> 1317390 bytes
- build-mingw/res.o           |  Bin 0 -> 828 bytes
- shaders/core.hlsl           |   67 ++
- shaders/debug.hlsl          |    8 +
- shaders/decal_parallax.hlsl |   76 ++
- shaders/pcss_map.hlsl       |   17 +
- shaders/pcss_proj.hlsl      |   92 +++
- shaders/post_blur.hlsl      |   13 +
- shaders/post_bright.hlsl    |   16 +
- shaders/post_final.hlsl     |   32 +
- source/d3d8to9.hpp          |    6 +
- source/d3d8to9_device.cpp   |   35 +
- source/d3d8to9_texture.cpp  |    2 +
- source/u2shaders.hpp        | 1329 +++++++++++++++++++++++++++++++++++
- 14 files changed, 1693 insertions(+)
+ build-mingw/d3d8.dll             |  Bin 0 -> 1317390 bytes
+ build-mingw/res.o                |  Bin 0 -> 828 bytes
+ shaders/char_light.hlsl          |   51 +
+ shaders/core.hlsl                |   67 +
+ shaders/debug.hlsl               |    8 +
+ shaders/decal_parallax.hlsl      |   76 ++
+ shaders/pcss_map.hlsl            |   17 +
+ shaders/pcss_proj.hlsl           |   92 ++
+ shaders/post_blur.hlsl           |   13 +
+ shaders/post_bright.hlsl         |   16 +
+ shaders/post_final.hlsl          |   32 +
+ shaders/world_parallax.hlsl      |   93 ++
+ source/d3d8to9.hpp               |   27 +
+ source/d3d8to9_device.cpp        |   90 ++
+ source/d3d8to9_index_buffer.cpp  |   19 +-
+ source/d3d8to9_texture.cpp       |    5 +
+ source/d3d8to9_vertex_buffer.cpp |   19 +-
+ source/u2shaders.hpp             | 2012 ++++++++++++++++++++++++++++++
+ 18 files changed, 2635 insertions(+), 2 deletions(-)
  create mode 100755 build-mingw/d3d8.dll
  create mode 100644 build-mingw/res.o
+ create mode 100644 shaders/char_light.hlsl
  create mode 100644 shaders/core.hlsl
  create mode 100644 shaders/debug.hlsl
  create mode 100644 shaders/decal_parallax.hlsl
@@ -36,6 +41,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  create mode 100644 shaders/post_blur.hlsl
  create mode 100644 shaders/post_bright.hlsl
  create mode 100644 shaders/post_final.hlsl
+ create mode 100644 shaders/world_parallax.hlsl
  create mode 100644 source/u2shaders.hpp
 
 diff --git a/build-mingw/d3d8.dll b/build-mingw/d3d8.dll
@@ -9992,6 +9998,63 @@ wrLl=rsqy%FLONuMMkg#S+sCJKp4vGks0t^}ME;v^-=^7|#{US9OwLvR0^2-gc>n+a
 literal 0
 HcmV?d00001
 
+diff --git a/shaders/char_light.hlsl b/shaders/char_light.hlsl
+new file mode 100644
+index 0000000..cfe256e
+--- /dev/null
++++ b/shaders/char_light.hlsl
+@@ -0,0 +1,51 @@
++// Characters (and every other lit solid draw: weapons, pickups) lit per pixel instead of per
++// vertex, from the same D3D lights the game set, with the character tricks from Valve's
++// "Shading in Valve's Source Engine" (SIGGRAPH 2006):
++//   - wrapped ("half-Lambert") diffuse: the side away from a light falls off gradually
++//     instead of going flat black at the terminator, so the body's shape still reads there
++//   - hemisphere ambient: lighter from above than from below (a cheap ambient cube)
++//   - a faint rim along the silhouette, in the colour of the light reaching it
++// Used with charlight=1 (see CharBegin in u2shaders.hpp for the constants).
++
++sampler2D Tex     : register(s0);
++float4    Info    : register(c0);   // time, 1, -, -
++float4    Setup   : register(c2);   // x: stage 0 factor (1, 2, 4), y: number of lights (0-4)
++float4    Ambient : register(c3);   // rgb: ambient x material ambient + emissive
++float4    Up      : register(c4);   // xyz: world up, in view space
++float4    Lights[16] : register(c8);  // 4 per light, see CharBegin
++
++#define WRAP 0.5      // 0 = Lambert, as the game; 1 = full half-Lambert (Valve)
++#define HEMI 0.4      // how much darker the ambient is from below (0 = flat ambient)
++#define RIM 0.25      // rim strength (0 = off)
++
++float4 main(float2 uv : TEXCOORD0, float3 normal : TEXCOORD1, float3 pos : TEXCOORD2) : COLOR
++{
++	float3 n = normalize(normal);
++	float3 v = normalize(-pos);
++	n = dot(n, v) < -0.2 ? -n : n;           // back faces of two-sided parts face the camera
++
++	float3 direct = 0, reach = 0;
++	for (int i = 0; i < 4; i++)
++	{
++		float4 P = Lights[i * 4], D = Lights[i * 4 + 1], C = Lights[i * 4 + 2], A = Lights[i * 4 + 3];
++		float3 toL = P.w > 2.5 ? -D.xyz : P.xyz - pos;
++		float d = length(toL);
++		float3 l = toL / max(d, 0.0001);
++		float att = P.w > 2.5 ? 1 : (d < C.w ? 1 / max(A.x + A.y * d + A.z * d * d, 0.0001) : 0);
++		if (P.w > 1.5 && P.w < 2.5)            // spot: full inside theta, none outside phi
++			att *= saturate((dot(-l, D.xyz) - D.w) / max(A.w - D.w, 0.0001));
++		att *= i < Setup.y;
++		float ndl = dot(n, l);
++		float h = ndl * 0.5 + 0.5;
++		direct += C.rgb * att * lerp(saturate(ndl), h * h, WRAP);
++		reach += C.rgb * att;
++	}
++
++	float sky = dot(n, Up.xyz) * 0.5 + 0.5;
++	float3 ambient = Ambient.rgb * lerp(1 - HEMI, 1, sky);
++	float rim = pow(1 - saturate(dot(n, v)), 3) * RIM;
++
++	float3 lit = saturate(ambient + direct + reach * rim);   // the fixed-function clamp
++	float4 t = tex2D(Tex, uv);
++	return float4(saturate(t.rgb * lit * Setup.x), t.a);
++}
 diff --git a/shaders/core.hlsl b/shaders/core.hlsl
 new file mode 100644
 index 0000000..94ee04f
@@ -10361,11 +10424,118 @@ index 0000000..af4441f
 +	c = (Texel.z > 0.5 && uv.x > 0.5) ? original : c;
 +	return float4(saturate(c), 1);
 +}
+diff --git a/shaders/world_parallax.hlsl b/shaders/world_parallax.hlsl
+new file mode 100644
+index 0000000..e23f01b
+--- /dev/null
++++ b/shaders/world_parallax.hlsl
+@@ -0,0 +1,93 @@
++// Walls and floors with depth: parallax occlusion on a solid world surface, so mortar lines,
++// panel seams and grates look recessed when seen at an angle. Same method as
++// decal_parallax.hlsl, without its light direction or a separate height map.
++//
++// Use with surface=<hash> world_parallax.hlsl. The shader replaces the texture stages, so it
++// redoes what they did (the fork passes which setup it found in c2): the texture, times the
++// vertex colour, times the lightmap. The lightmap is not shifted, only the texture.
++//
++// The texture's own brightness stands in for height: dark = recessed. That suits textures
++// whose dark parts are gaps (bricks, tiles, panels, grates) and looks wrong on ones whose
++// dark parts are just colour (painted signs, dirt): leave those without a rule. The fork
++// measures each texture once (c3): its typical brightness counts as the surface itself, its
++// darkest few percent as the bottom, so most of a texture stays flat and only its gaps sink
++// (a fully bumpy surface swims). FLAT_ABOVE / DEEP_BELOW are used when it could not measure
++// (an unusual texture format), or always with AUTO_LEVELS 0.
++//
++// For a different texture, copy this file, adjust the settings and point that texture's
++// rule at the copy. Needs ddx/ddy: ps_2_a.
++
++sampler2D Tex    : register(s0);   // the surface's texture
++sampler2D Second : register(s1);   // stage 1's texture (usually the lightmap)
++float4    Info    : register(c0);  // time, 1, 1/width, 1/height
++float4    Combine : register(c2);  // x: vertex colour factor, y: stage 1 factor (0 = not used)
++float4    Levels  : register(c3);  // the texture's surface brightness, deepest brightness, 0, 1 = measured
++
++#define DEPTH 2.0                  // how deep the deepest part looks, in world units
++#define STEPS 8                    // search steps into the surface
++#define AUTO_LEVELS 1              // 1: the measured levels (c3), 0: the two below
++#define FLAT_ABOVE 0.45            // brightness at or above this is the surface itself
++#define DEEP_BELOW 0.12            // brightness at or below this is the deepest
++#define HEIGHT_BLUR 1.0            // read the height from a smaller mip: smooths texture noise
++#define CAVITY 0.3                 // how much darker the deepest parts are (0-1)
++#define FADE_START 400.0           // distance (world units) where the effect starts to fade
++#define FADE_END 1200.0            // and where it is gone (far away it only shimmers)
++
++float DepthOf(float2 uv, float2 levels)
++{
++	float l = dot(tex2Dbias(Tex, float4(uv, 0, HEIGHT_BLUR)).rgb, float3(0.30, 0.59, 0.11));
++	return saturate((levels.x - l) / (levels.x - levels.y));
++}
++
++float4 main(float2 uv : TEXCOORD0, float2 t1 : TEXCOORD1, float3 pos : TEXCOORD2,
++            float4 diffuse : COLOR0) : COLOR
++{
++	// the surface's normal, and how the texture coordinates change per world unit along it
++	float3 dpx = ddx(pos), dpy = ddy(pos);
++	float2 dux = ddx(uv), duy = ddy(uv);
++	float3 v = normalize(-pos);
++	float3 n = normalize(cross(dpx, dpy));
++	n = dot(n, v) < 0 ? -n : n;
++	float3 px = cross(dpy, n), py = cross(n, dpx);
++	float det = dot(px, dpx);
++	float3 gu = (px * dux.x + py * duy.x) / det;     // gradient of u
++	float3 gv = (px * dux.y + py * duy.y) / det;     // gradient of v
++
++	float2 levels = AUTO_LEVELS && Levels.w > 0.5 ? Levels.xy : float2(FLAT_ABOVE, DEEP_BELOW);
++	float fade = saturate((FADE_END - length(pos)) / (FADE_END - FADE_START));
++	float2 perDepth = -float2(dot(v, gu), dot(v, gv)) / max(dot(v, n), 0.25) * (DEPTH * fade);
++
++	// first step where the view ray is below the height map, the crossing interpolated
++	// between that step and the one before
++	float gapPrev = DepthOf(uv, levels);
++	float found = step(gapPrev, 0);
++	float2 hit = found > 0 ? uv : uv + perDepth;
++	float hitDepth = found > 0 ? 0 : 1;
++	float2 atPrev = uv;
++	for (int i = 1; i <= STEPS; i++)
++	{
++		float layer = (float)i / STEPS;
++		float2 at = uv + perDepth * layer;
++		float gap = DepthOf(at, levels) - layer;
++		float now = step(gap, 0) * (1 - found);
++		float w = gapPrev / max(gapPrev - gap, 0.0001);
++		hit = lerp(hit, lerp(atPrev, at, w), now);
++		hitDepth = lerp(hitDepth, layer - (1 - w) / STEPS, now);
++		found = max(found, now);
++		gapPrev = gap;
++		atPrev = at;
++	}
++
++	// what the texture stages did, at the shifted place (each stage clamps, as they do)
++	float4 t = tex2D(Tex, hit);
++	float3 c = t.rgb * (1 - CAVITY * hitDepth * fade);
++	float a = t.a;
++	if (Combine.x > 0)
++	{
++		c = saturate(c * diffuse.rgb * Combine.x);
++		a *= diffuse.a;
++	}
++	if (Combine.y > 0)
++		c = saturate(c * tex2D(Second, t1).rgb * Combine.y);
++	return float4(c, a);
++}
 diff --git a/source/d3d8to9.hpp b/source/d3d8to9.hpp
-index f864ffb..3f0bbba 100644
+index f864ffb..556aacd 100644
 --- a/source/d3d8to9.hpp
 +++ b/source/d3d8to9.hpp
-@@ -48,6 +48,7 @@ private:
+@@ -5,6 +5,7 @@
+ 
+ #pragma once
+ 
++#include <cstring>
+ #include <vector>
+ #include <unordered_set>
+ #include "d3d8.hpp"
+@@ -48,6 +49,7 @@ private:
  	std::vector<D3DDISPLAYMODE> CurrentAdapterModes[MAX_ADAPTERS];
  };
  
@@ -10373,18 +10543,26 @@ index f864ffb..3f0bbba 100644
  class Direct3DDevice8 : public IDirect3DDevice8
  {
  	Direct3DDevice8(const Direct3DDevice8 &) = delete;
-@@ -160,7 +161,10 @@ public:
+@@ -160,7 +162,18 @@ public:
  
  	AddressLookupTable *ProxyAddressLookupTable;
  
 +	Direct3DTexture8 *U2Stage0 = nullptr; // U2Shaders: the 2D texture on stage 0, if any
++	Direct3DTexture8 *U2Stages[4] = {};   // U2Shaders: the 2D textures on stages 0-3 (replace=)
++	Direct3DVertexBuffer8 *U2Stream0 = nullptr; // U2Shaders lmcapture=: stream 0 and its stride
++	UINT U2Stride0 = 0;
++	Direct3DIndexBuffer8 *U2Indices = nullptr;
 +
  private:
 +	bool U2Begin();
++	void U2After(bool Shaded);
++	DWORD U2Swapped = 0;                  // stages whose texture replace= swapped for this draw
++	void U2CaptureDraw(D3DPRIMITIVETYPE Type, UINT PrimCount, const BYTE *Verts, size_t VertBytes, UINT Stride, INT BaseVertex,
++		const BYTE *Indices, size_t IndexBytes, bool Index32, UINT StartIndex);
  	void ApplyClipPlanes();
  	void ReleaseShadersAndStateBlocks();
  
-@@ -220,6 +224,8 @@ public:
+@@ -220,6 +233,8 @@ public:
  
  	IDirect3DTexture9 *GetProxyInterface() const { return ProxyInterface; }
  
@@ -10393,21 +10571,60 @@ index f864ffb..3f0bbba 100644
  	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObj) override;
  	virtual ULONG STDMETHODCALLTYPE AddRef() override;
  	virtual ULONG STDMETHODCALLTYPE Release() override;
+@@ -382,6 +397,8 @@ private:
+ 	IDirect3DVolume9 *const ProxyInterface;
+ };
+ 
++bool U2WantsBuffers(); // U2Shaders: lmcapture= is on (buffers keep a copy of what is written)
++
+ class Direct3DVertexBuffer8 : public IDirect3DVertexBuffer8, public AddressLookupTableObject
+ {
+ 	Direct3DVertexBuffer8(const Direct3DVertexBuffer8 &) = delete;
+@@ -393,6 +410,11 @@ public:
+ 
+ 	IDirect3DVertexBuffer9 *GetProxyInterface() const { return ProxyInterface; }
+ 
++	// U2Shaders lmcapture=: a copy of what the game wrote, kept only while capturing
++	std::vector<BYTE> U2Shadow;
++	BYTE *U2Locked = nullptr;
++	UINT U2LockOff = 0, U2LockSize = 0;
++
+ 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObj) override;
+ 	virtual ULONG STDMETHODCALLTYPE AddRef() override;
+ 	virtual ULONG STDMETHODCALLTYPE Release() override;
+@@ -426,6 +448,11 @@ public:
+ 
+ 	IDirect3DIndexBuffer9 *GetProxyInterface() const { return ProxyInterface; }
+ 
++	// U2Shaders lmcapture=: a copy of what the game wrote, kept only while capturing
++	std::vector<BYTE> U2Shadow;
++	BYTE *U2Locked = nullptr;
++	UINT U2LockOff = 0, U2LockSize = 0;
++
+ 	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObj) override;
+ 	virtual ULONG STDMETHODCALLTYPE AddRef() override;
+ 	virtual ULONG STDMETHODCALLTYPE Release() override;
 diff --git a/source/d3d8to9_device.cpp b/source/d3d8to9_device.cpp
-index 7428bea..dbb5e40 100644
+index 7428bea..4c4c286 100644
 --- a/source/d3d8to9_device.cpp
 +++ b/source/d3d8to9_device.cpp
-@@ -7,6 +7,9 @@
+@@ -7,6 +7,15 @@
  #include "d3d8to9.hpp"
  #include <regex>
  #include <assert.h>
 +#include "u2shaders.hpp"
 +
 +static U2Shaders U2;
++bool U2WantsBuffers()
++{
++	if (!U2.Loaded)
++		U2.Load();
++	return U2.Capture;
++}
  
  struct VertexShaderInfo
  {
-@@ -37,6 +40,7 @@ Direct3DDevice8::Direct3DDevice8(Direct3D8 *d3d, IDirect3DDevice9 *ProxyInterfac
+@@ -37,6 +46,7 @@ Direct3DDevice8::Direct3DDevice8(Direct3D8 *d3d, IDirect3DDevice9 *ProxyInterfac
  }
  Direct3DDevice8::~Direct3DDevice8()
  {
@@ -10415,7 +10632,7 @@ index 7428bea..dbb5e40 100644
  	delete ProxyAddressLookupTable;
  }
  
-@@ -199,6 +203,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::Reset(D3DPRESENT_PARAMETERS8 *pPresen
+@@ -199,6 +209,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::Reset(D3DPRESENT_PARAMETERS8 *pPresen
  		return D3DERR_INVALIDCALL;
  
  	CurrentZBiasRenderState = 0;
@@ -10423,7 +10640,7 @@ index 7428bea..dbb5e40 100644
  
  	const HRESULT deviceState = ProxyInterface->TestCooperativeLevel();
  
-@@ -232,6 +237,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::Present(const RECT *pSourceRect, cons
+@@ -232,6 +243,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::Present(const RECT *pSourceRect, cons
  {
  	UNREFERENCED_PARAMETER(pDirtyRegion);
  
@@ -10431,7 +10648,7 @@ index 7428bea..dbb5e40 100644
  	return ProxyInterface->Present(pSourceRect, pDestRect, hDestWindowOverride, nullptr);
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetBackBuffer(UINT iBackBuffer, D3DBACKBUFFER_TYPE Type, IDirect3DSurface8 **ppBackBuffer)
-@@ -451,6 +457,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::CopyRects(IDirect3DSurface8 *pSourceS
+@@ -451,6 +463,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::CopyRects(IDirect3DSurface8 *pSourceS
  
  	auto pSourceSurfaceImpl = static_cast<Direct3DSurface8 *>(pSourceSurface);
  	auto pDestinationSurfaceImpl = static_cast<Direct3DSurface8 *>(pDestinationSurface);
@@ -10439,17 +10656,19 @@ index 7428bea..dbb5e40 100644
  
  	D3DSURFACE_DESC SourceDesc, DestinationDesc;
  	pSourceSurfaceImpl->GetProxyInterface()->GetDesc(&SourceDesc);
-@@ -938,6 +945,9 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetTexture(DWORD Stage, IDirect3DBase
+@@ -938,6 +951,11 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetTexture(DWORD Stage, IDirect3DBase
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::SetTexture(DWORD Stage, IDirect3DBaseTexture8 *pTexture)
  {
 +	if (Stage == 0)
 +		U2Stage0 = (pTexture != nullptr && pTexture->GetType() == D3DRTYPE_TEXTURE) ? static_cast<Direct3DTexture8 *>(pTexture) : nullptr;
++	if (Stage < 4)
++		U2Stages[Stage] = (pTexture != nullptr && pTexture->GetType() == D3DRTYPE_TEXTURE) ? static_cast<Direct3DTexture8 *>(pTexture) : nullptr;
 +
  	if (pTexture == nullptr)
  		return ProxyInterface->SetTexture(Stage, nullptr);
  
-@@ -1119,28 +1129,53 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetCurrentTexturePalette(UINT *pPalet
+@@ -1119,28 +1137,94 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetCurrentTexturePalette(UINT *pPalet
  
  	return ProxyInterface->GetCurrentTexturePalette(pPaletteNumber);
  }
@@ -10459,6 +10678,15 @@ index 7428bea..dbb5e40 100644
 +	bool FixedFunction = CurrentVertexShaderHandle == 0;
 +	if (!FixedFunction)
 +		FixedFunction = reinterpret_cast<VertexShaderInfo *>(CurrentVertexShaderHandle << 1)->Shader == nullptr;
++	// replace=: our textures in place of the game's for this draw (U2After puts them back)
++	U2Swapped = 0;
++	for (DWORD s = 0; s < 4; s++)
++		if (U2Stages[s] != nullptr)
++			if (IDirect3DTexture9 *R = U2.Replacement(ProxyInterface, U2Stages[s]->GetProxyInterface(), U2Stages[s]->U2Hash))
++			{
++				ProxyInterface->SetTexture(s, R);
++				U2Swapped |= 1u << s;
++			}
 +	U2.LogTargetDraw(ProxyInterface, FixedFunction, U2Stage0 != nullptr);
 +	if (U2.PcssBegin(ProxyInterface, U2Stage0 ? U2Stage0->GetProxyInterface() : nullptr, FixedFunction))
 +		return true;
@@ -10466,62 +10694,197 @@ index 7428bea..dbb5e40 100644
 +		return false;
 +	return U2.Begin(ProxyInterface, U2Stage0->GetProxyInterface(), U2Stage0->U2Hash, FixedFunction);
 +}
++// lmcapture=: hands a draw's vertices (from the buffers' copies) to U2Shaders::CaptureDraw
++void Direct3DDevice8::U2CaptureDraw(D3DPRIMITIVETYPE Type, UINT PrimCount, const BYTE *Verts, size_t VertBytes, UINT Stride, INT BaseVertex,
++	const BYTE *Indices, size_t IndexBytes, bool Index32, UINT StartIndex)
++{
++	if (U2Stages[1] == nullptr || Verts == nullptr)
++		return;
++	U2.CaptureDraw(ProxyInterface, Type, PrimCount, Verts, VertBytes, Stride, BaseVertex, Indices, IndexBytes, Index32, StartIndex,
++		U2Stages[0] ? U2Stages[0]->GetProxyInterface() : nullptr, U2Stages[0] ? &U2Stages[0]->U2Hash : nullptr,
++		U2Stages[1]->GetProxyInterface(), U2Stages[1]->U2Hash);
++}
++void Direct3DDevice8::U2After(bool Shaded)
++{
++	if (Shaded)
++		U2.End(ProxyInterface);
++	for (DWORD s = 0; s < 4; s++)
++		if ((U2Swapped & (1u << s)) && U2Stages[s] != nullptr)
++			ProxyInterface->SetTexture(s, U2Stages[s]->GetProxyInterface());
++	U2Swapped = 0;
++}
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
  {
  	ApplyClipPlanes();
++	if (U2.Capture && U2Stream0 != nullptr && !U2Stream0->U2Shadow.empty() && (size_t)StartVertex * U2Stride0 < U2Stream0->U2Shadow.size())
++		U2CaptureDraw(PrimitiveType, PrimitiveCount, U2Stream0->U2Shadow.data() + (size_t)StartVertex * U2Stride0,
++			U2Stream0->U2Shadow.size() - (size_t)StartVertex * U2Stride0, U2Stride0, 0, nullptr, 0, false, 0);
 +	const bool Shaded = U2Begin();
  	ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
-+	if (Shaded)
-+		U2.End(ProxyInterface);
++	U2After(Shaded);
  	return D3D_OK;
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawIndexedPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT MinIndex, UINT NumVertices, UINT StartIndex, UINT PrimitiveCount)
  {
  	ApplyClipPlanes();
++	if (U2.Capture && U2Stream0 != nullptr && U2Indices != nullptr && !U2Stream0->U2Shadow.empty() && !U2Indices->U2Shadow.empty())
++	{
++		D3DINDEXBUFFER_DESC IbDesc;
++		U2Indices->GetProxyInterface()->GetDesc(&IbDesc);
++		U2CaptureDraw(PrimitiveType, PrimitiveCount, U2Stream0->U2Shadow.data(), U2Stream0->U2Shadow.size(), U2Stride0, CurrentBaseVertexIndex,
++			U2Indices->U2Shadow.data(), U2Indices->U2Shadow.size(), IbDesc.Format == D3DFMT_INDEX32, StartIndex);
++	}
 +	const bool Shaded = U2Begin();
  	ProxyInterface->DrawIndexedPrimitive(PrimitiveType, CurrentBaseVertexIndex, MinIndex, NumVertices, StartIndex, PrimitiveCount);
-+	if (Shaded)
-+		U2.End(ProxyInterface);
++	U2After(Shaded);
  	return D3D_OK;
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
  {
  	ApplyClipPlanes();
++	if (U2.Capture)
++		U2CaptureDraw(PrimitiveType, PrimitiveCount, static_cast<const BYTE *>(pVertexStreamZeroData), (size_t)(PrimitiveType == D3DPT_TRIANGLELIST ? PrimitiveCount * 3 : PrimitiveCount + 2) * VertexStreamZeroStride,
++			VertexStreamZeroStride, 0, nullptr, 0, false, 0);
 +	const bool Shaded = U2Begin();
  	ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
-+	if (Shaded)
-+		U2.End(ProxyInterface);
++	U2After(Shaded);
  	return D3D_OK;
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawIndexedPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT MinVertexIndex, UINT NumVertexIndices, UINT PrimitiveCount, const void *pIndexData, D3DFORMAT IndexDataFormat, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
  {
  	ApplyClipPlanes();
++	if (U2.Capture)
++		U2CaptureDraw(PrimitiveType, PrimitiveCount, static_cast<const BYTE *>(pVertexStreamZeroData), (size_t)(MinVertexIndex + NumVertexIndices) * VertexStreamZeroStride,
++			VertexStreamZeroStride, 0, static_cast<const BYTE *>(pIndexData), (size_t)(PrimitiveType == D3DPT_TRIANGLELIST ? PrimitiveCount * 3 : PrimitiveCount + 2) * (IndexDataFormat == D3DFMT_INDEX32 ? 4 : 2),
++			IndexDataFormat == D3DFMT_INDEX32, 0);
 +	const bool Shaded = U2Begin();
  	ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinVertexIndex, NumVertexIndices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
-+	if (Shaded)
-+		U2.End(ProxyInterface);
++	U2After(Shaded);
  	return D3D_OK;
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::ProcessVertices(UINT SrcStartIndex, UINT DestIndex, UINT VertexCount, IDirect3DVertexBuffer8 *pDestBuffer, DWORD Flags)
+@@ -1754,6 +1838,11 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::SetStreamSource(UINT StreamNumber, ID
+ 	IDirect3DVertexBuffer9 *pStreamDataImpl = nullptr;
+ 	if (pStreamData != nullptr)
+ 		pStreamDataImpl = static_cast<Direct3DVertexBuffer8 *>(pStreamData)->GetProxyInterface();
++	if (StreamNumber == 0)
++	{
++		U2Stream0 = static_cast<Direct3DVertexBuffer8 *>(pStreamData);
++		U2Stride0 = Stride;
++	}
+ 
+ 	return ProxyInterface->SetStreamSource(StreamNumber, pStreamDataImpl, 0, Stride);
+ }
+@@ -1788,6 +1877,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::SetIndices(IDirect3DIndexBuffer8 *pIn
+ 	const HRESULT hr = ProxyInterface->SetIndices(pIndexDataImpl);
+ 	if (FAILED(hr))
+ 		return hr;
++	U2Indices = static_cast<Direct3DIndexBuffer8 *>(pIndexData);
+ 
+ 	CurrentBaseVertexIndex = static_cast<INT>(BaseVertexIndex);
+ 
+diff --git a/source/d3d8to9_index_buffer.cpp b/source/d3d8to9_index_buffer.cpp
+index 35dff26..dea9d9d 100644
+--- a/source/d3d8to9_index_buffer.cpp
++++ b/source/d3d8to9_index_buffer.cpp
+@@ -12,6 +12,8 @@ Direct3DIndexBuffer8::Direct3DIndexBuffer8(Direct3DDevice8 *Device, IDirect3DInd
+ }
+ Direct3DIndexBuffer8::~Direct3DIndexBuffer8()
+ {
++	if (Device->U2Indices == this)
++		Device->U2Indices = nullptr;
+ }
+ 
+ HRESULT STDMETHODCALLTYPE Direct3DIndexBuffer8::QueryInterface(REFIID riid, void **ppvObj)
+@@ -97,10 +99,25 @@ HRESULT STDMETHODCALLTYPE Direct3DIndexBuffer8::Lock(UINT OffsetToLock, UINT Siz
+ 		}
+ 	}
+ 
+-	return ProxyInterface->Lock(OffsetToLock, SizeToLock, reinterpret_cast<void **>(ppbData), Flags);
++	const HRESULT hr = ProxyInterface->Lock(OffsetToLock, SizeToLock, reinterpret_cast<void **>(ppbData), Flags);
++	if (SUCCEEDED(hr) && U2WantsBuffers())
++	{
++		D3DINDEXBUFFER_DESC desc;
++		ProxyInterface->GetDesc(&desc);
++		U2Locked = *ppbData;
++		U2LockOff = OffsetToLock;
++		U2LockSize = (SizeToLock != 0 ? SizeToLock : desc.Size - OffsetToLock);
++		if (U2Shadow.size() != desc.Size)
++			U2Shadow.resize(desc.Size);
++	}
++	return hr;
+ }
+ HRESULT STDMETHODCALLTYPE Direct3DIndexBuffer8::Unlock()
+ {
++	// lmcapture=: keep what the game wrote (the buffer itself may not be readable later)
++	if (U2Locked != nullptr && U2LockOff + U2LockSize <= U2Shadow.size())
++		memcpy(U2Shadow.data() + U2LockOff, U2Locked, U2LockSize);
++	U2Locked = nullptr;
+ 	return ProxyInterface->Unlock();
+ }
+ HRESULT STDMETHODCALLTYPE Direct3DIndexBuffer8::GetDesc(D3DINDEXBUFFER_DESC *pDesc)
 diff --git a/source/d3d8to9_texture.cpp b/source/d3d8to9_texture.cpp
-index 6b87e59..7d9af6e 100644
+index 6b87e59..63cf8b0 100644
 --- a/source/d3d8to9_texture.cpp
 +++ b/source/d3d8to9_texture.cpp
-@@ -12,6 +12,8 @@ Direct3DTexture8::Direct3DTexture8(Direct3DDevice8 *Device, IDirect3DTexture9 *P
+@@ -12,6 +12,11 @@ Direct3DTexture8::Direct3DTexture8(Direct3DDevice8 *Device, IDirect3DTexture9 *P
  }
  Direct3DTexture8::~Direct3DTexture8()
  {
 +	if (Device->U2Stage0 == this)
 +		Device->U2Stage0 = nullptr;
++	for (Direct3DTexture8 *&Stage : Device->U2Stages)
++		if (Stage == this)
++			Stage = nullptr;
  }
  
  HRESULT STDMETHODCALLTYPE Direct3DTexture8::QueryInterface(REFIID riid, void **ppvObj)
+diff --git a/source/d3d8to9_vertex_buffer.cpp b/source/d3d8to9_vertex_buffer.cpp
+index 13711ea..0d9c08b 100644
+--- a/source/d3d8to9_vertex_buffer.cpp
++++ b/source/d3d8to9_vertex_buffer.cpp
+@@ -12,6 +12,8 @@ Direct3DVertexBuffer8::Direct3DVertexBuffer8(Direct3DDevice8 *Device, IDirect3DV
+ }
+ Direct3DVertexBuffer8::~Direct3DVertexBuffer8()
+ {
++	if (Device->U2Stream0 == this)
++		Device->U2Stream0 = nullptr;
+ }
+ 
+ HRESULT STDMETHODCALLTYPE Direct3DVertexBuffer8::QueryInterface(REFIID riid, void **ppvObj)
+@@ -97,10 +99,25 @@ HRESULT STDMETHODCALLTYPE Direct3DVertexBuffer8::Lock(UINT OffsetToLock, UINT Si
+ 		}
+ 	}
+ 
+-	return ProxyInterface->Lock(OffsetToLock, SizeToLock, reinterpret_cast<void **>(ppbData), Flags);
++	const HRESULT hr = ProxyInterface->Lock(OffsetToLock, SizeToLock, reinterpret_cast<void **>(ppbData), Flags);
++	if (SUCCEEDED(hr) && U2WantsBuffers())
++	{
++		D3DVERTEXBUFFER_DESC desc;
++		ProxyInterface->GetDesc(&desc);
++		U2Locked = *ppbData;
++		U2LockOff = OffsetToLock;
++		U2LockSize = (SizeToLock != 0 ? SizeToLock : desc.Size - OffsetToLock);
++		if (U2Shadow.size() != desc.Size)
++			U2Shadow.resize(desc.Size);
++	}
++	return hr;
+ }
+ HRESULT STDMETHODCALLTYPE Direct3DVertexBuffer8::Unlock()
+ {
++	// lmcapture=: keep what the game wrote (the buffer itself may not be readable later)
++	if (U2Locked != nullptr && U2LockOff + U2LockSize <= U2Shadow.size())
++		memcpy(U2Shadow.data() + U2LockOff, U2Locked, U2LockSize);
++	U2Locked = nullptr;
+ 	return ProxyInterface->Unlock();
+ }
+ HRESULT STDMETHODCALLTYPE Direct3DVertexBuffer8::GetDesc(D3DVERTEXBUFFER_DESC *pDesc)
 diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
 new file mode 100644
-index 0000000..17bdb62
+index 0000000..9952cf6
 --- /dev/null
 +++ b/source/u2shaders.hpp
-@@ -0,0 +1,1329 @@
+@@ -0,0 +1,2012 @@
 +/**
 + * U2Shaders - replace the fixed-function look of chosen surfaces with HLSL pixel shaders.
 + *
@@ -10536,6 +10899,21 @@ index 0000000..17bdb62
 + *                                 the same, but the draw keeps its own blending (no frame
 + *                                 copy in s1): the shader returns what the texture would
 + *                                 have, so overlapping decals still layer
++ *     surface=1a2b3c4d world_parallax.hlsl
++ *                                 a solid surface (wall, floor) drawn with parallax: the
++ *                                 shader redoes the texture stages (texture x vertex colour
++ *                                 x lightmap in s1, see SurfaceBegin); the lightmap and the
++ *                                 texture's panning are left as they are. c2 = how the stages
++ *                                 combine, c3 = the texture's brightness levels
++ *     replace=1a2b3c4d my.dds     draw U2Shaders\my.dds wherever that texture is used, on any
++ *                                 of stages 0-3 (lightmaps too); a DDS, 32-bit or DXT1/3/5,
++ *                                 with its own mips (see Replacement)
++ *     charlight=1                 light lit solid draws (characters, weapons) per pixel with
++ *                                 char_light.hlsl: the game's own D3D lights, softer wrap,
++ *                                 ambient lighter from above, rim (see CharBegin)
++ *     lmcapture=1                 record the lightmapped geometry as it is drawn, for baking
++ *                                 elsewhere: U2Shaders\capture\scene.obj + lightmaps.txt,
++ *                                 lightmaps saved in U2Shaders\dump (see CaptureDraw)
 + *     post=1                      bloom, sharpening and colour grading before the HUD
 + *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
 + *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
@@ -10560,11 +10938,14 @@ index 0000000..17bdb62
 +
 +#include <d3dcompiler.h>
 +#include <algorithm>
++#include <cmath>
 +#include <cstdarg>
 +#include <cstdio>
 +#include <cstring>
 +#include <map>
++#include <set>
 +#include <string>
++#include <unordered_set>
 +#include <vector>
 +
 +#pragma comment(lib, "d3dcompiler.lib")
@@ -10581,6 +10962,9 @@ index 0000000..17bdb62
 +	DWORD Hash = 0;
 +	std::string File;          // empty = the built-in tint
 +	bool KeepBlend = false;    // decal=: the draw keeps its own blending, no frame copy
++	bool Surface = false;      // surface=: solid draws only, see SurfaceBegin
++	bool Refused = false;      // surface=: an unsupported stage setup was logged once
++	float Levels[4] = {};      // surface=: the texture's brightness levels (see TextureLevels)
 +	IDirect3DPixelShader9 *PS = nullptr;
 +	bool Tried = false;
 +};
@@ -10652,6 +11036,13 @@ index 0000000..17bdb62
 +				;
 +			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
 +				CharProbe = Hash != 0;
++			else if (sscanf_s(Line, " lmcapture=%u", &Hash) == 1)
++				Capture = Hash != 0;
++			else if (sscanf_s(Line, " charlight=%u", &Hash) == 1)
++			{
++				CharLight = Hash != 0;
++				CharRule.File = "char_light.hlsl";
++			}
 +			else if (sscanf_s(Line, " post=%u", &Hash) == 1)
 +			{
 +				Post = Hash != 0;
@@ -10690,15 +11081,27 @@ index 0000000..17bdb62
 +				R.KeepBlend = true;
 +				Rules.push_back(R);
 +			}
++			else if (sscanf_s(Line, " replace=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
++				Replacements[Hash].File = Name;
++			else if (sscanf_s(Line, " surface=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
++			{
++				U2Rule R;
++				R.Hash = Hash;
++				R.File = Name;
++				R.Surface = true;
++				Rules.push_back(R);
++			}
 +		}
 +		fclose(F);
-+		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (int)Pcss,
++		Message("U2Shaders: log %d, %u rule(s), %u replacement(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (unsigned)Replacements.size(), (int)Pcss,
 +			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3], ShadowTint[0], ShadowTint[1], ShadowTint[2]);
-+		if (Log || CharProbe)
++		if (Log || CharProbe || Capture)
 +		{
 +			CreateDirectoryA((Dir + "U2Shaders").c_str(), nullptr);
 +			CreateDirectoryA((Dir + "U2Shaders\\dump").c_str(), nullptr);
 +		}
++		if (Capture)
++			CreateDirectoryA((Dir + "U2Shaders\\capture").c_str(), nullptr);
 +	}
 +
 +	static UINT LevelBytes(const D3DSURFACE_DESC &Desc, INT Pitch)
@@ -10898,24 +11301,126 @@ index 0000000..17bdb62
 +		DrawKinds[key]++;
 +	}
 +
++	// Fills in a texture's cached hash the first time (0xFFFFFFFF: unreadable, don't try again)
++	void Known(IDirect3DTexture9 *Tex, DWORD &Hash)
++	{
++		if (Hash != 0)
++			return;
++		U2TexInfo Info;
++		Hash = this->Hash(Tex, Info, false);
++		if (Hash == 0)
++			Hash = 0xFFFFFFFF;
++		else
++			Seen[Hash] = Info;
++	}
++
++	// ---- replace=: our own texture in place of one of the game's -------------------------
++	// The device swaps it in for each draw and back after (so the game still sees its own
++	// texture when it asks), on stages 0-3. The rules keyed by hash still match the original.
++	struct U2Replace
++	{
++		std::string File;
++		IDirect3DTexture9 *Tex = nullptr;
++		bool Tried = false;
++	};
++	std::map<DWORD, U2Replace> Replacements;
++
++	IDirect3DTexture9 *Replacement(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD &Hash)
++	{
++		if (!Loaded)
++			Load();
++		if (Replacements.empty() || Tex == nullptr)
++			return nullptr;
++		Known(Tex, Hash);
++		const auto It = Replacements.find(Hash);
++		if (It == Replacements.end())
++			return nullptr;
++		U2Replace &R = It->second;
++		if (!R.Tried)
++		{
++			R.Tried = true;
++			R.Tex = LoadDDS(Dev, R.File);
++			if (R.Tex != nullptr)
++				Message("replace %08x: %s loaded", Hash, R.File.c_str());
++		}
++		return R.Tex;
++	}
++
++	// A DDS file as a managed texture (survives device resets): 32-bit (A8R8G8B8/X8R8G8B8) or
++	// DXT1/3/5, all the mip levels the file has.
++	IDirect3DTexture9 *LoadDDS(IDirect3DDevice9 *Dev, const std::string &File)
++	{
++		std::string Data;
++		FILE *F = nullptr;
++		if (fopen_s(&F, (Dir + "U2Shaders\\" + File).c_str(), "rb") || F == nullptr)
++		{
++			Message("replace: %s not found", File.c_str());
++			return nullptr;
++		}
++		char Buf[65536];
++		size_t n;
++		while ((n = fread(Buf, 1, sizeof(Buf), F)) > 0)
++			Data.append(Buf, n);
++		fclose(F);
++		const DWORD *H = reinterpret_cast<const DWORD *>(Data.data());
++		if (Data.size() < 128 || H[0] != 0x20534444 || H[1] != 124)
++		{
++			Message("replace: %s is not a DDS file", File.c_str());
++			return nullptr;
++		}
++		const UINT Height = H[3], Width = H[4], Levels = (H[2] & 0x20000) && H[7] ? H[7] : 1;
++		const DWORD PfFlags = H[20], FourCC = H[21], Bits = H[22], RMask = H[23], AMask = H[26];
++		D3DFORMAT Fmt = D3DFMT_UNKNOWN;
++		UINT BlockBytes = 0;          // DXT: bytes per 4x4 block; else 0
++		if ((PfFlags & 0x4) && (FourCC == D3DFMT_DXT1 || FourCC == D3DFMT_DXT3 || FourCC == D3DFMT_DXT5))
++		{
++			Fmt = (D3DFORMAT)FourCC;
++			BlockBytes = FourCC == D3DFMT_DXT1 ? 8 : 16;
++		}
++		else if ((PfFlags & 0x40) && Bits == 32 && RMask == 0xFF0000)
++			Fmt = (PfFlags & 0x1) && AMask ? D3DFMT_A8R8G8B8 : D3DFMT_X8R8G8B8;
++		if (Fmt == D3DFMT_UNKNOWN || Width == 0 || Height == 0)
++		{
++			Message("replace: %s: unsupported format (use 32-bit BGRA or DXT1/3/5)", File.c_str());
++			return nullptr;
++		}
++		IDirect3DTexture9 *T = nullptr;
++		if (FAILED(Dev->CreateTexture(Width, Height, Levels, 0, Fmt, D3DPOOL_MANAGED, &T, nullptr)))
++		{
++			Message("replace: %s: CreateTexture %ux%u failed", File.c_str(), Width, Height);
++			return nullptr;
++		}
++		size_t At = 128;
++		for (UINT L = 0; L < Levels; L++)
++		{
++			const UINT W = (std::max)(1u, Width >> L), Hh = (std::max)(1u, Height >> L);
++			const UINT Rows = BlockBytes ? (std::max)(1u, (Hh + 3) / 4) : Hh;
++			const UINT RowBytes = BlockBytes ? (std::max)(1u, (W + 3) / 4) * BlockBytes : W * 4;
++			D3DLOCKED_RECT Lock;
++			if (At + (size_t)Rows * RowBytes > Data.size() || FAILED(T->LockRect(L, &Lock, nullptr, 0)))
++			{
++				Message("replace: %s: file ends early (level %u)", File.c_str(), L);
++				T->Release();
++				return nullptr;
++			}
++			for (UINT y = 0; y < Rows; y++)
++				memcpy(static_cast<BYTE *>(Lock.pBits) + y * Lock.Pitch, Data.data() + At + (size_t)y * RowBytes, RowBytes);
++			T->UnlockRect(L);
++			At += (size_t)Rows * RowBytes;
++		}
++		return T;
++	}
++
 +	// Called before a draw. Hash = the stage 0 texture's hash (0: not yet known, read it from
 +	// Tex). Returns true if a shader was put in place; End() must then follow the draw.
 +	bool Begin(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD &Hash, bool FixedFunction)
 +	{
 +		if (!Loaded)
 +			Load();
-+		if (Tex == nullptr || (!Log && Rules.empty() && !CharProbe))
++		if (Tex == nullptr || (!Log && Rules.empty() && !CharProbe && !CharLight))
 +			return false;
 +
-+		if (Hash == 0)
-+		{
-+			U2TexInfo Info;
-+			Hash = this->Hash(Tex, Info, false);
-+			if (Hash == 0)
-+				Hash = 0xFFFFFFFF;         // unreadable: don't try again
-+			else
-+				Seen[Hash] = Info;
-+		}
++		Known(Tex, Hash);
 +		if (Hash == 0xFFFFFFFF)
 +		{
 +			if (Log)
@@ -10945,7 +11450,9 @@ index 0000000..17bdb62
 +			if (R.Hash == Hash)
 +				Rule = &R;
 +		if (Rule == nullptr)
-+			return false;
++			return CharLight ? CharBegin(Dev, FixedFunction) : false;
++		if (Rule->Surface)
++			return SurfaceBegin(Dev, *Rule, FixedFunction);
 +		// only the see-through parts: an atlas is often shared with solid ones
 +		DWORD Blending = 0;
 +		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blending);
@@ -11032,7 +11539,7 @@ index 0000000..17bdb62
 +	float PcssParams[4] = { 0.05f, 0.004f, 0.0006f, 0.06f };
 +	float ShadowTint[4] = { 1, 1, 1, 1 };   // w = 1 tells pcss_proj.hlsl the tint is set
 +	float PcssDebug = 0;          // pcssdebug=1: colour the shadows by the measured gap
-+	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector
++	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector, 5 solid surface
 +	DWORD OldCWE = 0;
 +	std::map<void *, D3DMATRIX> MapViews;   // shadow-map surface -> the light's view it was drawn with
 +	IDirect3DSurface9 *MapTarget = nullptr; // the shadow map drawn last (compared only, not referenced)
@@ -11342,8 +11849,289 @@ index 0000000..17bdb62
 +		return true;
 +	}
 +
++	// surface=: a solid world surface drawn with parallax (world_parallax.hlsl). A pixel shader
++	// replaces all the texture stages, so the shader redoes what they did; only the usual setups
++	// are taken (stage 0: the texture, alone or times the vertex colour; stage 1: nothing, or a
++	// second texture such as the lightmap times the result), as c2 = (vertex colour factor,
++	// stage 1 factor; 0 = not used). Anything else is drawn as before and noted once in the log.
++	// Stages 0 and 1 keep their own coordinates and transforms (panning, the lightmap's
++	// mapping); stage 2's coordinates carry the camera-space position (TEXCOORD2).
++	static float ModulateFactor(DWORD Op)
++	{
++		return Op == D3DTOP_MODULATE ? 1.0f : Op == D3DTOP_MODULATE2X ? 2.0f : Op == D3DTOP_MODULATE4X ? 4.0f : 0.0f;
++	}
++	static bool ArgsAre(DWORD A1, DWORD A2, DWORD X, DWORD Y)
++	{
++		return (A1 == X && A2 == Y) || (A1 == Y && A2 == X);   // no modifiers (complement, alpha replicate)
++	}
++	// The brightness a surface's texture mostly has (its median: taken as the surface itself) and
++	// its darkest few percent (the bottom of its gaps), so world_parallax.hlsl needs no tuning per
++	// texture. Read once from the top mip: 32-bit textures per pixel, DXT per block (the mean of
++	// its two end colours). Other formats: false, and the shader uses its own settings.
++	bool TextureLevels(IDirect3DTexture9 *Tex, float &Flat, float &Deep)
++	{
++		D3DSURFACE_DESC Desc;
++		D3DLOCKED_RECT Lock;
++		if (FAILED(Tex->GetLevelDesc(0, &Desc)))
++			return false;
++		const bool Dxt1 = Desc.Format == D3DFMT_DXT1;
++		const bool Dxt = Dxt1 || Desc.Format == D3DFMT_DXT2 || Desc.Format == D3DFMT_DXT3 || Desc.Format == D3DFMT_DXT4 || Desc.Format == D3DFMT_DXT5;
++		if (!(Desc.Format == D3DFMT_A8R8G8B8 || Desc.Format == D3DFMT_X8R8G8B8 || Dxt) || FAILED(Tex->LockRect(0, &Lock, nullptr, D3DLOCK_READONLY)))
++			return false;
++		unsigned Hist[256] = {}, Count = 0;
++		auto Add = [&](unsigned r, unsigned g, unsigned b) { Hist[(r * 77 + g * 151 + b * 29) >> 8]++; Count++; };
++		const BYTE *Bits = static_cast<const BYTE *>(Lock.pBits);
++		if (Dxt)
++		{
++			const UINT Bw = (std::max)(1u, Desc.Width / 4), Bh = (std::max)(1u, Desc.Height / 4), Size = Dxt1 ? 8 : 16;
++			for (UINT y = 0; y < Bh; y++)
++				for (UINT x = 0; x < Bw; x++)
++				{
++					const BYTE *B = Bits + y * Lock.Pitch + x * Size + (Dxt1 ? 0 : 8);
++					const unsigned c0 = B[0] | (B[1] << 8), c1 = B[2] | (B[3] << 8);
++					Add((((c0 >> 11) & 31) + ((c1 >> 11) & 31)) * 255 / 62, (((c0 >> 5) & 63) + ((c1 >> 5) & 63)) * 255 / 126,
++						((c0 & 31) + (c1 & 31)) * 255 / 62);
++				}
++		}
++		else
++			for (UINT y = 0; y < Desc.Height; y++)
++				for (UINT x = 0; x < Desc.Width; x++)
++				{
++					const BYTE *P = Bits + y * Lock.Pitch + x * 4;
++					Add(P[2], P[1], P[0]);
++				}
++		Tex->UnlockRect(0);
++		if (Count == 0)
++			return false;
++		int DeepAt = -1, FlatAt = -1;
++		for (unsigned i = 0, Sum = 0; i < 256; i++)
++		{
++			Sum += Hist[i];
++			if (DeepAt < 0 && Sum * 100 >= Count * 4)
++				DeepAt = i;
++			if (FlatAt < 0 && Sum * 2 >= Count)
++				FlatAt = i;
++		}
++		// a low-contrast texture gets little depth, not its small differences stretched to full depth
++		Flat = (FlatAt + 0.5f) / 255;
++		Deep = (std::min)((DeepAt + 0.5f) / 255, Flat - 0.15f);
++		return true;
++	}
++
++	bool SurfaceBegin(IDirect3DDevice9 *Dev, U2Rule &R, bool FixedFunction)
++	{
++		DWORD Blending = 0;
++		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blending);
++		if (Blending || !FixedFunction || Offscreen(Dev))
++			return false;
++		DWORD op[3] = {}, a1[3] = {}, a2[3] = {};
++		for (DWORD st = 0; st < 3; st++)
++		{
++			Dev->GetTextureStageState(st, D3DTSS_COLOROP, &op[st]);
++			Dev->GetTextureStageState(st, D3DTSS_COLORARG1, &a1[st]);
++			Dev->GetTextureStageState(st, D3DTSS_COLORARG2, &a2[st]);
++		}
++		float Vert = -1, Second = -1;
++		if (op[0] == D3DTOP_SELECTARG1 && a1[0] == D3DTA_TEXTURE)
++			Vert = 0;
++		else if (ModulateFactor(op[0]) > 0 && (ArgsAre(a1[0], a2[0], D3DTA_TEXTURE, D3DTA_DIFFUSE) || ArgsAre(a1[0], a2[0], D3DTA_TEXTURE, D3DTA_CURRENT)))
++			Vert = ModulateFactor(op[0]);    // on stage 0, CURRENT is the vertex colour
++		if (op[1] == D3DTOP_DISABLE)
++			Second = 0;
++		else if (ModulateFactor(op[1]) > 0 && ArgsAre(a1[1], a2[1], D3DTA_TEXTURE, D3DTA_CURRENT) && op[2] == D3DTOP_DISABLE)
++			Second = ModulateFactor(op[1]);
++		if (Vert < 0 || Second < 0)
++		{
++			if (!R.Refused)
++				Message("surface %08x: stage setup not supported, drawn as before (st0 op %u %x %x | st1 op %u %x %x | st2 op %u)",
++					R.Hash, op[0], a1[0], a2[0], op[1], a1[1], a2[1], op[2]);
++			R.Refused = true;
++			return false;
++		}
++		const bool First = !R.Tried;
++		IDirect3DPixelShader9 *PS = Compile(Dev, R);
++		if (PS == nullptr)
++			return false;
++		if (First)
++		{
++			IDirect3DTexture9 *Tex = nullptr;
++			if (SUCCEEDED(Dev->GetTexture(0, reinterpret_cast<IDirect3DBaseTexture9 **>(&Tex))) && Tex != nullptr)
++			{
++				if (TextureLevels(Tex, R.Levels[0], R.Levels[1]))
++				{
++					R.Levels[3] = 1;
++					Message("surface %08x: brightness levels %.2f (surface) %.2f (deepest)", R.Hash, R.Levels[0], R.Levels[1]);
++				}
++				else
++					Message("surface %08x: texture format not read, using the shader's own levels", R.Hash);
++				Tex->Release();
++			}
++		}
++
++		Dev->GetPixelShader(&OldPS);
++		Dev->GetPixelShaderConstantF(0, OldConst[0], 8);
++		static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
++		Dev->GetTextureStageState(2, D3DTSS_TEXCOORDINDEX, &OldTCI[2]);
++		Dev->GetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[2]);
++		Dev->GetTransform(D3DTS_TEXTURE2, &OldTexMat[2]);
++		Dev->SetTextureStageState(2, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION | 2);
++		Dev->SetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
++		Dev->SetTransform(D3DTS_TEXTURE2, &Identity);
++
++		float Const[4][4] = {};
++		Const[0][0] = (GetTickCount() % 3600000) / 1000.0f;
++		Const[0][1] = 1;
++		Const[0][2] = SceneW ? 1.0f / SceneW : 0;
++		Const[0][3] = SceneH ? 1.0f / SceneH : 0;
++		Const[2][0] = Vert;
++		Const[2][1] = Second;
++		memcpy(Const[3], R.Levels, sizeof(R.Levels));
++		Dev->SetPixelShaderConstantF(0, Const[0], 4);
++		Dev->SetPixelShader(PS);
++		Mode = 5;
++		return true;
++	}
++
++	// charlight=1: a solid, fixed-function, lit draw (characters, weapons, pickups: the level
++	// itself is lightmapped or vertex-coloured, unlit) gets its lighting per pixel from the same
++	// D3D lights, in char_light.hlsl. Taken only when the shader can redo what the stages did:
++	// stage 0 = texture x lit colour (x1/2/4), stage 1 off, material colours from the material
++	// (not the vertices). Anything else is drawn as before and its setup logged once.
++	// Constants: c2 (stage 0 factor, light count), c3 ambient + emissive, c4 world up in view
++	// space, c8.. 4 per light (up to 4), in view space:
++	//   position xyz, type (1 point, 2 spot, 3 directional) | direction xyz, cos(phi / 2)
++	//   colour (light x material diffuse) rgb, range | attenuation 0, 1, 2, cos(theta / 2)
++	// Stage 1 and 2 coordinates carry the camera-space normal and position (TEXCOORD1/2).
++	bool CharBegin(IDirect3DDevice9 *Dev, bool FixedFunction)
++	{
++		DWORD Blending = 0, Lighting = 0, DiffSrc = 0, AmbSrc = 0, ColorVertex = 0;
++		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blending);
++		Dev->GetRenderState(D3DRS_LIGHTING, &Lighting);
++		if (Blending || !Lighting || !FixedFunction || Offscreen(Dev))
++			return false;
++		Dev->GetRenderState(D3DRS_COLORVERTEX, &ColorVertex);
++		Dev->GetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, &DiffSrc);
++		Dev->GetRenderState(D3DRS_AMBIENTMATERIALSOURCE, &AmbSrc);
++		DWORD op[2] = {}, a1 = 0, a2 = 0, Fvf = 0;
++		Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op[0]);
++		Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &a1);
++		Dev->GetTextureStageState(0, D3DTSS_COLORARG2, &a2);
++		Dev->GetTextureStageState(1, D3DTSS_COLOROP, &op[1]);
++		Dev->GetFVF(&Fvf);
++		const bool VertexColours = ColorVertex && (Fvf & D3DFVF_DIFFUSE) && (DiffSrc != D3DMCS_MATERIAL || AmbSrc != D3DMCS_MATERIAL);
++		const float Factor = ModulateFactor(op[0]);
++		if (Factor == 0 || !(ArgsAre(a1, a2, D3DTA_TEXTURE, D3DTA_DIFFUSE) || ArgsAre(a1, a2, D3DTA_TEXTURE, D3DTA_CURRENT))
++			|| op[1] != D3DTOP_DISABLE || VertexColours)
++		{
++			char Key[160];
++			sprintf_s(Key, "st0 op %u %x %x | st1 op %u | vertex colours as material %d", op[0], a1, a2, op[1], (int)VertexColours);
++			if (!CharRefused[Key])
++				Message("charlight: setup not supported, drawn as before (%s)", Key);
++			CharRefused[Key] = true;
++			return false;
++		}
++		IDirect3DPixelShader9 *PS = Compile(Dev, CharRule);
++		if (PS == nullptr)
++			return false;
++
++		float C[24][4] = {};
++		D3DMATERIAL9 M = {};
++		Dev->GetMaterial(&M);
++		D3DMATRIX V;
++		Dev->GetTransform(D3DTS_VIEW, &V);
++		auto Point = [&](const D3DVECTOR &p, float *out) {
++			for (int c = 0; c < 3; c++)
++				out[c] = p.x * V.m[0][c] + p.y * V.m[1][c] + p.z * V.m[2][c] + V.m[3][c];
++		};
++		auto Dir = [&](const D3DVECTOR &d, float *out) {
++			for (int c = 0; c < 3; c++)
++				out[c] = d.x * V.m[0][c] + d.y * V.m[1][c] + d.z * V.m[2][c];
++			const float l = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
++			if (l > 0) for (int c = 0; c < 3; c++) out[c] /= l;
++		};
++		DWORD Amb = 0;
++		Dev->GetRenderState(D3DRS_AMBIENT, &Amb);
++		float AmbR = ((Amb >> 16) & 0xFF) / 255.0f, AmbG = ((Amb >> 8) & 0xFF) / 255.0f, AmbB = (Amb & 0xFF) / 255.0f;
++		int Count = 0;
++		for (DWORD i = 0; i < 8; i++)
++		{
++			BOOL On = FALSE;
++			D3DLIGHT9 L = {};
++			if (FAILED(Dev->GetLightEnable(i, &On)) || !On || FAILED(Dev->GetLight(i, &L)))
++				continue;
++			AmbR += L.Ambient.r; AmbG += L.Ambient.g; AmbB += L.Ambient.b;   // lights' ambient adds up, as in D3D
++			if (Count == 4)
++				continue;                  // more than 4: their ambient still counts, their light not
++			float *P = C[8 + Count * 4];
++			Point(L.Position, P);
++			P[3] = (float)L.Type;
++			Dir(L.Direction, C[9 + Count * 4]);
++			C[9 + Count * 4][3] = cosf(L.Phi * 0.5f);
++			C[10 + Count * 4][0] = L.Diffuse.r * M.Diffuse.r;
++			C[10 + Count * 4][1] = L.Diffuse.g * M.Diffuse.g;
++			C[10 + Count * 4][2] = L.Diffuse.b * M.Diffuse.b;
++			C[10 + Count * 4][3] = L.Type == D3DLIGHT_DIRECTIONAL ? 1e30f : L.Range;
++			C[11 + Count * 4][0] = L.Attenuation0;
++			C[11 + Count * 4][1] = L.Attenuation1;
++			C[11 + Count * 4][2] = L.Attenuation2;
++			C[11 + Count * 4][3] = cosf(L.Theta * 0.5f);
++			Count++;
++		}
++		C[0][0] = (GetTickCount() % 3600000) / 1000.0f;
++		C[0][1] = 1;
++		C[2][0] = Factor;
++		C[2][1] = (float)Count;
++		C[3][0] = AmbR * M.Ambient.r + M.Emissive.r;
++		C[3][1] = AmbG * M.Ambient.g + M.Emissive.g;
++		C[3][2] = AmbB * M.Ambient.b + M.Emissive.b;
++		const D3DVECTOR Up = { 0, 0, 1 };      // Unreal's up (Z) in the world space the game draws in
++		Dir(Up, C[4]);
++
++		Dev->GetPixelShader(&OldPS);
++		Dev->GetPixelShaderConstantF(0, OldCharConst[0], 24);
++		static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
++		for (DWORD s = 1; s <= 2; s++)
++		{
++			Dev->GetTextureStageState(s, D3DTSS_TEXCOORDINDEX, &OldTCI[s]);
++			Dev->GetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[s]);
++			Dev->GetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &OldTexMat[s]);
++			Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, (s == 1 ? D3DTSS_TCI_CAMERASPACENORMAL : D3DTSS_TCI_CAMERASPACEPOSITION) | s);
++			Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
++			Dev->SetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &Identity);
++		}
++		Dev->SetPixelShaderConstantF(0, C[0], 24);
++		Dev->SetPixelShader(PS);
++		Mode = 6;
++		return true;
++	}
++
 +	void End(IDirect3DDevice9 *Dev)
 +	{
++		if (Mode == 6)
++		{
++			Dev->SetPixelShader(OldPS);
++			Dev->SetPixelShaderConstantF(0, OldCharConst[0], 24);
++			for (DWORD s = 1; s <= 2; s++)
++			{
++				Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, OldTCI[s]);
++				Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, OldTTF[s]);
++				Dev->SetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &OldTexMat[s]);
++			}
++			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
++			Mode = 0;
++			return;
++		}
++		if (Mode == 5)
++		{
++			Dev->SetPixelShader(OldPS);
++			Dev->SetPixelShaderConstantF(0, OldConst[0], 8);
++			Dev->SetTextureStageState(2, D3DTSS_TEXCOORDINDEX, OldTCI[2]);
++			Dev->SetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, OldTTF[2]);
++			Dev->SetTransform(D3DTS_TEXTURE2, &OldTexMat[2]);
++			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
++			Mode = 0;
++			return;
++		}
 +		if (Mode == 4)
 +		{
 +			Dev->SetRenderState(D3DRS_COLORWRITEENABLE, OldCWE);
@@ -11663,6 +12451,262 @@ index 0000000..17bdb62
 +	// silhouettes were drawn earlier in the same frame. Written to U2Shaders\dump\chars.txt;
 +	// each texture is also saved once as <hash>_<w>x<h>.dds so a character's skin can be found.
 +	bool CharProbe = false;
++	bool CharLight = false;
++
++	// ---- lmcapture=1: the lightmapped geometry, for baking elsewhere ---------------------------
++	// Every draw with a texture on stage 1 that stage 1 multiplies in (a lightmap) is recorded as
++	// world-space triangles with their stage 1 (lightmap) coordinates, worked out the way
++	// fixed-function Direct3D does (texture coordinate set or camera-space position, then the
++	// texture transform). Triangles are kept once each, however often they are drawn. Every few
++	// seconds the lot is written to U2Shaders\capture\scene.obj (one object per lightmap,
++	// "o lm_<hash>"; one material per stage 0 texture, "usemtl tex_<hash>"; vt = lightmap
++	// coordinates in Direct3D's convention, v down; faces in the order Direct3D shows as their
++	// front) and lightmaps.txt ("<hash> <width> <height> <stage 1 op> <triangles>"); each
++	// lightmap is saved once in U2Shaders\dump. The buffers' contents come from copies the
++	// device keeps while capturing (vertex buffers may not be readable).
++	bool Capture = false;
++	struct U2LightmapCapture
++	{
++		UINT W = 0, H = 0;
++		DWORD Op = 0;
++		std::vector<float> Verts;    // x y z u v, 3 per triangle
++		std::vector<DWORD> Tex;      // stage 0 hash, 1 per triangle
++	};
++	std::map<DWORD, U2LightmapCapture> Captured;
++	std::unordered_set<unsigned long long> CapturedTris;
++	bool CaptureDirty = false;
++	unsigned CaptureWritten = 0;
++
++	struct U2VertexLayout
++	{
++		int Pos = -1;                // byte offset of the float3 position, -1 = none (or pre-transformed)
++		int Tex[8];                  // byte offset of each texture coordinate set, -1 = none
++		int TexComps[8];
++		U2VertexLayout() { for (int i = 0; i < 8; i++) { Tex[i] = -1; TexComps[i] = 0; } }
++	};
++
++	static U2VertexLayout LayoutOf(IDirect3DDevice9 *Dev)
++	{
++		U2VertexLayout L;
++		IDirect3DVertexDeclaration9 *Decl = nullptr;
++		if (SUCCEEDED(Dev->GetVertexDeclaration(&Decl)) && Decl != nullptr)
++		{
++			D3DVERTEXELEMENT9 E[MAXD3DDECLLENGTH + 1];
++			UINT N = MAXD3DDECLLENGTH + 1;
++			if (SUCCEEDED(Decl->GetDeclaration(E, &N)))
++				for (UINT i = 0; i < N && E[i].Stream != 0xFF; i++)
++				{
++					if (E[i].Stream != 0)
++						continue;
++					if (E[i].Usage == D3DDECLUSAGE_POSITION && E[i].UsageIndex == 0 && E[i].Type == D3DDECLTYPE_FLOAT3)
++						L.Pos = E[i].Offset;
++					else if (E[i].Usage == D3DDECLUSAGE_TEXCOORD && E[i].UsageIndex < 8 && E[i].Type <= D3DDECLTYPE_FLOAT4)
++					{
++						L.Tex[E[i].UsageIndex] = E[i].Offset;
++						L.TexComps[E[i].UsageIndex] = E[i].Type + 1;   // FLOAT1..FLOAT4 are 0..3
++					}
++				}
++			Decl->Release();
++			return L;
++		}
++		DWORD Fvf = 0;
++		Dev->GetFVF(&Fvf);
++		if ((Fvf & D3DFVF_POSITION_MASK) != D3DFVF_XYZ)
++			return L;                   // pre-transformed or blended: not captured
++		int At = 12;
++		L.Pos = 0;
++		if (Fvf & D3DFVF_NORMAL) At += 12;
++		if (Fvf & D3DFVF_PSIZE) At += 4;
++		if (Fvf & D3DFVF_DIFFUSE) At += 4;
++		if (Fvf & D3DFVF_SPECULAR) At += 4;
++		const int Count = (Fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
++		for (int i = 0; i < Count && i < 8; i++)
++		{
++			static const int Comps[4] = { 2, 3, 4, 1 };   // D3DFVF_TEXTUREFORMAT2/3/4/1
++			L.Tex[i] = At;
++			L.TexComps[i] = Comps[(Fvf >> (16 + i * 2)) & 3];
++			At += L.TexComps[i] * 4;
++		}
++		return L;
++	}
++
++	void CaptureDraw(IDirect3DDevice9 *Dev, D3DPRIMITIVETYPE Type, UINT PrimCount, const BYTE *Verts, size_t VertBytes, UINT Stride,
++		INT BaseVertex, const BYTE *Indices, size_t IndexBytes, bool Index32, UINT StartIndex,
++		IDirect3DTexture9 *Tex0, DWORD *Hash0, IDirect3DTexture9 *Tex1, DWORD &Hash1)
++	{
++		if (!Capture || Tex1 == nullptr || Stride == 0 || Offscreen(Dev))
++			return;
++		if (Type != D3DPT_TRIANGLELIST && Type != D3DPT_TRIANGLESTRIP && Type != D3DPT_TRIANGLEFAN)
++			return;
++		DWORD Op1 = 0, Blend = 0, Cull = 0;
++		Dev->GetTextureStageState(1, D3DTSS_COLOROP, &Op1);
++		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blend);
++		Dev->GetRenderState(D3DRS_CULLMODE, &Cull);
++		IDirect3DVertexShader9 *VS = nullptr;
++		Dev->GetVertexShader(&VS);
++		if (VS != nullptr) { VS->Release(); return; }
++		if (ModulateFactor(Op1) == 0 || Blend)
++			return;
++		const U2VertexLayout L = LayoutOf(Dev);
++		if (L.Pos < 0)
++			return;
++		Known(Tex1, Hash1);
++		if (Hash1 == 0xFFFFFFFF)
++			return;
++		DWORD H0 = 0;
++		if (Tex0 != nullptr && Hash0 != nullptr)
++		{
++			Known(Tex0, *Hash0);
++			H0 = *Hash0;
++		}
++
++		DWORD Tci = 0, Ttf = 0;
++		Dev->GetTextureStageState(1, D3DTSS_TEXCOORDINDEX, &Tci);
++		Dev->GetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, &Ttf);
++		const DWORD Gen = Tci & 0xFFFF0000, Set = Tci & 0xFFFF;
++		if ((Gen != D3DTSS_TCI_PASSTHRU && Gen != D3DTSS_TCI_CAMERASPACEPOSITION) || (Gen == D3DTSS_TCI_PASSTHRU && (Set >= 8 || L.Tex[Set] < 0)))
++			return;
++		D3DMATRIX W, V, T;
++		Dev->GetTransform(D3DTS_WORLD, &W);
++		Dev->GetTransform(D3DTS_VIEW, &V);
++		Dev->GetTransform(D3DTS_TEXTURE1, &T);
++		auto Mul = [](const float *In, const D3DMATRIX &M, float *Out) {
++			for (int c = 0; c < 4; c++)
++				Out[c] = In[0] * M.m[0][c] + In[1] * M.m[1][c] + In[2] * M.m[2][c] + In[3] * M.m[3][c];
++		};
++
++		U2LightmapCapture &C = Captured[Hash1];
++		if (C.W == 0)
++		{
++			D3DSURFACE_DESC D = {};
++			Tex1->GetLevelDesc(0, &D);
++			C.W = D.Width; C.H = D.Height; C.Op = Op1;
++			U2TexInfo Dummy;
++			this->Hash(Tex1, Dummy, true);       // the lightmap itself, for comparing with the bake
++		}
++
++		// one vertex: world position and lightmap coordinates; false if out of the data
++		auto Vertex = [&](UINT Index, float *Out) -> bool {
++			const long long At = ((long long)BaseVertex + Index) * Stride;
++			if (At < 0 || (size_t)At + Stride > VertBytes)
++				return false;
++			const BYTE *P = Verts + At;
++			const float *Pos = reinterpret_cast<const float *>(P + L.Pos);
++			const float Obj[4] = { Pos[0], Pos[1], Pos[2], 1 };
++			float World[4], In[4] = { 0, 0, 0, 0 }, Uv[4];
++			Mul(Obj, W, World);
++			if (Gen == D3DTSS_TCI_CAMERASPACEPOSITION)
++			{
++				Mul(World, V, In);
++				In[3] = 1;
++			}
++			else
++			{
++				const float *Tc = reinterpret_cast<const float *>(P + L.Tex[Set]);
++				const int N = L.TexComps[Set];
++				for (int c = 0; c < N; c++)
++					In[c] = Tc[c];
++				if (N < 4)
++					In[N] = 1;                   // Direct3D pads (u, v) to (u, v, 1, 0) for the transform
++			}
++			const DWORD Count = Ttf & 0xFF;
++			if (Count != D3DTTFF_DISABLE)
++			{
++				Mul(In, T, Uv);
++				if ((Ttf & D3DTTFF_PROJECTED) && Count >= 2 && Uv[Count - 1] != 0)
++				{
++					Uv[0] /= Uv[Count - 1];
++					Uv[1] /= Uv[Count - 1];
++				}
++			}
++			else
++			{
++				Uv[0] = In[0]; Uv[1] = In[1];
++			}
++			Out[0] = World[0]; Out[1] = World[1]; Out[2] = World[2]; Out[3] = Uv[0]; Out[4] = Uv[1];
++			return true;
++		};
++		auto IndexAt = [&](UINT k, UINT &Out) -> bool {
++			if (Indices == nullptr) { Out = k; return true; }
++			const size_t At = ((size_t)StartIndex + k) * (Index32 ? 4 : 2);
++			if (At + (Index32 ? 4 : 2) > IndexBytes)
++				return false;
++			Out = Index32 ? *reinterpret_cast<const DWORD *>(Indices + At) : *reinterpret_cast<const WORD *>(Indices + At);
++			return true;
++		};
++
++		for (UINT t = 0; t < PrimCount; t++)
++		{
++			UINT k[3];
++			if (Type == D3DPT_TRIANGLELIST) { k[0] = t * 3; k[1] = t * 3 + 1; k[2] = t * 3 + 2; }
++			else if (Type == D3DPT_TRIANGLESTRIP) { k[0] = t + (t & 1); k[1] = t + 1 - (t & 1); k[2] = t + 2; }
++			else { k[0] = 0; k[1] = t + 1; k[2] = t + 2; }
++			if (Cull == D3DCULL_CW)
++				std::swap(k[1], k[2]);           // front faces are counter-clockwise here
++			float Tri[15];
++			UINT I;
++			bool Ok = true;
++			for (int c = 0; c < 3 && Ok; c++)
++				Ok = IndexAt(k[c], I) && Vertex(I, Tri + c * 5);
++			if (!Ok)
++				return;
++			unsigned long long Key = 1469598103934665603ull ^ Hash1;
++			for (int c = 0; c < 15; c++)
++			{
++				const long long Q = (long long)floor(Tri[c] * (c % 5 < 3 ? 8.0f : 4096.0f) + 0.5f);
++				Key = (Key ^ (unsigned long long)Q) * 1099511628211ull;
++			}
++			if (!CapturedTris.insert(Key).second)
++				continue;
++			C.Verts.insert(C.Verts.end(), Tri, Tri + 15);
++			C.Tex.push_back(H0);
++			CaptureDirty = true;
++		}
++	}
++
++	void WriteCapture()
++	{
++		CaptureDirty = false;
++		FILE *F = nullptr;
++		if (fopen_s(&F, (Dir + "U2Shaders\\capture\\scene.obj").c_str(), "w") || F == nullptr)
++			return;
++		fprintf(F, "# U2Shaders lmcapture: world-space triangles of lightmapped draws (game units)\n");
++		fprintf(F, "# vt = lightmap coordinates, Direct3D convention (v down); faces in Direct3D front-face order\n");
++		unsigned N = 0, Tris = 0;
++		for (const auto &It : Captured)
++		{
++			const U2LightmapCapture &C = It.second;
++			fprintf(F, "o lm_%08x\n", It.first);
++			DWORD Last = 0xFFFFFFFF;
++			for (size_t t = 0; t < C.Tex.size(); t++)
++			{
++				if (C.Tex[t] != Last)
++				{
++					fprintf(F, "usemtl tex_%08x\n", C.Tex[t]);
++					Last = C.Tex[t];
++				}
++				const float *P = &C.Verts[t * 15];
++				for (int c = 0; c < 3; c++)
++					fprintf(F, "v %.4f %.4f %.4f\nvt %.6f %.6f\n", P[c * 5], P[c * 5 + 1], P[c * 5 + 2], P[c * 5 + 3], P[c * 5 + 4]);
++				fprintf(F, "f %u/%u %u/%u %u/%u\n", N + 1, N + 1, N + 2, N + 2, N + 3, N + 3);
++				N += 3;
++				Tris++;
++			}
++		}
++		fclose(F);
++		if (fopen_s(&F, (Dir + "U2Shaders\\capture\\lightmaps.txt").c_str(), "w") || F == nullptr)
++			return;
++		fprintf(F, "# hash width height stage1_op triangles   (op: 4 modulate, 5 modulate x2, 6 modulate x4)\n");
++		for (const auto &It : Captured)
++			fprintf(F, "%08x %u %u %u %u\n", It.first, It.second.W, It.second.H, It.second.Op, (unsigned)It.second.Tex.size());
++		fclose(F);
++		if (CaptureWritten++ % 20 == 0)
++			Message("lmcapture: %u lightmaps, %u triangles written to U2Shaders\\capture", (unsigned)Captured.size(), Tris);
++	}
++
++	U2Rule CharRule;
++	std::map<std::string, bool> CharRefused;   // stage/material setups charlight= logged and left alone
++	float OldCharConst[24][4] = {};
 +	unsigned MapsThisFrame = 0, ProbeFrames = 0, FramesWithMaps = 0;
 +	struct U2Probe { unsigned Draws = 0, AfterMaps = 0, FirstFrame = 0; std::string Sample; };
 +	std::map<std::string, U2Probe> Probes;
@@ -11784,6 +12828,8 @@ index 0000000..17bdb62
 +		}
 +		Saw3D = PostDone = false;
 +		Frame++;
++		if (Capture && CaptureDirty && Frame % 300 == 0)
++			WriteCapture();
 +		if (CharProbe)
 +		{
 +			ProbeFrames++;

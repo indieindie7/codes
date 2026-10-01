@@ -1,0 +1,18 @@
+# U2Shaders lmcapture: world-space triangles of lightmapped draws (game units)
+# vt = lightmap coordinates, Direct3D convention (v down); faces in Direct3D front-face order
+o lm_e5d228fd
+usemtl tex_e707422e
+v -19.9028 30.0000 25.3031
+vt 0.000000 0.000000
+v 19.9028 30.0000 94.6969
+vt 1.000000 0.000000
+v -19.9028 -30.0000 25.3031
+vt 0.000000 1.000000
+f 1/1 2/2 3/3
+v -19.9028 -30.0000 25.3031
+vt 0.000000 1.000000
+v 19.9028 30.0000 94.6969
+vt 1.000000 0.000000
+v 19.9028 -30.0000 94.6969
+vt 1.000000 1.000000
+f 4/4 5/5 6/6
