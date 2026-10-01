@@ -12,6 +12,8 @@
  *                                 the same, but the draw keeps its own blending (no frame
  *                                 copy in s1): the shader returns what the texture would
  *                                 have, so overlapping decals still layer
+ *     post=1                      bloom, sharpening and colour grading before the HUD
+ *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
  *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
  *                                 U2Shaders\dump\chars.txt, and whether scene depth can be
  *                                 read as a texture (U2Shaders.log; logging only, see ProbeDraw)
@@ -126,6 +128,23 @@ public:
 				;
 			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
 				CharProbe = Hash != 0;
+			else if (sscanf_s(Line, " post=%u", &Hash) == 1)
+			{
+				Post = Hash != 0;
+				PostBright.File = "post_bright.hlsl";
+				PostBlur.File = "post_blur.hlsl";
+				PostFinal.File = "post_final.hlsl";
+			}
+			else if (sscanf_s(Line, " postsplit=%u", &Hash) == 1)
+				PostSplit = Hash != 0 ? 1.0f : 0.0f;
+			else if (sscanf_s(Line, " bloom=%f %f", &PostBloom[0], &PostBloom[1]) == 2)
+				;
+			else if (sscanf_s(Line, " grade=%f %f %f %f", &PostGrade[0], &PostGrade[1], &PostGrade[2], &PostGrade[3]) == 4)
+				;
+			else if (sscanf_s(Line, " colour=%f %f %f", &PostBalance[0], &PostBalance[1], &PostBalance[2]) == 3)
+				;
+			else if (sscanf_s(Line, " sharpen=%f", &PostBalance[3]) == 1)
+				;
 			else if (sscanf_s(Line, " tint=%x", &Hash) == 1)
 			{
 				U2Rule R;
@@ -279,7 +298,7 @@ public:
 		return R.PS;
 	}
 
-	void CopyScene(IDirect3DDevice9 *Dev)
+	void CopyScene(IDirect3DDevice9 *Dev, bool Force = false)
 	{
 		IDirect3DSurface9 *Target = nullptr, *Copy = nullptr;
 		if (FAILED(Dev->GetRenderTarget(0, &Target)) || Target == nullptr)
@@ -300,7 +319,7 @@ public:
 				Message("scene copy: CreateTexture %ux%u failed", SceneW, SceneH);
 			}
 		}
-		if (SceneTex != nullptr && SceneFrame != Frame && SUCCEEDED(SceneTex->GetSurfaceLevel(0, &Copy)))
+		if (SceneTex != nullptr && (Force || SceneFrame != Frame) && SUCCEEDED(SceneTex->GetSurfaceLevel(0, &Copy)))
 		{
 			Dev->StretchRect(Target, nullptr, Copy, nullptr, D3DTEXF_NONE);
 			Copy->Release();
@@ -310,10 +329,12 @@ public:
 	}
 
 	// Draws that render into something other than the back buffer (shadow maps are built this way)
+	// called before every draw (despite the name: it is the per-draw hook)
 	void LogTargetDraw(IDirect3DDevice9 *Dev, bool FixedFunction, bool HasTex0)
 	{
 		if (!Loaded)
 			Load();
+		PostCheck(Dev);
 		if (CharProbe && !HasTex0 && Offscreen(Dev))
 		{
 			DWORD blend = 0, op0 = 0, arg1 = 0;
@@ -935,6 +956,182 @@ public:
 		}
 	}
 
+	// ---- post-processing (post=1) ----------------------------------------------------------
+	// Bloom, sharpening and colour grading on the finished 3D frame, before the HUD is drawn
+	// over it: run just before the first 2D draw (pre-transformed vertices or an orthographic
+	// projection) into the back buffer of a frame that drew 3D, or at Present if no 2D came.
+	// Frames with no 3D (menus) are left alone. Every device state touched is restored (a state
+	// block, plus the render target and depth buffer, which state blocks don't cover).
+	bool Post = false;
+	float PostSplit = 0;                                 // postsplit=1: right half untouched
+	float PostBloom[4] = { 0.75f, 0.5f, 0, 0 };          // threshold, intensity
+	float PostGrade[4] = { 1.05f, 1.05f, 1.0f, 0.25f };  // saturation, contrast, exposure, vignette
+	float PostBalance[4] = { 1, 1, 1, 0.25f };           // colour balance r g b, sharpen
+	U2Rule PostBright, PostBlur, PostFinal;
+	IDirect3DTexture9 *BloomA = nullptr, *BloomB = nullptr;
+	UINT BloomW = 0, BloomH = 0;
+	IDirect3DStateBlock9 *PostState = nullptr;
+	IDirect3DDevice9 *LastDev = nullptr;
+	bool Saw3D = false, PostDone = false;
+
+	void PostCheck(IDirect3DDevice9 *Dev)
+	{
+		if (!Post || PostDone)
+			return;
+		LastDev = Dev;
+		if (Offscreen(Dev))
+			return;
+		DWORD fvf = 0;
+		Dev->GetFVF(&fvf);
+		IDirect3DVertexShader9 *VS = nullptr;
+		Dev->GetVertexShader(&VS);
+		const bool programmable = VS != nullptr;
+		if (VS) VS->Release();
+		D3DMATRIX P = {};
+		Dev->GetTransform(D3DTS_PROJECTION, &P);
+		const bool rhw = (fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW;
+		const bool ortho = !programmable && !rhw && P._34 == 0.0f && P._44 == 1.0f;
+		if (!rhw && !ortho)
+		{
+			Saw3D = true;
+			return;
+		}
+		if (!Saw3D)
+			return;
+		static int told = 0;
+		if (told++ < 6)
+			Message("post: applied before a 2D draw (fvf %x, pre-transformed %d, orthographic %d)", (unsigned)fvf, (int)rhw, (int)ortho);
+		RunPost(Dev);
+	}
+
+	struct U2QuadVertex { float x, y, z, rhw, u, v; };
+	static void Quad(IDirect3DDevice9 *Dev, UINT W, UINT H)
+	{
+		// half-pixel offset: Direct3D 9 pixel centres sit on integer coordinates
+		const float w = W - 0.5f, h = H - 0.5f;
+		const U2QuadVertex q[4] = { { -0.5f, -0.5f, 0, 1, 0, 0 }, { w, -0.5f, 0, 1, 1, 0 }, { -0.5f, h, 0, 1, 0, 1 }, { w, h, 0, 1, 1, 1 } };
+		Dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_TEX1);
+		Dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, q, sizeof(U2QuadVertex));
+	}
+
+	static void Target(IDirect3DDevice9 *Dev, IDirect3DTexture9 *T)
+	{
+		IDirect3DSurface9 *S = nullptr;
+		if (SUCCEEDED(T->GetSurfaceLevel(0, &S)) && S)
+		{
+			Dev->SetRenderTarget(0, S);
+			S->Release();
+		}
+	}
+
+	void RunPost(IDirect3DDevice9 *Dev)
+	{
+		PostDone = true;
+		IDirect3DPixelShader9 *Bright = Compile(Dev, PostBright), *Blur = Compile(Dev, PostBlur), *Final = Compile(Dev, PostFinal);
+		if (Bright == nullptr || Blur == nullptr || Final == nullptr)
+		{
+			Message("post: a shader failed to compile, post-processing off");
+			Post = false;
+			return;
+		}
+		if (PostState == nullptr && FAILED(Dev->CreateStateBlock(D3DSBT_ALL, &PostState)))
+		{
+			PostState = nullptr;
+			return;
+		}
+		PostState->Capture();
+		IDirect3DSurface9 *OldRT = nullptr, *OldDS = nullptr;
+		Dev->GetRenderTarget(0, &OldRT);
+		Dev->GetDepthStencilSurface(&OldDS);
+
+		CopyScene(Dev, true);
+		const UINT W = (std::max)(SceneW / 4, 1u), H = (std::max)(SceneH / 4, 1u);
+		if (BloomA != nullptr && (BloomW != W || BloomH != H))
+		{
+			BloomA->Release(); BloomA = nullptr;
+			if (BloomB) { BloomB->Release(); BloomB = nullptr; }
+		}
+		if (BloomA == nullptr)
+		{
+			BloomW = W; BloomH = H;
+			if (FAILED(Dev->CreateTexture(W, H, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &BloomA, nullptr)))
+				BloomA = nullptr;
+			if (FAILED(Dev->CreateTexture(W, H, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &BloomB, nullptr)))
+				BloomB = nullptr;
+		}
+		if (SceneTex != nullptr && BloomA != nullptr && BloomB != nullptr && OldRT != nullptr)
+		{
+			static const D3DRENDERSTATETYPE Off[] = { D3DRS_ZENABLE, D3DRS_ZWRITEENABLE, D3DRS_ALPHABLENDENABLE, D3DRS_ALPHATESTENABLE,
+				D3DRS_FOGENABLE, D3DRS_STENCILENABLE, D3DRS_SCISSORTESTENABLE, D3DRS_LIGHTING, D3DRS_SRGBWRITEENABLE, D3DRS_CLIPPLANEENABLE };
+			for (D3DRENDERSTATETYPE R : Off)
+				Dev->SetRenderState(R, FALSE);
+			Dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+			Dev->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF);
+			Dev->SetDepthStencilSurface(nullptr);
+			Dev->SetVertexShader(nullptr);
+			for (DWORD s = 0; s < 2; s++)
+			{
+				Dev->SetSamplerState(s, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+				Dev->SetSamplerState(s, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+				Dev->SetSamplerState(s, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+				Dev->SetSamplerState(s, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+				Dev->SetSamplerState(s, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+				Dev->SetSamplerState(s, D3DSAMP_SRGBTEXTURE, FALSE);
+				Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, 0);
+				Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+			}
+			Dev->SetTexture(1, nullptr);
+
+			// 1: the bright parts, quarter size
+			float c[4][4] = {};
+			c[0][0] = 1.0f / SceneW; c[0][1] = 1.0f / SceneH; c[0][2] = PostSplit;
+			memcpy(c[1], PostBloom, sizeof(PostBloom));
+			memcpy(c[2], PostGrade, sizeof(PostGrade));
+			memcpy(c[3], PostBalance, sizeof(PostBalance));
+			Target(Dev, BloomA);
+			Dev->SetTexture(0, SceneTex);
+			Dev->SetPixelShader(Bright);
+			Dev->SetPixelShaderConstantF(0, c[0], 4);
+			Quad(Dev, W, H);
+
+			// 2: blurred, across then down, twice
+			Dev->SetPixelShader(Blur);
+			for (int round = 0; round < 2; round++)
+			{
+				const float across[4] = { 1.0f / W, 0, 0, 0 }, down[4] = { 0, 1.0f / H, 0, 0 };
+				Target(Dev, BloomB);
+				Dev->SetTexture(0, BloomA);
+				Dev->SetPixelShaderConstantF(0, across, 1);
+				Quad(Dev, W, H);
+				Target(Dev, BloomA);
+				Dev->SetTexture(0, BloomB);
+				Dev->SetPixelShaderConstantF(0, down, 1);
+				Quad(Dev, W, H);
+			}
+
+			// 3: the finished frame back into the game's own target
+			Dev->SetRenderTarget(0, OldRT);
+			Dev->SetTexture(0, SceneTex);
+			Dev->SetTexture(1, BloomA);
+			Dev->SetPixelShader(Final);
+			Dev->SetPixelShaderConstantF(0, c[0], 4);
+			Quad(Dev, SceneW, SceneH);
+		}
+
+		Dev->SetRenderTarget(0, OldRT);
+		Dev->SetDepthStencilSurface(OldDS);
+		PostState->Apply();               // after SetRenderTarget, which resets the viewport
+		if (OldRT) OldRT->Release();
+		if (OldDS) OldDS->Release();
+	}
+
+	void PostRelease()
+	{
+		if (BloomA) { BloomA->Release(); BloomA = nullptr; }
+		if (BloomB) { BloomB->Release(); BloomB = nullptr; }
+		if (PostState) { PostState->Release(); PostState = nullptr; }
+	}
+
 	// ---- character probe (charprobe=1) -----------------------------------------------------
 	// Character skins are opaque, so the per-surface rules above never see them. Before any
 	// character lighting or self-shadowing work, this records how each opaque on-screen draw is
@@ -1054,6 +1251,14 @@ public:
 
 	void OnPresent()
 	{
+		if (Post && Saw3D && !PostDone && LastDev != nullptr && !Offscreen(LastDev))
+		{
+			// no 2D draw this frame (no HUD): post-process the 3D frame now, in a scene of our own
+			LastDev->BeginScene();
+			RunPost(LastDev);
+			LastDev->EndScene();
+		}
+		Saw3D = PostDone = false;
 		Frame++;
 		if (CharProbe)
 		{
@@ -1104,6 +1309,7 @@ public:
 		MapDirty = false;
 		CopiedFor = nullptr;
 		if (SceneTex != nullptr) { SceneTex->Release(); SceneTex = nullptr; }
+		PostRelease();
 		if (Log)
 			WriteSeen();
 	}
@@ -1113,8 +1319,9 @@ public:
 		OnLost();
 		for (U2Rule &R : Rules)
 			if (R.PS != nullptr) { R.PS->Release(); R.PS = nullptr; R.Tried = false; }
-		for (U2Rule *R : { &MapRule, &ProjRule })
+		for (U2Rule *R : { &MapRule, &ProjRule, &PostBright, &PostBlur, &PostFinal })
 			if (R->PS != nullptr) { R->PS->Release(); R->PS = nullptr; R->Tried = false; }
+		LastDev = nullptr;
 	}
 
 private:

@@ -23,6 +23,9 @@ whole session, so each item says how far it has been checked.
    commands checked first).
 7. **U2FairFights additions:** rebuild with `UCC make` (the `.u` in `System` predates them), then
    check the `FairFights: kill beat / heavy hit beat / hurt kick` lines in `Unreal2.log`.
+8. **Post-processing:** with the new dll, add `post=1` and `postsplit=1` to `U2Shaders.ini`, copy
+   `post_*.hlsl` into `System\U2Shaders\`, and check that the HUD stays crisp (left half
+   processed, right half not); then tune `bloom=`, `grade=`, `colour=`, `sharpen=`.
 
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
@@ -80,6 +83,10 @@ compiled (needs the game's packages).
 - **`decal=<hash> file` + `decal_parallax.hlsl`:** bullet holes that look sunken into the wall
   (parallax occlusion, F.E.A.R.-style); no lights needed, works on projector decals and on
   walls without normals; keeps the decal's own blending so overlapping holes still layer.
+- **`post=1`:** bloom, sharpening, exposure, colour balance, saturation, contrast and vignette on
+  the finished 3D frame, applied right before the first 2D draw so the HUD stays crisp (or at
+  Present when there is no HUD); every device state is restored afterwards. Tested under Wine:
+  a bright panel glows, the HUD box and crosshair stay sharp. `postsplit=1` to compare.
 - **`build-mingw.sh`:** builds `d3d8.dll` without Visual Studio. `d3d8-mingw.dll` is that build.
 - **`test/run.sh`:** runs the dll outside the game under 32-bit Wine (silhouette, lit wall,
   decal). It confirmed the probes log correctly and the decal shader compiles and draws; it

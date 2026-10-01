@@ -28,4 +28,6 @@ xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe flat
 xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe
 echo "== U2Shaders.log"; cat U2Shaders.log
 echo "== chars.txt"; cat U2Shaders/dump/chars.txt
-echo "frames: $RUN/frame_flat.bmp $RUN/frame_parallax.bmp"
+xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe post
+echo "== U2Shaders.log (post)"; cat U2Shaders.log
+echo "frames: $RUN/frame_flat.bmp $RUN/frame_parallax.bmp $RUN/frame_post.bmp"
