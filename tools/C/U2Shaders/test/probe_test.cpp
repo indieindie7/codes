@@ -5,6 +5,8 @@
 //   3. an alpha-blended bullet-hole decal on the wall (decal= rule -> decal_parallax.hlsl)
 // Modes "wall" / "wallflat": instead, a brick wall drawn the way level geometry is (texture x
 // vertex colour on stage 0, a lightmap times 2 on stage 1), with and without the surface= rule.
+// Mode "wallgi": the wall with its lightmap swapped (replace=) for a DDS this program writes
+// (warm light from the left, blue bounce from the right), as a Blender bake would be.
 // Writes U2Shaders.ini itself (the decal's hash computed the way u2shaders.hpp does).
 #include <windows.h>
 #include <d3d8.h>
@@ -58,6 +60,7 @@ static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, Kind kind, DWORD *hashOut
 	if (hashOut)
 	{
 		// same as U2Shaders::Hash: FNV-1a over the top mip's first 16 KB, seeded by its size
+		// (computed before the mips below are written: only the top level counts)
 		DWORD H = 2166136261u ^ 64 ^ (64 << 12);
 		const BYTE *P = (const BYTE *)L.pBits;
 		UINT n = L.Pitch * 64; if (n > 16384) n = 16384;
@@ -91,13 +94,34 @@ static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, Kind kind, DWORD *hashOut
 	return T;
 }
 
+// a 64x64 32-bit DDS with a full mip chain: warm on the left fading to a blue bounce on the right
+static void WriteBakedDDS(const char *name)
+{
+	DWORD H[32] = {};
+	H[0] = 0x20534444; H[1] = 124; H[2] = 0x1007 | 0x8 | 0x20000; H[3] = 64; H[4] = 64; H[5] = 256; H[7] = 7;
+	H[19] = 32; H[20] = 0x40; H[22] = 32; H[23] = 0xFF0000; H[24] = 0xFF00; H[25] = 0xFF; H[27] = 0x1000 | 0x400000 | 0x8;
+	FILE *F = fopen(name, "wb");
+	fwrite(H, 4, 32, F);
+	for (int lv = 0, w = 64; lv < 7; lv++, w /= 2)
+		for (int y = 0; y < w; y++)
+			for (int x = 0; x < w; x++)
+			{
+				float t = (x + 0.5f) / w;
+				int r = (int)(0xC0 * (1 - t) + 0x30 * t), g = (int)(0xA0 * (1 - t) + 0x50 * t), b = (int)(0x60 * (1 - t) + 0xA0 * t);
+				DWORD c = 0xFF000000 | (r << 16) | (g << 8) | b;
+				fwrite(&c, 4, 1, F);
+			}
+	fclose(F);
+}
+
 int main(int argc, char **argv)
 {
 	// modes: (none) decal rule on | flat: no rules | post: post=1 with postsplit, a bright
 	// light panel in 3D and a HUD box + crosshair in 2D drawn after it
 	const bool postMode = argc >= 2 && strcmp(argv[1], "post") == 0;
 	const bool wallMode = argc >= 2 && strncmp(argv[1], "wall", 4) == 0;
-	const bool useWallRule = wallMode && strcmp(argv[1], "wall") == 0;
+	const bool giMode = wallMode && strcmp(argv[1], "wallgi") == 0;
+	const bool useWallRule = wallMode && (strcmp(argv[1], "wall") == 0 || giMode);
 	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode && !wallMode);
 	WNDCLASSA wc = {}; wc.lpfnWndProc = DefWindowProcA; wc.hInstance = GetModuleHandle(nullptr); wc.lpszClassName = "u2t";
 	RegisterClassA(&wc);
@@ -113,14 +137,19 @@ int main(int argc, char **argv)
 	HRESULT hr = D3D->CreateDevice(0, D3DDEVTYPE_HAL, hw, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &D);
 	if (FAILED(hr)) { printf("CreateDevice failed %08lx\n", hr); return 1; }
 
-	DWORD decalHash = 0, brickHash = 0;
+	DWORD decalHash = 0, brickHash = 0, lightHash = 0;
 	IDirect3DTexture8 *Wall = MakeTex(D, CHECKER, nullptr), *Hole = MakeTex(D, DECAL, &decalHash);
-	IDirect3DTexture8 *Brick = MakeTex(D, BRICK, &brickHash), *Light = MakeTex(D, LIGHTMAP, nullptr);
+	IDirect3DTexture8 *Brick = MakeTex(D, BRICK, &brickHash), *Light = MakeTex(D, LIGHTMAP, &lightHash);
 	FILE *F = fopen("U2Shaders.ini", "w");
 	fprintf(F, "charprobe=1\n");
 	if (useDecalRule) fprintf(F, "decal=%08lx decal_parallax.hlsl\n", decalHash);
 	if (postMode) fprintf(F, "post=1\npostsplit=1\nbloom=0.7 1.0\n");
 	if (useWallRule) fprintf(F, "surface=%08lx world_parallax.hlsl\n", brickHash);
+	if (giMode)
+	{
+		WriteBakedDDS("U2Shaders\\baked_test.dds");
+		fprintf(F, "replace=%08lx baked_test.dds\n", lightHash);
+	}
 	fclose(F);
 	printf("decal hash %08lx, rule %s\n", decalHash, useDecalRule ? "on" : "off");
 
@@ -251,7 +280,7 @@ int main(int argc, char **argv)
 			D3DLOCKED_RECT LR;
 			if (Sys && SUCCEEDED(Sys->LockRect(&LR, nullptr, D3DLOCK_READONLY)))
 			{
-				const char *name = postMode ? "frame_post.bmp" : wallMode ? (useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
+				const char *name = postMode ? "frame_post.bmp" : wallMode ? (giMode ? "frame_wallgi.bmp" : useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
 					: useDecalRule ? "frame_parallax.bmp" : "frame_flat.bmp";
 				FILE *B = fopen(name, "wb");
 				BITMAPFILEHEADER fh = {}; BITMAPINFOHEADER ih = {};

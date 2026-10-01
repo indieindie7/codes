@@ -18,6 +18,9 @@
  *                                 x lightmap in s1, see SurfaceBegin); the lightmap and the
  *                                 texture's panning are left as they are. c2 = how the stages
  *                                 combine, c3 = the texture's brightness levels
+ *     replace=1a2b3c4d my.dds     draw U2Shaders\my.dds wherever that texture is used, on any
+ *                                 of stages 0-3 (lightmaps too); a DDS, 32-bit or DXT1/3/5,
+ *                                 with its own mips (see Replacement)
  *     post=1                      bloom, sharpening and colour grading before the HUD
  *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
  *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
@@ -175,6 +178,8 @@ public:
 				R.KeepBlend = true;
 				Rules.push_back(R);
 			}
+			else if (sscanf_s(Line, " replace=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
+				Replacements[Hash].File = Name;
 			else if (sscanf_s(Line, " surface=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
 			{
 				U2Rule R;
@@ -185,7 +190,7 @@ public:
 			}
 		}
 		fclose(F);
-		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (int)Pcss,
+		Message("U2Shaders: log %d, %u rule(s), %u replacement(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (unsigned)Replacements.size(), (int)Pcss,
 			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3], ShadowTint[0], ShadowTint[1], ShadowTint[2]);
 		if (Log || CharProbe)
 		{
@@ -391,6 +396,116 @@ public:
 		DrawKinds[key]++;
 	}
 
+	// Fills in a texture's cached hash the first time (0xFFFFFFFF: unreadable, don't try again)
+	void Known(IDirect3DTexture9 *Tex, DWORD &Hash)
+	{
+		if (Hash != 0)
+			return;
+		U2TexInfo Info;
+		Hash = this->Hash(Tex, Info, false);
+		if (Hash == 0)
+			Hash = 0xFFFFFFFF;
+		else
+			Seen[Hash] = Info;
+	}
+
+	// ---- replace=: our own texture in place of one of the game's -------------------------
+	// The device swaps it in for each draw and back after (so the game still sees its own
+	// texture when it asks), on stages 0-3. The rules keyed by hash still match the original.
+	struct U2Replace
+	{
+		std::string File;
+		IDirect3DTexture9 *Tex = nullptr;
+		bool Tried = false;
+	};
+	std::map<DWORD, U2Replace> Replacements;
+
+	IDirect3DTexture9 *Replacement(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD &Hash)
+	{
+		if (!Loaded)
+			Load();
+		if (Replacements.empty() || Tex == nullptr)
+			return nullptr;
+		Known(Tex, Hash);
+		const auto It = Replacements.find(Hash);
+		if (It == Replacements.end())
+			return nullptr;
+		U2Replace &R = It->second;
+		if (!R.Tried)
+		{
+			R.Tried = true;
+			R.Tex = LoadDDS(Dev, R.File);
+			if (R.Tex != nullptr)
+				Message("replace %08x: %s loaded", Hash, R.File.c_str());
+		}
+		return R.Tex;
+	}
+
+	// A DDS file as a managed texture (survives device resets): 32-bit (A8R8G8B8/X8R8G8B8) or
+	// DXT1/3/5, all the mip levels the file has.
+	IDirect3DTexture9 *LoadDDS(IDirect3DDevice9 *Dev, const std::string &File)
+	{
+		std::string Data;
+		FILE *F = nullptr;
+		if (fopen_s(&F, (Dir + "U2Shaders\\" + File).c_str(), "rb") || F == nullptr)
+		{
+			Message("replace: %s not found", File.c_str());
+			return nullptr;
+		}
+		char Buf[65536];
+		size_t n;
+		while ((n = fread(Buf, 1, sizeof(Buf), F)) > 0)
+			Data.append(Buf, n);
+		fclose(F);
+		const DWORD *H = reinterpret_cast<const DWORD *>(Data.data());
+		if (Data.size() < 128 || H[0] != 0x20534444 || H[1] != 124)
+		{
+			Message("replace: %s is not a DDS file", File.c_str());
+			return nullptr;
+		}
+		const UINT Height = H[3], Width = H[4], Levels = (H[2] & 0x20000) && H[7] ? H[7] : 1;
+		const DWORD PfFlags = H[20], FourCC = H[21], Bits = H[22], RMask = H[23], AMask = H[26];
+		D3DFORMAT Fmt = D3DFMT_UNKNOWN;
+		UINT BlockBytes = 0;          // DXT: bytes per 4x4 block; else 0
+		if ((PfFlags & 0x4) && (FourCC == D3DFMT_DXT1 || FourCC == D3DFMT_DXT3 || FourCC == D3DFMT_DXT5))
+		{
+			Fmt = (D3DFORMAT)FourCC;
+			BlockBytes = FourCC == D3DFMT_DXT1 ? 8 : 16;
+		}
+		else if ((PfFlags & 0x40) && Bits == 32 && RMask == 0xFF0000)
+			Fmt = (PfFlags & 0x1) && AMask ? D3DFMT_A8R8G8B8 : D3DFMT_X8R8G8B8;
+		if (Fmt == D3DFMT_UNKNOWN || Width == 0 || Height == 0)
+		{
+			Message("replace: %s: unsupported format (use 32-bit BGRA or DXT1/3/5)", File.c_str());
+			return nullptr;
+		}
+		IDirect3DTexture9 *T = nullptr;
+		if (FAILED(Dev->CreateTexture(Width, Height, Levels, 0, Fmt, D3DPOOL_MANAGED, &T, nullptr)))
+		{
+			Message("replace: %s: CreateTexture %ux%u failed", File.c_str(), Width, Height);
+			return nullptr;
+		}
+		size_t At = 128;
+		for (UINT L = 0; L < Levels; L++)
+		{
+			const UINT W = (std::max)(1u, Width >> L), Hh = (std::max)(1u, Height >> L);
+			const UINT Rows = BlockBytes ? (std::max)(1u, (Hh + 3) / 4) : Hh;
+			const UINT RowBytes = BlockBytes ? (std::max)(1u, (W + 3) / 4) * BlockBytes : W * 4;
+			D3DLOCKED_RECT Lock;
+			if (At + (size_t)Rows * RowBytes > Data.size() || FAILED(T->LockRect(L, &Lock, nullptr, 0)))
+			{
+				Message("replace: %s: file ends early (level %u)", File.c_str(), L);
+				T->Release();
+				return nullptr;
+			}
+			for (UINT y = 0; y < Rows; y++)
+				memcpy(static_cast<BYTE *>(Lock.pBits) + y * Lock.Pitch, Data.data() + At + (size_t)y * RowBytes, RowBytes);
+			T->UnlockRect(L);
+			At += (size_t)Rows * RowBytes;
+		}
+		return T;
+	}
+
 	// Called before a draw. Hash = the stage 0 texture's hash (0: not yet known, read it from
 	// Tex). Returns true if a shader was put in place; End() must then follow the draw.
 	bool Begin(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD &Hash, bool FixedFunction)
@@ -400,15 +515,7 @@ public:
 		if (Tex == nullptr || (!Log && Rules.empty() && !CharProbe))
 			return false;
 
-		if (Hash == 0)
-		{
-			U2TexInfo Info;
-			Hash = this->Hash(Tex, Info, false);
-			if (Hash == 0)
-				Hash = 0xFFFFFFFF;         // unreadable: don't try again
-			else
-				Seen[Hash] = Info;
-		}
+		Known(Tex, Hash);
 		if (Hash == 0xFFFFFFFF)
 		{
 			if (Log)

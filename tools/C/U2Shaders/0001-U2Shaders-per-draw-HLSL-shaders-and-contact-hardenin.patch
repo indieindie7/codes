@@ -1,4 +1,4 @@
-From 09667dd06ccdd853a23f1ed585a76201ee5b5a18 Mon Sep 17 00:00:00 2001
+From d00e88949851abaff55e91d5d546f8d6160f5b12 Mon Sep 17 00:00:00 2001
 From: indieindie7 <lonisquasar@gmail.com>
 Date: Wed, 30 Sep 2026 23:10:11 -0300
 Subject: [PATCH] U2Shaders: per-draw HLSL shaders and contact-hardening
@@ -17,16 +17,16 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  shaders/debug.hlsl          |    8 +
  shaders/decal_parallax.hlsl |   76 ++
  shaders/pcss_map.hlsl       |   17 +
- shaders/pcss_proj.hlsl      |   92 +++
+ shaders/pcss_proj.hlsl      |   92 ++
  shaders/post_blur.hlsl      |   13 +
  shaders/post_bright.hlsl    |   16 +
  shaders/post_final.hlsl     |   32 +
- shaders/world_parallax.hlsl |   93 +++
- source/d3d8to9.hpp          |    6 +
- source/d3d8to9_device.cpp   |   35 +
- source/d3d8to9_texture.cpp  |    2 +
- source/u2shaders.hpp        | 1502 +++++++++++++++++++++++++++++++++++
- 15 files changed, 1959 insertions(+)
+ shaders/world_parallax.hlsl |   93 ++
+ source/d3d8to9.hpp          |    9 +
+ source/d3d8to9_device.cpp   |   51 ++
+ source/d3d8to9_texture.cpp  |    5 +
+ source/u2shaders.hpp        | 1609 +++++++++++++++++++++++++++++++++++
+ 15 files changed, 2088 insertions(+)
  create mode 100755 build-mingw/d3d8.dll
  create mode 100644 build-mingw/res.o
  create mode 100644 shaders/core.hlsl
@@ -10463,7 +10463,7 @@ index 0000000..e23f01b
 +	return float4(c, a);
 +}
 diff --git a/source/d3d8to9.hpp b/source/d3d8to9.hpp
-index f864ffb..3f0bbba 100644
+index f864ffb..9a1609b 100644
 --- a/source/d3d8to9.hpp
 +++ b/source/d3d8to9.hpp
 @@ -48,6 +48,7 @@ private:
@@ -10474,18 +10474,21 @@ index f864ffb..3f0bbba 100644
  class Direct3DDevice8 : public IDirect3DDevice8
  {
  	Direct3DDevice8(const Direct3DDevice8 &) = delete;
-@@ -160,7 +161,10 @@ public:
+@@ -160,7 +161,13 @@ public:
  
  	AddressLookupTable *ProxyAddressLookupTable;
  
 +	Direct3DTexture8 *U2Stage0 = nullptr; // U2Shaders: the 2D texture on stage 0, if any
++	Direct3DTexture8 *U2Stages[4] = {};   // U2Shaders: the 2D textures on stages 0-3 (replace=)
 +
  private:
 +	bool U2Begin();
++	void U2After(bool Shaded);
++	DWORD U2Swapped = 0;                  // stages whose texture replace= swapped for this draw
  	void ApplyClipPlanes();
  	void ReleaseShadersAndStateBlocks();
  
-@@ -220,6 +224,8 @@ public:
+@@ -220,6 +227,8 @@ public:
  
  	IDirect3DTexture9 *GetProxyInterface() const { return ProxyInterface; }
  
@@ -10495,7 +10498,7 @@ index f864ffb..3f0bbba 100644
  	virtual ULONG STDMETHODCALLTYPE AddRef() override;
  	virtual ULONG STDMETHODCALLTYPE Release() override;
 diff --git a/source/d3d8to9_device.cpp b/source/d3d8to9_device.cpp
-index 7428bea..dbb5e40 100644
+index 7428bea..cc30cbb 100644
 --- a/source/d3d8to9_device.cpp
 +++ b/source/d3d8to9_device.cpp
 @@ -7,6 +7,9 @@
@@ -10540,17 +10543,19 @@ index 7428bea..dbb5e40 100644
  
  	D3DSURFACE_DESC SourceDesc, DestinationDesc;
  	pSourceSurfaceImpl->GetProxyInterface()->GetDesc(&SourceDesc);
-@@ -938,6 +945,9 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetTexture(DWORD Stage, IDirect3DBase
+@@ -938,6 +945,11 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetTexture(DWORD Stage, IDirect3DBase
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::SetTexture(DWORD Stage, IDirect3DBaseTexture8 *pTexture)
  {
 +	if (Stage == 0)
 +		U2Stage0 = (pTexture != nullptr && pTexture->GetType() == D3DRTYPE_TEXTURE) ? static_cast<Direct3DTexture8 *>(pTexture) : nullptr;
++	if (Stage < 4)
++		U2Stages[Stage] = (pTexture != nullptr && pTexture->GetType() == D3DRTYPE_TEXTURE) ? static_cast<Direct3DTexture8 *>(pTexture) : nullptr;
 +
  	if (pTexture == nullptr)
  		return ProxyInterface->SetTexture(Stage, nullptr);
  
-@@ -1119,28 +1129,53 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetCurrentTexturePalette(UINT *pPalet
+@@ -1119,28 +1131,67 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetCurrentTexturePalette(UINT *pPalet
  
  	return ProxyInterface->GetCurrentTexturePalette(pPaletteNumber);
  }
@@ -10560,6 +10565,15 @@ index 7428bea..dbb5e40 100644
 +	bool FixedFunction = CurrentVertexShaderHandle == 0;
 +	if (!FixedFunction)
 +		FixedFunction = reinterpret_cast<VertexShaderInfo *>(CurrentVertexShaderHandle << 1)->Shader == nullptr;
++	// replace=: our textures in place of the game's for this draw (U2After puts them back)
++	U2Swapped = 0;
++	for (DWORD s = 0; s < 4; s++)
++		if (U2Stages[s] != nullptr)
++			if (IDirect3DTexture9 *R = U2.Replacement(ProxyInterface, U2Stages[s]->GetProxyInterface(), U2Stages[s]->U2Hash))
++			{
++				ProxyInterface->SetTexture(s, R);
++				U2Swapped |= 1u << s;
++			}
 +	U2.LogTargetDraw(ProxyInterface, FixedFunction, U2Stage0 != nullptr);
 +	if (U2.PcssBegin(ProxyInterface, U2Stage0 ? U2Stage0->GetProxyInterface() : nullptr, FixedFunction))
 +		return true;
@@ -10567,13 +10581,21 @@ index 7428bea..dbb5e40 100644
 +		return false;
 +	return U2.Begin(ProxyInterface, U2Stage0->GetProxyInterface(), U2Stage0->U2Hash, FixedFunction);
 +}
++void Direct3DDevice8::U2After(bool Shaded)
++{
++	if (Shaded)
++		U2.End(ProxyInterface);
++	for (DWORD s = 0; s < 4; s++)
++		if ((U2Swapped & (1u << s)) && U2Stages[s] != nullptr)
++			ProxyInterface->SetTexture(s, U2Stages[s]->GetProxyInterface());
++	U2Swapped = 0;
++}
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
  {
  	ApplyClipPlanes();
 +	const bool Shaded = U2Begin();
  	ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
-+	if (Shaded)
-+		U2.End(ProxyInterface);
++	U2After(Shaded);
  	return D3D_OK;
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawIndexedPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT MinIndex, UINT NumVertices, UINT StartIndex, UINT PrimitiveCount)
@@ -10581,8 +10603,7 @@ index 7428bea..dbb5e40 100644
  	ApplyClipPlanes();
 +	const bool Shaded = U2Begin();
  	ProxyInterface->DrawIndexedPrimitive(PrimitiveType, CurrentBaseVertexIndex, MinIndex, NumVertices, StartIndex, PrimitiveCount);
-+	if (Shaded)
-+		U2.End(ProxyInterface);
++	U2After(Shaded);
  	return D3D_OK;
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
@@ -10590,8 +10611,7 @@ index 7428bea..dbb5e40 100644
  	ApplyClipPlanes();
 +	const bool Shaded = U2Begin();
  	ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
-+	if (Shaded)
-+		U2.End(ProxyInterface);
++	U2After(Shaded);
  	return D3D_OK;
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawIndexedPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT MinVertexIndex, UINT NumVertexIndices, UINT PrimitiveCount, const void *pIndexData, D3DFORMAT IndexDataFormat, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
@@ -10599,30 +10619,32 @@ index 7428bea..dbb5e40 100644
  	ApplyClipPlanes();
 +	const bool Shaded = U2Begin();
  	ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinVertexIndex, NumVertexIndices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
-+	if (Shaded)
-+		U2.End(ProxyInterface);
++	U2After(Shaded);
  	return D3D_OK;
  }
  HRESULT STDMETHODCALLTYPE Direct3DDevice8::ProcessVertices(UINT SrcStartIndex, UINT DestIndex, UINT VertexCount, IDirect3DVertexBuffer8 *pDestBuffer, DWORD Flags)
 diff --git a/source/d3d8to9_texture.cpp b/source/d3d8to9_texture.cpp
-index 6b87e59..7d9af6e 100644
+index 6b87e59..63cf8b0 100644
 --- a/source/d3d8to9_texture.cpp
 +++ b/source/d3d8to9_texture.cpp
-@@ -12,6 +12,8 @@ Direct3DTexture8::Direct3DTexture8(Direct3DDevice8 *Device, IDirect3DTexture9 *P
+@@ -12,6 +12,11 @@ Direct3DTexture8::Direct3DTexture8(Direct3DDevice8 *Device, IDirect3DTexture9 *P
  }
  Direct3DTexture8::~Direct3DTexture8()
  {
 +	if (Device->U2Stage0 == this)
 +		Device->U2Stage0 = nullptr;
++	for (Direct3DTexture8 *&Stage : Device->U2Stages)
++		if (Stage == this)
++			Stage = nullptr;
  }
  
  HRESULT STDMETHODCALLTYPE Direct3DTexture8::QueryInterface(REFIID riid, void **ppvObj)
 diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
 new file mode 100644
-index 0000000..87cff1a
+index 0000000..4a0f15d
 --- /dev/null
 +++ b/source/u2shaders.hpp
-@@ -0,0 +1,1502 @@
+@@ -0,0 +1,1609 @@
 +/**
 + * U2Shaders - replace the fixed-function look of chosen surfaces with HLSL pixel shaders.
 + *
@@ -10643,6 +10665,9 @@ index 0000000..87cff1a
 + *                                 x lightmap in s1, see SurfaceBegin); the lightmap and the
 + *                                 texture's panning are left as they are. c2 = how the stages
 + *                                 combine, c3 = the texture's brightness levels
++ *     replace=1a2b3c4d my.dds     draw U2Shaders\my.dds wherever that texture is used, on any
++ *                                 of stages 0-3 (lightmaps too); a DDS, 32-bit or DXT1/3/5,
++ *                                 with its own mips (see Replacement)
 + *     post=1                      bloom, sharpening and colour grading before the HUD
 + *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
 + *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
@@ -10800,6 +10825,8 @@ index 0000000..87cff1a
 +				R.KeepBlend = true;
 +				Rules.push_back(R);
 +			}
++			else if (sscanf_s(Line, " replace=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
++				Replacements[Hash].File = Name;
 +			else if (sscanf_s(Line, " surface=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
 +			{
 +				U2Rule R;
@@ -10810,7 +10837,7 @@ index 0000000..87cff1a
 +			}
 +		}
 +		fclose(F);
-+		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (int)Pcss,
++		Message("U2Shaders: log %d, %u rule(s), %u replacement(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (unsigned)Replacements.size(), (int)Pcss,
 +			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3], ShadowTint[0], ShadowTint[1], ShadowTint[2]);
 +		if (Log || CharProbe)
 +		{
@@ -11016,6 +11043,116 @@ index 0000000..87cff1a
 +		DrawKinds[key]++;
 +	}
 +
++	// Fills in a texture's cached hash the first time (0xFFFFFFFF: unreadable, don't try again)
++	void Known(IDirect3DTexture9 *Tex, DWORD &Hash)
++	{
++		if (Hash != 0)
++			return;
++		U2TexInfo Info;
++		Hash = this->Hash(Tex, Info, false);
++		if (Hash == 0)
++			Hash = 0xFFFFFFFF;
++		else
++			Seen[Hash] = Info;
++	}
++
++	// ---- replace=: our own texture in place of one of the game's -------------------------
++	// The device swaps it in for each draw and back after (so the game still sees its own
++	// texture when it asks), on stages 0-3. The rules keyed by hash still match the original.
++	struct U2Replace
++	{
++		std::string File;
++		IDirect3DTexture9 *Tex = nullptr;
++		bool Tried = false;
++	};
++	std::map<DWORD, U2Replace> Replacements;
++
++	IDirect3DTexture9 *Replacement(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD &Hash)
++	{
++		if (!Loaded)
++			Load();
++		if (Replacements.empty() || Tex == nullptr)
++			return nullptr;
++		Known(Tex, Hash);
++		const auto It = Replacements.find(Hash);
++		if (It == Replacements.end())
++			return nullptr;
++		U2Replace &R = It->second;
++		if (!R.Tried)
++		{
++			R.Tried = true;
++			R.Tex = LoadDDS(Dev, R.File);
++			if (R.Tex != nullptr)
++				Message("replace %08x: %s loaded", Hash, R.File.c_str());
++		}
++		return R.Tex;
++	}
++
++	// A DDS file as a managed texture (survives device resets): 32-bit (A8R8G8B8/X8R8G8B8) or
++	// DXT1/3/5, all the mip levels the file has.
++	IDirect3DTexture9 *LoadDDS(IDirect3DDevice9 *Dev, const std::string &File)
++	{
++		std::string Data;
++		FILE *F = nullptr;
++		if (fopen_s(&F, (Dir + "U2Shaders\\" + File).c_str(), "rb") || F == nullptr)
++		{
++			Message("replace: %s not found", File.c_str());
++			return nullptr;
++		}
++		char Buf[65536];
++		size_t n;
++		while ((n = fread(Buf, 1, sizeof(Buf), F)) > 0)
++			Data.append(Buf, n);
++		fclose(F);
++		const DWORD *H = reinterpret_cast<const DWORD *>(Data.data());
++		if (Data.size() < 128 || H[0] != 0x20534444 || H[1] != 124)
++		{
++			Message("replace: %s is not a DDS file", File.c_str());
++			return nullptr;
++		}
++		const UINT Height = H[3], Width = H[4], Levels = (H[2] & 0x20000) && H[7] ? H[7] : 1;
++		const DWORD PfFlags = H[20], FourCC = H[21], Bits = H[22], RMask = H[23], AMask = H[26];
++		D3DFORMAT Fmt = D3DFMT_UNKNOWN;
++		UINT BlockBytes = 0;          // DXT: bytes per 4x4 block; else 0
++		if ((PfFlags & 0x4) && (FourCC == D3DFMT_DXT1 || FourCC == D3DFMT_DXT3 || FourCC == D3DFMT_DXT5))
++		{
++			Fmt = (D3DFORMAT)FourCC;
++			BlockBytes = FourCC == D3DFMT_DXT1 ? 8 : 16;
++		}
++		else if ((PfFlags & 0x40) && Bits == 32 && RMask == 0xFF0000)
++			Fmt = (PfFlags & 0x1) && AMask ? D3DFMT_A8R8G8B8 : D3DFMT_X8R8G8B8;
++		if (Fmt == D3DFMT_UNKNOWN || Width == 0 || Height == 0)
++		{
++			Message("replace: %s: unsupported format (use 32-bit BGRA or DXT1/3/5)", File.c_str());
++			return nullptr;
++		}
++		IDirect3DTexture9 *T = nullptr;
++		if (FAILED(Dev->CreateTexture(Width, Height, Levels, 0, Fmt, D3DPOOL_MANAGED, &T, nullptr)))
++		{
++			Message("replace: %s: CreateTexture %ux%u failed", File.c_str(), Width, Height);
++			return nullptr;
++		}
++		size_t At = 128;
++		for (UINT L = 0; L < Levels; L++)
++		{
++			const UINT W = (std::max)(1u, Width >> L), Hh = (std::max)(1u, Height >> L);
++			const UINT Rows = BlockBytes ? (std::max)(1u, (Hh + 3) / 4) : Hh;
++			const UINT RowBytes = BlockBytes ? (std::max)(1u, (W + 3) / 4) * BlockBytes : W * 4;
++			D3DLOCKED_RECT Lock;
++			if (At + (size_t)Rows * RowBytes > Data.size() || FAILED(T->LockRect(L, &Lock, nullptr, 0)))
++			{
++				Message("replace: %s: file ends early (level %u)", File.c_str(), L);
++				T->Release();
++				return nullptr;
++			}
++			for (UINT y = 0; y < Rows; y++)
++				memcpy(static_cast<BYTE *>(Lock.pBits) + y * Lock.Pitch, Data.data() + At + (size_t)y * RowBytes, RowBytes);
++			T->UnlockRect(L);
++			At += (size_t)Rows * RowBytes;
++		}
++		return T;
++	}
++
 +	// Called before a draw. Hash = the stage 0 texture's hash (0: not yet known, read it from
 +	// Tex). Returns true if a shader was put in place; End() must then follow the draw.
 +	bool Begin(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD &Hash, bool FixedFunction)
@@ -11025,15 +11162,7 @@ index 0000000..87cff1a
 +		if (Tex == nullptr || (!Log && Rules.empty() && !CharProbe))
 +			return false;
 +
-+		if (Hash == 0)
-+		{
-+			U2TexInfo Info;
-+			Hash = this->Hash(Tex, Info, false);
-+			if (Hash == 0)
-+				Hash = 0xFFFFFFFF;         // unreadable: don't try again
-+			else
-+				Seen[Hash] = Info;
-+		}
++		Known(Tex, Hash);
 +		if (Hash == 0xFFFFFFFF)
 +		{
 +			if (Log)
