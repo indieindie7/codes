@@ -8,6 +8,8 @@
  *                                 save each one to U2Shaders\dump\<hash>_<w>x<h>.dds
  *     tint=1a2b3c4d               draw everything using that texture in flat magenta
  *     shader=1a2b3c4d core.hlsl   draw it with U2Shaders\core.hlsl (entry "main", ps_2_a)
+ *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
+ *                                 U2Shaders\dump\chars.txt (logging only, see ProbeDraw)
  *
  * What a shader gets:
  *     s0            the original texture, TEXCOORD0 = its (possibly panned) coordinates
@@ -115,6 +117,8 @@ public:
 				;
 			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
 				;
+			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
+				CharProbe = Hash != 0;
 			else if (sscanf_s(Line, " tint=%x", &Hash) == 1)
 			{
 				U2Rule R;
@@ -132,7 +136,7 @@ public:
 		fclose(F);
 		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (int)Pcss,
 			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3], ShadowTint[0], ShadowTint[1], ShadowTint[2]);
-		if (Log)
+		if (Log || CharProbe)
 		{
 			CreateDirectoryA((Dir + "U2Shaders").c_str(), nullptr);
 			CreateDirectoryA((Dir + "U2Shaders\\dump").c_str(), nullptr);
@@ -295,6 +299,15 @@ public:
 	{
 		if (!Loaded)
 			Load();
+		if (CharProbe && !HasTex0 && Offscreen(Dev))
+		{
+			DWORD blend = 0, op0 = 0, arg1 = 0;
+			Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+			Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op0);
+			Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &arg1);
+			if (!blend && op0 == D3DTOP_SELECTARG1 && (arg1 & 0xF) == D3DTA_TFACTOR)
+				MapsThisFrame++;           // a shadow silhouette (same test as PcssBegin's map pass)
+		}
 		if (!Log)
 			return;
 		IDirect3DSurface9 *T = nullptr, *BB = nullptr;
@@ -331,7 +344,7 @@ public:
 	{
 		if (!Loaded)
 			Load();
-		if (Tex == nullptr || (!Log && Rules.empty()))
+		if (Tex == nullptr || (!Log && Rules.empty() && !CharProbe))
 			return false;
 
 		if (Hash == 0)
@@ -349,6 +362,8 @@ public:
 				LogUnreadableDraw(Dev, Tex);   // render targets (e.g. shadow maps): note how they're drawn
 			return false;
 		}
+		if (CharProbe)
+			ProbeDraw(Dev, Tex, Hash, FixedFunction);
 
 		if (Log)
 		{
@@ -895,10 +910,93 @@ public:
 		}
 	}
 
+	// ---- character probe (charprobe=1) -----------------------------------------------------
+	// Character skins are opaque, so the per-surface rules above never see them. Before any
+	// character lighting or self-shadowing work, this records how each opaque on-screen draw is
+	// lit (fixed-function lighting, lights, material, ambient, skinning) and whether shadow
+	// silhouettes were drawn earlier in the same frame. Written to U2Shaders\dump\chars.txt;
+	// each texture is also saved once as <hash>_<w>x<h>.dds so a character's skin can be found.
+	bool CharProbe = false;
+	unsigned MapsThisFrame = 0, ProbeFrames = 0, FramesWithMaps = 0;
+	struct U2Probe { unsigned Draws = 0, AfterMaps = 0, FirstFrame = 0; std::string Sample; };
+	std::map<std::string, U2Probe> Probes;
+	std::map<DWORD, bool> ProbeDumped;
+
+	void ProbeDraw(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD TexHash, bool FixedFunction)
+	{
+		DWORD blend = 0;
+		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+		if (blend || Offscreen(Dev))
+			return;
+		DWORD fvf = 0, lighting = 0, ambient = 0, vblend = 0, ivb = 0, colorvertex = 0, diffsrc = 0, ambsrc = 0, spec = 0, tf = 0;
+		Dev->GetFVF(&fvf);
+		Dev->GetRenderState(D3DRS_LIGHTING, &lighting);
+		Dev->GetRenderState(D3DRS_AMBIENT, &ambient);
+		Dev->GetRenderState(D3DRS_VERTEXBLEND, &vblend);
+		Dev->GetRenderState(D3DRS_INDEXEDVERTEXBLENDENABLE, &ivb);
+		Dev->GetRenderState(D3DRS_COLORVERTEX, &colorvertex);
+		Dev->GetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, &diffsrc);
+		Dev->GetRenderState(D3DRS_AMBIENTMATERIALSOURCE, &ambsrc);
+		Dev->GetRenderState(D3DRS_SPECULARENABLE, &spec);
+		Dev->GetRenderState(D3DRS_TEXTUREFACTOR, &tf);
+		DWORD op[3] = {}, a1[3] = {}, a2[3] = {};
+		for (DWORD st = 0; st < 3; st++)
+		{
+			Dev->GetTextureStageState(st, D3DTSS_COLOROP, &op[st]);
+			Dev->GetTextureStageState(st, D3DTSS_COLORARG1, &a1[st]);
+			Dev->GetTextureStageState(st, D3DTSS_COLORARG2, &a2[st]);
+		}
+		int lights = 0;
+		std::string ls;
+		for (DWORD i = 0; i < 8; i++)
+		{
+			BOOL on = FALSE;
+			D3DLIGHT9 L = {};
+			if (FAILED(Dev->GetLightEnable(i, &on)) || !on || FAILED(Dev->GetLight(i, &L)))
+				continue;
+			lights++;
+			char b[160];
+			sprintf_s(b, " | L%u type %u dif %.2f %.2f %.2f amb %.2f %.2f %.2f range %.0f att %.3f %.5f",
+				i, (unsigned)L.Type, L.Diffuse.r, L.Diffuse.g, L.Diffuse.b, L.Ambient.r, L.Ambient.g, L.Ambient.b,
+				L.Range, L.Attenuation1, L.Attenuation2);
+			ls += b;
+		}
+		D3DMATERIAL9 M = {};
+		Dev->GetMaterial(&M);
+
+		char key[300];
+		sprintf_s(key, "%08x %s fvf %x lighting %u vblend %u/%u colorvertex %u src dif %u amb %u spec %u lights %d | st0 %u %x %x | st1 %u %x %x | st2 %u %x %x",
+			TexHash, FixedFunction ? "ff" : "vs", fvf, lighting, vblend, ivb, colorvertex, diffsrc, ambsrc, spec, lights,
+			op[0], a1[0], a2[0], op[1], a1[1], a2[1], op[2], a1[2], a2[2]);
+		char sample[200];
+		sprintf_s(sample, "ambient %08x tfactor %08x mat dif %.2f %.2f %.2f amb %.2f %.2f %.2f emi %.2f %.2f %.2f",
+			ambient, tf, M.Diffuse.r, M.Diffuse.g, M.Diffuse.b, M.Ambient.r, M.Ambient.g, M.Ambient.b, M.Emissive.r, M.Emissive.g, M.Emissive.b);
+
+		U2Probe &P = Probes[key];
+		if (P.Draws++ == 0)
+			P.FirstFrame = Frame;
+		if (MapsThisFrame > 0)
+			P.AfterMaps++;
+		P.Sample = std::string(sample) + ls;
+		if (!ProbeDumped[TexHash])
+		{
+			ProbeDumped[TexHash] = true;
+			U2TexInfo Dummy;
+			this->Hash(Tex, Dummy, true);
+		}
+	}
+
 	void OnPresent()
 	{
 		Frame++;
-		if (Log && Frame - LogFrame >= 300)
+		if (CharProbe)
+		{
+			ProbeFrames++;
+			if (MapsThisFrame > 0)
+				FramesWithMaps++;
+			MapsThisFrame = 0;
+		}
+		if ((Log || CharProbe) && Frame - LogFrame >= 300)
 		{
 			LogFrame = Frame;
 			WriteSeen();
@@ -908,6 +1006,16 @@ public:
 	void WriteSeen()
 	{
 		FILE *F = nullptr;
+		if (CharProbe && !fopen_s(&F, (Dir + "U2Shaders\\dump\\chars.txt").c_str(), "w") && F)
+		{
+			fprintf(F, "frames %u, with shadow silhouettes drawn %u\n", ProbeFrames, FramesWithMaps);
+			fprintf(F, "draws  after-maps  first-frame  texture / state\n                                  last sample\n");
+			for (const auto &It : Probes)
+				fprintf(F, "%6u  %6u  %8u  %s\n      %s\n", It.second.Draws, It.second.AfterMaps, It.second.FirstFrame,
+					It.first.c_str(), It.second.Sample.c_str());
+			fclose(F);
+			F = nullptr;
+		}
 		if (fopen_s(&F, (Dir + "U2Shaders\\dump\\seen.txt").c_str(), "w") || F == nullptr)
 			return;
 		for (const auto &It : Seen)

@@ -1,0 +1,26 @@
+# char_probe: how characters are lit, before character lighting / self-shadowing work.
+# Needs U2Shaders with charprobe=1 in System\U2Shaders.ini. Writes
+# System\U2Shaders\dump\chars.txt (+ a .dds per texture, to find the marines' skins)
+# and logs each character's lighting properties in Unreal2.log.
+map M08A1
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+turn 0 -15 0.2
+spawn U2Pawns.U2MarineLight 220
+turn 35 0 0.2
+spawn U2Pawns.U2MarineLight 300
+turn -35 0 0.2
+console behindview 1
+wait 1
+shot
+dump Pawn AmbientGlow ScaleGlow bUnlit Style bDramaticLighting LightType bActorShadows
+dump ZoneInfo AmbientBrightness AmbientHue AmbientSaturation
+turn 180 0 0.6
+wait 6
+shot
+turn 180 0 0.6
+wait 6
+shot
+quit

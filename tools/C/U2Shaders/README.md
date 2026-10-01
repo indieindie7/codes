@@ -27,6 +27,13 @@ channel. `1 1 1` (default) is the engine's grey; lowering blue gives cool, bluis
 Needs a `d3d8.dll` built from this source (the one in this folder predates it). With an older
 dll the new `pcss_proj.hlsl` still works and draws grey shadows.
 
+Probe, logging only: `charprobe=1` records how every opaque on-screen draw is lit (fixed-function
+lighting, lights, material, ambient, vertex blending, texture stages) and whether shadow
+silhouettes were drawn earlier in the frame, in `System\U2Shaders\dump\chars.txt`, and saves each
+texture once as a `.dds` to tell character skins apart. Run it with U2Pilot's
+`scripts/char_probe.txt`. It is the groundwork for character lighting and self-shadowing: the
+per-surface rules only reach alpha-blended draws, and character skins are opaque.
+
 ## How Unreal II's character shadows work (what the PCSS hooks)
 
 1. The silhouette is drawn into a sharp render target A (flat colour 128, shadow in **alpha**).
