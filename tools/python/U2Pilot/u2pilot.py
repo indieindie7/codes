@@ -379,9 +379,17 @@ def make_pilot_inis():
 
 
 def hide_offscreen(hwnd):
-    """Park the window beyond the left edge of the desktop without activating it."""
+    """Park the window beyond the left edge of the desktop without activating it.
+    U2PILOT_PARK=X,Y parks it at that screen position instead (e.g. on a spare
+    monitor, to watch or capture the run without it taking focus)."""
     r = wt.RECT()
     user32.GetWindowRect(hwnd, ctypes.byref(r))
+    park = os.environ.get("U2PILOT_PARK")
+    if park:
+        px, py = (int(v) for v in park.split(","))
+        if (r.left, r.top) != (px, py):
+            user32.SetWindowPos(hwnd, None, px, py, 0, 0, 0x1 | 0x4 | 0x10)
+        return
     left = user32.GetSystemMetrics(76)   # SM_XVIRTUALSCREEN: leftmost point of all monitors
     if r.right > left:
         SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x1, 0x4, 0x10

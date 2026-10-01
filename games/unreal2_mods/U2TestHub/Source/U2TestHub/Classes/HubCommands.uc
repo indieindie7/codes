@@ -8,7 +8,11 @@
 //                                     brightness 0-255 (220), height angle in
 //                                     degrees (45), distance (200)
 //   hub lamp clear                    remove the test lamps
-//   hub dummy                         a marine to look at, in front of you
+//   hub spawn PKG.Class [yaw] [dist]  any actor, e.g. hub spawn U2Malcolm.MalcolmDummy
+//   hub clean [fov]                   hide the HUD and your weapon (pictures)
+//   hub dummy [MESH] [yaw] [dist]     a marine to look at, in front of you;
+//                                     MESH = another model to wear, yaw =
+//                                     degrees it is turned (180 = faces you)
 //   hub shadows mod|stock|off         U2SoftShadows / the game's own / none
 //   hub info                          your shadows: light, darkness, fade
 //   hub probe                         log frame hitches (U2Hover.FrameProbe)
@@ -91,7 +95,9 @@ exec function Hub(optional string Args)
 	if (Cmd == "" || Cmd == "HELP")         Help();
 	else if (Cmd == "VIEW")                 View(Caps(Word(Args)) != "OFF");
 	else if (Cmd == "LAMP")                 Lamp(Args);
-	else if (Cmd == "DUMMY")                Dummy();
+	else if (Cmd == "DUMMY")                Dummy(Word(Args), NumOr(Word(Args), 180), NumOr(Word(Args), 160));
+	else if (Cmd == "SPAWN")                SpawnActor(Word(Args), NumOr(Word(Args), 180), NumOr(Word(Args), 330));
+	else if (Cmd == "CLEAN")                Clean(NumOr(Word(Args), 0));
 	else if (Cmd == "SHADOWS")              Shadows(Caps(Word(Args)));
 	else if (Cmd == "INFO")                 Info();
 	else if (Cmd == "PROBE")                Probe();
@@ -162,20 +168,79 @@ function Lamp(string Args)
 	Say("lamp "$HubMut.Lamps.Length$": brightness "$int(Bright)$", "$int(Angle)$" deg up, "$int(Dist)$" away");
 }
 
-function Dummy()
+// hub spawn PKG.Class [yaw] [dist] - any actor class in front of you, turned yaw degrees
+function SpawnActor(string Path, float YawDeg, float Dist)
 {
-	local Pawn P;
-	local class<Pawn> C;
+	local class<Actor> C;
+	local Actor A;
+	local rotator R;
 
 	if (PC.Pawn == None)
 		return;
+	C = class<Actor>(DynamicLoadObject(Path, class'Class'));
+	if (C == None)
+	{
+		Say("spawn: no class "$Path);
+		return;
+	}
+	R.Yaw = PC.Rotation.Yaw + int(YawDeg * 65536.0 / 360.0);
+	A = PC.Spawn(C,,, InFront(Dist, 0), R);
+	if (A == None)
+		Say("spawn: blocked");
+	else
+		Say("spawn: "$string(A));
+}
+
+// hub clean - no HUD and no weapon in view, for taking pictures
+function Clean(float Zoom)
+{
+	if (PC.myHUD != None)
+		PC.myHUD.bHideHUD = true;
+	// third person with your own body hidden: nothing of you is drawn
+	PC.ClientSetBehindView(true);
+	PC.bGodMode = true;
+	if (PC.Pawn != None)
+		PC.Pawn.bHidden = true;
+	PC.ConsoleCommand("ToggleHUD");
+	if (Zoom > 0)
+	{
+		PC.DefaultFOV = Zoom;
+		PC.DesiredFOV = Zoom;
+		PC.FOVAngle = Zoom;
+	}
+	Say("clean: HUD, weapon and your body hidden");
+}
+
+function Dummy(string MeshPath, float YawDeg, float Dist)
+{
+	local Pawn P;
+	local class<Pawn> C;
+	local Mesh M;
+	local rotator R;
+
+	if (PC.Pawn == None)
+		return;
+	R.Yaw = PC.Rotation.Yaw + int(YawDeg * 65536.0 / 360.0);
 	C = class<Pawn>(DynamicLoadObject("U2Pawns.U2MarineLight", class'Class'));
 	if (C != None)
-		P = PC.Spawn(C,,, InFront(160, 0));
+		P = PC.Spawn(C,,, InFront(Dist, 0), R);
 	if (P == None)
+	{
 		Say("dummy: no room there");
-	else
-		Say("dummy: "$string(P));
+		return;
+	}
+	if (MeshPath != "")
+	{
+		M = Mesh(DynamicLoadObject(MeshPath, class'Mesh'));
+		if (M != None)
+			P.Mesh = M;
+		else
+			Say("dummy: can't load "$MeshPath);
+		// a model on show: no AI, so it keeps its place and facing
+		if (P.Controller != None)
+			P.Controller.Destroy();
+	}
+	Say("dummy: "$string(P)$" mesh "$string(P.Mesh));
 }
 
 // mod: U2SoftShadows casts; stock: the game's own single shadow; off: none
@@ -259,23 +324,13 @@ function Info()
 			{
 				Line = Line$string(S.AssignedLight)$" bright "$S.AssignedLight.LightBrightness
 					$" dist "$int(VSize(S.AssignedLight.Location - PC.Pawn.Location))
-					$" fade "$S.Fade;
+					$" fade "$S.Fade$" share "$S.LightShare;
 			}
 			Say(Line);
 			if (S.AssignedLight != None)
 				Say("   "$Describe(S));
 		}
-		if (C.Contact != None)
-			Say("contact shadow: shown "$C.Contact.bShown);
-		if (C.Capsules.Length > 0 && C.Capsules[0] != None)
-			Say("capsules: "$C.Capsules.Length$" shown "$C.Capsules[0].bShown$" first dz "$int(C.Capsules[0].Location.Z - PC.Pawn.Location.Z)$" scale "$C.Capsules[0].DrawScale$" tex "$string(C.Capsules[0].ProjTexture)$" chosen "$C.Chosen.Length);
-		if (C.Sharp != None)
-		{
-			if (C.Sharp.AssignedLight == None)
-				Say("sharp copy: no light");
-			else
-				Say("sharp copy of "$string(C.Sharp.AssignedLight)$": "$Describe(C.Sharp)$" blur "$C.Sharp.bBlurShadow);
-		}
+		Say("light here: "$int(C.LastTotalLight)$" (lamps "$int(C.LastTotalLight - C.LastAmbient)$" + ambient "$int(C.LastAmbient)$"), set held "$C.bHeld);
 		if (PC.Pawn.ShadowA != None)
 			Say("game's own shadow: "$Describe(ShadowProjector(PC.Pawn.ShadowA)));
 		SunInfo(C);
@@ -302,7 +357,7 @@ function SunInfo(SSShadowController C)
 		if (K.bCulled)
 			Culled++;
 		else if (K.Owner != None)
-			Say("  active: "$string(K.Owner)$" dist "$int(VSize(K.Owner.Location - PC.Pawn.Location))$" allowed "$K.Allowed$" capsules "$K.Capsules.Length);
+			Say("  active: "$string(K.Owner)$" dist "$int(VSize(K.Owner.Location - PC.Pawn.Location))$" allowed "$K.Allowed);
 	}
 	Say("characters with shadow controllers: "$Total$", culled "$Culled$", active "$(Total - Culled));
 
@@ -382,7 +437,7 @@ function MenuTest(string Arg)
 
 	H = new class'SSMenuHelper';
 	Say("menu helper reads: enabled "$H.GetEnabled()$" maxshadows "$int(H.GetMaxShadows())$" strength "$int(H.GetStrength())
-		$" fade "$H.GetFadeLength()$" contact "$H.GetContact()$" hardtosoft "$H.GetHardToSoft()$" capsules "$H.GetCapsules()
+		$" fade "$H.GetFadeLength()$" player "$int(H.GetPlayerShadows())$" respectbaked "$H.GetRespectBaked()
 		$" cameracull "$H.GetCameraCull()$" near "$int(H.GetNearDistance())$" mid "$int(H.GetMidDistance()));
 	if (Arg != "")
 	{

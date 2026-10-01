@@ -1,0 +1,37 @@
+# U2Wardrobe: open the F6 menu, then wear several outfits in third person
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+console SendEvent ShowWardrobe
+wait 1.5
+shot
+console SendEvent HideWardrobe
+console wardrobe view
+console wardrobe wear Dalton
+wait 1.5
+shot
+console wardrobe wear Malcolm (UT2004)
+wait 1.5
+shot
+console wardrobe wear Skaarj
+wait 1.5
+shot
+console wardrobe wear Liandri Angel
+wait 1.5
+shot
+console wardrobe wear Robot (UT2004)
+wait 1.5
+shot
+console wardrobe wear Dalton (off duty)
+wait 1.5
+shot
+console wardrobe wear Juggernaut (UT2004)
+wait 1.5
+shot
+console wardrobe wear Aida
+wait 1.5
+shot
+console wardrobe wear Dalton
+quit

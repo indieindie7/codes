@@ -13,6 +13,7 @@ var array<Light> StaticLights;
 var Actor SunLightActor;
 var array<Actor> DynamicLights;
 var float DynamicScanTime;
+var int LightsVersion;           // bumped whenever the set of moving lights changes
 var PlayerController Viewer;
 var bool bSuspended;             // switched off for testing (U2TestHub: hub shadows stock|off)
 
@@ -36,8 +37,6 @@ event PostBeginPlay()
 	SetTimer(0.5, true);
 }
 
-// moving lights (muzzle flashes, flares, lamps on actors), refreshed at most
-// every 0.15 s however many controllers ask; projectiles skipped
 // suspend: hand the adopted characters back to the game's own shadow (and
 // stop adopting); resume: adopt again on the next sweep. Only characters this
 // manager adopted are touched: the game gives some pawns no shadow on purpose.
@@ -76,18 +75,32 @@ function ReleaseAll()
 	Controllers.Length = 0;
 }
 
+// moving lights (flares, lamps on actors), refreshed at most every 0.15 s
+// however many controllers ask. Projectiles and anything short-lived (muzzle
+// flashes, sparks: a LifeSpan) are skipped, so gunfire doesn't jerk shadows around
 function RefreshDynamicLights()
 {
 	local Actor A;
+	local array<Actor> Found;
+	local bool bChanged;
+	local int i;
 
 	if (Level.TimeSeconds - DynamicScanTime >= 0.15 || DynamicScanTime == 0)
 	{
 		DynamicScanTime = Level.TimeSeconds;
-		DynamicLights.Length = 0;
+		Found.Length = 0;
 		foreach DynamicActors(class'Actor', A)
-			if (A.bDynamicLight && !class'SSShadowController'.static.IsSun(A) && Projectile(A) == None
+			if (A.bDynamicLight && !class'SSShadowController'.static.IsSun(A) && Projectile(A) == None && A.LifeSpan == 0
 				&& class'SSShadowController'.static.CastsLight(A))
-				DynamicLights[DynamicLights.Length] = A;
+				Found[Found.Length] = A;
+		bChanged = Found.Length != DynamicLights.Length;
+		for (i = 0; i < Found.Length && !bChanged; i++)
+			bChanged = Found[i] != DynamicLights[i];
+		if (bChanged)
+		{
+			DynamicLights = Found;
+			LightsVersion++;
+		}
 	}
 
 }
@@ -129,9 +142,11 @@ event Timer()
 		return;
 	foreach DynamicActors(class'Pawn', P)
 	{
-		// only real, active characters that the engine would give a shadow to;
-		// temporary precache pawns have no controller and are destroyed at once
-		if (P.bDeleteMe || P.Controller == None || !P.bActorShadows || P.Mesh == None)
+		// every character the engine would give a shadow to (the add-on replaces the
+		// game's shadows outright, posed and scripted characters included); the
+		// level's temporary precache pawns (no controller, gone within the first
+		// moments) are skipped
+		if (P.bDeleteMe || !P.bActorShadows || P.Mesh == None || (P.Controller == None && Level.TimeSeconds < 2.0))
 			continue;
 		bHasShadow = false;
 		for (i = 0; i < Controllers.Length; i++)
@@ -169,7 +184,7 @@ function Adopt(Pawn P)
 	C.Manager = Self;
 	C.Initialize();
 	Controllers[Controllers.Length] = C;
-	Log("U2SoftShadows: multi-light shadows for "$P.Name$" ("$C.MaxShadows$" max)");
+	Log("U2SoftShadows: multi-light shadows for "$P.Name$" ("$C.OwnMax()$" max)");
 }
 
 defaultproperties

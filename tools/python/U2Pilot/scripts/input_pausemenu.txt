@@ -1,0 +1,8 @@
+# U2Input test: the stock pause menu open and held, while probe.py moves the cursor
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console SendEvent ShowMenus
+wait 90
+quit

@@ -1,0 +1,10 @@
+# intro cutscene frames: letterbox bars and picture proportions
+background
+map CS_Intro
+@CS_Intro wait 12
+@CS_Intro shot
+@CS_Intro wait 6
+@CS_Intro shot
+@CS_Intro wait 6
+@CS_Intro shot
+@CS_Intro quit

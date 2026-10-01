@@ -1,7 +1,15 @@
 //=============================================================================
 // Picks the lights that most strongly light one character and gives each its
 // own SSLightShadow. A shadow stays on its light for as long as that light
-// remains in the top set, so shadows don't swap and flicker.
+// remains in the top set, so shadows don't swap and flicker; and the set is
+// only re-picked once the character has moved, so a character standing still
+// keeps perfectly still shadows. Moving between lamps, shadows fade from one
+// light to the next.
+//
+// Each shadow's darkness follows its light's share of all the light reaching
+// the character (lamps in reach plus the zone's ambient light): in a room lit
+// from many sides, the other lights fill each shadow in, as they would for
+// real, and the baked lighting isn't painted over.
 //
 // Tunable in User.ini under [U2SoftShadows.SSShadowController].
 //=============================================================================
@@ -9,7 +17,8 @@ class SSShadowController extends Actor
 	config(User);
 
 var config bool bEnabled;        // the whole add-on (the game's own shadows come back when off)
-var config int MaxShadows;
+var config int MaxShadows;       // light shadows per character
+var config int PlayerMaxShadows; // light shadows for the player's own character
 var config float MaxLightDistance;
 var config float UpdateFrequency;
 var config float ShadowStrength;
@@ -17,7 +26,7 @@ var config float FadeRate;
 var config int GradientLength;   // longest the feet-to-head fade may reach, in world units
 var config float GradientScale;  // fade length as a multiple of the shadow's length: 1 = gone at
                                  // the head's tip, 3 = the tip keeps two thirds (gentle)
-var config int SunResolution;    // sun shadow texture size: 64 very soft, 128 soft, 256 sharp
+var config int SunResolution;    // sun shadow texture size: 64 very soft, 128 soft
 var config int LampResolution;   // lamp shadow texture size: 64 very soft, 128 soft (shadows are always soft)
 var config float MaxSteepness;   // overhead lamps are tilted to at most this steep (degrees)
 var config float MinStrength;    // darkness of the faintest lamp shadow (dim or far lamp), 0-1
@@ -27,27 +36,14 @@ var config float UnseenTime;     // nor do characters off screen for this long (
 var config float SunClearance;   // the sun casts when nothing is this close overhead toward it (world units)
 var config bool bCameraCull;     // shadows only for characters the camera can see
 var config float CullFOVMargin;  // degrees beyond the camera's view cone before a character is dropped
-var config float NearDistance;   // within this: every shadow (and capsules, if on)
-var config float MidDistance;    // within this: one light shadow + contact; beyond: contact only
+var config float NearDistance;   // within this: every shadow
+var config float MidDistance;    // within this: one shadow; beyond: none
+var config float RepickDistance; // the light set is re-picked only after moving this far (world units)
+var config bool bRespectBaked;   // darkness follows the light's share of all light here (lamps + ambient)
+var config float AmbientWeight;  // how much the zone's ambient brightness counts against the lamps
+var config float MinShare;       // darkness kept even when a light is a small share of the total, 0-1
 
 var int Allowed;                 // light shadows allowed at the current distance
-var config bool bContactShadow;  // a soft dark patch on the floor under the feet
-var config bool bHardToSoft;     // a sharper copy of the strongest light's shadow at the feet, fading fast
-var config int SharpResolution;  // its texture size (256 crisp)
-var config float SharpScale;     // how far it reaches, as a fraction of the shadow's length
-var config float SharpStrength;  // its darkness relative to the soft shadow
-var config bool bPerLightSoftness; // lamp shadows a little crisper from bright near lamps, softer from dim far ones
-var config bool bWeightedPick;   // pick lights at random, weighted by strength, instead of always the strongest
-var config float HoldFraction;   // a light already casting keeps its place while at least this strong vs the best
-
-var array<Actor> Cands;          // this update's candidate lights and scores (weighted pick)
-var array<float> CandScore;
-
-var SSLightShadow Sharp;
-var config bool bCapsules;       // experiment: per-limb soft ovals from the strongest light
-var array<SSCapsuleShadow> Capsules;
-
-var SSContactShadow Contact;
 
 var SSShadowManager Manager;
 var bool bCulled;
@@ -56,30 +52,44 @@ var array<SSLightShadow> Shadows;
 var array<Actor> Chosen;
 var array<float> ChosenPriority;
 
+// the last pick: where, with how many allowed, and how much light there was
+var bool bPicked;
+var vector PickLoc;
+var int PickAllowed;
+var int PickVersion;             // the manager's LightsVersion at that pick
+var bool bHeld;                  // the last update kept the set (standing still)
+var float LastTotalLight;        // lamps in reach + ambient, at the last pick ("how lit is it here")
+var float LastAmbient;
+
+function bool IsPlayer()
+{
+	return Manager != None && Manager.Viewer != None && Pawn(Owner).Controller == Manager.Viewer;
+}
+
+function int OwnMax()
+{
+	if (IsPlayer())
+		return Max(PlayerMaxShadows, MaxShadows);
+	return MaxShadows;
+}
+
 function Initialize()
 {
 	local SSLightShadow S;
-	local rotator Down;
 	local int i;
 
-	if (Pawn(Owner) == None)
+	if (Pawn(Owner) == None || Manager == None)
 	{
 		Destroy();
 		return;
 	}
 
-	if (Manager == None)
-	{
-		Destroy();
-		return;
-	}
-
-	for (i = 0; i < MaxShadows; i++)
+	for (i = 0; i < OwnMax(); i++)
 	{
 		S = Spawn(class'SSLightShadow', Owner,, Owner.Location, Owner.Rotation);
 		if (S == None)
 			continue;
-		// let the character configure it exactly as SOverhaul does its own shadow
+		// let the character configure it exactly as the game does its own shadow
 		Pawn(Owner).InitShadow(S);
 		S.InterpolateRate = class'SSLightShadow'.default.InterpolateRate;
 		S.MaxLightDistance = MaxLightDistance;
@@ -94,129 +104,14 @@ function Initialize()
 		S.MaxSteepness = MaxSteepness;
 		S.MinStrength = MinStrength;
 		S.FullIntensity = FullIntensity;
-		S.bPerLightSoftness = bPerLightSoftness;
 		S.bGradient = true;
 		Shadows[Shadows.Length] = S;
-	}
-
-	if (bHardToSoft)
-	{
-		Sharp = Spawn(class'SSLightShadow', Owner,, Owner.Location, Owner.Rotation);
-		if (Sharp != None)
-		{
-			Pawn(Owner).InitShadow(Sharp);
-			Sharp.InterpolateRate = class'SSLightShadow'.default.InterpolateRate;
-			Sharp.MaxLightDistance = MaxLightDistance;
-			Sharp.ShadowStrength = ShadowStrength;
-			Sharp.FadeRate = FadeRate;
-			Sharp.MaxGradient = GradientLength;
-			Sharp.MaxSteepness = MaxSteepness;
-			Sharp.MinStrength = MinStrength;
-			Sharp.FullIntensity = FullIntensity;
-			Sharp.bSharp = true;
-			Sharp.bBlurShadow = false;      // the one crisp copy; everything else stays blurred
-			Sharp.SharpResolution = SharpResolution;
-			Sharp.ShadowResolution = SharpResolution;
-			Sharp.SharpScale = SharpScale;
-			Sharp.SharpStrength = SharpStrength;
-			Sharp.bGradient = true;
-		}
-	}
-	if (bCapsules)
-	{
-		AddCapsule("Merc Pelvis", "Merc Neck", 17);
-		AddCapsule("Merc Neck", "Merc Head", 10);
-		AddCapsule("Merc L Thigh", "Merc L Calf", 9);
-		AddCapsule("Merc R Thigh", "Merc R Calf", 9);
-		AddCapsule("Merc L Calf", "Merc L Foot", 8);
-		AddCapsule("Merc R Calf", "Merc R Foot", 8);
-		AddCapsule("Merc L UpperArm", "Merc L Forearm", 7);
-		AddCapsule("Merc R UpperArm", "Merc R Forearm", 7);
-		AddCapsule("Merc L Forearm", "Merc L Hand", 6);
-		AddCapsule("Merc R Forearm", "Merc R Hand", 6);
-		Enable('Tick');
-	}
-	if (bContactShadow)
-	{
-		Down.Pitch = -16384;
-		Contact = Spawn(class'SSContactShadow', Owner,, Owner.Location, Down);
-		if (Contact != None)
-			Contact.Show(true);
 	}
 
 	SelectLights();
 	// start at a random point in the cycle so controllers don't all update in
 	// the same frame; Timer switches to the regular rate
 	SetTimer(UpdateFrequency * (0.2 + 0.8 * FRand()), false);
-}
-
-event Tick(float DeltaTime)
-{
-	if (Owner == None || Owner.bDeleteMe)
-	{
-		Destroy();
-		return;
-	}
-	if (Capsules.Length > 0 && !bCulled && Allowed >= MaxShadows)
-		UpdateCapsules();
-	else if (Capsules.Length > 0 && Capsules[0] != None && Capsules[0].bShown)
-		HideCapsules();
-}
-
-function HideCapsules()
-{
-	local int i;
-	for (i = 0; i < Capsules.Length; i++)
-		if (Capsules[i] != None)
-			Capsules[i].Show(false);
-}
-
-function AddCapsule(string A, string B, float R)
-{
-	local SSCapsuleShadow C;
-
-	C = Spawn(class'SSCapsuleShadow', Owner,, Owner.Location);
-	if (C == None)
-		return;
-	C.NodeA = A;
-	C.NodeB = B;
-	C.Radius = R;
-	C.Show(true);
-	Capsules[Capsules.Length] = C;
-}
-
-// every frame: the strongest chosen light's direction and the floor under the
-// character, then each limb's oval
-function UpdateCapsules()
-{
-	local Actor L;
-	local vector Dir, HitLoc, HitNorm;
-	local float FloorZ;
-	local int i;
-
-	if (Chosen.Length == 0)
-	{
-		for (i = 0; i < Capsules.Length; i++)
-			if (Capsules[i] != None && Capsules[i].bShown)
-				Capsules[i].Show(false);
-		return;
-	}
-	L = Chosen[0];
-	if (IsSun(L))
-		Dir = vector(L.Rotation);
-	else
-		Dir = Normal(Owner.Location - L.Location);
-	if (Trace(HitLoc, HitNorm, Owner.Location - vect(0,0,400), Owner.Location, false) != None)
-		FloorZ = HitLoc.Z;
-	else
-		FloorZ = Owner.Location.Z - Owner.CollisionHeight;
-	for (i = 0; i < Capsules.Length; i++)
-		if (Capsules[i] != None)
-		{
-			if (!Capsules[i].bShown)
-				Capsules[i].Show(true);
-			Capsules[i].Update(Pawn(Owner), Dir, FloorZ);
-		}
 }
 
 event Timer()
@@ -255,7 +150,7 @@ function bool ShouldCull()
 }
 
 // how many light shadows this character gets at its distance from the camera:
-// all of them close up, one at mid range, none (contact only) far away
+// all of them close up, one at mid range, none far away
 function int TierAllowed()
 {
 	local PlayerController V;
@@ -264,75 +159,17 @@ function int TierAllowed()
 
 	V = Manager.Viewer;
 	if (V == None || Pawn(Owner).Controller == V)
-		return MaxShadows;
+		return OwnMax();
 	if (V.Pawn != None)
 		ViewLoc = V.Pawn.Location;
 	else
 		ViewLoc = V.Location;
 	Dist = VSize(Owner.Location - ViewLoc);
 	if (Dist <= NearDistance)
-		return MaxShadows;
+		return OwnMax();
 	if (Dist <= MidDistance)
-		return Min(MaxShadows, 1);
+		return Min(OwnMax(), 1);
 	return 0;
-}
-
-// weighted random choice of Max(MaxShadows,1) lights from the candidates
-// (probability proportional to strength), keeping any light a shadow already
-// casts from while it is still at least HoldFraction of the best. Different
-// characters in the same room get different, still plausible, light sets and
-// a character's set doesn't churn.
-function WeightedPick()
-{
-	local int i, j, Want;
-	local float Best, Total, R;
-	local Actor L;
-
-	Want = Max(MaxShadows, 1);
-	for (i = 0; i < CandScore.Length; i++)
-		Best = FMax(Best, CandScore[i]);
-	// keep what's already casting, if still strong enough
-	for (i = 0; i < Shadows.Length && Chosen.Length < Want; i++)
-	{
-		if (Shadows[i] == None)
-			continue;
-		L = Shadows[i].TargetLight();
-		for (j = 0; j < Cands.Length; j++)
-			if (Cands[j] == L && CandScore[j] >= Best * HoldFraction)
-			{
-				Chosen[Chosen.Length] = L;
-				ChosenPriority[ChosenPriority.Length] = CandScore[j];
-				Cands.Remove(j, 1);
-				CandScore.Remove(j, 1);
-				break;
-			}
-	}
-	// fill the rest at random, weighted by strength
-	while (Chosen.Length < Want && Cands.Length > 0)
-	{
-		Total = 0;
-		for (j = 0; j < CandScore.Length; j++)
-			Total += CandScore[j];
-		R = FRand() * Total;
-		for (j = 0; j < CandScore.Length; j++)
-		{
-			R -= CandScore[j];
-			if (R <= 0 || j == CandScore.Length - 1)
-				break;
-		}
-		Chosen[Chosen.Length] = Cands[j];
-		ChosenPriority[ChosenPriority.Length] = CandScore[j];
-		Cands.Remove(j, 1);
-		CandScore.Remove(j, 1);
-	}
-	// strongest first: the sharp copy and the capsules follow Chosen[0]
-	for (i = 0; i < Chosen.Length; i++)
-		for (j = i + 1; j < Chosen.Length; j++)
-			if (ChosenPriority[j] > ChosenPriority[i])
-			{
-				L = Chosen[i]; Chosen[i] = Chosen[j]; Chosen[j] = L;
-				R = ChosenPriority[i]; ChosenPriority[i] = ChosenPriority[j]; ChosenPriority[j] = R;
-			}
 }
 
 // outside the camera's view cone (plus a margin, so a shadow can enter the
@@ -411,19 +248,17 @@ function bool SunVisible()
 	return FastTrace(Owner.Location + ToSun, Owner.Location) || FastTrace(Head + ToSun, Head);
 }
 
-function Offer(Actor L, float Priority)
+// the zone's ambient light, on the same scale as LightScore
+function float AmbientLight()
+{
+	if (Region.Zone == None)
+		return 0;
+	return Region.Zone.AmbientBrightness * AmbientWeight;
+}
+
+function Offer(Actor L, float Priority, int Want)
 {
 	local int i, k;
-
-	if (bWeightedPick)
-	{
-		for (i = 0; i < Cands.Length; i++)
-			if (Cands[i] == L)
-				return;
-		Cands[Cands.Length] = L;
-		CandScore[CandScore.Length] = Priority;
-		return;
-	}
 
 	for (i = 0; i < Chosen.Length; i++)
 		if (Chosen[i] == L)
@@ -431,24 +266,47 @@ function Offer(Actor L, float Priority)
 	for (k = 0; k < Chosen.Length; k++)
 		if (Priority > ChosenPriority[k])
 			break;
-	if (k >= Max(MaxShadows, 1))
-		return;         // always rank at least the best light (the capsules and the sharp copy use it)
+	if (k >= Want)
+		return;
 	Chosen.Insert(k, 1);
 	ChosenPriority.Insert(k, 1);
 	Chosen[k] = L;
 	ChosenPriority[k] = Priority;
-	if (Chosen.Length > Max(MaxShadows, 1))
+	if (Chosen.Length > Want)
 	{
-		Chosen.Remove(Max(MaxShadows, 1), Chosen.Length - Max(MaxShadows, 1));
-		ChosenPriority.Remove(Max(MaxShadows, 1), ChosenPriority.Length - Max(MaxShadows, 1));
+		Chosen.Remove(Want, Chosen.Length - Want);
+		ChosenPriority.Remove(Want, ChosenPriority.Length - Want);
 	}
+}
+
+// the current set can stay: the character hasn't moved far, nothing about its
+// distance tier changed and every light it casts from still shines
+function bool CanHold()
+{
+	local int i;
+	local Actor L;
+
+	if (!bPicked || Allowed != PickAllowed || VSize(Owner.Location - PickLoc) >= RepickDistance)
+		return false;
+	Manager.RefreshDynamicLights();
+	if (Manager.LightsVersion != PickVersion)
+		return false;                // a lamp was switched on or off nearby
+	for (i = 0; i < Shadows.Length; i++)
+	{
+		if (Shadows[i] == None)
+			continue;
+		L = Shadows[i].TargetLight();
+		if (L != None && (L.bDeleteMe || !CastsLight(L)))
+			return false;
+	}
+	return true;
 }
 
 function SelectLights()
 {
-	local int i, j;
+	local int i, j, Want;
 	local Actor A;
-	local float Score;
+	local float Score, Total, Share;
 	local array<int> Held;
 	local bool bFound;
 
@@ -461,25 +319,24 @@ function SelectLights()
 		if (!bCulled)
 		{
 			bCulled = true;
+			bPicked = false;
 			for (i = 0; i < Shadows.Length; i++)
 				if (Shadows[i] != None)
 					Shadows[i].SetLight(None);   // fades out, then frees its texture
-			if (Contact != None)
-				Contact.Show(false);
-			if (Sharp != None)
-				Sharp.SetLight(None);
 		}
 		return;
 	}
-	if (bCulled && Contact != None)
-		Contact.Show(true);
 	bCulled = false;
 	Allowed = TierAllowed();
+	bHeld = CanHold();
+	if (bHeld)
+		return;
 
+	Want = Max(OwnMax(), 1);
 	Chosen.Length = 0;
 	ChosenPriority.Length = 0;
-	Cands.Length = 0;
-	CandScore.Length = 0;
+	LastAmbient = AmbientLight();
+	Total = LastAmbient;
 
 	for (i = 0; i < Manager.StaticLights.Length; i++)
 	{
@@ -488,7 +345,10 @@ function SelectLights()
 			continue;
 		Score = LightScore(A);
 		if (Score > 0 && LightReaches(A.Location))
-			Offer(A, Score);
+		{
+			Total += Score;
+			Offer(A, Score, Want);
+		}
 	}
 	Manager.RefreshDynamicLights();
 	for (i = 0; i < Manager.DynamicLights.Length; i++)
@@ -498,20 +358,25 @@ function SelectLights()
 			continue;
 		Score = LightScore(A);
 		if (Score > 0 && LightReaches(A.Location))
-			Offer(A, Score);
+		{
+			Total += Score;
+			Offer(A, Score, Want);
+		}
 	}
-	if (bWeightedPick)
-		WeightedPick();
 	// under open sky the sun always casts, bumping the weakest local light if needed
 	if (SunVisible())
 	{
-		if (Chosen.Length >= MaxShadows)
+		Score = Manager.SunLightActor.LightBrightness;
+		Total += Score;
+		if (Chosen.Length >= Want)
 		{
-			Chosen.Remove(MaxShadows - 1, Chosen.Length - (MaxShadows - 1));
-			ChosenPriority.Remove(MaxShadows - 1, ChosenPriority.Length - (MaxShadows - 1));
+			Chosen.Remove(Want - 1, Chosen.Length - (Want - 1));
+			ChosenPriority.Remove(Want - 1, ChosenPriority.Length - (Want - 1));
 		}
 		Chosen[Chosen.Length] = Manager.SunLightActor;
+		ChosenPriority[ChosenPriority.Length] = Score;
 	}
+	LastTotalLight = Total;
 
 	// shadows already heading for a chosen light keep it (if the tier allows it)
 	for (i = 0; i < Shadows.Length; i++)
@@ -540,25 +405,33 @@ function SelectLights()
 		if (bFound)
 			continue;
 		for (i = 0; i < Shadows.Length; i++)
-			if (Shadows[i] != None && Held[i] == -1)
+			if (Shadows[i] != None && Held[i] == -1 && i < Allowed)
 			{
 				Shadows[i].SetLight(Chosen[j]);
 				Held[i] = j;
 				break;
 			}
 	}
-	// shadows left without a light fade out
+	// shadows left without a light fade out; the others get their light's share
 	for (i = 0; i < Shadows.Length; i++)
-		if (Shadows[i] != None && Held[i] == -1)
-			Shadows[i].SetLight(None);
-	// the sharp copy follows the strongest chosen light (near tier only)
-	if (Sharp != None)
 	{
-		if (Chosen.Length > 0 && Allowed >= MaxShadows)
-			Sharp.SetLight(Chosen[0]);
-		else
-			Sharp.SetLight(None);
+		if (Shadows[i] == None)
+			continue;
+		if (Held[i] == -1)
+		{
+			Shadows[i].SetLight(None);
+			continue;
+		}
+		Share = 1.0;
+		if (bRespectBaked && Total > 0)
+			Share = MinShare + (1.0 - MinShare) * FClamp(ChosenPriority[Held[i]] / Total, 0, 1);
+		Shadows[i].TargetShare = Share;
 	}
+
+	bPicked = true;
+	PickLoc = Owner.Location;
+	PickAllowed = Allowed;
+	PickVersion = Manager.LightsVersion;
 }
 
 event Destroyed()
@@ -568,13 +441,6 @@ event Destroyed()
 	for (i = 0; i < Shadows.Length; i++)
 		if (Shadows[i] != None)
 			Shadows[i].Destroy();
-	if (Contact != None)
-		Contact.Destroy();
-	if (Sharp != None)
-		Sharp.Destroy();
-	for (i = 0; i < Capsules.Length; i++)
-		if (Capsules[i] != None)
-			Capsules[i].Destroy();
 	Super.Destroyed();
 }
 
@@ -582,6 +448,7 @@ defaultproperties
 {
 	bEnabled=True
 	MaxShadows=3
+	PlayerMaxShadows=4
 	MaxLightDistance=1300.000000
 	UpdateFrequency=0.200000
 	ShadowStrength=190.000000
@@ -600,15 +467,10 @@ defaultproperties
 	CullFOVMargin=20.000000
 	NearDistance=900.000000
 	MidDistance=2000.000000
-	bContactShadow=True
-	bHardToSoft=True
-	bPerLightSoftness=False
-	bWeightedPick=False
-	HoldFraction=0.500000
-	bCapsules=False
-	SharpResolution=256
-	SharpScale=0.700000
-	SharpStrength=1.000000
+	RepickDistance=32.000000
+	bRespectBaked=True
+	AmbientWeight=1.000000
+	MinShare=0.350000
 	bHidden=True
 	RemoteRole=ROLE_None
 }

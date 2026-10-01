@@ -1,0 +1,14 @@
+# full stack smoke test in a real level: Sanctuary landing, then a look around
+background
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+waitplay 150
+wait 2
+shot
+turn 120 0 0.6
+wait 0.5
+shot
+turn 120 0 0.6
+wait 0.5
+shot
+quit
