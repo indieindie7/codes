@@ -5,7 +5,8 @@
 # the decal rule compiles and draws decal_parallax.hlsl; saves frame_parallax.bmp (rule on)
 # and frame_flat.bmp (off) to compare. Then the same for post-processing (frame_post.bmp) and
 # a lightmapped brick wall with the surface= rule (frame_wall.bmp, off: frame_wallflat.bmp),
-# and that wall with its lightmap swapped by replace= (frame_wallgi.bmp). Wine's d3d9 is not dgVoodoo: the depth probe results
+# and that wall with its lightmap swapped by replace= (frame_wallgi.bmp); then a lit sphere
+# without and with charlight=1 (frame_sphere.bmp, frame_spherelit.bmp). Wine's d3d9 is not dgVoodoo: the depth probe results
 # here say nothing about the real game setup.
 #
 # Needs: ../build-mingw.sh run first, g++-mingw-w64-i686, wine32:i386, xvfb, and the x86
@@ -37,4 +38,7 @@ xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe wall
 echo "== U2Shaders.log (wall)"; cat U2Shaders.log
 xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe wallgi
 echo "== U2Shaders.log (wallgi)"; cat U2Shaders.log
-echo "frames: $RUN/frame_flat.bmp $RUN/frame_parallax.bmp $RUN/frame_post.bmp $RUN/frame_wallflat.bmp $RUN/frame_wall.bmp $RUN/frame_wallgi.bmp"
+xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe sphere
+xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe spherelit
+echo "== U2Shaders.log (spherelit)"; cat U2Shaders.log
+echo "frames: $RUN/frame_flat.bmp $RUN/frame_parallax.bmp $RUN/frame_post.bmp $RUN/frame_wallflat.bmp $RUN/frame_wall.bmp $RUN/frame_wallgi.bmp $RUN/frame_sphere.bmp $RUN/frame_spherelit.bmp"

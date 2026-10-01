@@ -65,6 +65,17 @@ on stage 0; if Unreal II puts the lightmap there, the rule never matches. To fin
 hash, run with `charprobe=1`: every texture of a solid on-screen draw is saved in
 `U2Shaders\dump\`, and `chars.txt` lists how each was drawn.
 
+Character lighting: `charlight=1` lights every solid, lit draw (characters, weapons, pickups: the
+level itself is lightmapped and unlit) per pixel instead of per vertex, from the game's own D3D
+lights, with Valve's character tricks ("Shading in Valve's Source Engine", 2006): wrapped
+diffuse, so the side away from a light falls off gradually and the body's shape still reads;
+ambient lighter from above than below; a faint rim along the silhouette. `WRAP`, `HEMI` and
+`RIM` at the top of `char_light.hlsl` set how much of each (0 = as the game). Draws it can't
+redo exactly (vertex colours as material, a second texture stage) are left alone and logged
+once ("charlight: setup not supported ..."). Assumes the game's world is Z-up, as Unreal is; if
+characters look lit from below, that's wrong and needs a look. No self-shadowing yet: that is
+the next step (from the shadow maps the PCSS code already keeps).
+
 Texture replacement: `replace=<hash> file.dds` draws `System\U2Shaders\file.dds` wherever the
 game uses that texture, on texture stages 0-3, so lightmaps (stage 1) can be swapped too: the
 way in for lighting baked elsewhere (Blender) or reworked skins. The game's files are not
@@ -98,14 +109,14 @@ Build: `MSBuild d3d8to9.vcxproj -p:Configuration=Release -p:Platform=Win32 -p:Pl
 Or without Visual Studio: `./build-mingw.sh` (Linux/WSL with `g++-mingw-w64-i686`) clones
 d3d8to9, applies the patch and builds `build/d3d8.dll`, standalone (no VC++ runtime needed).
 `d3d8-mingw.dll` in this folder is that build of the current source (shadow tint, probes,
-decal rule, post-processing, parallax walls, replace=). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
+decal rule, post-processing, parallax walls, replace=, charlight=). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
 is the older MSVC build that has been. To try it, install it as `d3d8.dll`.
 
 `test/run.sh` runs the built DLL outside the game under 32-bit Wine with a virtual display:
 a small Direct3D 8 program (`test/probe_test.cpp`) draws a shadow silhouette, a lit textured
 wall and a bullet-hole decal, so the probes log and the decal rule compiles and draws, then
 post-processing, then a lightmapped brick wall with and without `surface=`, and with its lightmap swapped by
-`replace=`. It
+`replace=`, then a lit sphere with and without `charlight=`. It
 proves the code runs, not that it looks right in Unreal II (Wine's d3d9 is not dgVoodoo).
 
 ## Checking shaders without the game

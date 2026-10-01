@@ -5,6 +5,8 @@
 //   3. an alpha-blended bullet-hole decal on the wall (decal= rule -> decal_parallax.hlsl)
 // Modes "wall" / "wallflat": instead, a brick wall drawn the way level geometry is (texture x
 // vertex colour on stage 0, a lightmap times 2 on stage 1), with and without the surface= rule.
+// Modes "sphere" / "spherelit": a textured, D3D-lit sphere seen through an Unreal-style view
+// (world X forward, Z up), without and with charlight=1 (per-pixel character lighting).
 // Mode "wallgi": the wall with its lightmap swapped (replace=) for a DDS this program writes
 // (warm light from the left, blue bounce from the right), as a Blender bake would be.
 // Writes U2Shaders.ini itself (the decal's hash computed the way u2shaders.hpp does).
@@ -12,6 +14,7 @@
 #include <d3d8.h>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 struct V { float x, y, z, nx, ny, nz, u, v; };
 static const DWORD FVF = D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_TEX1;
@@ -120,9 +123,11 @@ int main(int argc, char **argv)
 	// light panel in 3D and a HUD box + crosshair in 2D drawn after it
 	const bool postMode = argc >= 2 && strcmp(argv[1], "post") == 0;
 	const bool wallMode = argc >= 2 && strncmp(argv[1], "wall", 4) == 0;
+	const bool sphereMode = argc >= 2 && strncmp(argv[1], "sphere", 6) == 0;
+	const bool charLight = sphereMode && strcmp(argv[1], "spherelit") == 0;
 	const bool giMode = wallMode && strcmp(argv[1], "wallgi") == 0;
 	const bool useWallRule = wallMode && (strcmp(argv[1], "wall") == 0 || giMode);
-	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode && !wallMode);
+	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode && !wallMode && !sphereMode);
 	WNDCLASSA wc = {}; wc.lpfnWndProc = DefWindowProcA; wc.hInstance = GetModuleHandle(nullptr); wc.lpszClassName = "u2t";
 	RegisterClassA(&wc);
 	HWND hw = CreateWindowA("u2t", "u2t", WS_OVERLAPPEDWINDOW, 0, 0, 320, 240, nullptr, nullptr, wc.hInstance, nullptr);
@@ -144,6 +149,7 @@ int main(int argc, char **argv)
 	fprintf(F, "charprobe=1\n");
 	if (useDecalRule) fprintf(F, "decal=%08lx decal_parallax.hlsl\n", decalHash);
 	if (postMode) fprintf(F, "post=1\npostsplit=1\nbloom=0.7 1.0\n");
+	if (charLight) fprintf(F, "charlight=1\n");
 	if (useWallRule) fprintf(F, "surface=%08lx world_parallax.hlsl\n", brickHash);
 	if (giMode)
 	{
@@ -178,6 +184,30 @@ int main(int argc, char **argv)
 	L1.Position = { 10, 10, 40 }; L1.Range = 200; L1.Attenuation0 = 1;
 	D3DMATERIAL8 M = {}; M.Diffuse = { 1, 1, 1, 1 }; M.Ambient = { 1, 1, 1, 1 };
 
+	// the sphere: Unreal-style world (X forward, Y right, Z up), radius 18, 45 units ahead
+	std::vector<V> sphere;
+	{
+		const int SEG = 32, RING = 16;
+		auto At = [](int i, int j) {
+			const float lon = i * 6.2831853f / SEG, lat = j * 3.1415927f / RING - 1.5707963f;
+			const float nx = std::cos(lat) * std::cos(lon), ny = std::cos(lat) * std::sin(lon), nz = std::sin(lat);
+			V v = { 45 + 18 * nx, 18 * ny, 18 * nz, nx, ny, nz, i * 4.0f / SEG, j * 2.0f / RING };
+			return v;
+		};
+		for (int j = 0; j < RING; j++)
+			for (int i = 0; i < SEG; i++)
+			{
+				V a = At(i, j), b = At(i + 1, j), c = At(i, j + 1), d = At(i + 1, j + 1);
+				sphere.insert(sphere.end(), { a, c, b, b, c, d });
+			}
+	}
+	// Unreal's view: world Y -> screen right, Z -> up, X -> into the screen (a rotation)
+	D3DMATRIX UView = {};
+	UView._13 = 1; UView._21 = 1; UView._32 = 1; UView._44 = 1;
+	D3DLIGHT8 S0 = {}; S0.Type = D3DLIGHT_DIRECTIONAL; S0.Diffuse = { 0.95f, 0.85f, 0.7f, 1 }; S0.Direction = { 0.6f, 0.6f, -0.7f };
+	D3DLIGHT8 S1 = {}; S1.Type = D3DLIGHT_POINT; S1.Diffuse = { 0.2f, 0.35f, 0.8f, 1 };
+	S1.Position = { 30, -40, -10 }; S1.Range = 300; S1.Attenuation0 = 1;
+
 	for (int frame = 0; frame < 320; frame++)
 	{
 		// 1. silhouette into the offscreen target
@@ -209,7 +239,17 @@ int main(int argc, char **argv)
 		D->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
 		D->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
 		D->SetVertexShader(FVF);
-		if (wallMode)
+		if (sphereMode)
+		{
+			D->SetTransform(D3DTS_VIEW, &UView);
+			D->SetLight(0, &S0); D->SetLight(1, &S1);
+			D->SetTexture(0, Wall);
+			D->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+			D->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)sphere.size() / 3, sphere.data(), sizeof(V));
+			D->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
+			D->SetTransform(D3DTS_VIEW, &Vw);
+		}
+		else if (wallMode)
 		{
 			// level geometry: texture x vertex lighting, then the lightmap x2 (same coordinates, scaled down)
 			D3DMATRIX lm = Ident(); lm._11 = 0.2f; lm._22 = 0.25f;
@@ -242,7 +282,7 @@ int main(int argc, char **argv)
 		D->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
 		D->SetRenderState(D3DRS_ZFUNC, D3DCMP_ALWAYS);
 		D->SetTexture(0, Hole);
-		if (!wallMode)
+		if (!wallMode && !sphereMode)
 			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, hole, sizeof(V));
 		D->SetRenderState(D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
 		D->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
@@ -280,7 +320,7 @@ int main(int argc, char **argv)
 			D3DLOCKED_RECT LR;
 			if (Sys && SUCCEEDED(Sys->LockRect(&LR, nullptr, D3DLOCK_READONLY)))
 			{
-				const char *name = postMode ? "frame_post.bmp" : wallMode ? (giMode ? "frame_wallgi.bmp" : useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
+				const char *name = sphereMode ? (charLight ? "frame_spherelit.bmp" : "frame_sphere.bmp") : postMode ? "frame_post.bmp" : wallMode ? (giMode ? "frame_wallgi.bmp" : useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
 					: useDecalRule ? "frame_parallax.bmp" : "frame_flat.bmp";
 				FILE *B = fopen(name, "wb");
 				BITMAPFILEHEADER fh = {}; BITMAPINFOHEADER ih = {};

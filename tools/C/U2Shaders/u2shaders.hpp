@@ -21,6 +21,9 @@
  *     replace=1a2b3c4d my.dds     draw U2Shaders\my.dds wherever that texture is used, on any
  *                                 of stages 0-3 (lightmaps too); a DDS, 32-bit or DXT1/3/5,
  *                                 with its own mips (see Replacement)
+ *     charlight=1                 light lit solid draws (characters, weapons) per pixel with
+ *                                 char_light.hlsl: the game's own D3D lights, softer wrap,
+ *                                 ambient lighter from above, rim (see CharBegin)
  *     post=1                      bloom, sharpening and colour grading before the HUD
  *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
  *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
@@ -45,6 +48,7 @@
 
 #include <d3dcompiler.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -140,6 +144,11 @@ public:
 				;
 			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
 				CharProbe = Hash != 0;
+			else if (sscanf_s(Line, " charlight=%u", &Hash) == 1)
+			{
+				CharLight = Hash != 0;
+				CharRule.File = "char_light.hlsl";
+			}
 			else if (sscanf_s(Line, " post=%u", &Hash) == 1)
 			{
 				Post = Hash != 0;
@@ -512,7 +521,7 @@ public:
 	{
 		if (!Loaded)
 			Load();
-		if (Tex == nullptr || (!Log && Rules.empty() && !CharProbe))
+		if (Tex == nullptr || (!Log && Rules.empty() && !CharProbe && !CharLight))
 			return false;
 
 		Known(Tex, Hash);
@@ -545,7 +554,7 @@ public:
 			if (R.Hash == Hash)
 				Rule = &R;
 		if (Rule == nullptr)
-			return false;
+			return CharLight ? CharBegin(Dev, FixedFunction) : false;
 		if (Rule->Surface)
 			return SurfaceBegin(Dev, *Rule, FixedFunction);
 		// only the see-through parts: an atlas is often shared with solid ones
@@ -1087,8 +1096,135 @@ public:
 		return true;
 	}
 
+	// charlight=1: a solid, fixed-function, lit draw (characters, weapons, pickups: the level
+	// itself is lightmapped or vertex-coloured, unlit) gets its lighting per pixel from the same
+	// D3D lights, in char_light.hlsl. Taken only when the shader can redo what the stages did:
+	// stage 0 = texture x lit colour (x1/2/4), stage 1 off, material colours from the material
+	// (not the vertices). Anything else is drawn as before and its setup logged once.
+	// Constants: c2 (stage 0 factor, light count), c3 ambient + emissive, c4 world up in view
+	// space, c8.. 4 per light (up to 4), in view space:
+	//   position xyz, type (1 point, 2 spot, 3 directional) | direction xyz, cos(phi / 2)
+	//   colour (light x material diffuse) rgb, range | attenuation 0, 1, 2, cos(theta / 2)
+	// Stage 1 and 2 coordinates carry the camera-space normal and position (TEXCOORD1/2).
+	bool CharBegin(IDirect3DDevice9 *Dev, bool FixedFunction)
+	{
+		DWORD Blending = 0, Lighting = 0, DiffSrc = 0, AmbSrc = 0, ColorVertex = 0;
+		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blending);
+		Dev->GetRenderState(D3DRS_LIGHTING, &Lighting);
+		if (Blending || !Lighting || !FixedFunction || Offscreen(Dev))
+			return false;
+		Dev->GetRenderState(D3DRS_COLORVERTEX, &ColorVertex);
+		Dev->GetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, &DiffSrc);
+		Dev->GetRenderState(D3DRS_AMBIENTMATERIALSOURCE, &AmbSrc);
+		DWORD op[2] = {}, a1 = 0, a2 = 0, Fvf = 0;
+		Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op[0]);
+		Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &a1);
+		Dev->GetTextureStageState(0, D3DTSS_COLORARG2, &a2);
+		Dev->GetTextureStageState(1, D3DTSS_COLOROP, &op[1]);
+		Dev->GetFVF(&Fvf);
+		const bool VertexColours = ColorVertex && (Fvf & D3DFVF_DIFFUSE) && (DiffSrc != D3DMCS_MATERIAL || AmbSrc != D3DMCS_MATERIAL);
+		const float Factor = ModulateFactor(op[0]);
+		if (Factor == 0 || !(ArgsAre(a1, a2, D3DTA_TEXTURE, D3DTA_DIFFUSE) || ArgsAre(a1, a2, D3DTA_TEXTURE, D3DTA_CURRENT))
+			|| op[1] != D3DTOP_DISABLE || VertexColours)
+		{
+			char Key[160];
+			sprintf_s(Key, "st0 op %u %x %x | st1 op %u | vertex colours as material %d", op[0], a1, a2, op[1], (int)VertexColours);
+			if (!CharRefused[Key])
+				Message("charlight: setup not supported, drawn as before (%s)", Key);
+			CharRefused[Key] = true;
+			return false;
+		}
+		IDirect3DPixelShader9 *PS = Compile(Dev, CharRule);
+		if (PS == nullptr)
+			return false;
+
+		float C[24][4] = {};
+		D3DMATERIAL9 M = {};
+		Dev->GetMaterial(&M);
+		D3DMATRIX V;
+		Dev->GetTransform(D3DTS_VIEW, &V);
+		auto Point = [&](const D3DVECTOR &p, float *out) {
+			for (int c = 0; c < 3; c++)
+				out[c] = p.x * V.m[0][c] + p.y * V.m[1][c] + p.z * V.m[2][c] + V.m[3][c];
+		};
+		auto Dir = [&](const D3DVECTOR &d, float *out) {
+			for (int c = 0; c < 3; c++)
+				out[c] = d.x * V.m[0][c] + d.y * V.m[1][c] + d.z * V.m[2][c];
+			const float l = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
+			if (l > 0) for (int c = 0; c < 3; c++) out[c] /= l;
+		};
+		DWORD Amb = 0;
+		Dev->GetRenderState(D3DRS_AMBIENT, &Amb);
+		float AmbR = ((Amb >> 16) & 0xFF) / 255.0f, AmbG = ((Amb >> 8) & 0xFF) / 255.0f, AmbB = (Amb & 0xFF) / 255.0f;
+		int Count = 0;
+		for (DWORD i = 0; i < 8; i++)
+		{
+			BOOL On = FALSE;
+			D3DLIGHT9 L = {};
+			if (FAILED(Dev->GetLightEnable(i, &On)) || !On || FAILED(Dev->GetLight(i, &L)))
+				continue;
+			AmbR += L.Ambient.r; AmbG += L.Ambient.g; AmbB += L.Ambient.b;   // lights' ambient adds up, as in D3D
+			if (Count == 4)
+				continue;                  // more than 4: their ambient still counts, their light not
+			float *P = C[8 + Count * 4];
+			Point(L.Position, P);
+			P[3] = (float)L.Type;
+			Dir(L.Direction, C[9 + Count * 4]);
+			C[9 + Count * 4][3] = cosf(L.Phi * 0.5f);
+			C[10 + Count * 4][0] = L.Diffuse.r * M.Diffuse.r;
+			C[10 + Count * 4][1] = L.Diffuse.g * M.Diffuse.g;
+			C[10 + Count * 4][2] = L.Diffuse.b * M.Diffuse.b;
+			C[10 + Count * 4][3] = L.Type == D3DLIGHT_DIRECTIONAL ? 1e30f : L.Range;
+			C[11 + Count * 4][0] = L.Attenuation0;
+			C[11 + Count * 4][1] = L.Attenuation1;
+			C[11 + Count * 4][2] = L.Attenuation2;
+			C[11 + Count * 4][3] = cosf(L.Theta * 0.5f);
+			Count++;
+		}
+		C[0][0] = (GetTickCount() % 3600000) / 1000.0f;
+		C[0][1] = 1;
+		C[2][0] = Factor;
+		C[2][1] = (float)Count;
+		C[3][0] = AmbR * M.Ambient.r + M.Emissive.r;
+		C[3][1] = AmbG * M.Ambient.g + M.Emissive.g;
+		C[3][2] = AmbB * M.Ambient.b + M.Emissive.b;
+		const D3DVECTOR Up = { 0, 0, 1 };      // Unreal's up (Z) in the world space the game draws in
+		Dir(Up, C[4]);
+
+		Dev->GetPixelShader(&OldPS);
+		Dev->GetPixelShaderConstantF(0, OldCharConst[0], 24);
+		static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+		for (DWORD s = 1; s <= 2; s++)
+		{
+			Dev->GetTextureStageState(s, D3DTSS_TEXCOORDINDEX, &OldTCI[s]);
+			Dev->GetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[s]);
+			Dev->GetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &OldTexMat[s]);
+			Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, (s == 1 ? D3DTSS_TCI_CAMERASPACENORMAL : D3DTSS_TCI_CAMERASPACEPOSITION) | s);
+			Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
+			Dev->SetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &Identity);
+		}
+		Dev->SetPixelShaderConstantF(0, C[0], 24);
+		Dev->SetPixelShader(PS);
+		Mode = 6;
+		return true;
+	}
+
 	void End(IDirect3DDevice9 *Dev)
 	{
+		if (Mode == 6)
+		{
+			Dev->SetPixelShader(OldPS);
+			Dev->SetPixelShaderConstantF(0, OldCharConst[0], 24);
+			for (DWORD s = 1; s <= 2; s++)
+			{
+				Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, OldTCI[s]);
+				Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, OldTTF[s]);
+				Dev->SetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &OldTexMat[s]);
+			}
+			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
+			Mode = 0;
+			return;
+		}
 		if (Mode == 5)
 		{
 			Dev->SetPixelShader(OldPS);
@@ -1419,6 +1555,10 @@ public:
 	// silhouettes were drawn earlier in the same frame. Written to U2Shaders\dump\chars.txt;
 	// each texture is also saved once as <hash>_<w>x<h>.dds so a character's skin can be found.
 	bool CharProbe = false;
+	bool CharLight = false;
+	U2Rule CharRule;
+	std::map<std::string, bool> CharRefused;   // stage/material setups charlight= logged and left alone
+	float OldCharConst[24][4] = {};
 	unsigned MapsThisFrame = 0, ProbeFrames = 0, FramesWithMaps = 0;
 	struct U2Probe { unsigned Draws = 0, AfterMaps = 0, FirstFrame = 0; std::string Sample; };
 	std::map<std::string, U2Probe> Probes;
