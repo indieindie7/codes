@@ -31,3 +31,15 @@ snapshot on sampler 3: blocker search, then a filter whose radius grows with the
 Needs ps_2_b (falls back from ps_2_a automatically). Debug: `pcssdebug=1` (gap colour) ... `6`.
 
 Build: `MSBuild d3d8to9.vcxproj -p:Configuration=Release -p:Platform=Win32 -p:PlatformToolset=v145`.
+
+## Checking shaders without the game
+
+`./hlslcheck.sh` compiles `shaders/*.hlsl` (or the files given) the way the fork does at runtime:
+Microsoft's `d3dcompiler_47`, entry `main`, `ps_2_a` then `ps_2_b`. It prints the profile that
+took and the budget used, e.g.
+
+    OK    pcss_proj    ps_2_b  slots 353/512  temps 31/32  constants 19/32
+
+It fetches `fxc.exe` + `d3dcompiler_47.dll` once from the Windows SDK NuGet package into
+`~/.cache/u2shaders-fxc` (`FXC_DIR` to change). Linux runs them under Wine (`apt install wine64`);
+Git Bash runs them natively. This proves a shader compiles and fits, not that it looks right.
