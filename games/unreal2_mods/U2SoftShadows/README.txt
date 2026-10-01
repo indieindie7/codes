@@ -94,6 +94,7 @@ MaxShadows=3              ; lamp/sun shadows per character (0 = contact shadow o
 ShadowStrength=190        ; darkness 0-255
 GradientScale=3.0         ; fade length as a multiple of the shadow's length
 GradientLength=2048       ; longest the fade may reach
+bFitToFloor=True          ; end the fade where the shadow really lands (stairs, slopes), not on flat ground
 bContactShadow=True       ; soft dark patch on the floor under the feet
 bHardToSoft=True          ; a crisper copy at the feet, fading fast, under the soft one
 LampResolution=128        ; lamp shadow texture size: 64 very soft, 128 soft

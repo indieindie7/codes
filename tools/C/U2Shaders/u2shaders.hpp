@@ -8,6 +8,13 @@
  *                                 save each one to U2Shaders\dump\<hash>_<w>x<h>.dds
  *     tint=1a2b3c4d               draw everything using that texture in flat magenta
  *     shader=1a2b3c4d core.hlsl   draw it with U2Shaders\core.hlsl (entry "main", ps_2_a)
+ *     decal=1a2b3c4d decal_parallax.hlsl
+ *                                 the same, but the draw keeps its own blending (no frame
+ *                                 copy in s1): the shader returns what the texture would
+ *                                 have, so overlapping decals still layer
+ *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
+ *                                 U2Shaders\dump\chars.txt, and whether scene depth can be
+ *                                 read as a texture (U2Shaders.log; logging only, see ProbeDraw)
  *
  * What a shader gets:
  *     s0            the original texture, TEXCOORD0 = its (possibly panned) coordinates
@@ -16,6 +23,7 @@
  *     TEXCOORD2     camera-space position
  *     COLOR0        the vertex lighting
  *     c0            (time in seconds, 1 if normals/positions are valid, 1/width, 1/height)
+ *     c1.x          1 if TEXCOORD0 is projected (projector decals): divide .xy by .z
  *     c4..c7        the projection matrix (rows), to turn a position into a screen place
  *
  * While a shader draws, alpha blending is off: the shader has the frame behind it in s1
@@ -46,6 +54,7 @@ struct U2Rule
 {
 	DWORD Hash = 0;
 	std::string File;          // empty = the built-in tint
+	bool KeepBlend = false;    // decal=: the draw keeps its own blending, no frame copy
 	IDirect3DPixelShader9 *PS = nullptr;
 	bool Tried = false;
 };
@@ -113,6 +122,10 @@ public:
 				;
 			else if (sscanf_s(Line, " pcssdebug=%f", &PcssDebug) == 1)
 				;
+			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
+				;
+			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
+				CharProbe = Hash != 0;
 			else if (sscanf_s(Line, " tint=%x", &Hash) == 1)
 			{
 				U2Rule R;
@@ -126,11 +139,19 @@ public:
 				R.File = Name;
 				Rules.push_back(R);
 			}
+			else if (sscanf_s(Line, " decal=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
+			{
+				U2Rule R;
+				R.Hash = Hash;
+				R.File = Name;
+				R.KeepBlend = true;
+				Rules.push_back(R);
+			}
 		}
 		fclose(F);
-		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g)", (int)Log, (unsigned)Rules.size(), (int)Pcss,
-			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3]);
-		if (Log)
+		Message("U2Shaders: log %d, %u rule(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (int)Pcss,
+			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3], ShadowTint[0], ShadowTint[1], ShadowTint[2]);
+		if (Log || CharProbe)
 		{
 			CreateDirectoryA((Dir + "U2Shaders").c_str(), nullptr);
 			CreateDirectoryA((Dir + "U2Shaders\\dump").c_str(), nullptr);
@@ -293,6 +314,15 @@ public:
 	{
 		if (!Loaded)
 			Load();
+		if (CharProbe && !HasTex0 && Offscreen(Dev))
+		{
+			DWORD blend = 0, op0 = 0, arg1 = 0;
+			Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+			Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op0);
+			Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &arg1);
+			if (!blend && op0 == D3DTOP_SELECTARG1 && (arg1 & 0xF) == D3DTA_TFACTOR)
+				MapsThisFrame++;           // a shadow silhouette (same test as PcssBegin's map pass)
+		}
 		if (!Log)
 			return;
 		IDirect3DSurface9 *T = nullptr, *BB = nullptr;
@@ -329,7 +359,7 @@ public:
 	{
 		if (!Loaded)
 			Load();
-		if (Tex == nullptr || (!Log && Rules.empty()))
+		if (Tex == nullptr || (!Log && Rules.empty() && !CharProbe))
 			return false;
 
 		if (Hash == 0)
@@ -347,6 +377,8 @@ public:
 				LogUnreadableDraw(Dev, Tex);   // render targets (e.g. shadow maps): note how they're drawn
 			return false;
 		}
+		if (CharProbe)
+			ProbeDraw(Dev, Tex, Hash, FixedFunction);
 
 		if (Log)
 		{
@@ -378,7 +410,8 @@ public:
 		if (PS == nullptr)
 			return false;
 
-		CopyScene(Dev);
+		if (!Rule->KeepBlend)
+			CopyScene(Dev);
 
 		Dev->GetPixelShader(&OldPS);
 		Dev->GetTexture(1, &OldTex1);
@@ -391,11 +424,16 @@ public:
 			Dev->GetSamplerState(1, Samp[i], &OldSamp1[i]);
 			Dev->SetSamplerState(1, Samp[i], SampValue[i]);
 		}
+		bool Projected = false;
 		if (FixedFunction)
 		{
-			// raw texture coordinates on stage 0 (no panning): the shader animates itself
+			// raw texture coordinates on stage 0 (no panning): the shader animates itself.
+			// Projector draws (decals) keep their transform: it is the projection itself,
+			// and the shader divides by z (c1.x = 1), as pixel shaders ignore PROJECTED
 			Dev->GetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[0]);
-			Dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+			Projected = (OldTTF[0] & D3DTTFF_PROJECTED) != 0;
+			if (!Projected)
+				Dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 			static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
 			for (DWORD s = 1; s <= 2; s++)
 			{
@@ -413,14 +451,18 @@ public:
 		Const[0][1] = FixedFunction ? 1.0f : 0.0f;
 		Const[0][2] = SceneW ? 1.0f / SceneW : 0;
 		Const[0][3] = SceneH ? 1.0f / SceneH : 0;
+		Const[1][0] = Projected ? 1.0f : 0.0f;
 		D3DMATRIX Proj;
 		Dev->GetTransform(D3DTS_PROJECTION, &Proj);
 		for (int r = 0; r < 4; r++)
 			for (int c = 0; c < 4; c++)
 				Const[4 + r][c] = Proj.m[r][c];
 		Dev->SetPixelShaderConstantF(0, Const[0], 8);
-		Dev->SetTexture(1, SceneTex);
-		Dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+		if (!Rule->KeepBlend)
+		{
+			Dev->SetTexture(1, SceneTex);
+			Dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+		}
 		Dev->SetPixelShader(PS);
 		WasFixedFunction = FixedFunction;
 		Mode = 1;
@@ -438,10 +480,12 @@ public:
 	//                    between them and the ground, filters, and applies the two fades
 	// The engine's own shadow blur must be off (WinDrv BlurShadows=False): it would mix the
 	// stored distances. pcssparams=A B C D goes to c2 (search radius, min radius, radius per
-	// unit of gap, max radius; UV units).
+	// unit of gap, max radius; UV units). shadowtint=R G B goes to c5: how strongly the
+	// projector darkens each channel (1 1 1 = the engine's grey; lower blue = bluer shadows).
 	bool Pcss = false;
 	U2Rule MapRule, ProjRule;
 	float PcssParams[4] = { 0.05f, 0.004f, 0.0006f, 0.06f };
+	float ShadowTint[4] = { 1, 1, 1, 1 };   // w = 1 tells pcss_proj.hlsl the tint is set
 	float PcssDebug = 0;          // pcssdebug=1: colour the shadows by the measured gap
 	int Mode = 0;                 // what End() undoes: 1 surface shader, 2 shadow map, 3 projector
 	DWORD OldCWE = 0;
@@ -713,6 +757,8 @@ public:
 		}
 		Dev->SetPixelShaderConstantF(0, c[0], 4);
 		Dev->SetPixelShaderConstantF(4, zrow, 1);
+		if (proj)
+			Dev->SetPixelShaderConstantF(5, ShadowTint, 1);   // restored with c0-c7 in End()
 		if (!map)
 		{
 			// camera-space position on TEXCOORD3 for the receiver depth
@@ -889,10 +935,134 @@ public:
 		}
 	}
 
+	// ---- character probe (charprobe=1) -----------------------------------------------------
+	// Character skins are opaque, so the per-surface rules above never see them. Before any
+	// character lighting or self-shadowing work, this records how each opaque on-screen draw is
+	// lit (fixed-function lighting, lights, material, ambient, skinning) and whether shadow
+	// silhouettes were drawn earlier in the same frame. Written to U2Shaders\dump\chars.txt;
+	// each texture is also saved once as <hash>_<w>x<h>.dds so a character's skin can be found.
+	bool CharProbe = false;
+	unsigned MapsThisFrame = 0, ProbeFrames = 0, FramesWithMaps = 0;
+	struct U2Probe { unsigned Draws = 0, AfterMaps = 0, FirstFrame = 0; std::string Sample; };
+	std::map<std::string, U2Probe> Probes;
+	std::map<DWORD, bool> ProbeDumped;
+
+	// Screen-space contact shadows need the scene's depth as a texture, which Direct3D 9 only
+	// offers through vendor formats. Asked once, then actually created: a wrapper (dgVoodoo)
+	// may claim a format it can't make. Results go to U2Shaders.log.
+	bool DepthChecked = false;
+	void ProbeDepth(IDirect3DDevice9 *Dev)
+	{
+		DepthChecked = true;
+		IDirect3D9 *D3D = nullptr;
+		D3DDEVICE_CREATION_PARAMETERS CP = {};
+		D3DDISPLAYMODE DM = {};
+		if (FAILED(Dev->GetDirect3D(&D3D)) || D3D == nullptr || FAILED(Dev->GetCreationParameters(&CP)) || FAILED(Dev->GetDisplayMode(0, &DM)))
+		{
+			Message("depth probe: device queries failed");
+			if (D3D) D3D->Release();
+			return;
+		}
+		IDirect3DSurface9 *DS = nullptr;
+		D3DSURFACE_DESC DD = {};
+		if (SUCCEEDED(Dev->GetDepthStencilSurface(&DS)) && DS) { DS->GetDesc(&DD); DS->Release(); }
+		Message("depth probe: scene depth format %u %ux%u multisample %u", (unsigned)DD.Format, DD.Width, DD.Height, (unsigned)DD.MultiSampleType);
+		static const struct { const char *Name; D3DFORMAT Fmt; } Formats[] = {
+			{ "INTZ", (D3DFORMAT)MAKEFOURCC('I', 'N', 'T', 'Z') },
+			{ "DF24", (D3DFORMAT)MAKEFOURCC('D', 'F', '2', '4') },
+			{ "DF16", (D3DFORMAT)MAKEFOURCC('D', 'F', '1', '6') },
+			{ "RAWZ", (D3DFORMAT)MAKEFOURCC('R', 'A', 'W', 'Z') },
+		};
+		for (const auto &F : Formats)
+		{
+			HRESULT hr = D3D->CheckDeviceFormat(CP.AdapterOrdinal, CP.DeviceType, DM.Format, D3DUSAGE_DEPTHSTENCIL, D3DRTYPE_TEXTURE, F.Fmt);
+			IDirect3DTexture9 *T = nullptr;
+			HRESULT hc = Dev->CreateTexture(64, 64, 1, D3DUSAGE_DEPTHSTENCIL, F.Fmt, D3DPOOL_DEFAULT, &T, nullptr);
+			Message("depth probe: %s reported %s, create %s", F.Name, SUCCEEDED(hr) ? "yes" : "no", SUCCEEDED(hc) && T ? "ok" : "failed");
+			if (T) T->Release();
+		}
+		HRESULT hr = D3D->CheckDeviceFormat(CP.AdapterOrdinal, CP.DeviceType, DM.Format, D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, (D3DFORMAT)MAKEFOURCC('R', 'E', 'S', 'Z'));
+		Message("depth probe: RESZ (copy a multisampled depth) reported %s", SUCCEEDED(hr) ? "yes" : "no");
+		D3D->Release();
+	}
+
+	void ProbeDraw(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD TexHash, bool FixedFunction)
+	{
+		if (!DepthChecked)
+			ProbeDepth(Dev);
+		DWORD blend = 0;
+		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+		if (blend || Offscreen(Dev))
+			return;
+		DWORD fvf = 0, lighting = 0, ambient = 0, vblend = 0, ivb = 0, colorvertex = 0, diffsrc = 0, ambsrc = 0, spec = 0, tf = 0;
+		Dev->GetFVF(&fvf);
+		Dev->GetRenderState(D3DRS_LIGHTING, &lighting);
+		Dev->GetRenderState(D3DRS_AMBIENT, &ambient);
+		Dev->GetRenderState(D3DRS_VERTEXBLEND, &vblend);
+		Dev->GetRenderState(D3DRS_INDEXEDVERTEXBLENDENABLE, &ivb);
+		Dev->GetRenderState(D3DRS_COLORVERTEX, &colorvertex);
+		Dev->GetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, &diffsrc);
+		Dev->GetRenderState(D3DRS_AMBIENTMATERIALSOURCE, &ambsrc);
+		Dev->GetRenderState(D3DRS_SPECULARENABLE, &spec);
+		Dev->GetRenderState(D3DRS_TEXTUREFACTOR, &tf);
+		DWORD op[3] = {}, a1[3] = {}, a2[3] = {};
+		for (DWORD st = 0; st < 3; st++)
+		{
+			Dev->GetTextureStageState(st, D3DTSS_COLOROP, &op[st]);
+			Dev->GetTextureStageState(st, D3DTSS_COLORARG1, &a1[st]);
+			Dev->GetTextureStageState(st, D3DTSS_COLORARG2, &a2[st]);
+		}
+		int lights = 0;
+		std::string ls;
+		for (DWORD i = 0; i < 8; i++)
+		{
+			BOOL on = FALSE;
+			D3DLIGHT9 L = {};
+			if (FAILED(Dev->GetLightEnable(i, &on)) || !on || FAILED(Dev->GetLight(i, &L)))
+				continue;
+			lights++;
+			char b[160];
+			sprintf_s(b, " | L%u type %u dif %.2f %.2f %.2f amb %.2f %.2f %.2f range %.0f att %.3f %.5f",
+				i, (unsigned)L.Type, L.Diffuse.r, L.Diffuse.g, L.Diffuse.b, L.Ambient.r, L.Ambient.g, L.Ambient.b,
+				L.Range, L.Attenuation1, L.Attenuation2);
+			ls += b;
+		}
+		D3DMATERIAL9 M = {};
+		Dev->GetMaterial(&M);
+
+		char key[300];
+		sprintf_s(key, "%08x %s fvf %x lighting %u vblend %u/%u colorvertex %u src dif %u amb %u spec %u lights %d | st0 %u %x %x | st1 %u %x %x | st2 %u %x %x",
+			TexHash, FixedFunction ? "ff" : "vs", fvf, lighting, vblend, ivb, colorvertex, diffsrc, ambsrc, spec, lights,
+			op[0], a1[0], a2[0], op[1], a1[1], a2[1], op[2], a1[2], a2[2]);
+		char sample[200];
+		sprintf_s(sample, "ambient %08x tfactor %08x mat dif %.2f %.2f %.2f amb %.2f %.2f %.2f emi %.2f %.2f %.2f",
+			ambient, tf, M.Diffuse.r, M.Diffuse.g, M.Diffuse.b, M.Ambient.r, M.Ambient.g, M.Ambient.b, M.Emissive.r, M.Emissive.g, M.Emissive.b);
+
+		U2Probe &P = Probes[key];
+		if (P.Draws++ == 0)
+			P.FirstFrame = Frame;
+		if (MapsThisFrame > 0)
+			P.AfterMaps++;
+		P.Sample = std::string(sample) + ls;
+		if (!ProbeDumped[TexHash])
+		{
+			ProbeDumped[TexHash] = true;
+			U2TexInfo Dummy;
+			this->Hash(Tex, Dummy, true);
+		}
+	}
+
 	void OnPresent()
 	{
 		Frame++;
-		if (Log && Frame - LogFrame >= 300)
+		if (CharProbe)
+		{
+			ProbeFrames++;
+			if (MapsThisFrame > 0)
+				FramesWithMaps++;
+			MapsThisFrame = 0;
+		}
+		if ((Log || CharProbe) && Frame - LogFrame >= 300)
 		{
 			LogFrame = Frame;
 			WriteSeen();
@@ -902,6 +1072,16 @@ public:
 	void WriteSeen()
 	{
 		FILE *F = nullptr;
+		if (CharProbe && !fopen_s(&F, (Dir + "U2Shaders\\dump\\chars.txt").c_str(), "w") && F)
+		{
+			fprintf(F, "frames %u, with shadow silhouettes drawn %u\n", ProbeFrames, FramesWithMaps);
+			fprintf(F, "draws  after-maps  first-frame  texture / state\n                                  last sample\n");
+			for (const auto &It : Probes)
+				fprintf(F, "%6u  %6u  %8u  %s\n      %s\n", It.second.Draws, It.second.AfterMaps, It.second.FirstFrame,
+					It.first.c_str(), It.second.Sample.c_str());
+			fclose(F);
+			F = nullptr;
+		}
 		if (fopen_s(&F, (Dir + "U2Shaders\\dump\\seen.txt").c_str(), "w") || F == nullptr)
 			return;
 		for (const auto &It : Seen)
