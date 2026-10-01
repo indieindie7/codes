@@ -19,30 +19,42 @@ case "$(uname -s)" in
 	*) NATIVE= ;;
 esac
 
-if [ ! -f "$FXC_DIR/fxc.exe" ] || [ ! -f "$FXC_DIR/d3dcompiler_47.dll" ]; then
+if [ ! -f "$FXC_DIR/x64/fxc.exe" ] || [ ! -f "$FXC_DIR/x86/fxc.exe" ]; then
 	echo "Fetching fxc + d3dcompiler_47 (Windows SDK $SDK_VER, ~160 MB, once)..."
 	mkdir -p "$FXC_DIR"
 	pkg="$FXC_DIR/sdk.nupkg"
 	curl -fsSL -o "$pkg" "https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/$SDK_VER/microsoft.windows.sdk.cpp.$SDK_VER.nupkg" || { echo "download failed"; exit 2; }
 	python3 - "$pkg" "$FXC_DIR" "$SDK_VER" <<'EOF' || { echo "extract failed"; exit 2; }
-import sys, zipfile
+import os, sys, zipfile
 pkg, out, ver = sys.argv[1:4]
-base = "c/bin/%s.0/x64/" % ver.rsplit(".", 1)[0]
 with zipfile.ZipFile(pkg) as z:
-    for name in ("fxc.exe", "d3dcompiler_47.dll"):
-        with open("%s/%s" % (out, name), "wb") as f:
-            f.write(z.read(base + name))
+    for arch in ("x64", "x86"):
+        os.makedirs("%s/%s" % (out, arch), exist_ok=True)
+        for name in ("fxc.exe", "d3dcompiler_47.dll"):
+            with open("%s/%s/%s" % (out, arch, name), "wb") as f:
+                f.write(z.read("c/bin/%s.0/%s/%s" % (ver.rsplit(".", 1)[0], arch, name)))
 EOF
 	rm -f "$pkg"
 fi
 
 if [ -n "$NATIVE" ]; then
-	fxc() { "$FXC_DIR/fxc.exe" "$@"; }
+	FXC="$FXC_DIR/x64/fxc.exe"
+	fxc() { "$FXC" "$@"; }
 	winpath() { cygpath -w "$1"; }
 else
-	command -v wine >/dev/null || { echo "wine not found (apt install wine64)"; exit 2; }
-	export WINEPREFIX=${WINEPREFIX:-$FXC_DIR/wineprefix} WINEDEBUG=-all
-	fxc() { wine "$FXC_DIR/fxc.exe" "$@"; }
+	command -v wine >/dev/null || { echo "wine not found (apt install wine64, or wine32:i386)"; exit 2; }
+	export WINEDEBUG=-all
+	# a 64-bit-only Wine runs the x64 compiler, a 32-bit one (wine32) only the x86 one:
+	# use whichever starts here, each with its own prefix
+	for arch in x64 x86; do
+		export WINEPREFIX=$FXC_DIR/wineprefix-$arch
+		if wine "$FXC_DIR/$arch/fxc.exe" /? 2>/dev/null | grep -q 'Shader Compiler'; then
+			FXC="$FXC_DIR/$arch/fxc.exe"
+			break
+		fi
+	done
+	[ -n "${FXC:-}" ] || { echo "neither fxc build runs under this Wine"; exit 2; }
+	fxc() { wine "$FXC" "$@"; }
 	winpath() { echo "Z:$1" | tr '/' '\\'; }
 fi
 

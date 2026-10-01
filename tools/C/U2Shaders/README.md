@@ -59,6 +59,17 @@ Needs ps_2_b (falls back from ps_2_a automatically). Debug: `pcssdebug=1` (gap c
 
 Build: `MSBuild d3d8to9.vcxproj -p:Configuration=Release -p:Platform=Win32 -p:PlatformToolset=v145`.
 
+Or without Visual Studio: `./build-mingw.sh` (Linux/WSL with `g++-mingw-w64-i686`) clones
+d3d8to9, applies the patch and builds `build/d3d8.dll`, standalone (no VC++ runtime needed).
+`d3d8-mingw.dll` in this folder is that build of the current source (shadow tint, probes,
+decal rule). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
+is the older MSVC build that has been. To try it, install it as `d3d8.dll`.
+
+`test/run.sh` runs the built DLL outside the game under 32-bit Wine with a virtual display:
+a small Direct3D 8 program (`test/probe_test.cpp`) draws a shadow silhouette, a lit textured
+wall and a bullet-hole decal, so the probes log and the decal rule compiles and draws. It
+proves the code runs, not that it looks right in Unreal II (Wine's d3d9 is not dgVoodoo).
+
 ## Checking shaders without the game
 
 `./hlslcheck.sh` compiles `shaders/*.hlsl` (or the files given) the way the fork does at runtime:

@@ -49,19 +49,25 @@ float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
 	if (Info.y < 0.5)
 		perDepth = 0;                               // no positions (vertex shader draw): flat
 
-	// first step where the ray is below the surface the depth map describes
-	float2 hit = uv + perDepth * DEPTH;
-	float hitDepth = 1;
-	float found = 0;
-	for (int i = 0; i <= STEPS; i++)
+	// first step where the ray is below the surface the depth map describes, then the crossing
+	// interpolated between that step and the one before (without it, steep views show steps)
+	float gapPrev = DepthOf(tex2D(Tex, uv));        // depth map minus ray depth: > 0 = still above
+	float found = step(gapPrev, 0);                 // flat outside the hole: the surface itself
+	float2 hit = found > 0 ? uv : uv + perDepth * DEPTH;
+	float hitDepth = found > 0 ? 0 : 1;
+	float2 atPrev = uv;
+	for (int i = 1; i <= STEPS; i++)
 	{
 		float layer = (float)i / STEPS;
 		float2 at = uv + perDepth * (layer * DEPTH);
-		float d = DepthOf(tex2D(Tex, at));
-		float now = step(d, layer) * (1 - found);
-		hit = lerp(hit, at, now);
-		hitDepth = lerp(hitDepth, d, now);
+		float gap = DepthOf(tex2D(Tex, at)) - layer;
+		float now = step(gap, 0) * (1 - found);
+		float w = gapPrev / max(gapPrev - gap, 0.0001);
+		hit = lerp(hit, lerp(atPrev, at, w), now);
+		hitDepth = lerp(hitDepth, layer - (1 - w) / STEPS, now);
 		found = max(found, now);
+		gapPrev = gap;
+		atPrev = at;
 	}
 
 	float4 decal = tex2D(Tex, hit);
