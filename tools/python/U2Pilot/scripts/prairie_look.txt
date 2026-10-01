@@ -1,0 +1,35 @@
+# prairie_look: first look at the generated prairie - crash site, then a drive east
+map Prairie?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 90
+wait 2
+console BeMyMonkey
+console god
+turn 180 0 0.5
+shot
+turn 90 0 0.5
+shot
+turn 90 0 0.5
+shot
+turn 90 0 0.5
+shot
+dump HoverBike Location
+dump PlayerStart Location
+console hub tp -20000 0 -2400
+wait 1
+turn 0 -8 0.2
+shot
+console hub tp -9500 0 -2600
+wait 1
+shot
+console hub tp 4000 2500 -2300
+wait 1
+shot
+console hub tp 7000 2500 -1500
+wait 1
+shot
+console hub tp 22000 5000 -2500
+wait 1
+shot
+turn 180 0 0.5
+shot
+quit

@@ -1,0 +1,9 @@
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 5
+dump SevenBoard DrawType StaticMesh DrawScale bHidden Location bCollideActors
+console hub tpto SevenBoard 200
+wait 0.5
+turn 0 -10 0.2
+shot
+quit

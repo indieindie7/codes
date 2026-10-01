@@ -1,0 +1,11 @@
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub line
+wait 0.3
+dump PulseLineGenerator bOn Owner
+shot
+turn 25 0 0.3
+wait 0.3
+shot
+quit

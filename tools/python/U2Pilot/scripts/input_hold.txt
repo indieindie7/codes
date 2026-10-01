@@ -1,0 +1,8 @@
+# U2Input: just hold the game open (parked) while u2input.py drives it
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+wait 90
+quit

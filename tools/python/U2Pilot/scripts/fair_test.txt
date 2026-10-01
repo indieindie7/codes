@@ -1,0 +1,12 @@
+# fair_test: two mercs at range for 10 s; hits on the player and first-hit delays go to the log
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+spawn U2Pawns.U2MercJapLight 900
+turn 25 0 0.2
+spawn U2Pawns.U2MercJapLight 1000
+turn -12 0 0.2
+mark FIGHT
+wait 15
+console hub info
+quit

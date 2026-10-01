@@ -1,0 +1,23 @@
+# perf: a staged fight in Sanctuary, mods = all
+mutators U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Seven.SevenStory,U2Enemies.EnemyMutator
+map M08A1?Mutator=U2Hover.FrameProbe
+waitcontrol 180
+wait 3
+mark FIGHT
+spawn U2Pawns.U2Izarian 600
+turn 25 0 0.2
+spawn U2Pawns.U2Izarian 750
+turn -50 0 0.3
+spawn U2Pawns.U2Izarian 700
+turn 25 0 0.2
+spawn U2Pawns.U2SkaarjLight 900
+spawn U2Pawns.U2Izarian 1000
+turn 15 0 0.2
+spawn U2Pawns.U2SkaarjLight 1100
+turn -30 0 0.2
+spawn U2Pawns.U2SkaarjLight 1000
+spawn U2Pawns.U2Izarian 1200
+turn 15 0 0.2
+fire 4
+wait 8
+quit

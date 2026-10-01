@@ -1,0 +1,8 @@
+# U2Input test: wardrobe open and held (pauses the game) while u2input/probe.py click
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console SendEvent ShowWardrobe
+wait 90
+quit

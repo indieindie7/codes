@@ -1,0 +1,6 @@
+# U2Seven: Sanctuary (episode 1) - the intro plays once the player has control
+map M08A1?Mutator=U2Seven.SevenStory
+waitcontrol 180
+shots 1
+wait 26
+quit

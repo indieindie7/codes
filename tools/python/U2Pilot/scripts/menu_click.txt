@@ -1,0 +1,27 @@
+# menu_click (foreground): pause menu; several ways to press Options
+map M08A1
+waitlevel
+waitplay
+wait 2
+console SendEvent ShowMenus
+wait 1.5
+clickat 777 400
+wait 0.5
+look 0 20 0.2
+wait 0.5
+shot k0
+click left 0.4
+wait 1.5
+shot k1
+click left 0.05
+click left 0.05
+wait 1.5
+shot k2
+console SendEvent "ShowMenuOptions"
+wait 1.5
+shot k3
+key esc 0.1
+wait 0.5
+key esc 0.1
+wait 1
+quit

@@ -1,0 +1,14 @@
+# tracer_fight: mercs firing at the player, rapid screenshots to catch tracer lines
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+spawn U2Pawns.U2MercJapLight 700
+turn 20 0 0.2
+spawn U2Pawns.U2MercJapLight 800
+turn -10 0 0.2
+wait 2
+shots 0.1
+wait 4
+quit

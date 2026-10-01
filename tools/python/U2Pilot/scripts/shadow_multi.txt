@@ -1,0 +1,19 @@
+# two characters under one lamp: each shadow must keep its own shape (no shared silhouette)
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+console hub view on
+console hub lamp 255 25 180
+console hub dummy GlmCharactersG.MarineHeavy_Default 90 260
+wait 2
+turn 180 -25 0.6
+wait 1.5
+shot
+wait 1.5
+shot
+turn 60 0 0.3
+wait 1.0
+shot
+quit

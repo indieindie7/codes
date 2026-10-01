@@ -1,0 +1,11 @@
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+give U2Weapons.weaponInvSniperRifle
+wait 1.5
+fire 0.3
+wait 0.2
+dump PulseLineGenerator bOn Owner RenderIteratorClass DrawType Style bHidden Connections LifeSpan Physics Base
+quit

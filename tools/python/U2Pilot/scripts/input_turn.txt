@@ -1,0 +1,10 @@
+# U2Input test: does injected DirectInput mouse movement turn the player? (menu closed)
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+shot
+wait 25
+shot
+quit

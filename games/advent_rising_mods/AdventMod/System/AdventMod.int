@@ -1,0 +1,17 @@
+[ModVideoOptions]
+LstrLabelTitle="Video Options"
+LstrBrightness="Brightness"
+LstrContrast="Contrast"
+LstrGamma="Gamma"
+LstrFullscreen="Fullscreen"
+LstrBorderless="Borderless Window"
+LstrVSync="VSync"
+LstrMore="More Display Options"
+LstrOpen="Open"
+
+[ModDisplayOptions]
+LstrLabelTitle="Display Options"
+LstrWidescreen="Widescreen"
+LstrTrilinear="Trilinear Filtering"
+LstrMinFrameRate="Minimum Frame Rate"
+LstrFOV="Field of View"

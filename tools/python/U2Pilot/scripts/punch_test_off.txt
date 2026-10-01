@@ -1,0 +1,16 @@
+userini U2FairFights.FairFights bPunch=False
+# punch_test: kill a merc as the player (hitstop on the kill); does the body stay 40 s later?
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+spawn U2Pawns.U2MercJapLight 200
+wait 1
+mark KILL
+console hub kill 400
+wait 2
+dump U2MercJapLight Health bQuickCarcassCleanup TimeBeforeCarcassDestroyed DrawScale3D
+wait 40
+dump U2MercJapLight Health DrawScale3D bHidden
+quit

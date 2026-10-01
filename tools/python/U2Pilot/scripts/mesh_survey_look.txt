@@ -1,0 +1,42 @@
+map PrairieSurvey?Mutator=U2TestHub.HubMutator
+waitcontrol 90
+wait 2
+console BeMyMonkey
+console god
+console hub view on
+console hub tp -21200 4000 0
+wait 0.4
+turn 0 0 0.1
+shot
+console hub tp -17000 4000 0
+wait 0.4
+shot
+console hub tp -21200 4600 0
+wait 0.4
+turn 0 0 0.1
+shot
+console hub tp -17000 4600 0
+wait 0.4
+shot
+console hub tp -21200 5200 0
+wait 0.4
+turn 0 0 0.1
+shot
+console hub tp -17000 5200 0
+wait 0.4
+shot
+console hub tp -21200 5800 0
+wait 0.4
+turn 0 0 0.1
+shot
+console hub tp -17000 5800 0
+wait 0.4
+shot
+console hub tp -21200 6400 0
+wait 0.4
+turn 0 0 0.1
+shot
+console hub tp -17000 6400 0
+wait 0.4
+shot
+quit

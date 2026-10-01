@@ -1,0 +1,30 @@
+# UT2004 Malcolm imported as a UE2 skeletal mesh: does it show at any scale?
+background
+map HoverTest?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 3
+console hub kill 30000
+console hub clean 31
+wait 1
+console hub spawn U2Malcolm.MalcolmDummy 180 330
+wait 1
+shot
+turn 90 0 0.5
+wait 0.5
+console set U2Malcolm.MalcolmDummy DrawScale 0.1
+console hub spawn U2Malcolm.MalcolmDummy 180 330
+wait 1
+shot
+turn 90 0 0.5
+wait 0.5
+console set U2Malcolm.MalcolmDummy DrawScale 10
+console hub spawn U2Malcolm.MalcolmDummy 180 330
+wait 1
+shot
+turn 90 0 0.5
+wait 0.5
+console set U2Malcolm.MalcolmDummy DrawScale 1
+console hub dummy U2Malcolm.MalcolmMesh 180 330
+wait 1
+shot
+quit

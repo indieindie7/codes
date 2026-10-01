@@ -1,0 +1,6 @@
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 5
+dump U2CivilianScientist Health
+dump U2ColonistHumanMaleA Health
+quit

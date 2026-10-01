@@ -1,0 +1,29 @@
+# hub_lamp_ab: my shadows with the game's own numbers (no real fade, full
+# darkness) vs the game's own shadow, same lamp scene, three angles
+userini U2SoftShadows.SSShadowController GradientLength=2048
+userini U2SoftShadows.SSShadowController GradientScale=20
+userini U2SoftShadows.SSShadowController ShadowStrength=255
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+console hub view on
+console hub lamp 220 45 200
+wait 2
+console hub info
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+console hub shadows stock
+wait 1.5
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+turn 120 0 0.6
+wait 0.8
+shot
+quit

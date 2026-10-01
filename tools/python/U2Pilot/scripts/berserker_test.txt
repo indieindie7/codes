@@ -1,0 +1,20 @@
+# U2Enemies: dome breach up close, then a Berserker Skaarj rushing an idle player
+userini U2Enemies.EnemyMutator BerserkerOdds=1.0
+map M08A1?Mutator=U2Enemies.EnemyMutator
+waitcontrol 180
+wait 2.5
+shots 0.25
+spawn U2Pawns.U2Izarian 330
+fire 0.6
+dump DomeLeak EndTime Stream
+wait 2
+turn 180 0 0.5
+spawn U2Pawns.U2SkaarjLight 900
+dump U2SkaarjLight0 Tag GroundSpeed LeapDelaySuccess Health
+dump U2PlayerSP Health
+wait 5
+dump U2SkaarjLight Location
+dump U2PlayerSP Health Shield
+wait 3
+dump U2PlayerSP Health Shield
+quit

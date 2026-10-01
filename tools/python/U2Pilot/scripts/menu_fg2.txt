@@ -1,0 +1,11 @@
+# menu_fg2 (foreground): open the in-game (Escape) menu and grab it
+map M08A1
+waitlevel
+waitplay
+wait 2
+console SendEvent ShowMenus
+wait 2
+shot pausemenu
+key escape 0.1
+wait 1
+quit

@@ -1,0 +1,28 @@
+map Prairie?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 90
+wait 3
+console BeMyMonkey
+console god
+console hub view on
+console hub tp -21500 -3000 0
+wait 0.4
+console hub face 150
+wait 0.2
+console hub mesh Terran_DecoM.Crates.Terran_Dropship_01 1.0
+console hub face 120
+console hub mesh Terran_DecoM.Crates.Terran_Dropship_01 2.0
+console hub face 90
+console hub mesh Mission_05M.debris_sheet_003.Crashed_Transport 1.5
+console hub face 60
+console hub mesh Terran_DecoM.Consoles.Terran_Console_01 1.0
+console hub tp -20000 -1500 0
+wait 0.4
+console hub face 200
+wait 0.3
+shot
+console hub tp -23500 -4500 0
+wait 0.4
+console hub face 60
+wait 0.3
+shot
+quit

@@ -1,0 +1,7 @@
+# U2Seven: New Game path - titles -> Sanctuary, intro plays (reset on new game),
+# Danny Miller silenced, subtitles in the dialogue box
+map CS_Titles?Mutator=U2Seven.SevenStory
+@M08A1 waitcontrol 180
+@M08A1 shots 0.7
+@M08A1 wait 24
+@M08A1 quit

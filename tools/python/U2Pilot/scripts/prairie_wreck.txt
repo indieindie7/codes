@@ -1,0 +1,23 @@
+map Prairie?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 90
+wait 2
+console BeMyMonkey
+console god
+console hub view on
+console hub tp -24600 2600 0
+wait 0.5
+turn 0 -6 0.2
+shot
+console hub tp -22000 0 0
+wait 0.5
+turn 180 -4 0.4
+shot
+console hub tp -24600 -2600 0
+wait 0.5
+turn 180 -6 0.4
+shot
+console hub tp -20000 0 0
+wait 0.5
+turn -180 0 0.4
+shot
+quit

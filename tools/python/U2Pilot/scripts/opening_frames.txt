@@ -1,0 +1,6 @@
+# opening_frames: the pod arrival and the opening cinematic as a frame stream
+userini U2Seven.SevenStory LastIntroEp=0
+map M08A1
+shots 0.15
+wait 78
+quit

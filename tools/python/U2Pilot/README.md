@@ -40,7 +40,7 @@ Background steps:
 
 | Step | Meaning |
 |---|---|
-| `map URL` | start map (extra `?Mutator=` entries are merged with the installed ones) |
+| `map URL` | start map; its URL options are kept (e.g. `Atlantis?MissionCompleted=2`) and extra `?Mutator=` entries are merged with the installed ones |
 | `ini Section Key=Value` | set a value in the throwaway pilot config |
 | `waitcontrol [timeout]` | wait until the player can move (no cutscene) |
 | `wait SECONDS` | wait, counted in game seconds |
@@ -56,7 +56,9 @@ Background steps:
 | `spawnproj CLASS` | spawn a projectile as if the player fired it |
 | `console CMD` | run a console command |
 | `shots INTERVAL` / `shot` | take a screenshot every INTERVAL seconds / take one now |
-| `travel URL` / `servertravel URL` | change level |
+| `travel URL` / `servertravel URL [items]` | change level (`servertravel` goes through the game's own level change; `items` keeps the inventory) |
+| `inv` | log the player's inventory |
+| `dump CLASS PROP...` | log properties of every actor whose class name contains CLASS |
 | `@MAP step` | run the step only on that map (the driver restarts its list on every map) |
 | `mark TEXT`, `quit` | write a log marker / quit the game |
 

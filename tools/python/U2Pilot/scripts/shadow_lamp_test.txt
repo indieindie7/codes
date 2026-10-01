@@ -1,0 +1,22 @@
+# shadow_lamp_test: a controlled lamp scene for judging character shadows.
+# A bright TestLamp (U2TestHub) is spawned ~45 degrees up in front of the player;
+# the third-person camera looks from behind, so the shadow falls toward it.
+map M08A1
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+turn 0 35 0.3
+spawn U2TestHub.TestLamp 180
+turn 0 -60 0.4
+console behindview 1
+wait 1.5
+dump SSLightShadow Owner AssignedLight Fade MaxTraceDistance
+shot
+turn 90 0 0.5
+wait 0.8
+shot
+turn 90 0 0.5
+wait 0.8
+shot
+quit

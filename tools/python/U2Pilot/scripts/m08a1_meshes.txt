@@ -1,0 +1,7 @@
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 3
+dump Decoration StaticMesh Location
+dump U2Decoration StaticMesh Location
+dump StaticMesh Location
+quit

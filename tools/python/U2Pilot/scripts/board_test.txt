@@ -1,0 +1,14 @@
+# board_test: reset missions, walk to Aida's console, open it, accept mission 1, expect travel
+userini U2Seven.SevenMissions Active=
+userini U2Seven.SevenMissions Done=
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 5
+console hub tpto SevenBoard 150
+wait 1
+shot
+dump SevenBoard Location bOpen
+console hub view on
+wait 0.5
+shot
+quit

@@ -1,0 +1,24 @@
+# U2Hover scenery check: look around the start (sky, rim, plants), then ride
+# the hover bike toward the river and over it.
+map HoverTest?Mutator=U2Hover.HoverMutator
+waitcontrol 60
+shots 0.5
+wait 1
+turn 0 25 0.5
+turn 360 0 4
+turn 0 -25 0.5
+move 1 0 1.6
+wait 1
+dump HoverBike bIsDriven Location
+dump U2Skaarj Location Health
+turn 90 0 0.8
+move 1 0 3
+dump HoverBike Location Velocity bOnGround
+turn -40 0 0.5
+move 1 0 3
+dump HoverBike Location Velocity bOnGround
+turn 180 0 1.5
+move 1 0 4
+dump HoverBike Location Velocity bOnGround
+dump U2Skaarj Location Health
+quit

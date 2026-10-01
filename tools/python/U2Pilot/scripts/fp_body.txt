@@ -1,0 +1,17 @@
+# first-person body: look ahead, look down at the feet, walk while looking down
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+wait 1
+shot
+turn 0 -60 0.5
+wait 1
+shot
+key w 1
+shot
+turn 0 -25 0.3
+wait 0.5
+shot
+quit

@@ -4,7 +4,8 @@
 // GetShadowLocation, FrustumOrigin). SquirrelZero's projector was written for
 // UT2004 and skips all three, which is why it rendered nothing here.
 // Fades out before switching lights and back in afterwards; darkness scales
-// with distance to the light.
+// with distance to the light and with the light's share of all the light at
+// the character (set by the controller, eased here so it never jumps).
 //=============================================================================
 class SSLightShadow extends ShadowProjector;
 
@@ -20,6 +21,12 @@ var ShadowBitmapMaterial LastTexture;
 var int SunResolution;       // texture size for sun shadows (lower = softer), 0 = character's own
 var float GradientScale;     // >1 leaves some shadow at the head's tip, <1 fades out sooner
 var float MaxGradient;       // upper bound on the fade length, in world units
+var float MaxSteepness;      // steepest a lamp may shine down, in degrees; overhead lamps are tilted
+                             // so the shadow falls out from under the body where it can be seen
+var float MinStrength;       // darkness of the faintest lamp shadow, relative to the darkest (0-1)
+var float FullIntensity;     // lamp intensity (brightness x falloff) that casts the darkest shadow
+var float LightShare;        // this light's share of the light here (darkness scale), eased toward
+var float TargetShare;       // the controller's latest value
 
 // the light this shadow is heading toward (after any pending switch)
 function Actor TargetLight()
@@ -75,6 +82,35 @@ function UpdateShadow(optional float DeltaTime)
 	Super.UpdateShadow(DeltaTime);
 }
 
+// a lamp almost straight above casts its shadow under the feet, hidden by the
+// body: lean the direction so it's never steeper than MaxSteepness
+function rotator TiltOverhead(rotator R)
+{
+	local int P, Limit;
+
+	P = R.Pitch & 65535;
+	if (P > 32768)
+		P -= 65536;                 // -16384 = straight down
+	Limit = int(MaxSteepness * 65536.0 / 360.0);
+	if (P < -Limit)
+		R.Pitch = -Limit;
+	return R;
+}
+
+// how strongly a lamp lights the character: its brightness times a smooth
+// falloff over its reach (the engine's radius, 25 units per LightRadius step).
+// Bright nearby lamps cast dark shadows, dim or distant ones faint shadows.
+function float LampIntensity(Actor L)
+{
+	local float Dist, Reach;
+
+	Reach = 25.0 * (L.LightRadius + 1);
+	Dist = VSize(L.Location - ShadowActor.Location);
+	if (Dist >= Reach)
+		return 0;
+	return L.LightBrightness * (1.0 - Square(Dist / Reach));
+}
+
 function bool CalcPos(float DeltaTime)
 {
 	local float Pct, Dist, Strength, SinE, Half, FeetDepth, TipDepth, Shift;
@@ -119,7 +155,7 @@ function bool CalcPos(float DeltaTime)
 	}
 
 	// softer (lower-res) texture for the sun; only resized while invisible
-	if (AssignedLight.LightEffect == LE_Sunlight && SunResolution > 0)
+	if (class'SSShadowController'.static.IsSun(AssignedLight) && SunResolution > 0)
 		WantRes = SunResolution;
 	else
 		WantRes = ShadowResolution;
@@ -129,7 +165,7 @@ function bool CalcPos(float DeltaTime)
 		LastLightDistance = -1;   // force SetLightDistance to refit DrawScale
 	}
 
-	if (AssignedLight.LightEffect == LE_Sunlight)
+	if (class'SSShadowController'.static.IsSun(AssignedLight))
 	{
 		Dist = 1024;
 		LightRot = AssignedLight.Rotation;
@@ -142,6 +178,7 @@ function bool CalcPos(float DeltaTime)
 			LightRot = Rotator(Diff);
 		else
 			LightRot = AssignedLight.Rotation;
+		LightRot = TiltOverhead(LightRot);
 	}
 	LightLoc = Location - Vector(LightRot) * Dist;
 
@@ -159,7 +196,7 @@ function bool CalcPos(float DeltaTime)
 	Diff = Location - ShadowTexture.FrustumOrigin;
 	LightRot = Rotator(Diff);
 	SetRotation(LightRot);
-	SetLightDistance(VSize(Diff), AssignedLight.LightEffect == LE_Sunlight);
+	SetLightDistance(VSize(Diff), class'SSShadowController'.static.IsSun(AssignedLight));
 	LightDirection = -Vector(LightRot) * LightDistance;
 	ShadowTexture.LightDirection = Normal(LightDirection);
 	ShadowTexture.LightDistance = LightDistance;
@@ -172,20 +209,23 @@ function bool CalcPos(float DeltaTime)
 	FeetDepth = Half * SinE;
 	TipDepth = 2 * Half / SinE - Half * SinE;
 	Shift = 0;
-	if (AssignedLight.LightEffect == LE_Sunlight)
+	if (class'SSShadowController'.static.IsSun(AssignedLight))
 	{
-		// the sun frustum is nearly parallel, so sliding the projector along its
-		// axis to the feet is free and starts the fade right at the feet
+		// slide the projector along its axis to the feet so the fade starts right
+		// where the shadow meets the floor (free for the sun's near-parallel frustum)
 		Shift = FeetDepth * 0.85;
 		SetLocation(Location + Vector(LightRot) * Shift);
 	}
 	MaxTraceDistance = int(FClamp((TipDepth - Shift) * GradientScale, Half, MaxGradient));
 
 	// darker when the light is close, lighter far away, scaled by the fade
-	if (AssignedLight.LightEffect == LE_Sunlight)
+	if (class'SSShadowController'.static.IsSun(AssignedLight))
 		Strength = 0.8;
 	else
-		Strength = 0.4 + 0.6 * (1.0 - FClamp(VSize(AssignedLight.Location - ShadowActor.Location) / MaxLightDistance, 0.0, 1.0));
+		Strength = MinStrength + (1.0 - MinStrength) * FClamp(LampIntensity(AssignedLight) / FullIntensity, 0.0, 1.0);
+	// the other lights (and the ambient light) fill the shadow in
+	LightShare += (TargetShare - LightShare) * FMin(1.0, DeltaTime * 2.0);
+	Strength *= LightShare;
 	ShadowTexture.ShadowDarkness = byte(FClamp(ShadowStrength * Strength * Fade, 0, 255));
 
 	return true;
@@ -200,8 +240,13 @@ defaultproperties
 	bForceFullPolyShadow=True
 	bGradient=True
 	SunResolution=128
-	GradientScale=1.100000
-	MaxGradient=600.000000
+	GradientScale=3.000000
+	MaxGradient=2048.000000
+	MaxSteepness=60.000000
+	MinStrength=0.200000
+	FullIntensity=128.000000
+	LightShare=1.000000
+	TargetShare=1.000000
 	GradientTexture=Texture'Engine.GRADIENT_Fade'
 	RemoteRole=ROLE_None
 }

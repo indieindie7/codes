@@ -1,0 +1,6 @@
+userini U2Seven.SevenSanctuary bEnabled=False
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 2
+dump U2Izarian bHidden Health Event Location
+quit

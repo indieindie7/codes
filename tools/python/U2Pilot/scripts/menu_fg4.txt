@@ -1,0 +1,23 @@
+# menu_fg4 (foreground): pause menu, then events to reach Options > Shadows
+map M08A1
+waitlevel
+waitplay
+wait 2
+console SendEvent ShowMenus
+wait 1.5
+console SendEvent ShowMenuOptions
+wait 1.5
+shot step1
+console SendEvent "Options.Shadows"
+wait 1.5
+shot step2
+clickat 777 426
+wait 0.3
+click left 0.15
+wait 1.5
+shot step3
+key esc 0.1
+wait 0.5
+key esc 0.1
+wait 1
+quit

@@ -140,6 +140,7 @@ function bool InControl()
 
 function StartStep()
 {
+	local Inventory Inv;
 	StepIndex++;
 	StepTime = 0;
 	StepLength = 0;
@@ -227,9 +228,9 @@ function StartStep()
 		StepLength = 120;
 		Cmd = "WAIT";
 		break;
-	case "SERVERTRAVEL":
-		Log("PilotDriver: server-travelling to "$RestOf(1));
-		Level.Game.ProcessServerTravel(RestOf(1), false);
+	case "SERVERTRAVEL":   // like the game's own level changes; "items" keeps the inventory
+		Log("PilotDriver: server-travelling to "$Args[1]$" items="$(Args.Length > 2 && Args[2] ~= "items"));
+		Level.ServerTravel(Args[1], Args.Length > 2 && Args[2] ~= "items");
 		StepLength = 120;
 		Cmd = "WAIT";
 		break;
@@ -241,6 +242,14 @@ function StartStep()
 	case "STATUS":
 		if (PC.Pawn != None)
 			Log("PilotDriver: status weapon="$PC.Pawn.Weapon$" pending="$PC.Pawn.PendingWeapon$" ammo="$Eval2(PC.Pawn.Weapon != None && PC.Pawn.Weapon.AmmoType != None, PC.Pawn.Weapon.AmmoType)$" hasammo="$(PC.Pawn.Weapon != None && PC.Pawn.Weapon.HasAmmo())$" lean="$PC.GetPropertyText("LeanDir")$" leanoffset="$PC.GetPropertyText("LeanOffset"));
+		break;
+	case "INV":    // log the player's inventory
+		if (PC.Pawn != None)
+			for (Inv = PC.Pawn.Inventory; Inv != None; Inv = Inv.Inventory)
+				Log("PilotDriver: inv "$Inv.Class$" "$Inv.GetPropertyText("AmmoAmount"));
+		break;
+	case "DUMP":   // dump CLASS PROP [PROP...]: log properties of every actor of a class
+		DumpActors(Args[1], RestOf(2));
 		break;
 	case "SPAWN":
 		SpawnInFront(Args[1], ArgF(2, 150));
@@ -265,6 +274,30 @@ function StartStep()
 	default:
 		Log("PilotDriver: unknown step '"$Args[0]$"' - skipped");
 	}
+}
+
+// log PROPS (space separated) of every actor whose class is named CLASSNAME
+function DumpActors(string ClassName, string Props)
+{
+	local Actor A;
+	local string S, Rest, Prop;
+	local int i;
+
+	foreach AllActors(class'Actor', A)
+		if (InStr(Caps(string(A.Class)), Caps(ClassName)) >= 0)
+		{
+			S = "PilotDriver: dump "$A;
+			Rest = Props;
+			while (Rest != "")
+			{
+				i = InStr(Rest, " ");
+				if (i < 0) { Prop = Rest; Rest = ""; }
+				else { Prop = Left(Rest, i); Rest = Mid(Rest, i + 1); }
+				if (Prop != "")
+					S = S$" "$Prop$"="$A.GetPropertyText(Prop);
+			}
+			Log(S);
+		}
 }
 
 // spawn any actor Dist units in front of the player's eyes, facing them

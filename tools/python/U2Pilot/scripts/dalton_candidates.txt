@@ -1,0 +1,27 @@
+# front view of Dalton candidates (and his stock model) in the same pose
+background
+map HoverTest?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 3
+console hub kill 30000
+console hub clean 31
+wait 1
+console hub dummy GlmCharactersG.PlayerGame 180 330
+wait 1.2
+shot
+turn 90 0 0.5
+wait 0.6
+console hub dummy GlmCharactersG.MarineHeavy_Default 180 330
+wait 1.2
+shot
+turn 90 0 0.5
+wait 0.6
+console hub dummy GlmCharactersG.MercJapHeavy_Default 180 330
+wait 1.2
+shot
+turn 90 0 0.5
+wait 0.6
+console hub dummy GlmCharactersG.MercJapMedium_HelmetDefault 180 330
+wait 1.2
+shot
+quit

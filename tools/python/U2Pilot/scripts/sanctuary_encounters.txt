@@ -1,0 +1,19 @@
+# sanctuary_encounters: walk the designed encounters by teleport
+map M08A1?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 5
+console BeMyMonkey
+console god
+console hub tp -1300 4400 6500
+wait 2
+console hub tpto U2CivilianScientist0 300
+wait 5
+dump U2Izarian Health bHidden
+console hub tpto U2Izarian23 300
+wait 3
+console hub kill 3000
+wait 3
+console hub tp -432 -7000 7480
+wait 5
+dump U2Skaarj Health
+quit

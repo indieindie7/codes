@@ -1,0 +1,7 @@
+# U2Seven: the cut - Atlantis after Acheron must go straight to Janus (M09a),
+# then episode 5's intro plays
+map Atlantis?MissionCompleted=8?Mutator=U2Seven.SevenStory
+@M09A waitcontrol 240
+@M09A shots 1
+@M09A wait 30
+@M09A quit

@@ -1,0 +1,15 @@
+# menu_fg3 (foreground): pause menu -> Options; grab the options page
+map M08A1
+waitlevel
+waitplay
+wait 2
+console SendEvent ShowMenus
+wait 1.5
+clickat 777 426
+wait 1.5
+shot options
+key esc 0.1
+wait 0.5
+key esc 0.1
+wait 1
+quit
