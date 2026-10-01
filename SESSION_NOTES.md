@@ -21,6 +21,8 @@ whole session, so each item says how far it has been checked.
    `System\U2Shaders\dump\`, add `decal=<hash> decal_parallax.hlsl`, tune `DEPTH`.
 6. **Light re-bake test** on one map through U2EdBridge (not written yet: needs the exact editor
    commands checked first).
+7. **U2FairFights additions:** rebuild with `UCC make` (the `.u` in `System` predates them), then
+   check the `FairFights: kill beat / heavy hit beat / hurt kick` lines in `Unreal2.log`.
 
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
@@ -43,9 +45,20 @@ manager per level → capped arrays of spawned actors).
 Enemy tiers: pawns with `HealthMax <= WeakHealthThreshold` (100) stagger on hits; tougher ones
 only show the blood spurt, so they keep their threat. Tunables in `U2GoreManager` defaults.
 
-Unverified: whether Unreal II calls `MutatorTakeDamage` like UT2004 does (else use the hook
-example); base classes `Gib`, `Decal`, `Emitter`; the per-bone Karma calls are stubs
-(`EnableBonePhysics`/`DisableBonePhysics`).
+Unverified: whether Unreal II calls `MutatorTakeDamage` like UT2004 does; base classes `Gib`,
+`Decal`, `Emitter`; the per-bone Karma calls are stubs (`EnableBonePhysics`/`DisableBonePhysics`).
+Next step for it: switch to the `GameRules` hooks (`NetDamage`, `PreventDeath`), which
+U2FairFights and U2Enemies already use and have tested in Unreal II.
+
+### U2FairFights: stakes, heavy hits, flinch
+
+U2FairFights already had kill hitstop, per-shot view kick, hit ticks and more ragdolls (tested).
+Added (not compiled yet; only calls the mod already uses):
+- the kill beat grows with the stakes: x (enemy's starting health / 100) up to `KillToughMax`,
+  and x `CloseCallMul` when you're below `CloseCallHealth` of your health;
+- a shorter beat for a heavy hit that doesn't kill (`HeavyHitDamage`, `HeavyHitstop`,
+  rate-limited by `HeavyHitCooldown`);
+- the view flinches when you take damage (`HurtKick` per point, up to `HurtKickMax`).
 
 ### U2SoftShadows: fade fitted to the floor
 
@@ -144,7 +157,8 @@ Kriegor campaign; UT3's Necris. No well-known official novels or comics (unlike 
 ### Physics and lighting
 - Karma is MathEngine's physics engine, compiled into `Engine.dll`. Replacing it with
   Jolt/Bullet/PhysX means reverse-engineering every call: not worth it. Small debris can be
-  done in UnrealScript. How long corpses stay is script (lifespan), not Karma.
+  done in UnrealScript. Unreal II does use Karma ragdolls (U2FairFights raises `MaxRagdolls`
+  from 5 to 12); how long bodies stay is script (`BodyTime`), not Karma.
 - Lighting through the fork: doable now: bloom, tone mapping, colour grading; per-pixel
   character lighting if the probe shows D3D fixed-function lights; SSAO if depth is readable.
   Level lighting is baked in lightmaps and can't be relit at runtime.
