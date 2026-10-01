@@ -84,6 +84,18 @@ DXT1/3/5 and carry its own mip levels; `U2Shaders.log` says "replace <hash>: ...
 not. Find hashes with `log=1` (see-through textures) or `charprobe=1` (solid ones). Rules keyed by
 the original hash (`surface=`, `decal=`) still apply on top of the replacement.
 
+Lightmap capture, for baking elsewhere: `lmcapture=1` records the level's lightmapped geometry
+as it is drawn (every draw with a lightmap multiplied in on stage 1): world-space triangles with
+their lightmap coordinates, worked out the way Direct3D does, each triangle once however often
+it is drawn. Every few seconds it writes `System\U2Shaders\capture\scene.obj` (one object per
+lightmap) and `lightmaps.txt`, and saves each lightmap in `U2Shaders\dump\`. Walk through the
+level (only what is drawn is recorded), then bake with `tools/python/U2Blender/bake_lightmaps.py`
+in Blender (lights from the map's T3D), and put its `replace=` lines in `U2Shaders.ini`. While
+capturing the dll keeps a copy of every vertex and index buffer the game writes (memory, and a
+little time): leave it off otherwise. Not known yet: whether Unreal II draws its lightmaps on
+stage 1 at all (the log's "lmcapture: 0 lightmaps" would say not; `charprobe=1` shows how it
+draws instead), and whether its world space is Unreal's (the T3D's lights would then line up).
+
 Probe, logging only: `charprobe=1` records how every opaque on-screen draw is lit (fixed-function
 lighting, lights, material, ambient, vertex blending, texture stages) and whether shadow
 silhouettes were drawn earlier in the frame, in `System\U2Shaders\dump\chars.txt`, and saves each
@@ -109,14 +121,14 @@ Build: `MSBuild d3d8to9.vcxproj -p:Configuration=Release -p:Platform=Win32 -p:Pl
 Or without Visual Studio: `./build-mingw.sh` (Linux/WSL with `g++-mingw-w64-i686`) clones
 d3d8to9, applies the patch and builds `build/d3d8.dll`, standalone (no VC++ runtime needed).
 `d3d8-mingw.dll` in this folder is that build of the current source (shadow tint, probes,
-decal rule, post-processing, parallax walls, replace=, charlight=). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
+decal rule, post-processing, parallax walls, replace=, charlight=, lmcapture=). It has only been run under Wine (`test/run.sh`), not yet in the game; `d3d8.dll`
 is the older MSVC build that has been. To try it, install it as `d3d8.dll`.
 
 `test/run.sh` runs the built DLL outside the game under 32-bit Wine with a virtual display:
 a small Direct3D 8 program (`test/probe_test.cpp`) draws a shadow silhouette, a lit textured
 wall and a bullet-hole decal, so the probes log and the decal rule compiles and draws, then
 post-processing, then a lightmapped brick wall with and without `surface=`, and with its lightmap swapped by
-`replace=`, then a lit sphere with and without `charlight=`. It
+`replace=`, then a lit sphere with and without `charlight=`, then the wall with `lmcapture=`. It
 proves the code runs, not that it looks right in Unreal II (Wine's d3d9 is not dgVoodoo).
 
 ## Checking shaders without the game

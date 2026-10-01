@@ -6,7 +6,9 @@
 # and frame_flat.bmp (off) to compare. Then the same for post-processing (frame_post.bmp) and
 # a lightmapped brick wall with the surface= rule (frame_wall.bmp, off: frame_wallflat.bmp),
 # and that wall with its lightmap swapped by replace= (frame_wallgi.bmp); then a lit sphere
-# without and with charlight=1 (frame_sphere.bmp, frame_spherelit.bmp). Wine's d3d9 is not dgVoodoo: the depth probe results
+# without and with charlight=1 (frame_sphere.bmp, frame_spherelit.bmp); last the wall with
+# lmcapture=1 (U2Shaders/capture/: what tools/python/U2Blender/bake_lightmaps.py bakes from;
+# with a bake in U2Shaders/baked/, "wine probe_test.exe wallbaked" shows it in place). Wine's d3d9 is not dgVoodoo: the depth probe results
 # here say nothing about the real game setup.
 #
 # Needs: ../build-mingw.sh run first, g++-mingw-w64-i686, wine32:i386, xvfb, and the x86
@@ -41,4 +43,7 @@ echo "== U2Shaders.log (wallgi)"; cat U2Shaders.log
 xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe sphere
 xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe spherelit
 echo "== U2Shaders.log (spherelit)"; cat U2Shaders.log
+xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe wallcap
+echo "== U2Shaders.log (wallcap)"; cat U2Shaders.log
+echo "== capture"; cat U2Shaders/capture/lightmaps.txt
 echo "frames: $RUN/frame_flat.bmp $RUN/frame_parallax.bmp $RUN/frame_post.bmp $RUN/frame_wallflat.bmp $RUN/frame_wall.bmp $RUN/frame_wallgi.bmp $RUN/frame_sphere.bmp $RUN/frame_spherelit.bmp"

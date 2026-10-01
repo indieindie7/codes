@@ -24,6 +24,9 @@
  *     charlight=1                 light lit solid draws (characters, weapons) per pixel with
  *                                 char_light.hlsl: the game's own D3D lights, softer wrap,
  *                                 ambient lighter from above, rim (see CharBegin)
+ *     lmcapture=1                 record the lightmapped geometry as it is drawn, for baking
+ *                                 elsewhere: U2Shaders\capture\scene.obj + lightmaps.txt,
+ *                                 lightmaps saved in U2Shaders\dump (see CaptureDraw)
  *     post=1                      bloom, sharpening and colour grading before the HUD
  *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
  *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
@@ -53,7 +56,9 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <set>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #pragma comment(lib, "d3dcompiler.lib")
@@ -144,6 +149,8 @@ public:
 				;
 			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
 				CharProbe = Hash != 0;
+			else if (sscanf_s(Line, " lmcapture=%u", &Hash) == 1)
+				Capture = Hash != 0;
 			else if (sscanf_s(Line, " charlight=%u", &Hash) == 1)
 			{
 				CharLight = Hash != 0;
@@ -201,11 +208,13 @@ public:
 		fclose(F);
 		Message("U2Shaders: log %d, %u rule(s), %u replacement(s), pcss %d (%g %g %g %g), shadow tint %g %g %g", (int)Log, (unsigned)Rules.size(), (unsigned)Replacements.size(), (int)Pcss,
 			PcssParams[0], PcssParams[1], PcssParams[2], PcssParams[3], ShadowTint[0], ShadowTint[1], ShadowTint[2]);
-		if (Log || CharProbe)
+		if (Log || CharProbe || Capture)
 		{
 			CreateDirectoryA((Dir + "U2Shaders").c_str(), nullptr);
 			CreateDirectoryA((Dir + "U2Shaders\\dump").c_str(), nullptr);
 		}
+		if (Capture)
+			CreateDirectoryA((Dir + "U2Shaders\\capture").c_str(), nullptr);
 	}
 
 	static UINT LevelBytes(const D3DSURFACE_DESC &Desc, INT Pitch)
@@ -1556,6 +1565,258 @@ public:
 	// each texture is also saved once as <hash>_<w>x<h>.dds so a character's skin can be found.
 	bool CharProbe = false;
 	bool CharLight = false;
+
+	// ---- lmcapture=1: the lightmapped geometry, for baking elsewhere ---------------------------
+	// Every draw with a texture on stage 1 that stage 1 multiplies in (a lightmap) is recorded as
+	// world-space triangles with their stage 1 (lightmap) coordinates, worked out the way
+	// fixed-function Direct3D does (texture coordinate set or camera-space position, then the
+	// texture transform). Triangles are kept once each, however often they are drawn. Every few
+	// seconds the lot is written to U2Shaders\capture\scene.obj (one object per lightmap,
+	// "o lm_<hash>"; one material per stage 0 texture, "usemtl tex_<hash>"; vt = lightmap
+	// coordinates in Direct3D's convention, v down; faces in the order Direct3D shows as their
+	// front) and lightmaps.txt ("<hash> <width> <height> <stage 1 op> <triangles>"); each
+	// lightmap is saved once in U2Shaders\dump. The buffers' contents come from copies the
+	// device keeps while capturing (vertex buffers may not be readable).
+	bool Capture = false;
+	struct U2LightmapCapture
+	{
+		UINT W = 0, H = 0;
+		DWORD Op = 0;
+		std::vector<float> Verts;    // x y z u v, 3 per triangle
+		std::vector<DWORD> Tex;      // stage 0 hash, 1 per triangle
+	};
+	std::map<DWORD, U2LightmapCapture> Captured;
+	std::unordered_set<unsigned long long> CapturedTris;
+	bool CaptureDirty = false;
+	unsigned CaptureWritten = 0;
+
+	struct U2VertexLayout
+	{
+		int Pos = -1;                // byte offset of the float3 position, -1 = none (or pre-transformed)
+		int Tex[8];                  // byte offset of each texture coordinate set, -1 = none
+		int TexComps[8];
+		U2VertexLayout() { for (int i = 0; i < 8; i++) { Tex[i] = -1; TexComps[i] = 0; } }
+	};
+
+	static U2VertexLayout LayoutOf(IDirect3DDevice9 *Dev)
+	{
+		U2VertexLayout L;
+		IDirect3DVertexDeclaration9 *Decl = nullptr;
+		if (SUCCEEDED(Dev->GetVertexDeclaration(&Decl)) && Decl != nullptr)
+		{
+			D3DVERTEXELEMENT9 E[MAXD3DDECLLENGTH + 1];
+			UINT N = MAXD3DDECLLENGTH + 1;
+			if (SUCCEEDED(Decl->GetDeclaration(E, &N)))
+				for (UINT i = 0; i < N && E[i].Stream != 0xFF; i++)
+				{
+					if (E[i].Stream != 0)
+						continue;
+					if (E[i].Usage == D3DDECLUSAGE_POSITION && E[i].UsageIndex == 0 && E[i].Type == D3DDECLTYPE_FLOAT3)
+						L.Pos = E[i].Offset;
+					else if (E[i].Usage == D3DDECLUSAGE_TEXCOORD && E[i].UsageIndex < 8 && E[i].Type <= D3DDECLTYPE_FLOAT4)
+					{
+						L.Tex[E[i].UsageIndex] = E[i].Offset;
+						L.TexComps[E[i].UsageIndex] = E[i].Type + 1;   // FLOAT1..FLOAT4 are 0..3
+					}
+				}
+			Decl->Release();
+			return L;
+		}
+		DWORD Fvf = 0;
+		Dev->GetFVF(&Fvf);
+		if ((Fvf & D3DFVF_POSITION_MASK) != D3DFVF_XYZ)
+			return L;                   // pre-transformed or blended: not captured
+		int At = 12;
+		L.Pos = 0;
+		if (Fvf & D3DFVF_NORMAL) At += 12;
+		if (Fvf & D3DFVF_PSIZE) At += 4;
+		if (Fvf & D3DFVF_DIFFUSE) At += 4;
+		if (Fvf & D3DFVF_SPECULAR) At += 4;
+		const int Count = (Fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
+		for (int i = 0; i < Count && i < 8; i++)
+		{
+			static const int Comps[4] = { 2, 3, 4, 1 };   // D3DFVF_TEXTUREFORMAT2/3/4/1
+			L.Tex[i] = At;
+			L.TexComps[i] = Comps[(Fvf >> (16 + i * 2)) & 3];
+			At += L.TexComps[i] * 4;
+		}
+		return L;
+	}
+
+	void CaptureDraw(IDirect3DDevice9 *Dev, D3DPRIMITIVETYPE Type, UINT PrimCount, const BYTE *Verts, size_t VertBytes, UINT Stride,
+		INT BaseVertex, const BYTE *Indices, size_t IndexBytes, bool Index32, UINT StartIndex,
+		IDirect3DTexture9 *Tex0, DWORD *Hash0, IDirect3DTexture9 *Tex1, DWORD &Hash1)
+	{
+		if (!Capture || Tex1 == nullptr || Stride == 0 || Offscreen(Dev))
+			return;
+		if (Type != D3DPT_TRIANGLELIST && Type != D3DPT_TRIANGLESTRIP && Type != D3DPT_TRIANGLEFAN)
+			return;
+		DWORD Op1 = 0, Blend = 0, Cull = 0;
+		Dev->GetTextureStageState(1, D3DTSS_COLOROP, &Op1);
+		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blend);
+		Dev->GetRenderState(D3DRS_CULLMODE, &Cull);
+		IDirect3DVertexShader9 *VS = nullptr;
+		Dev->GetVertexShader(&VS);
+		if (VS != nullptr) { VS->Release(); return; }
+		if (ModulateFactor(Op1) == 0 || Blend)
+			return;
+		const U2VertexLayout L = LayoutOf(Dev);
+		if (L.Pos < 0)
+			return;
+		Known(Tex1, Hash1);
+		if (Hash1 == 0xFFFFFFFF)
+			return;
+		DWORD H0 = 0;
+		if (Tex0 != nullptr && Hash0 != nullptr)
+		{
+			Known(Tex0, *Hash0);
+			H0 = *Hash0;
+		}
+
+		DWORD Tci = 0, Ttf = 0;
+		Dev->GetTextureStageState(1, D3DTSS_TEXCOORDINDEX, &Tci);
+		Dev->GetTextureStageState(1, D3DTSS_TEXTURETRANSFORMFLAGS, &Ttf);
+		const DWORD Gen = Tci & 0xFFFF0000, Set = Tci & 0xFFFF;
+		if ((Gen != D3DTSS_TCI_PASSTHRU && Gen != D3DTSS_TCI_CAMERASPACEPOSITION) || (Gen == D3DTSS_TCI_PASSTHRU && (Set >= 8 || L.Tex[Set] < 0)))
+			return;
+		D3DMATRIX W, V, T;
+		Dev->GetTransform(D3DTS_WORLD, &W);
+		Dev->GetTransform(D3DTS_VIEW, &V);
+		Dev->GetTransform(D3DTS_TEXTURE1, &T);
+		auto Mul = [](const float *In, const D3DMATRIX &M, float *Out) {
+			for (int c = 0; c < 4; c++)
+				Out[c] = In[0] * M.m[0][c] + In[1] * M.m[1][c] + In[2] * M.m[2][c] + In[3] * M.m[3][c];
+		};
+
+		U2LightmapCapture &C = Captured[Hash1];
+		if (C.W == 0)
+		{
+			D3DSURFACE_DESC D = {};
+			Tex1->GetLevelDesc(0, &D);
+			C.W = D.Width; C.H = D.Height; C.Op = Op1;
+			U2TexInfo Dummy;
+			this->Hash(Tex1, Dummy, true);       // the lightmap itself, for comparing with the bake
+		}
+
+		// one vertex: world position and lightmap coordinates; false if out of the data
+		auto Vertex = [&](UINT Index, float *Out) -> bool {
+			const long long At = ((long long)BaseVertex + Index) * Stride;
+			if (At < 0 || (size_t)At + Stride > VertBytes)
+				return false;
+			const BYTE *P = Verts + At;
+			const float *Pos = reinterpret_cast<const float *>(P + L.Pos);
+			const float Obj[4] = { Pos[0], Pos[1], Pos[2], 1 };
+			float World[4], In[4] = { 0, 0, 0, 0 }, Uv[4];
+			Mul(Obj, W, World);
+			if (Gen == D3DTSS_TCI_CAMERASPACEPOSITION)
+			{
+				Mul(World, V, In);
+				In[3] = 1;
+			}
+			else
+			{
+				const float *Tc = reinterpret_cast<const float *>(P + L.Tex[Set]);
+				const int N = L.TexComps[Set];
+				for (int c = 0; c < N; c++)
+					In[c] = Tc[c];
+				if (N < 4)
+					In[N] = 1;                   // Direct3D pads (u, v) to (u, v, 1, 0) for the transform
+			}
+			const DWORD Count = Ttf & 0xFF;
+			if (Count != D3DTTFF_DISABLE)
+			{
+				Mul(In, T, Uv);
+				if ((Ttf & D3DTTFF_PROJECTED) && Count >= 2 && Uv[Count - 1] != 0)
+				{
+					Uv[0] /= Uv[Count - 1];
+					Uv[1] /= Uv[Count - 1];
+				}
+			}
+			else
+			{
+				Uv[0] = In[0]; Uv[1] = In[1];
+			}
+			Out[0] = World[0]; Out[1] = World[1]; Out[2] = World[2]; Out[3] = Uv[0]; Out[4] = Uv[1];
+			return true;
+		};
+		auto IndexAt = [&](UINT k, UINT &Out) -> bool {
+			if (Indices == nullptr) { Out = k; return true; }
+			const size_t At = ((size_t)StartIndex + k) * (Index32 ? 4 : 2);
+			if (At + (Index32 ? 4 : 2) > IndexBytes)
+				return false;
+			Out = Index32 ? *reinterpret_cast<const DWORD *>(Indices + At) : *reinterpret_cast<const WORD *>(Indices + At);
+			return true;
+		};
+
+		for (UINT t = 0; t < PrimCount; t++)
+		{
+			UINT k[3];
+			if (Type == D3DPT_TRIANGLELIST) { k[0] = t * 3; k[1] = t * 3 + 1; k[2] = t * 3 + 2; }
+			else if (Type == D3DPT_TRIANGLESTRIP) { k[0] = t + (t & 1); k[1] = t + 1 - (t & 1); k[2] = t + 2; }
+			else { k[0] = 0; k[1] = t + 1; k[2] = t + 2; }
+			if (Cull == D3DCULL_CW)
+				std::swap(k[1], k[2]);           // front faces are counter-clockwise here
+			float Tri[15];
+			UINT I;
+			bool Ok = true;
+			for (int c = 0; c < 3 && Ok; c++)
+				Ok = IndexAt(k[c], I) && Vertex(I, Tri + c * 5);
+			if (!Ok)
+				return;
+			unsigned long long Key = 1469598103934665603ull ^ Hash1;
+			for (int c = 0; c < 15; c++)
+			{
+				const long long Q = (long long)floor(Tri[c] * (c % 5 < 3 ? 8.0f : 4096.0f) + 0.5f);
+				Key = (Key ^ (unsigned long long)Q) * 1099511628211ull;
+			}
+			if (!CapturedTris.insert(Key).second)
+				continue;
+			C.Verts.insert(C.Verts.end(), Tri, Tri + 15);
+			C.Tex.push_back(H0);
+			CaptureDirty = true;
+		}
+	}
+
+	void WriteCapture()
+	{
+		CaptureDirty = false;
+		FILE *F = nullptr;
+		if (fopen_s(&F, (Dir + "U2Shaders\\capture\\scene.obj").c_str(), "w") || F == nullptr)
+			return;
+		fprintf(F, "# U2Shaders lmcapture: world-space triangles of lightmapped draws (game units)\n");
+		fprintf(F, "# vt = lightmap coordinates, Direct3D convention (v down); faces in Direct3D front-face order\n");
+		unsigned N = 0, Tris = 0;
+		for (const auto &It : Captured)
+		{
+			const U2LightmapCapture &C = It.second;
+			fprintf(F, "o lm_%08x\n", It.first);
+			DWORD Last = 0xFFFFFFFF;
+			for (size_t t = 0; t < C.Tex.size(); t++)
+			{
+				if (C.Tex[t] != Last)
+				{
+					fprintf(F, "usemtl tex_%08x\n", C.Tex[t]);
+					Last = C.Tex[t];
+				}
+				const float *P = &C.Verts[t * 15];
+				for (int c = 0; c < 3; c++)
+					fprintf(F, "v %.4f %.4f %.4f\nvt %.6f %.6f\n", P[c * 5], P[c * 5 + 1], P[c * 5 + 2], P[c * 5 + 3], P[c * 5 + 4]);
+				fprintf(F, "f %u/%u %u/%u %u/%u\n", N + 1, N + 1, N + 2, N + 2, N + 3, N + 3);
+				N += 3;
+				Tris++;
+			}
+		}
+		fclose(F);
+		if (fopen_s(&F, (Dir + "U2Shaders\\capture\\lightmaps.txt").c_str(), "w") || F == nullptr)
+			return;
+		fprintf(F, "# hash width height stage1_op triangles   (op: 4 modulate, 5 modulate x2, 6 modulate x4)\n");
+		for (const auto &It : Captured)
+			fprintf(F, "%08x %u %u %u %u\n", It.first, It.second.W, It.second.H, It.second.Op, (unsigned)It.second.Tex.size());
+		fclose(F);
+		if (CaptureWritten++ % 20 == 0)
+			Message("lmcapture: %u lightmaps, %u triangles written to U2Shaders\\capture", (unsigned)Captured.size(), Tris);
+	}
+
 	U2Rule CharRule;
 	std::map<std::string, bool> CharRefused;   // stage/material setups charlight= logged and left alone
 	float OldCharConst[24][4] = {};
@@ -1680,6 +1941,8 @@ public:
 		}
 		Saw3D = PostDone = false;
 		Frame++;
+		if (Capture && CaptureDirty && Frame % 300 == 0)
+			WriteCapture();
 		if (CharProbe)
 		{
 			ProbeFrames++;

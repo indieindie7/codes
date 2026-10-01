@@ -62,9 +62,29 @@ Always save under a new name: the original map stays as it was.
 - Sheared brushes (MainScale/PostScale SheerRate): the sheer is ignored on import, with a warning.
 - How umodel-exported static meshes are oriented (the importer assumes X forward, Z up).
 
+## Baking lightmaps (global illumination) in Blender
+
+`bake_lightmaps.py` bakes new lightmaps from what U2Shaders' `lmcapture=1` recorded in the game
+(the real, built level: `System\U2Shaders\capture\`), lit by the map's own lights (`--t3d`,
+through the importer above), with Cycles: direct and bounced light. Out come DDS files and the
+`replace=` lines that make the game draw them instead of its own lightmaps.
+
+```
+blender -b -P bake_lightmaps.py -- --capture "C:\...\System\U2Shaders\capture" --t3d C:\work\MyMap.t3d --samples 128
+    -> System\U2Shaders\baked\<hash>.dds + replace_lines.txt (paste into U2Shaders.ini)
+```
+
+Each bake is scaled so its average brightness equals the game's own lightmap (`--no-match` to
+turn that off): the level keeps its exposure; where light falls and how it bounces is what
+changes. Unreal's light brightness/radius to Blender watts is a rough guess, which the matching
+mostly hides. Tested end to end on U2Shaders' test wall under Wine (capture, bake, swap); not
+yet on a real Unreal II level.
+
 ## Test
 
 `python test/test_blender.py [render.png]` with Blender's Python module (`pip install bpy`,
 Python 3.11): imports `test/sample.t3d` (written by `test/make_sample.py`), checks it against the
 file, exports it unchanged (same actors, same faces and texture alignment) and edited (moved,
 turned, a new brush and light), and imports the edited file again.
+`python test/test_bake.py`: bakes `test/capture_sample` (a capture from U2Shaders' Wine test)
+with a test light and checks the DDS (size, mips, light falloff, matched brightness).

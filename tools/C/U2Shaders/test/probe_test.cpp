@@ -7,6 +7,8 @@
 // vertex colour on stage 0, a lightmap times 2 on stage 1), with and without the surface= rule.
 // Modes "sphere" / "spherelit": a textured, D3D-lit sphere seen through an Unreal-style view
 // (world X forward, Z up), without and with charlight=1 (per-pixel character lighting).
+// Mode "wallcap": the wall with lmcapture=1 (writes U2Shaders\capture\scene.obj). Mode
+// "wallbaked": the wall with its lightmap replaced by U2Shaders\baked\<hash>.dds, if a bake made one.
 // Mode "wallgi": the wall with its lightmap swapped (replace=) for a DDS this program writes
 // (warm light from the left, blue bounce from the right), as a Blender bake would be.
 // Writes U2Shaders.ini itself (the decal's hash computed the way u2shaders.hpp does).
@@ -126,6 +128,8 @@ int main(int argc, char **argv)
 	const bool sphereMode = argc >= 2 && strncmp(argv[1], "sphere", 6) == 0;
 	const bool charLight = sphereMode && strcmp(argv[1], "spherelit") == 0;
 	const bool giMode = wallMode && strcmp(argv[1], "wallgi") == 0;
+	const bool capMode = wallMode && strcmp(argv[1], "wallcap") == 0;
+	const bool bakedMode = wallMode && strcmp(argv[1], "wallbaked") == 0;
 	const bool useWallRule = wallMode && (strcmp(argv[1], "wall") == 0 || giMode);
 	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode && !wallMode && !sphereMode);
 	WNDCLASSA wc = {}; wc.lpfnWndProc = DefWindowProcA; wc.hInstance = GetModuleHandle(nullptr); wc.lpszClassName = "u2t";
@@ -151,6 +155,8 @@ int main(int argc, char **argv)
 	if (postMode) fprintf(F, "post=1\npostsplit=1\nbloom=0.7 1.0\n");
 	if (charLight) fprintf(F, "charlight=1\n");
 	if (useWallRule) fprintf(F, "surface=%08lx world_parallax.hlsl\n", brickHash);
+	if (capMode) fprintf(F, "lmcapture=1\n");
+	if (bakedMode) fprintf(F, "replace=%08lx baked\\%08lx.dds\n", lightHash, lightHash);
 	if (giMode)
 	{
 		WriteBakedDDS("U2Shaders\\baked_test.dds");
@@ -320,7 +326,7 @@ int main(int argc, char **argv)
 			D3DLOCKED_RECT LR;
 			if (Sys && SUCCEEDED(Sys->LockRect(&LR, nullptr, D3DLOCK_READONLY)))
 			{
-				const char *name = sphereMode ? (charLight ? "frame_spherelit.bmp" : "frame_sphere.bmp") : postMode ? "frame_post.bmp" : wallMode ? (giMode ? "frame_wallgi.bmp" : useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
+				const char *name = sphereMode ? (charLight ? "frame_spherelit.bmp" : "frame_sphere.bmp") : postMode ? "frame_post.bmp" : wallMode ? (giMode ? "frame_wallgi.bmp" : bakedMode ? "frame_wallbaked.bmp" : capMode ? "frame_wallcap.bmp" : useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
 					: useDecalRule ? "frame_parallax.bmp" : "frame_flat.bmp";
 				FILE *B = fopen(name, "wb");
 				BITMAPFILEHEADER fh = {}; BITMAPINFOHEADER ih = {};
