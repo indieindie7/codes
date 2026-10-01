@@ -9,7 +9,8 @@
  *     tint=1a2b3c4d               draw everything using that texture in flat magenta
  *     shader=1a2b3c4d core.hlsl   draw it with U2Shaders\core.hlsl (entry "main", ps_2_a)
  *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
- *                                 U2Shaders\dump\chars.txt (logging only, see ProbeDraw)
+ *                                 U2Shaders\dump\chars.txt, and whether scene depth can be
+ *                                 read as a texture (U2Shaders.log; logging only, see ProbeDraw)
  *
  * What a shader gets:
  *     s0            the original texture, TEXCOORD0 = its (possibly panned) coordinates
@@ -922,8 +923,49 @@ public:
 	std::map<std::string, U2Probe> Probes;
 	std::map<DWORD, bool> ProbeDumped;
 
+	// Screen-space contact shadows need the scene's depth as a texture, which Direct3D 9 only
+	// offers through vendor formats. Asked once, then actually created: a wrapper (dgVoodoo)
+	// may claim a format it can't make. Results go to U2Shaders.log.
+	bool DepthChecked = false;
+	void ProbeDepth(IDirect3DDevice9 *Dev)
+	{
+		DepthChecked = true;
+		IDirect3D9 *D3D = nullptr;
+		D3DDEVICE_CREATION_PARAMETERS CP = {};
+		D3DDISPLAYMODE DM = {};
+		if (FAILED(Dev->GetDirect3D(&D3D)) || D3D == nullptr || FAILED(Dev->GetCreationParameters(&CP)) || FAILED(Dev->GetDisplayMode(0, &DM)))
+		{
+			Message("depth probe: device queries failed");
+			if (D3D) D3D->Release();
+			return;
+		}
+		IDirect3DSurface9 *DS = nullptr;
+		D3DSURFACE_DESC DD = {};
+		if (SUCCEEDED(Dev->GetDepthStencilSurface(&DS)) && DS) { DS->GetDesc(&DD); DS->Release(); }
+		Message("depth probe: scene depth format %u %ux%u multisample %u", (unsigned)DD.Format, DD.Width, DD.Height, (unsigned)DD.MultiSampleType);
+		static const struct { const char *Name; D3DFORMAT Fmt; } Formats[] = {
+			{ "INTZ", (D3DFORMAT)MAKEFOURCC('I', 'N', 'T', 'Z') },
+			{ "DF24", (D3DFORMAT)MAKEFOURCC('D', 'F', '2', '4') },
+			{ "DF16", (D3DFORMAT)MAKEFOURCC('D', 'F', '1', '6') },
+			{ "RAWZ", (D3DFORMAT)MAKEFOURCC('R', 'A', 'W', 'Z') },
+		};
+		for (const auto &F : Formats)
+		{
+			HRESULT hr = D3D->CheckDeviceFormat(CP.AdapterOrdinal, CP.DeviceType, DM.Format, D3DUSAGE_DEPTHSTENCIL, D3DRTYPE_TEXTURE, F.Fmt);
+			IDirect3DTexture9 *T = nullptr;
+			HRESULT hc = Dev->CreateTexture(64, 64, 1, D3DUSAGE_DEPTHSTENCIL, F.Fmt, D3DPOOL_DEFAULT, &T, nullptr);
+			Message("depth probe: %s reported %s, create %s", F.Name, SUCCEEDED(hr) ? "yes" : "no", SUCCEEDED(hc) && T ? "ok" : "failed");
+			if (T) T->Release();
+		}
+		HRESULT hr = D3D->CheckDeviceFormat(CP.AdapterOrdinal, CP.DeviceType, DM.Format, D3DUSAGE_RENDERTARGET, D3DRTYPE_SURFACE, (D3DFORMAT)MAKEFOURCC('R', 'E', 'S', 'Z'));
+		Message("depth probe: RESZ (copy a multisampled depth) reported %s", SUCCEEDED(hr) ? "yes" : "no");
+		D3D->Release();
+	}
+
 	void ProbeDraw(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD TexHash, bool FixedFunction)
 	{
+		if (!DepthChecked)
+			ProbeDepth(Dev);
 		DWORD blend = 0;
 		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
 		if (blend || Offscreen(Dev))

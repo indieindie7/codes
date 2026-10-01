@@ -27,6 +27,12 @@ var float MinStrength;       // darkness of the faintest lamp shadow, relative t
 var float FullIntensity;     // lamp intensity (brightness x falloff) that casts the darkest shadow
 var float LightShare;        // this light's share of the light here (darkness scale), eased toward
 var float TargetShare;       // the controller's latest value
+var bool bFitToFloor;        // end the fade where the head's shadow really lands, not on flat ground
+var float FloorTraceInterval; // seconds between floor traces
+var float NextFloorTrace;
+var float TipTarget;         // traced depth of the head's shadow along the projection axis (0 = no hit)
+var float TipFit;            // eased toward TipTarget (0 = not started)
+var Actor TipLight;          // the light the last trace was for
 
 // the light this shadow is heading toward (after any pending switch)
 function Actor TargetLight()
@@ -109,6 +115,38 @@ function float LampIntensity(Actor L)
 	if (Dist >= Reach)
 		return 0;
 	return L.LightBrightness * (1.0 - Square(Dist / Reach));
+}
+
+// where the head's shadow really lands, as a depth along the projection axis from the
+// projector: on stairs, slopes and ledges the flat-ground estimate (Flat) ends the fade too
+// early or too late. Traced at most every FloorTraceInterval and eased, so it costs a few
+// traces a second per shadow and never jumps. No floor within reach (mid-air, a drop): Flat.
+function float FitTipDepth(rotator LightRot, float Flat, float DeltaTime)
+{
+	local vector Dir, Head, HitLoc, HitNorm;
+	local float Target;
+
+	if (Level.TimeSeconds >= NextFloorTrace || TipLight != AssignedLight)
+	{
+		NextFloorTrace = Level.TimeSeconds + FloorTraceInterval;
+		Dir = Vector(LightRot);
+		Head = ShadowActor.Location;
+		Head.Z += ShadowActor.CollisionHeight;
+		TipTarget = 0;
+		if (Trace(HitLoc, HitNorm, Head + Dir * MaxGradient, Head, false) != None)
+			TipTarget = FMax((HitLoc - Location) dot Dir, ShadowActor.CollisionHeight);
+		if (TipLight != AssignedLight)
+			TipFit = 0;          // a new light: start over rather than ease from the old one
+		TipLight = AssignedLight;
+	}
+	Target = Flat;
+	if (TipTarget > 0)
+		Target = TipTarget;
+	if (TipFit <= 0)
+		TipFit = Target;
+	else
+		TipFit += (Target - TipFit) * FMin(1.0, DeltaTime * 6.0);
+	return TipFit;
 }
 
 function bool CalcPos(float DeltaTime)
@@ -216,6 +254,8 @@ function bool CalcPos(float DeltaTime)
 		Shift = FeetDepth * 0.85;
 		SetLocation(Location + Vector(LightRot) * Shift);
 	}
+	if (bFitToFloor)
+		TipDepth = FitTipDepth(LightRot, TipDepth - Shift, DeltaTime) + Shift;
 	MaxTraceDistance = int(FClamp((TipDepth - Shift) * GradientScale, Half, MaxGradient));
 
 	// darker when the light is close, lighter far away, scaled by the fade
@@ -247,6 +287,8 @@ defaultproperties
 	FullIntensity=128.000000
 	LightShare=1.000000
 	TargetShare=1.000000
+	bFitToFloor=True
+	FloorTraceInterval=0.100000
 	GradientTexture=Texture'Engine.GRADIENT_Fade'
 	RemoteRole=ROLE_None
 }

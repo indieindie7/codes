@@ -30,7 +30,9 @@ dll the new `pcss_proj.hlsl` still works and draws grey shadows.
 Probe, logging only: `charprobe=1` records how every opaque on-screen draw is lit (fixed-function
 lighting, lights, material, ambient, vertex blending, texture stages) and whether shadow
 silhouettes were drawn earlier in the frame, in `System\U2Shaders\dump\chars.txt`, and saves each
-texture once as a `.dds` to tell character skins apart. Run it with U2Pilot's
+texture once as a `.dds` to tell character skins apart. It also checks whether the scene's depth
+can be read as a texture (`INTZ`/`DF24`/`DF16`/`RAWZ`, needed for screen-space contact shadows)
+and writes the answer to `U2Shaders.log` ("depth probe: ..."). Run it with U2Pilot's
 `scripts/char_probe.txt`. It is the groundwork for character lighting and self-shadowing: the
 per-surface rules only reach alpha-blended draws, and character skins are opaque.
 
