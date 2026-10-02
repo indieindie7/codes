@@ -7,7 +7,8 @@
 // character costs no level-wide search; moving lights are rescanned at most
 // every 0.15 s however many controllers ask.
 //=============================================================================
-class ModShadowManager extends Info;
+class ModShadowManager extends Info
+	config(AdventMod);
 
 var array<ModShadowController> Controllers;
 var array<Light> StaticLights;
@@ -19,6 +20,9 @@ var PlayerController Viewer;
 var bool bSuspended;
 var float ReportTime;
 var int Reports;
+var config bool bPcssIndoorsOnly;  // contact hardening only while the player is indoors (outdoors it loses the sun shadow)
+var float OutdoorTime;             // how long the player has been on the other side of the last switch
+var int PcssState;                 // -1 unknown, 0 off, 1 on
 
 function Note(string S)
 {
@@ -112,6 +116,8 @@ event Timer()
 			Note(Controllers[i].Describe());
 	}
 
+	if (bPcssIndoorsOnly)
+		UpdatePcss();
 	if (bSuspended)
 		return;
 	foreach DynamicActors(class'Pawn', P)
@@ -131,6 +137,29 @@ event Timer()
 		if (!bHas)
 			Adopt(P);
 	}
+}
+
+// contact hardening indoors only: switched once the player has been outdoors (or back
+// indoors) for a second, so a doorway doesn't flicker it
+function UpdatePcss()
+{
+	local int i, Want;
+
+	Want = PcssState;
+	for (i = 0; i < Controllers.Length; i++)
+		if (Controllers[i] != None && Controllers[i].IsPlayer() && Controllers[i].bPicked)
+			Want = int(!Controllers[i].bOutdoors);
+	if (Want == PcssState || Want < 0)
+	{
+		OutdoorTime = 0;
+		return;
+	}
+	OutdoorTime += 0.5;
+	if (OutdoorTime < 1.0 && PcssState >= 0)
+		return;
+	OutdoorTime = 0;
+	PcssState = Want;
+	class'ModSettings'.static.NativeCall("Pcss:" $ Want);
 }
 
 function Adopt(Pawn P)
@@ -173,5 +202,7 @@ event Destroyed()
 
 defaultproperties
 {
+	bPcssIndoorsOnly=True
+	PcssState=-1
 	RemoteRole=ROLE_None
 }

@@ -12,6 +12,7 @@
 #include <wchar.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 int D3DTraceStart(void);   /* d3dtrace.c */
 int ShadowFixApply(void);  /* shadowfix.c */
@@ -46,6 +47,45 @@ void Note(const wchar_t* Fmt, ...)
 /* ------------------------------------------------------------ borderless */
 
 static HWND GameWindow;
+/* The contact-hardening shadow layer (the U2Shaders d3d8.dll, when installed) reads
+   "pcss=" from System\U2Shaders.ini. Rewrites that line only when the value changes;
+   the layer picks the file up again while the game runs. 0 when the layer isn't there. */
+static int SetPcss(int On)
+{
+	static int Last = -1;
+	wchar_t Path[MAX_PATH], *Slash;
+	char Buf[8192], Out[8400];
+	FILE* F;
+	size_t Len, o = 0;
+	char* Line;
+	int Found = 0;
+
+	if (On == Last) return 1;
+	GetModuleFileNameW(NULL, Path, MAX_PATH);
+	Slash = wcsrchr(Path, L'\\');
+	if (!Slash) return 0;
+	wcscpy(Slash + 1, L"U2Shaders.ini");
+	F = _wfopen(Path, L"rb");
+	if (!F) return 0;
+	Len = fread(Buf, 1, sizeof(Buf) - 1, F);
+	fclose(F);
+	Buf[Len] = 0;
+	for (Line = strtok(Buf, "\r\n"); Line; Line = strtok(NULL, "\r\n"))
+	{
+		if (!_strnicmp(Line, "pcss=", 5)) { o += sprintf(Out + o, "pcss=%d\r\n", On); Found = 1; }
+		else o += sprintf(Out + o, "%s\r\n", Line);
+		if (o > sizeof(Out) - 600) break;
+	}
+	if (!Found) o += sprintf(Out + o, "pcss=%d\r\n", On);
+	F = _wfopen(Path, L"wb");
+	if (!F) return 0;
+	fwrite(Out, 1, o, F);
+	fclose(F);
+	Last = On;
+	Note(L"contact-hardening shadows %ls", On ? L"on (indoors)" : L"off (outdoors: the plain sun shadow)");
+	return 1;
+}
+
 static int Borderless;
 static LONG SavedStyle, SavedExStyle;
 static RECT SavedRect;
@@ -122,6 +162,7 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsicmp(Cmd, L"ShadowFix")) return ShadowFixApply();
 	if (!_wcsicmp(Cmd, L"ShadowAlpha")) return ShadowAlphaApply();
 	if (!_wcsicmp(Cmd, L"D3DZAlways")) { D3DZAlways = 1; Note(L"d3dtrace: projected draws now always pass the depth test"); return 1; }
+	if (!_wcsnicmp(Cmd, L"Pcss:", 5)) return SetPcss(Cmd[5] == L'1');
 	if (!_wcsnicmp(Cmd, L"Fits:", 5))
 	{
 		/* does WxH fit on the screen the game is on? */

@@ -28,6 +28,8 @@ var float MaxSteepness;      // steepest a lamp may shine down, in degrees (over
 var float MinSteepness;      // shallowest a lamp may shine down, in degrees: a low lamp's shadow is
                              // so long that the silhouette is spread thin and barely shows
 var float MaxLightDistance;  // light distance used for the frustum, at most (closer = the silhouette fills more of the picture)
+var float SunStrength;       // darkness of a bright sun's shadow, 0-1 (outdoors: one shadow)
+var float SunFullBrightness; // sun brightness that casts the darkest shadow; a dimmer sun casts a lighter one
 var float MinStrength;       // darkness of the faintest lamp shadow, relative to the darkest (0-1)
 var float FullIntensity;     // lamp intensity (brightness x falloff) that casts the darkest shadow
 var float InterpolateRate;   // how fast the direction turns toward a moving light (per second)
@@ -213,13 +215,14 @@ function Step(float DeltaTime)
 	Proj.MaxTraceDistance = int(FClamp(TipDepth * GradientScale, Half, MaxGradient));
 
 	// darker when the light is close and bright, lighter far away, scaled by the fade
-	if (IsSun(AssignedLight))
-		Strength = 0.8;
-	else
-		Strength = MinStrength + (1.0 - MinStrength) * FClamp(LampIntensity(AssignedLight) / FullIntensity, 0.0, 1.0);
 	// the other lights (and the ambient light) fill the shadow in
 	LightShare += (TargetShare - LightShare) * FMin(1.0, DeltaTime * 2.0);
-	Strength *= LightShare;
+	if (IsSun(AssignedLight))
+		// one shadow under open sky, as strong as the sun is bright (a dim or setting sun casts a
+		// lighter one)
+		Strength = SunStrength * FClamp(AssignedLight.LightBrightness / SunFullBrightness, 0.4, 1.0);
+	else
+		Strength = (MinStrength + (1.0 - MinStrength) * FClamp(LampIntensity(AssignedLight) / FullIntensity, 0.0, 1.0)) * LightShare;
 	Proj.ShadowTexture.ShadowDarkness = byte(FClamp(ShadowStrength * Strength * Fade, 0, 255));
 }
 
@@ -238,6 +241,8 @@ defaultproperties
 	MaxGradient=2048.000000
 	MaxSteepness=60.000000
 	MinSteepness=35.000000
+	SunStrength=1.000000
+	SunFullBrightness=200.000000
 	MaxLightDistance=600.000000
 	MinStrength=0.200000
 	FullIntensity=128.000000

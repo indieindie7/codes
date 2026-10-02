@@ -27,6 +27,8 @@ var config float GradientScale;   // fade length as a multiple of the shadow's l
 var config float MaxSteepness;    // overhead lamps are tilted to at most this steep (degrees)
 var config float MinSteepness;    // low lamps are raised to at least this steep (degrees)
 var config float FrustumDistance; // light distance the shadow picture is fitted to, at most
+var config float SunStrength;     // darkness of a bright sun's shadow, 0-1
+var config float SunFullBrightness; // sun brightness that casts the darkest shadow
 var config float MinStrength;     // darkness of the faintest lamp shadow (dim or far lamp), 0-1
 var config float FullIntensity;   // lamp brightness x falloff that casts the darkest shadow
 var config float CullDistance;    // characters farther than this from the player cast no shadows
@@ -38,6 +40,7 @@ var config float RepickDistance;  // the light set is re-picked only after movin
 var config bool bRespectBaked;    // darkness follows the light's share of all light here
 var config float AmbientWeight;   // how much the zone's ambient brightness counts against the lamps
 var config float MinShare;        // darkness kept even when a light is a small share of the total
+var config bool bSunOnlyOutdoors; // under open sky only the sun casts (lamps only indoors)
 var config bool bDebugStockDir;   // testing: every shadow's light sits behind the camera (shadow in plain view)
 var config bool bDebugOwnShadow;  // testing: register the first shadow as the pawn's own Shadow
 
@@ -54,6 +57,7 @@ var int PickAllowed;
 var int PickVersion;
 var float LastTotalLight;
 var float LastAmbient;
+var bool bOutdoors;               // the sun reached this character at the last pick
 
 function bool IsPlayer()
 {
@@ -91,6 +95,8 @@ function Initialize()
 		S.MinSteepness = MinSteepness;
 		S.MaxLightDistance = FrustumDistance;
 		S.MinStrength = MinStrength;
+		S.SunStrength = SunStrength;
+		S.SunFullBrightness = SunFullBrightness;
 		S.FullIntensity = FullIntensity;
 		Shadows[Shadows.Length] = S;
 	}
@@ -286,8 +292,9 @@ function SelectLights()
 	ChosenPriority.Length = 0;
 	LastAmbient = AmbientLight();
 	Total = LastAmbient;
+	bOutdoors = SunVisible();
 
-	for (i = 0; i < Manager.StaticLights.Length; i++)
+	for (i = 0; i < Manager.StaticLights.Length && !(bOutdoors && bSunOnlyOutdoors); i++)
 	{
 		A = Manager.StaticLights[i];
 		if (A == None)
@@ -300,7 +307,7 @@ function SelectLights()
 		}
 	}
 	Manager.RefreshDynamicLights();
-	for (i = 0; i < Manager.DynamicLights.Length; i++)
+	for (i = 0; i < Manager.DynamicLights.Length && !(bOutdoors && bSunOnlyOutdoors); i++)
 	{
 		A = Manager.DynamicLights[i];
 		if (A == None || A.bDeleteMe)
@@ -313,7 +320,7 @@ function SelectLights()
 		}
 	}
 	// under open sky the sun always casts, bumping the weakest local light if needed
-	if (SunVisible())
+	if (bOutdoors)
 	{
 		Score = Manager.SunLightActor.LightBrightness;
 		Total += Score;
@@ -422,6 +429,8 @@ defaultproperties
 	MinSteepness=35.000000
 	FrustumDistance=600.000000
 	MinStrength=0.500000
+	SunStrength=1.000000
+	SunFullBrightness=200.000000
 	FullIntensity=128.000000
 	CullDistance=3000.000000
 	UnseenTime=0.300000
@@ -430,6 +439,7 @@ defaultproperties
 	MidDistance=2000.000000
 	RepickDistance=32.000000
 	bRespectBaked=True
+	bSunOnlyOutdoors=True
 	AmbientWeight=1.000000
 	MinShare=0.600000
 	bHidden=True
