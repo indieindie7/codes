@@ -80,6 +80,61 @@ def portrait_sections():
     return img + [""] + ms + [""] + pic + [""]
 
 
+# rows added after a stock page's own: page -> (first row number, rows); rows as in ROWS
+EXTRA = {
+    "HUD": (6, [
+        ("PostEnabled", "Post Effects:", "Bloom, colour grading and sharpening on the 3D view (the HUD stays crisp).",
+         ["U2CheckBox:{y}", "	Object=PostFXHelper", "	Variable=PostEnabled"]),
+        ("PostLook", "Post Look:", "A preset for every post value; moving a slider below makes it Custom.",
+         ["U2Selector:{y}", "	Group=OptionWidgets_HUD", "	Accessor=PostFXHelper,GetLookList",
+          "	Modifier=PostFXHelper,SetLook", "	CurrentText=PostFXHelper,GetLook"]),
+        ("PostBloom", "Bloom:", "How strongly bright lights and the sky glow.",
+         ["U2Slider:{y}", "	Range=0,2", "	Step=0.05", "	Format=Float2Format", "	Object=PostFXHelper", "	Variable=BloomAmount"]),
+        ("PostSaturation", "Saturation:", "Colour strength: below 1 washed out, above 1 more vivid.",
+         ["U2Slider:{y}", "	Range=0.5,1.6", "	Step=0.05", "	Format=Float2Format", "	Object=PostFXHelper", "	Variable=Saturation"]),
+        ("PostContrast", "Contrast:", "Difference between dark and bright parts of the picture.",
+         ["U2Slider:{y}", "	Range=0.8,1.5", "	Step=0.02", "	Format=Float2Format", "	Object=PostFXHelper", "	Variable=Contrast"]),
+        ("PostVignette", "Vignette:", "Darkening towards the edges of the screen.",
+         ["U2Slider:{y}", "	Range=0,0.8", "	Step=0.05", "	Format=Float2Format", "	Object=PostFXHelper", "	Variable=Vignette"]),
+        ("PostSharpen", "Sharpen:", "Crisper textures; too high gives bright halos on edges.",
+         ["U2Slider:{y}", "	Range=0,1", "	Step=0.05", "	Format=Float2Format", "	Object=PostFXHelper", "	Variable=Sharpen"]),
+    ]),
+    # the stock game's own FOV slider, which this menu set had dropped
+    "GAME": (10, [
+        ("FieldOfView", "Field of View:", "Wider view: more peripheral vision, more \"fish eye\" at high values.",
+         ["U2Slider:{y}", "	Range=60,130", "	Step=1", "	Format=ByteFormat", "	Object=CodeMonkey", "	Variable=FieldOfView"]),
+    ]),
+}
+EXTRA_HELPERS = {"HUD": ("PostFXHelper", "U2SoftShadows$PostFXHelper")}
+
+
+def add_extra_rows(lines):
+    for page, (first, rows) in EXTRA.items():
+        ws, we = block_bounds(lines, "[OptionWidgets_%s]" % page, lambda l: l.startswith("Register=OptionWidgets_%s" % page))
+        have = set(l.strip() for l in lines[ws:we])
+        rows = [row for row in rows if not any(x.strip().startswith("Variable=") and x.strip() in have for x in row[3])]
+        if not rows:
+            continue                   # this menu set already has them (U2Menus.ui has its own FOV row)
+        hdr = "[OptionDescriptions_%s]" % page
+        s, e = block_bounds(lines, hdr, lambda l: l.strip() == "" or l.startswith("["))
+        add = ["Component=OptionDescription:%02d/%d/%s" % (first + n, (first - 1 + n) * 26, key) for n, (key, _, _, _) in enumerate(rows)]
+        lines[e:e] = add
+        hdr = "[OptionWidgets_%s]" % page
+        s, e = block_bounds(lines, hdr, lambda l: l.startswith("Register=OptionWidgets_%s" % page))
+        loc = next(i for i in range(s, e) if lines[i].startswith("Location=%0%"))
+        w = []
+        if page in EXTRA_HELPERS:
+            w.append("Component=" + EXTRA_HELPERS[page][0])
+        for n, (_, _, _, wl) in enumerate(rows):
+            w.append("Component=" + wl[0].format(y=(first - 1 + n) * 26))
+            w += wl[1:]
+        lines[loc:loc] = w
+        if page in EXTRA_HELPERS:
+            name, cls = EXTRA_HELPERS[page]
+            i = lines.index(hdr)
+            lines[i:i] = ["[%s]" % name, "Helper=" + cls, "RegisterObj=" + name, ""]
+
+
 def block_bounds(lines, header, end_pred):
     """[start, end) of a section starting at `header`, ending where end_pred(line) (exclusive)."""
     s = lines.index(header)
@@ -128,6 +183,7 @@ def patch_ui(text):
     w += ["Component=WardrobePortraitImages", "Component=WardrobePortrait"]
     w.append("Location=%0%,%1%")
     lines[s:e] = w
+    add_extra_rows(lines)
     return nl.join(lines)
 
 
@@ -151,6 +207,13 @@ def patch_int(text):
     if at is None:
         at = next(i for i, l in enumerate(out) if l.startswith("SubTitleShadows=")) + 1
     out[at:at] = new
+    # the extra rows: labels next to the page's own, tooltips into the empty MouseOver slots
+    for page, (first, rows) in EXTRA.items():
+        for n, (key, label, tip, _) in enumerate(rows):
+            slot = "MouseOver_%s_%02d=" % (page, first + n)
+            out = [slot + tip if l.startswith(slot) else l for l in out]
+            out = [l for l in out if not l.startswith("OptionDescription%s=" % key)]
+            out.insert(at, "OptionDescription%s=%s" % (key, label))
     return nl.join(out)
 
 

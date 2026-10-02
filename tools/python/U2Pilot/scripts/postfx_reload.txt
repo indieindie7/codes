@@ -1,0 +1,8 @@
+background
+map HoverTest
+waitcontrol 180
+wait 3
+shot
+wait 25
+shot
+quit

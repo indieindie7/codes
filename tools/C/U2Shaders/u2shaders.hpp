@@ -2209,8 +2209,65 @@ public:
 		}
 	}
 
+	// The in-game options page (U2SoftShadows.PostFXHelper) saves the post settings into
+	// U2Shaders.ini while the game runs: every second the file's time is checked and, when it
+	// changed, the post keys are read again (any case, any section: UnrealScript writes them
+	// under [U2SoftShadows.PostFXHelper]). The rest of the file is only read at start.
+	FILETIME IniTime = {};
+	void ReloadPost(bool Force)
+	{
+		WIN32_FILE_ATTRIBUTE_DATA A = {};
+		if (Dir.empty() || !GetFileAttributesExA((Dir + "U2Shaders.ini").c_str(), GetFileExInfoStandard, &A))
+		{
+			static int Told = 0;
+			if (Told++ < 2)
+				Message("post: can't watch %sU2Shaders.ini", Dir.c_str());
+			return;
+		}
+		if (!Force && CompareFileTime(&A.ftLastWriteTime, &IniTime) == 0)
+			return;
+		if (Force)
+			Message("post: watching U2Shaders.ini for changes (frame %u)", Frame);
+		IniTime = A.ftLastWriteTime;
+		FILE *F = nullptr;
+		if (fopen_s(&F, (Dir + "U2Shaders.ini").c_str(), "r") || F == nullptr)
+			return;
+		char Line[512];
+		bool Seen = false;
+		unsigned V = 0;
+		while (fgets(Line, sizeof(Line), F))
+		{
+			for (char *c = Line; *c; c++)
+				*c = (char)tolower((unsigned char)*c);
+			if (sscanf_s(Line, " post=%u", &V) == 1)
+			{
+				Post = V != 0;
+				Seen = true;
+				PostBright.File = "post_bright.hlsl";
+				PostBlur.File = "post_blur.hlsl";
+				PostFinal.File = "post_final.hlsl";
+			}
+			else if (sscanf_s(Line, " postsplit=%u", &V) == 1)
+				PostSplit = V != 0 ? 1.0f : 0.0f;
+			else if (sscanf_s(Line, " bloom=%f %f", &PostBloom[0], &PostBloom[1]) == 2)
+				;
+			else if (sscanf_s(Line, " grade=%f %f %f %f", &PostGrade[0], &PostGrade[1], &PostGrade[2], &PostGrade[3]) == 4)
+				;
+			else if (sscanf_s(Line, " colour=%f %f %f", &PostBalance[0], &PostBalance[1], &PostBalance[2]) == 3)
+				;
+			else if (sscanf_s(Line, " sharpen=%f", &PostBalance[3]) == 1)
+				;
+		}
+		fclose(F);
+		if (!Force)
+			Message("post: settings reloaded (post %d, bloom %.2f %.2f, grade %.2f %.2f %.2f %.2f, sharpen %.2f)", (int)Post,
+				PostBloom[0], PostBloom[1], PostGrade[0], PostGrade[1], PostGrade[2], PostGrade[3], PostBalance[3]);
+	}
+
 	void OnPresent()
 	{
+		if (Loaded && Frame % 60 == 0)
+			ReloadPost(IniTime.dwLowDateTime == 0 && IniTime.dwHighDateTime == 0);
 		if (Post && Saw3D && !PostDone && LastDev != nullptr && !Offscreen(LastDev))
 		{
 			// no 2D draw this frame (no HUD): post-process the 3D frame now, in a scene of our own
