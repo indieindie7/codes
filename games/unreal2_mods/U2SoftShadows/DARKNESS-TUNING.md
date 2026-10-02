@@ -94,3 +94,14 @@ Other things that change how dark a shadow *looks* without touching ShadowDarkne
   if its zones use a different range than Unreal II's, the share math shifts and every shadow in
   bright areas comes out too faint or too dark. Print "light here: total (lamps + ambient)" in a
   few rooms first.
+
+### Advent values that worked (from the port, 2026-10-02)
+
+- Zone ambient vs lamps: AmbientBrightness score 8 (level03sectionb station interior) and 20
+  (level04sectiona outdoors) against lamp totals of ~159 and ~320, so `AmbientWeight` barely
+  matters in Advent; the lamps dominate the share.
+- Clearly visible shadows with: `ShadowStrength 255`, `MinStrength 0.5`, `MinShare 0.6`,
+  `MinSteepness 35`, frustum distance 600.
+- Sun works (Sunlight0 in level04sectiona). Nearby NPCs on: no measurable fps cost (4 adopted,
+  ~204 fps either way).
+- Test framing: the mod's FOV at 115 in the test ini so the third-person camera shows the feet.
