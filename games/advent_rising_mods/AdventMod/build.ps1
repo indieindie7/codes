@@ -25,7 +25,7 @@ $bat = "$env:TEMP\adventnative_build.bat"
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsamd64_x86.bat" >nul 2>nul
 cd /d "$Here"
 if not exist obj mkdir obj
-cl /nologo /O1 /W3 /MT /D_CRT_SECURE_NO_WARNINGS /Foobj\ /LD native\adventnative.c native\d3dtrace.c native\shadowfix.c native\shadowalpha.c /FeSystem\AdventNative.dll /link /NOLOGO user32.lib || exit /b 1
+cl /nologo /O1 /W3 /MT /D_CRT_SECURE_NO_WARNINGS /Foobj\ /LD native\adventnative.c native\d3dtrace.c native\shadowfix.c native\shadowalpha.c native\capture.c /FeSystem\AdventNative.dll /link /NOLOGO user32.lib || exit /b 1
 "@ | Set-Content $bat -Encoding ascii
 cmd /c $bat | Select-String 'error|warning'
 if ($LASTEXITCODE -ne 0) { throw 'native build failed' }

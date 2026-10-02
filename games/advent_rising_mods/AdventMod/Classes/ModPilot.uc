@@ -36,6 +36,9 @@ var float StepTime, StepLength;
 var string Cmd;
 var array<string> Args;
 var float TurnYaw, TurnPitch;          // degrees per second while turning
+var float TargetYaw, TargetPitch;      // FACE/TURN: where the view should end up (degrees)
+var bool bAimPitch;                    // FACE/TURN: steer the pitch too
+var float OnTargetTime;
 var string ReleaseCommand;             // console command that "lets go" of the held button
 var bool bWantPause;
 var float ControlTime;                   // the script itself paused the game (pause button, menu step)
@@ -154,21 +157,84 @@ function bool PressButton(string B)
 	return true;
 }
 
+// the camera effects on the player right now, with their settings
+function FxList()
+{
+	local int i;
+	local PlayerController P;
+
+	P = PC();
+	if (P == None)
+		return;
+	Note("fx: " $ P.CameraEffects.Length $ " camera effects");
+	for (i = 0; i < P.CameraEffects.Length; i++)
+		if (P.CameraEffects[i] != None)
+			Note("fx " $ i $ ": " $ P.CameraEffects[i].Class $ " alpha " $ P.CameraEffects[i].Alpha $ " enabled " $ P.CameraEffects[i].Enabled $ " final " $ P.CameraEffects[i].FinalEffect);
+}
+
+function Fx()
+{
+	local class<CameraEffect> C;
+	local CameraEffect E;
+	local int i, Eq;
+
+	if (Args.Length < 2 || PC() == None)
+		return;
+	C = class<CameraEffect>(DynamicLoadObject(Args[1], class'Class', true));
+	if (C == None)
+	{
+		Note("fx: no camera effect class " $ Args[1]);
+		return;
+	}
+	E = new(PC()) C;
+	for (i = 2; i < Args.Length; i++)
+	{
+		Eq = InStr(Args[i], "=");
+		if (Eq > 0 && !E.SetPropertyText(Left(Args[i], Eq), Mid(Args[i], Eq + 1)))
+			Note("fx: " $ C $ " has no property " $ Left(Args[i], Eq));
+	}
+	PC().AddCameraEffect(E);
+	Note("fx: added " $ E $ " (" $ PC().CameraEffects.Length $ " effects now)");
+}
+
+function Tilt(float W)
+{
+	local EonPlayerController E;
+
+	E = EonPlayerController(PC());
+	if (E == None || E.Camera == None)
+		return;
+	E.Camera.fCustomCameraPitchWeight = W;
+	E.Camera.fPitchWeight = W;
+	if (E.Camera.MoveController != None)
+		E.Camera.MoveController.fDesiredPitchWeight = W;
+	Note("tilt: camera pitch weight " $ W);
+}
+
 function Aim(float YawDeg, float PitchDeg)
 {
 	local rotator R;
+	local EonPlayerController E;
 
 	if (PC() == None)
 		return;
 	R.Yaw = int(YawDeg * 65536.0 / 360.0);
 	R.Pitch = int(PitchDeg * 65536.0 / 360.0) & 65535;
 	PC().SetRotation(R);
+	// the third-person camera keeps its own direction and drives the view from it
+	E = EonPlayerController(PC());
+	if (E != None && E.Camera != None && E.Camera.MoveController != None)
+	{
+		E.Camera.MoveController.DesiredXAxisRotation = R;
+		E.Camera.MoveController.CurrentXAxisRotation = R;
+	}
 	Note("aim: view set to " $ R);
 }
 
 function Where()
 {
 	local PlayerController P;
+	local EonPlayerController E;
 
 	P = PC();
 	if (P == None)
@@ -179,7 +245,10 @@ function Where()
 	if (P.Pawn == None)
 		Note("where: controller " $ P.Name $ " state " $ P.GetStateName() $ ", no pawn");
 	else
-		Note("where: " $ P.Pawn.Location $ " rotation " $ P.Rotation $ " velocity " $ int(VSize(P.Pawn.Velocity)) $ " physics " $ P.Pawn.Physics $ " state " $ P.GetStateName());
+		Note("where: " $ P.Pawn.Location $ " rotation " $ P.Rotation $ " pawn " $ P.Pawn.Rotation $ " velocity " $ int(VSize(P.Pawn.Velocity)) $ " physics " $ P.Pawn.Physics $ " state " $ P.GetStateName());
+	E = EonPlayerController(P);
+	if (E != None && E.Camera != None && E.Camera.MoveController != None)
+		Note("where: camera " $ E.Camera.MoveController.Name $ " desired " $ E.Camera.MoveController.DesiredXAxisRotation $ " current " $ E.Camera.MoveController.CurrentXAxisRotation $ " camera rot " $ E.Camera.Rotation);
 }
 
 function bool SkipCutscene()
@@ -225,9 +294,26 @@ function StartStep()
 		StepLength = ArgF(3, 1);
 		break;
 	case "TURN":
-		StepLength = FMax(ArgF(3, 0.5), 0.05);
-		TurnYaw = ArgF(1, 0) / StepLength;
-		TurnPitch = ArgF(2, 0) / StepLength;
+	case "FACE":
+		// steered until the view really points there: the third-person camera eases and
+		// scales look input, so a fixed amount of input turns by an unpredictable angle.
+		// TURN yaw pitch: by that much from here; FACE yaw [pitch]: to that direction
+		if (Cmd == "TURN")
+		{
+			TargetYaw = ViewDeg(PC().Rotation.Yaw) + ArgF(1, 0);
+			TargetPitch = ViewDeg(PC().Rotation.Pitch) + ArgF(2, 0);
+			bAimPitch = ArgF(2, 0) != 0;
+		}
+		else
+		{
+			TargetYaw = ArgF(1, 0);
+			TargetPitch = ArgF(2, 0);
+			bAimPitch = Args.Length > 2;
+		}
+		OnTargetTime = 0;
+		StepLength = 6;
+		TurnYaw = 0;
+		TurnPitch = 0;
 		// UE2 turns the view by 32 * DeltaTime * aTurn rotation units (65536 = 360 degrees)
 		class'ModPilot'.default.TurnAxis = TurnYaw * 65536.0 / 360.0 / 32.0;
 		class'ModPilot'.default.LookAxis = TurnPitch * 65536.0 / 360.0 / 32.0;
@@ -252,12 +338,32 @@ function StartStep()
 	case "SKIPCUTSCENE":
 		SkipCutscene();
 		break;
+	case "SHOTP":
+		// the frame as presented, after anything a Direct3D layer adds (post effects);
+		// the engine's own SHOT reads it before that
+		class'ModSettings'.static.NativeCall("Capture");
+		Note("shotp");
+		break;
 	case "SHOT":
 		PC().ConsoleCommand("shot");
 		Note("shot");
 		break;
 	case "WHERE":
 		Where();
+		break;
+	case "FXLIST":
+		FxList();
+		break;
+	case "FX":
+		// FX Package.Class [Prop=Value ...]: add one of the engine's camera effects to the player
+		Fx();
+		StepLength = 0.2;
+		break;
+	case "TILT":
+		// the third-person camera's pitch as its own weight: 0 level .. -1 as low as it goes
+		// (it eases there itself; pitch look input is clamped and pulled back)
+		Tilt(ArgF(1, -1));
+		StepLength = 1.5;
 		break;
 	case "AIM":
 		// the view straight to a yaw and pitch in degrees (pitch < 0 looks down): the
@@ -314,8 +420,58 @@ event Tick(float DeltaTime)
 		}
 		return;
 	}
+	if (Cmd == "TURN" || Cmd == "FACE")
+	{
+		SteerView(P, DeltaTime);
+		return;
+	}
 	if (StepTime >= StepLength)
 		StartStep();
+}
+
+// a rotation component (65536 = 360 degrees) as degrees, -180..180
+static function float ViewDeg(int R)
+{
+	R = R & 65535;
+	if (R > 32768)
+		R -= 65536;
+	return R * 360.0 / 65536.0;
+}
+
+static function float WrapDeg(float D)
+{
+	while (D > 180) D -= 360;
+	while (D < -180) D += 360;
+	return D;
+}
+
+// look input proportional to how far the view still is from the target; done once it has
+// stayed within 2 degrees for a moment (or after StepLength seconds)
+function SteerView(PlayerController P, float DeltaTime)
+{
+	local float EYaw, EPitch;
+
+	EYaw = WrapDeg(TargetYaw - ViewDeg(P.Rotation.Yaw));
+	EPitch = 0;
+	if (bAimPitch)
+		EPitch = WrapDeg(TargetPitch - ViewDeg(P.Rotation.Pitch));
+	if (Abs(EYaw) < 2 && Abs(EPitch) < 2)
+		OnTargetTime += DeltaTime;
+	else
+		OnTargetTime = 0;
+	if (OnTargetTime > 0.3 || StepTime > StepLength)
+	{
+		if (StepTime > StepLength)
+			Note("turn: stopped " $ int(EYaw) $ " / " $ int(EPitch) $ " degrees short");
+		class'ModPilot'.default.TurnAxis = 0;
+		class'ModPilot'.default.LookAxis = 0;
+		StartStep();
+		return;
+	}
+	// degrees per second toward the target, as aTurn/aLookUp units (32 rotation units per unit)
+	// gentle: the camera follows the input with a lag, so a strong push overshoots
+	class'ModPilot'.default.TurnAxis = FClamp(EYaw * 1.5, -120, 120) * 65536.0 / 360.0 / 32.0;
+	class'ModPilot'.default.LookAxis = FClamp(EPitch * 3.0, -120, 120) * 65536.0 / 360.0 / 32.0;
 }
 
 defaultproperties

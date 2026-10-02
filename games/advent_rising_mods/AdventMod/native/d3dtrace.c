@@ -83,7 +83,8 @@ static int RtCount;
 static int DumpState, DumpLines;      /* 0 waiting, 1 armed (next Present starts), 2 dumping, 3 done */
 static int RtOfSurf(void* S) { int i; for (i = 0; i < RtCount; i++) if (RtSurf[i] == S) return i; return -1; }
 static int RtOfTex(void* T) { int i; if (!T) return -2; for (i = 0; i < RtCount; i++) if (RtTex[i] == T) return i; return -1; }
-static int Dumping(void) { return DumpState == 2 && DumpLines < 1500; }
+static int DumpAll;                /* ADVENT_DUMPALL=1: the dumped frame lists every draw, with texture sizes */
+static int Dumping(void) { return DumpState == 2 && DumpLines < (DumpAll ? 6000 : 1500); }
 static int Frames, Reports;
 static DWORD LastTick;
 static long Draws, ProjDraws, CamPosDraws, RTSwitches, ProjStageSets, ZBiasSets;
@@ -126,7 +127,7 @@ static void DumpDraw(const wchar_t* Kind, UINT Prims)
 	int i;
 	if (!Dumping()) return;
 	/* the scene has hundreds of plain draws: log only those touching render targets, projection or small targets */
-	if (!SmallRT && !ProjectedActive() && RtOfTex(Tex[0]) < 0 && RtOfTex(Tex[1]) < 0 && RtOfTex(Tex[2]) < 0 && RtOfTex(Tex[3]) < 0)
+	if (!DumpAll && !SmallRT && !ProjectedActive() && RtOfTex(Tex[0]) < 0 && RtOfTex(Tex[1]) < 0 && RtOfTex(Tex[2]) < 0 && RtOfTex(Tex[3]) < 0)
 	{
 		if (!PlainRun) PlainEsp = _AddressOfReturnAddress();
 		PlainRun++; PlainPrims += Prims;
@@ -139,9 +140,17 @@ static void DumpDraw(const wchar_t* Kind, UINT Prims)
 		Kind, Prims, VS, PS, Rs[27], Rs[19], Rs[20], Rs[171], Rs[7], Rs[14], Rs[23], Rs[22], Rs[168], Rs[60], Rs[28], Rs[15], Rs[25], Rs[24]);
 	for (i = 0; i < 4; i++)
 	{
-		if (Tss[i][1] == 1) break;      /* D3DTOP_DISABLE ends the cascade */
-		Note(L"d3dtrace: DUMP     stage %d tex %d(%p) color %lu(%lx,%lx) alpha %lu(%lx,%lx) tci %lx ttf %lx addr %lu/%lu",
-			i, RtOfTex(Tex[i]), Tex[i], Tss[i][1], Tss[i][2], Tss[i][3], Tss[i][4], Tss[i][5], Tss[i][6], Tss[i][11], Tss[i][24], Tss[i][13], Tss[i][14]);
+		if (Tss[i][1] == 1 && !(DumpAll && PS)) break;      /* D3DTOP_DISABLE ends the cascade (a pixel shader ignores it) */
+		if (DumpAll && PS && !Tex[i]) continue;
+	{
+		DWORD Td[8] = {0};
+		typedef HR (__stdcall *GetType_t)(void*);
+		typedef HR (__stdcall *GetLevelDesc_t)(void*, UINT, DWORD*);
+		if (DumpAll && Tex[i] && Readable(Tex[i], 4) && ((GetType_t)VT(Tex[i])[10])(Tex[i]) == 3)
+			((GetLevelDesc_t)VT(Tex[i])[14])(Tex[i], 0, Td);
+		Note(L"d3dtrace: DUMP     stage %d tex %d(%p %lux%lu fmt %lu) color %lu(%lx,%lx) alpha %lu(%lx,%lx) tci %lx ttf %lx addr %lu/%lu",
+			i, RtOfTex(Tex[i]), Tex[i], Td[6], Td[7], Td[0], Tss[i][1], Tss[i][2], Tss[i][3], Tss[i][4], Tss[i][5], Tss[i][6], Tss[i][11], Tss[i][24], Tss[i][13], Tss[i][14]);
+	}
 	}
 }
 
@@ -166,7 +175,7 @@ static HR __stdcall HookPresent(void* D, const void* A, const void* B, HWND W, c
 		DWORD Ms = LastTick ? Now - LastTick : 0;
 		LastTick = Now;
 		/* only frames with a 3D world in them (menus and movies draw a handful per frame) */
-		if (Draws > 300 * 20 && ProjDraws && DumpState == 0 && Frames > 3000) DumpState = 1;
+		if (Draws > 300 * 20 && (ProjDraws || DumpAll) && DumpState == 0 && Frames > (DumpAll ? 1500 : 3000)) DumpState = 1;
 		if (ProjDebug == 4 && Draws > 300 * 20 && Reports < 12) SiteReport();
 		if ((Draws > 300 * 20 || ProjDraws || ProjStageSets) && Reports < 400)
 		{
@@ -637,6 +646,7 @@ int D3DTraceStart(void)
 		char E[16];
 		if (GetEnvironmentVariableA("ADVENT_D3DDEBUG", E, sizeof(E))) ProjDebug = atoi(E);
 		if (GetEnvironmentVariableA("ADVENT_SHADOWALPHA", E, sizeof(E))) D3DShadowAlpha = atoi(E);
+		if (GetEnvironmentVariableA("ADVENT_DUMPALL", E, sizeof(E))) DumpAll = atoi(E);
 		Note(L"d3dtrace: projection debug mode %d, shadow alpha write %d", ProjDebug, D3DShadowAlpha);
 	}
 	if (!Lib) { Note(L"d3dtrace: d3d8.dll not loaded"); return 0; }

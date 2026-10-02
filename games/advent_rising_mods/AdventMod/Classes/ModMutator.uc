@@ -10,6 +10,7 @@ class ModMutator extends Mutator;
 var float Wait, DebugTime;
 var int DebugStage;
 var bool bProbed, bPiloted;
+var int RemovedFx;
 var ModShadowManager Shadows;
 
 // ticks while the game is paused too (bAlwaysTick), so the FOV slider in the pause menu
@@ -17,11 +18,32 @@ var ModShadowManager Shadows;
 event Tick(float DeltaTime)
 {
 	Super.Tick(DeltaTime);
+	if (class'ModSettings'.default.bNoGamePostFx)
+		NoGamePostFx();
 	Wait -= DeltaTime;
 	if (Wait <= 0)
 	{
 		Wait = 0.5;
 		Every();
+	}
+}
+
+// the game adds camera effects on the fly (motion blur in attacks, scripted blurs and
+// focus): take every one off the player as soon as it appears
+function NoGamePostFx()
+{
+	local PlayerController PC;
+	local int Removed;
+
+	PC = Level.GetLocalPlayerController();
+	if (PC == None)
+		return;
+	while (PC.CameraEffects.Length > 0)
+	{
+		if (Removed++ == 0 || RemovedFx < 20)
+			class'ModSettings'.static.Note("post fx: removed the game's " $ PC.CameraEffects[0].Class);
+		RemovedFx++;
+		PC.CameraEffects.Remove(0, 1);
 	}
 }
 
