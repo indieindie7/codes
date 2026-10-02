@@ -217,13 +217,22 @@ were well received.
 
 ## PC access
 
-- Remote Control sessions stop when the PC reboots: Claude Code doesn't restart by itself. On
-  Oct 1 the "unreal modding" session restarted the PC, and all four PC sessions went
-  `computer_unreachable`. Fix: resume each session on the PC and turn Remote Control on again;
-  no reinstall needed.
-- To avoid it: Chrome Remote Desktop (iOS app by Google LLC, or
-  remotedesktop.google.com/access; set up the host on the PC once), or SSH (Windows OpenSSH
-  Server + Termius/Blink on iOS + Tailscale outside home Wi-Fi).
+- The PC shuts down every night around 00:20 and starts around 07:01. The Claude app starts at
+  login, but every chat comes back idle, and Remote Control only reconnects once that chat runs
+  a turn ("Remote Control requires an active session. Send a message first").
+- **Fix (from the PC session, Oct 1):** `tools/wake-chats/wake-chats.ps1` (in the PC's local
+  repo; it reaches GitHub with that session's next push). It finds each chat's title in the
+  sidebar with Windows OCR, clicks it, checks the chat header, types a wake line and presses
+  Enter. Tested: it woke "Daiya fangames" and Remote Control came back on. It replaces
+  "resume each session on the PC by hand". It needs a Startup shortcut, which you create
+  yourself with one command (Claude was not allowed to add something that runs at login).
+- Routes that don't work: the app's scheduled tasks can't message chats; `claude://` session
+  links don't switch the visible chat; the app has no UI Automation tree to drive.
+- Fallback: Chrome Remote Desktop (iOS app by Google LLC, or remotedesktop.google.com/access;
+  set up the host on the PC once), or SSH (Windows OpenSSH Server + Termius/Blink on iOS +
+  Tailscale outside home Wi-Fi).
+- Game tests through U2Pilot stall on the loading screen while someone is using the PC (the
+  game won't load unfocused), so the checklist batch runs when the PC is left alone.
 - This cloud container can't reach the PC. It can compile shaders (fxc under Wine), build the
   dll (MinGW) and run it under Wine, but not run Unreal II.
 
