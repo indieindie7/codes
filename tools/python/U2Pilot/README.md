@@ -41,7 +41,8 @@ Background steps:
 | Step | Meaning |
 |---|---|
 | `map URL` | start map; its URL options are kept (e.g. `Atlantis?MissionCompleted=2`) and extra `?Mutator=` entries are merged with the installed ones |
-| `ini Section Key=Value` | set a value in the throwaway pilot config |
+| `ini Section Key=Value` | set a value in the throwaway pilot config (Unreal2.ini copy; a section that only exists in User.ini, like `U2SoftShadows.SSShadowController`, is written there instead, and the log says so) |
+| `userini Section Key=Value` | set a value in the throwaway User.ini copy |
 | `waitcontrol [timeout]` | wait until the player can move (no cutscene) |
 | `wait SECONDS` | wait, counted in game seconds |
 | `move FWD STRAFE SECS` | hold movement (-1..1) |
@@ -83,6 +84,13 @@ game's real values:
   values, and movement speeds.
 - `DialogProbe`: logs cutscene and conversation state once a second, plus
   where cutscene stand-in characters' scripts currently are.
+
+## Environment options
+
+- `U2PILOT_LOG=Name.log`: the game logs to this file instead of `Unreal2.log` (when that one is locked, e.g. by a stuck game process).
+- `U2PILOT_PARK=X,Y`: park the game window there (e.g. on a side monitor) instead of off-screen.
+- `U2PILOT_SYSTEM=<path>`: run from another System folder, e.g. a full test copy next to the real one (`..\SystemBuild`, whose Unreal2.ini lists `..\SystemBuild\*.u` first). Useful to try a d3d8.dll or package without touching the installed game.
+- Runs work with the PC locked if dgVoodoo is windowed (`FullScreenMode = false` in that folder's dgVoodoo.conf); in fake fullscreen the game hangs at map load while the desktop is locked.
 
 ## Setup
 - Python 3 with `imageio-ffmpeg` (`pip install imageio-ffmpeg`).

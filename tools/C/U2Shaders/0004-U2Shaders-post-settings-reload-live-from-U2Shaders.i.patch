@@ -1,0 +1,154 @@
+From fd6f6681bfe6eab874b1da6248e3cd13bcbd4d42 Mon Sep 17 00:00:00 2001
+From: indieindie7 <lonisquasar@gmail.com>
+Date: Fri, 2 Oct 2026 13:16:50 -0300
+Subject: [PATCH 4/8] U2Shaders: post settings reload live from U2Shaders.ini
+ (any case, any section) for the in-game options page
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ source/u2shaders.hpp | 94 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 94 insertions(+)
+
+diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
+index ab5dcac..99d2370 100644
+--- a/source/u2shaders.hpp
++++ b/source/u2shaders.hpp
+@@ -166,6 +166,8 @@ public:
+ 				PostBlur.File = "post_blur.hlsl";
+ 				PostFinal.File = "post_final.hlsl";
+ 			}
++			else if (sscanf_s(Line, " posttrace=%u", &Hash) == 1)
++				PostTrace = (int)Hash;
+ 			else if (sscanf_s(Line, " postdebug=%u", &Hash) == 1)
+ 				PostDebug = Hash != 0;
+ 			else if (sscanf_s(Line, " postsplit=%u", &Hash) == 1)
+@@ -1489,6 +1491,8 @@ public:
+ 	IDirect3DVertexBuffer9 *PostQuadVB = nullptr;
+ 	IDirect3DDevice9 *LastDev = nullptr;
+ 	bool Saw3D = false, PostDone = false;
++	int PostTrace = 0;                                   // posttrace=N: log the draw order of N frames
++	std::string PostTraceLine;
+ 
+ 	void PostCheck(IDirect3DDevice9 *Dev)
+ 	{
+@@ -1507,11 +1511,34 @@ public:
+ 		Dev->GetTransform(D3DTS_PROJECTION, &P);
+ 		const bool rhw = (fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW;
+ 		const bool ortho = !programmable && !rhw && P._34 == 0.0f && P._44 == 1.0f;
++		// the HUD draws without depth testing; orthographic draws that still test depth are part
++		// of the scene (in third person one came mid-frame: the post ran too early and covered
++		// the rest of the frame with a half-drawn copy)
++		DWORD zenable = 0, zwrite = 0, zfunc = 0, blend = 0;
++		Dev->GetRenderState(D3DRS_ZENABLE, &zenable);
++		Dev->GetRenderState(D3DRS_ZWRITEENABLE, &zwrite);
++		Dev->GetRenderState(D3DRS_ZFUNC, &zfunc);
++		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
++		if (PostTrace > 0)
++		{
++			char item[64];
++			if (!rhw && !ortho)
++				snprintf(item, sizeof(item), zenable ? "3 " : "h(w%lu b%lu p%.2f) ", zwrite, blend, P._43);
++			else
++			{
++				D3DVIEWPORT9 vp = {};
++				Dev->GetViewport(&vp);
++				snprintf(item, sizeof(item), "%s(z%lu w%lu f%lu b%lu vp%lux%lu) ", rhw ? "R" : "O", zenable, zwrite, zfunc, blend, vp.Width, vp.Height);
++			}
++			if (PostTraceLine.size() < 3500) PostTraceLine += item;
++		}
+ 		if (!rhw && !ortho)
+ 		{
+ 			Saw3D = true;
+ 			return;
+ 		}
++		if (PostTrace > 0)
++			return;                           // tracing: just record the frame
+ 		if (!Saw3D)
+ 			return;
+ 		static int told = 0;
+@@ -2182,8 +2209,65 @@ public:
+ 		}
+ 	}
+ 
++	// The in-game options page (U2SoftShadows.PostFXHelper) saves the post settings into
++	// U2Shaders.ini while the game runs: every second the file's time is checked and, when it
++	// changed, the post keys are read again (any case, any section: UnrealScript writes them
++	// under [U2SoftShadows.PostFXHelper]). The rest of the file is only read at start.
++	FILETIME IniTime = {};
++	void ReloadPost(bool Force)
++	{
++		WIN32_FILE_ATTRIBUTE_DATA A = {};
++		if (Dir.empty() || !GetFileAttributesExA((Dir + "U2Shaders.ini").c_str(), GetFileExInfoStandard, &A))
++		{
++			static int Told = 0;
++			if (Told++ < 2)
++				Message("post: can't watch %sU2Shaders.ini", Dir.c_str());
++			return;
++		}
++		if (!Force && CompareFileTime(&A.ftLastWriteTime, &IniTime) == 0)
++			return;
++		if (Force)
++			Message("post: watching U2Shaders.ini for changes (frame %u)", Frame);
++		IniTime = A.ftLastWriteTime;
++		FILE *F = nullptr;
++		if (fopen_s(&F, (Dir + "U2Shaders.ini").c_str(), "r") || F == nullptr)
++			return;
++		char Line[512];
++		bool Seen = false;
++		unsigned V = 0;
++		while (fgets(Line, sizeof(Line), F))
++		{
++			for (char *c = Line; *c; c++)
++				*c = (char)tolower((unsigned char)*c);
++			if (sscanf_s(Line, " post=%u", &V) == 1)
++			{
++				Post = V != 0;
++				Seen = true;
++				PostBright.File = "post_bright.hlsl";
++				PostBlur.File = "post_blur.hlsl";
++				PostFinal.File = "post_final.hlsl";
++			}
++			else if (sscanf_s(Line, " postsplit=%u", &V) == 1)
++				PostSplit = V != 0 ? 1.0f : 0.0f;
++			else if (sscanf_s(Line, " bloom=%f %f", &PostBloom[0], &PostBloom[1]) == 2)
++				;
++			else if (sscanf_s(Line, " grade=%f %f %f %f", &PostGrade[0], &PostGrade[1], &PostGrade[2], &PostGrade[3]) == 4)
++				;
++			else if (sscanf_s(Line, " colour=%f %f %f", &PostBalance[0], &PostBalance[1], &PostBalance[2]) == 3)
++				;
++			else if (sscanf_s(Line, " sharpen=%f", &PostBalance[3]) == 1)
++				;
++		}
++		fclose(F);
++		if (!Force)
++			Message("post: settings reloaded (post %d, bloom %.2f %.2f, grade %.2f %.2f %.2f %.2f, sharpen %.2f)", (int)Post,
++				PostBloom[0], PostBloom[1], PostGrade[0], PostGrade[1], PostGrade[2], PostGrade[3], PostBalance[3]);
++	}
++
+ 	void OnPresent()
+ 	{
++		if (Loaded && Frame % 60 == 0)
++			ReloadPost(IniTime.dwLowDateTime == 0 && IniTime.dwHighDateTime == 0);
+ 		if (Post && Saw3D && !PostDone && LastDev != nullptr && !Offscreen(LastDev))
+ 		{
+ 			// no 2D draw this frame (no HUD): post-process the 3D frame now, in a scene of our own
+@@ -2191,6 +2275,16 @@ public:
+ 			RunPost(LastDev);
+ 			LastDev->EndScene();
+ 		}
++		if (PostTrace > 0 && !PostTraceLine.empty())
++		{
++			static int frame = 0;
++			if (++frame % 300 == 0)      // every 300th frame, so both views get sampled
++			{
++				Message("posttrace: %s", PostTraceLine.c_str());
++				PostTrace--;
++			}
++		}
++		PostTraceLine.clear();
+ 		Saw3D = PostDone = false;
+ 		Frame++;
+ 		if (Capture && CaptureDirty && Frame % 300 == 0)
+-- 
+2.54.0.windows.1
+

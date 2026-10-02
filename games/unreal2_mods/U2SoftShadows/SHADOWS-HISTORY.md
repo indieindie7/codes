@@ -198,3 +198,27 @@ gradient; stock blob gone). Advent-specific findings:
    test with `MaxShadows=1`.
 
 Next there: strength tuning, more scenes, NPCs, then PCSS.
+
+## Open bug: characters turn black when a shadow is cast from a real light (2026-10-02)
+
+Found during the stairs check (Sanctuary M08A1, concrete stairs around (-1024, -2784)). A test lamp
+(`hub lamp 255 40 220`) behind the camera; with our shadows on, the character renders very dark
+(pcss=0) or black (pcss=1), while the floor and walls stay lit. Shadows off: lit.
+
+- It is the Unreal II engine, not our script: the game's own `ShadowProjector` with
+  `bStaticLights=True` (sourced from the pawn's `PrimaryStaticLight`) blackens the character the
+  same way. The stock game avoids it because its default shadow is directional (no light source).
+- Excluding that lamp from our shadows (`MaxLightDistance` below its distance) lights it again.
+- Not the cause: shadow darkness / strength 0, `bProjectActor=False`, spawning the shadow without
+  an owner, `bActorShadows=True` on the pawn, collision / trace flags, the outfit, vertex shaders
+  (every draw is fixed-function), PCSS or post (they only make it darker).
+- Advent Rising's engine build does not do this (same approach, characters measured unchanged).
+- Probes: `charprobe=1` (once showed the lamp's diffuse 0,0,0 on the character's draws) and
+  `lightprobe` (U2Shaders\lightprobe.req: two frames of SetLight / LightEnable / draws; never saw a
+  SetLight with zero diffuse; the character's own draws weren't identified for sure).
+- Fix to try (the Advent chat's idea): in the d3d8 fork, snapshot the lighting state (lights,
+  material, ambient, material sources) when the render target switches into a shadow bitmap and
+  restore what the engine didn't set again when it switches back.
+
+Test notes: `hub view` (third person) clips the camera into walls in narrow places (big flat
+grey/black shapes); scripts `stairs_conc.txt`, `black_*.txt` in U2Pilot.

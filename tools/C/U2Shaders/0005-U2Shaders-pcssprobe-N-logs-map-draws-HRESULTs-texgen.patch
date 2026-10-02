@@ -1,0 +1,188 @@
+From 36dbdc72dbe1672fccadda4ec0aed9be927fa450 Mon Sep 17 00:00:00 2001
+From: indieindie7 <lonisquasar@gmail.com>
+Date: Fri, 2 Oct 2026 14:56:43 -0300
+Subject: [PATCH 5/8] U2Shaders: pcssprobe=N logs map draws (HRESULTs, texgen,
+ readback of A); stage 3 texgen off during the map draw
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ source/d3d8to9_device.cpp |  8 ++--
+ source/u2shaders.hpp      | 91 ++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 94 insertions(+), 5 deletions(-)
+
+diff --git a/source/d3d8to9_device.cpp b/source/d3d8to9_device.cpp
+index 4c4c286..049f3a5 100644
+--- a/source/d3d8to9_device.cpp
++++ b/source/d3d8to9_device.cpp
+@@ -1185,7 +1185,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE Primit
+ 		U2CaptureDraw(PrimitiveType, PrimitiveCount, U2Stream0->U2Shadow.data() + (size_t)StartVertex * U2Stride0,
+ 			U2Stream0->U2Shadow.size() - (size_t)StartVertex * U2Stride0, U2Stride0, 0, nullptr, 0, false, 0);
+ 	const bool Shaded = U2Begin();
+-	ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
++	U2.LastDrawHR = ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
+ 	U2After(Shaded);
+ 	return D3D_OK;
+ }
+@@ -1200,7 +1200,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawIndexedPrimitive(D3DPRIMITIVETYPE
+ 			U2Indices->U2Shadow.data(), U2Indices->U2Shadow.size(), IbDesc.Format == D3DFMT_INDEX32, StartIndex);
+ 	}
+ 	const bool Shaded = U2Begin();
+-	ProxyInterface->DrawIndexedPrimitive(PrimitiveType, CurrentBaseVertexIndex, MinIndex, NumVertices, StartIndex, PrimitiveCount);
++	U2.LastDrawHR = ProxyInterface->DrawIndexedPrimitive(PrimitiveType, CurrentBaseVertexIndex, MinIndex, NumVertices, StartIndex, PrimitiveCount);
+ 	U2After(Shaded);
+ 	return D3D_OK;
+ }
+@@ -1211,7 +1211,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE Prim
+ 		U2CaptureDraw(PrimitiveType, PrimitiveCount, static_cast<const BYTE *>(pVertexStreamZeroData), (size_t)(PrimitiveType == D3DPT_TRIANGLELIST ? PrimitiveCount * 3 : PrimitiveCount + 2) * VertexStreamZeroStride,
+ 			VertexStreamZeroStride, 0, nullptr, 0, false, 0);
+ 	const bool Shaded = U2Begin();
+-	ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
++	U2.LastDrawHR = ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
+ 	U2After(Shaded);
+ 	return D3D_OK;
+ }
+@@ -1223,7 +1223,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawIndexedPrimitiveUP(D3DPRIMITIVETY
+ 			VertexStreamZeroStride, 0, static_cast<const BYTE *>(pIndexData), (size_t)(PrimitiveType == D3DPT_TRIANGLELIST ? PrimitiveCount * 3 : PrimitiveCount + 2) * (IndexDataFormat == D3DFMT_INDEX32 ? 4 : 2),
+ 			IndexDataFormat == D3DFMT_INDEX32, 0);
+ 	const bool Shaded = U2Begin();
+-	ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinVertexIndex, NumVertexIndices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
++	U2.LastDrawHR = ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinVertexIndex, NumVertexIndices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
+ 	U2After(Shaded);
+ 	return D3D_OK;
+ }
+diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
+index 99d2370..c9206e6 100644
+--- a/source/u2shaders.hpp
++++ b/source/u2shaders.hpp
+@@ -148,6 +148,8 @@ public:
+ 				;
+ 			else if (sscanf_s(Line, " pcssdebug=%f", &PcssDebug) == 1)
+ 				;
++			else if (sscanf_s(Line, " pcssprobe=%u", &Hash) == 1)
++				PcssProbe = (int)Hash;
+ 			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
+ 				;
+ 			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
+@@ -746,6 +748,64 @@ public:
+ 		if (RT) RT->Release();
+ 	}
+ 
++	// pcssprobe=N: for the first N shadow-map (silhouette) draws, log what happens around the draw:
++	// the HRESULTs of SetPixelShader and of the draw, stages 2/3 texgen before / during / after,
++	// and A read back right after the draw (pixels with alpha < 255 = silhouette). For finding
++	// why a map draw with our pixel shader can write nothing (Advent Rising, sun on terrain).
++	int PcssProbe = 0, ProbeCount = 0;
++	bool ProbePending = false;
++	HRESULT LastDrawHR = S_OK, ProbePSHR = S_OK;
++	DWORD ProbeBefore[4] = {};              // stage 2 TCI/TTF, stage 3 TCI/TTF before the draw
++	IDirect3DSurface9 *ProbeRT = nullptr;
++	DWORD OldMapTCI3 = 0, OldMapTTF3 = 0;
++
++	// silhouette pixels (alpha < 255) and how many pixels were read, -1 if the read failed
++	int CountShadowed(IDirect3DDevice9 *Dev, IDirect3DSurface9 *RT, int &Total)
++	{
++		D3DSURFACE_DESC D = {};
++		RT->GetDesc(&D);
++		Total = 0;
++		if (D.Format != D3DFMT_A8R8G8B8)
++			return -2;
++		IDirect3DSurface9 *Sys = nullptr;
++		int n = -1;
++		if (SUCCEEDED(Dev->CreateOffscreenPlainSurface(D.Width, D.Height, D.Format, D3DPOOL_SYSTEMMEM, &Sys, nullptr)) &&
++			SUCCEEDED(Dev->GetRenderTargetData(RT, Sys)))
++		{
++			D3DLOCKED_RECT L;
++			if (SUCCEEDED(Sys->LockRect(&L, nullptr, D3DLOCK_READONLY)))
++			{
++				n = 0;
++				for (UINT y = 0; y < D.Height; y++)
++				{
++					const BYTE *Row = (const BYTE *)L.pBits + y * L.Pitch;
++					for (UINT x = 0; x < D.Width; x++)
++						n += Row[x * 4 + 3] < 255;
++				}
++				Total = D.Width * D.Height;
++				Sys->UnlockRect();
++			}
++		}
++		if (Sys) Sys->Release();
++		return n;
++	}
++
++	void ProbeAfter(IDirect3DDevice9 *Dev)
++	{
++		if (!ProbePending)
++			return;
++		ProbePending = false;
++		DWORD a[4] = {};
++		Dev->GetTextureStageState(2, D3DTSS_TEXCOORDINDEX, &a[0]);
++		Dev->GetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, &a[1]);
++		Dev->GetTextureStageState(3, D3DTSS_TEXCOORDINDEX, &a[2]);
++		Dev->GetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, &a[3]);
++		int Total = 0, n = ProbeRT ? CountShadowed(Dev, ProbeRT, Total) : -3;
++		Message("pcssprobe %d: draw hr %08x, A shadowed %d of %d; after: st2 %x/%x st3 %x/%x\n",
++			ProbeCount, (unsigned)LastDrawHR, n, Total, a[0], a[1], a[2], a[3]);
++		if (ProbeRT) { ProbeRT->Release(); ProbeRT = nullptr; }
++	}
++
+ 	void ClearBlurSources() { for (auto &It : BlurSource) if (It.second) It.second->Release(); BlurSource.clear(); }
+ 	DWORD OldTCI3 = 0, OldTTF3 = 0, OldSrc = 0, OldDst = 0;
+ 	bool RawDebug = false;
+@@ -1001,6 +1061,11 @@ public:
+ 			Dev->SetTransform(D3DTS_TEXTURE2, &Identity);
+ 			Dev->GetRenderState(D3DRS_COLORWRITEENABLE, &OldCWE);
+ 			Dev->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF);
++			// stage 3 may carry texgen left over from the terrain (Advent outdoors): off for the map
++			Dev->GetTextureStageState(3, D3DTSS_TEXCOORDINDEX, &OldMapTCI3);
++			Dev->GetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, &OldMapTTF3);
++			Dev->SetTextureStageState(3, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU | 3);
++			Dev->SetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+ 		}
+ 		if (proj && PcssDebug > 1.5 && PcssDebug < 2.5)
+ 		{
+@@ -1011,7 +1076,28 @@ public:
+ 			Dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ZERO);
+ 			RawDebug = true;
+ 		}
+-		Dev->SetPixelShader(PS);
++		HRESULT PSHR = Dev->SetPixelShader(PS);
++		if (map && ProbeCount < PcssProbe)
++		{
++			ProbeCount++;
++			IDirect3DSurface9 *T = nullptr;
++			if (SUCCEEDED(Dev->GetRenderTarget(0, &T)) && T) { if (ProbeRT) ProbeRT->Release(); ProbeRT = T; }
++			DWORD d[4] = {}, fog = 0, ate = 0;
++			Dev->GetTextureStageState(2, D3DTSS_TEXCOORDINDEX, &d[0]);
++			Dev->GetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, &d[1]);
++			Dev->GetTextureStageState(3, D3DTSS_TEXCOORDINDEX, &d[2]);
++			Dev->GetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, &d[3]);
++			Dev->GetRenderState(D3DRS_FOGENABLE, &fog);
++			Dev->GetRenderState(D3DRS_ALPHATESTENABLE, &ate);
++			D3DVIEWPORT9 VP = {};
++			Dev->GetViewport(&VP);
++			int Total = 0, n = ProbeRT ? CountShadowed(Dev, ProbeRT, Total) : -3;
++			Message("pcssprobe %d: map rt %p vp %u,%u %ux%u, A shadowed before %d, SetPixelShader hr %08x, fog %u alphatest %u; "
++				"stage2 %x/%x stage3 %x/%x before, during st2 %x/%x st3 %x/%x\n",
++				ProbeCount, ProbeRT, VP.X, VP.Y, VP.Width, VP.Height, n, (unsigned)PSHR, fog, ate,
++				OldTCI[2], OldTTF[2], OldMapTCI3, OldMapTTF3, d[0], d[1], d[2], d[3]);
++			ProbePending = true;
++		}
+ 		Mode = map ? 2 : 3;
+ 		return true;
+ 	}
+@@ -1369,9 +1455,12 @@ public:
+ 				Dev->SetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, OldTTF[2]);
+ 				Dev->SetTransform(D3DTS_TEXTURE2, &OldTexMat[2]);
+ 				Dev->SetRenderState(D3DRS_COLORWRITEENABLE, OldCWE);
++				Dev->SetTextureStageState(3, D3DTSS_TEXCOORDINDEX, OldMapTCI3);
++				Dev->SetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, OldMapTTF3);
+ 			}
+ 			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
+ 			Mode = 0;
++			ProbeAfter(Dev);
+ 			return;
+ 		}
+ 		Mode = 0;
+-- 
+2.54.0.windows.1
+

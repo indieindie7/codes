@@ -1,0 +1,42 @@
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console hub tp -1072 2950 6250
+wait 0.3
+console hub tp -1072 2950 6300
+wait 0.3
+console hub tp -1072 3020 6250
+wait 0.3
+console hub tp -1072 3020 6300
+wait 0.3
+console hub tp -1072 3090 6250
+wait 0.3
+console hub tp -1072 3090 6300
+wait 0.3
+console hub tp -1120 2950 6250
+wait 0.3
+console hub tp -1120 2950 6300
+wait 0.3
+console hub tp -1120 3020 6250
+wait 0.3
+console hub tp -1120 3020 6300
+wait 0.3
+console hub tp -1120 3090 6250
+wait 0.3
+console hub tp -1120 3090 6300
+wait 0.3
+console hub tp -1180 2950 6250
+wait 0.3
+console hub tp -1180 2950 6300
+wait 0.3
+console hub tp -1180 3020 6250
+wait 0.3
+console hub tp -1180 3020 6300
+wait 0.3
+console hub tp -1180 3090 6250
+wait 0.3
+console hub tp -1180 3090 6300
+wait 0.3
+quit

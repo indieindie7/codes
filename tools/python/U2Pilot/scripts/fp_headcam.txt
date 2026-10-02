@@ -1,0 +1,25 @@
+# first person with the camera locked to the head bone: ahead, down, walking, down + walking, firing
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+wait 1
+shot
+turn 0 -45 0.3
+wait 0.7
+shot
+turn 0 -65 0.4
+wait 1
+shot
+move 1 0 0.6
+shot
+move 1 0 0.6
+shot
+turn 0 110 0.5
+wait 0.5
+move 1 0 0.8
+shot
+fire 0.6
+shot
+quit

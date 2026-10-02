@@ -1,0 +1,9 @@
+# check: ini routes a User.ini section to the user config
+background
+ini U2SoftShadows.SSShadowController PlayerMaxShadows=1
+ini WinDrv.WindowsClient Brightness=0.8
+map HoverTest
+waitcontrol 180
+wait 1
+dump SSShadowController Allowed
+quit

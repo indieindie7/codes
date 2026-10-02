@@ -1,0 +1,6 @@
+background
+map M08A1
+waitcontrol 180
+wait 1
+dump StaticMeshActor StaticMesh bAcceptsProjectors
+quit

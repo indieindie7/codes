@@ -1,0 +1,31 @@
+# stairs shadow check (Sanctuary bunker stairwell): floor fit on, fit off, stock; lamp up the stairs
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console hub tp -1072 3272 6400
+wait 1
+turn 180 0 0.4
+wait 0.5
+console hub view on
+console hub lamp 220 40 220
+wait 2.5
+console hub info
+shot
+turn 0 -15 0.3
+wait 1
+shot
+console set SSLightShadow bFitToFloor False
+wait 2.5
+shot
+turn 0 15 0.3
+wait 1
+shot
+console hub shadows stock
+wait 2
+shot
+turn 0 -15 0.3
+wait 1
+shot
+quit

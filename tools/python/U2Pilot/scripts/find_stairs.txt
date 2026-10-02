@@ -1,0 +1,8 @@
+# where are the stairs in Sanctuary?
+background
+map M08A1
+waitcontrol 180
+wait 1
+dump StaticMeshActor StaticMesh Location Rotation DrawScale
+dump U2PlayerSP Location
+quit

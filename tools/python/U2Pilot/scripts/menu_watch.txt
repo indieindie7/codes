@@ -1,0 +1,110 @@
+# pause menu held open, a screenshot every 3 s while U2Input clicks through Options
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+wait 1
+shot
+console SendEvent ShowMenus
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+wait 3
+shot
+quit

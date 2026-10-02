@@ -44,6 +44,8 @@ var float Back;                      // eased push-back distance
 var FinalBlend Invisible;
 var array<Material> SavedSkins;          // the character's own skins while its head is hidden
 var bool bHeadHidden;
+var config bool bHandsHoldGun;           // only the gun in the character's hands, no separate first-person gun
+var Inventory ShrunkWeapon;               // the weapon whose first-person gun is hidden
 
 function SetNodes(Pawn P, bool bHide)
 {
@@ -224,12 +226,44 @@ function PushBack(Pawn P, vector Cam)
 event Tick(float DeltaTime)
 {
 	if (Shown != None && !Shown.bDeleteMe)
+	{
 		SetNodes(Shown, true);
+		ShrinkGun(Shown);
+	}
+}
+
+// bHandsHoldGun: the character's hands hold the gun. Unreal II draws the held (third-person)
+// gun from the weapon's ThirdPersonMesh, which can't be hidden (None crashes the shadow code,
+// ThirdPersonScale isn't used), so the separate first-person gun is the one hidden: shrunk to
+// nothing through its DrawScale, given back from the class default (a save can't keep it)
+function ShrinkGun(Pawn P)
+{
+	local Inventory W;
+
+	if (!bHandsHoldGun)
+		return;
+	if (P != None)
+		W = P.Weapon;
+	if (W != ShrunkWeapon)
+	{
+		RestoreGun();
+		ShrunkWeapon = W;
+	}
+	if (W != None && W.DrawScale != 0.0001)
+		W.SetDrawScale(0.0001);
+}
+
+function RestoreGun()
+{
+	if (ShrunkWeapon != None && !ShrunkWeapon.bDeleteMe)
+		ShrunkWeapon.SetDrawScale(ShrunkWeapon.default.DrawScale);
+	ShrunkWeapon = None;
 }
 
 function Hide()
 {
 	ShowHead(Shown);
+	RestoreGun();
 	if (Shown != None && !Shown.bDeleteMe)
 	{
 		SetNodes(Shown, false);
@@ -255,6 +289,7 @@ defaultproperties
 	HeadMargin=10.000000
 	DownPush=18.000000
 	bHideHead=True
+	bHandsHoldGun=False
 	HeadSkin=1
 	HeadlessMargin=0.000000
 	HeadlessDownPush=14.000000

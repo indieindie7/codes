@@ -1,0 +1,29 @@
+# stairs shadow: a stand-in at the foot of the stairs, a low lamp behind the viewer, so its
+# shadow is thrown up the steps. Shots: floor fit on, fit off, stock (first person: no clipping)
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console god
+console hub tp -1072 2880 6300
+wait 1
+console hub face 90
+wait 0.3
+console hub dummy GlmCharactersG.PlayerGame 180 110
+console hub lamp 255 25 -140
+wait 0.3
+console hub tp -1072 2800 6300
+wait 0.5
+console hub face 90
+turn 0 2 0.2
+wait 2.5
+console hub info
+shot
+console set SSLightShadow bFitToFloor False
+wait 2.5
+shot
+console hub shadows stock
+wait 2.5
+shot
+quit

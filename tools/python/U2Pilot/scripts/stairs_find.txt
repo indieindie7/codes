@@ -1,0 +1,77 @@
+# find free spots on the Sanctuary stairs
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console hub tp -1072 3272 6260
+wait 0.3
+console hub tp -1072 3272 6330
+wait 0.3
+console hub tp -1072 3272 6400
+wait 0.3
+console hub tp -1072 3272 6470
+wait 0.3
+console hub tp -1072 3272 6540
+wait 0.3
+console hub tp -1150 3272 6260
+wait 0.3
+console hub tp -1150 3272 6330
+wait 0.3
+console hub tp -1150 3272 6400
+wait 0.3
+console hub tp -1150 3272 6470
+wait 0.3
+console hub tp -1150 3272 6540
+wait 0.3
+console hub tp -1000 3272 6260
+wait 0.3
+console hub tp -1000 3272 6330
+wait 0.3
+console hub tp -1000 3272 6400
+wait 0.3
+console hub tp -1000 3272 6470
+wait 0.3
+console hub tp -1000 3272 6540
+wait 0.3
+console hub tp -1544 2880 6260
+wait 0.3
+console hub tp -1544 2880 6330
+wait 0.3
+console hub tp -1544 2880 6400
+wait 0.3
+console hub tp -1544 2880 6470
+wait 0.3
+console hub tp -1544 2880 6540
+wait 0.3
+console hub tp -1300 3150 6260
+wait 0.3
+console hub tp -1300 3150 6330
+wait 0.3
+console hub tp -1300 3150 6400
+wait 0.3
+console hub tp -1300 3150 6470
+wait 0.3
+console hub tp -1300 3150 6540
+wait 0.3
+console hub tp -832 -2784 6260
+wait 0.3
+console hub tp -832 -2784 6330
+wait 0.3
+console hub tp -832 -2784 6400
+wait 0.3
+console hub tp -832 -2784 6470
+wait 0.3
+console hub tp -832 -2784 6540
+wait 0.3
+console hub tp -1216 -2784 6260
+wait 0.3
+console hub tp -1216 -2784 6330
+wait 0.3
+console hub tp -1216 -2784 6400
+wait 0.3
+console hub tp -1216 -2784 6470
+wait 0.3
+console hub tp -1216 -2784 6540
+wait 0.3
+quit

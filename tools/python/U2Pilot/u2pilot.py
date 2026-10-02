@@ -38,7 +38,8 @@ import argparse, ctypes, ctypes.wintypes as wt, datetime, glob, os, re, shutil, 
 
 import imageio_ffmpeg
 
-GAME_SYSTEM = r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening\System"
+GAME_SYSTEM = os.environ.get("U2PILOT_SYSTEM",   # U2PILOT_SYSTEM: run from another System folder (a test copy)
+                             r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening\System")
 GAME_EXE = os.path.join(GAME_SYSTEM, "Unreal2.exe")
 # U2PILOT_LOG=Name.log: the game logs there instead (LOG= on its command line), e.g.
 # when a crashed game stuck in the graphics driver still holds Unreal2.log open
@@ -371,6 +372,11 @@ def default_mutators():
 PILOT_INI, PILOT_USER_INI = "PilotRun.ini", "PilotRunUser.ini"
 
 
+def ini_has_section(path, section):
+    want = f"[{section.lower()}]"
+    return any(l.strip().lower() == want for l in open(path, encoding="latin-1"))
+
+
 def set_ini_keys(path, section, values):
     """Set key=value pairs inside [section] of a CRLF ini file (adding missing keys)."""
     lines = open(path, encoding="latin-1").read().splitlines()
@@ -493,8 +499,14 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
         section, kv = o.split(" ", 1)
         key, value = kv.split("=", 1)
         target = PILOT_USER_INI if kind == "userini" else PILOT_INI
+        if kind == "ini" and not ini_has_section(os.path.join(GAME_SYSTEM, PILOT_INI), section) \
+                and ini_has_section(os.path.join(GAME_SYSTEM, PILOT_USER_INI), section):
+            # config(User) classes (e.g. U2SoftShadows' SSShadowController) only read User.ini:
+            # a key written to Unreal2.ini would be silently ignored
+            target = PILOT_USER_INI
+            log(f"pilot ini: [{section}] lives in User.ini, writing it there")
         set_ini_keys(os.path.join(GAME_SYSTEM, target), section, {key.strip(): value.strip()})
-        log(f"pilot {kind}: [{section}] {key.strip()}={value.strip()}")
+        log(f"pilot {kind}: [{section}] {key.strip()}={value.strip()} ({target})")
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     si.wShowWindow = 4   # SW_SHOWNOACTIVATE: show the window without taking focus

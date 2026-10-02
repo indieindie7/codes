@@ -1,0 +1,22 @@
+# scout the Sanctuary stairwell for the stairs shadow check
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console hub tp -1072 3272 6400
+wait 1.5
+dump U2PlayerSP Location Physics
+console hub view on
+wait 1
+shot
+turn 90 0 0.4
+wait 0.5
+shot
+turn 90 0 0.4
+wait 0.5
+shot
+turn 90 0 0.4
+wait 0.5
+shot
+quit

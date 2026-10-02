@@ -1,0 +1,303 @@
+From 10a38c05683cbbf0a0e3a763e21da17d5bb20934 Mon Sep 17 00:00:00 2001
+From: indieindie7 <lonisquasar@gmail.com>
+Date: Fri, 2 Oct 2026 18:21:34 -0300
+Subject: [PATCH 8/8] U2Shaders: lightprobe (U2Shaders\lightprobe.req -> two
+ frames of light/draw events, vertex layouts, normals)
+
+For the Unreal II bug where a character turns black when a shadow is cast
+from a real light. Diagnostic only; nothing changes unless the request file
+appears.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ source/d3d8to9_device.cpp | 99 ++++++++++++++++++++++++++++++++++++++-
+ source/u2shaders.hpp      | 94 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 192 insertions(+), 1 deletion(-)
+
+diff --git a/source/d3d8to9_device.cpp b/source/d3d8to9_device.cpp
+index 049f3a5..81a139e 100644
+--- a/source/d3d8to9_device.cpp
++++ b/source/d3d8to9_device.cpp
+@@ -14,7 +14,7 @@ bool U2WantsBuffers()
+ {
+ 	if (!U2.Loaded)
+ 		U2.Load();
+-	return U2.Capture;
++	return U2.Capture || U2.LightProbeFrames > 0;
+ }
+ 
+ struct VertexShaderInfo
+@@ -716,6 +716,12 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::SetLight(DWORD Index, const D3DLIGHT8
+ 		}
+ 	}
+ 
++	if (U2.LightProbeFile)
++	{
++		D3DLIGHT9 L9;
++		memcpy(&L9, &Light, sizeof(L9));
++		U2.LightProbeLight(ProxyInterface, Index, L9);
++	}
+ 	return ProxyInterface->SetLight(Index, &Light);
+ }
+ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetLight(DWORD Index, D3DLIGHT8 *pLight)
+@@ -724,6 +730,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetLight(DWORD Index, D3DLIGHT8 *pLig
+ }
+ HRESULT STDMETHODCALLTYPE Direct3DDevice8::LightEnable(DWORD Index, BOOL Enable)
+ {
++	U2.LightProbeEnable(Index, Enable);
+ 	return ProxyInterface->LightEnable(Index, Enable);
+ }
+ HRESULT STDMETHODCALLTYPE Direct3DDevice8::GetLightEnable(DWORD Index, BOOL *pEnable)
+@@ -1153,6 +1160,7 @@ bool Direct3DDevice8::U2Begin()
+ 				U2Swapped |= 1u << s;
+ 			}
+ 	U2.LogTargetDraw(ProxyInterface, FixedFunction, U2Stage0 != nullptr);
++	U2.LightProbeDraw(ProxyInterface, U2Stage0 ? U2Stage0->U2Hash : 0, U2Stage0 != nullptr, FixedFunction);
+ 	if (U2.PcssBegin(ProxyInterface, U2Stage0 ? U2Stage0->GetProxyInterface() : nullptr, FixedFunction))
+ 		return true;
+ 	if (U2Stage0 == nullptr)
+@@ -1178,6 +1186,36 @@ void Direct3DDevice8::U2After(bool Shaded)
+ 			ProxyInterface->SetTexture(s, U2Stages[s]->GetProxyInterface());
+ 	U2Swapped = 0;
+ }
++// lightprobe: a draw's vertex layout and the average length of its normals (0 = no lighting possible)
++static void U2ProbeVB(IDirect3DDevice9 *Dev, const BYTE *Data, size_t Size, UINT Stride, size_t First, UINT Count)
++{
++	if (!U2.LightProbeFile || Data == nullptr || Stride == 0)
++		return;
++	int NormOff = -1;
++	char Decl[200] = "";
++	IDirect3DVertexDeclaration9 *VD = nullptr;
++	if (SUCCEEDED(Dev->GetVertexDeclaration(&VD)) && VD)
++	{
++		D3DVERTEXELEMENT9 E[MAXD3DDECLLENGTH]; UINT N = MAXD3DDECLLENGTH;
++		if (SUCCEEDED(VD->GetDeclaration(E, &N)))
++			for (UINT e = 0; e + 1 < N && strlen(Decl) < 170; e++)
++			{
++				char b[24]; sprintf_s(b, " s%u@%u:t%u/u%u", E[e].Stream, E[e].Offset, E[e].Type, E[e].Usage); strcat_s(Decl, b);
++				if (E[e].Stream == 0 && E[e].Usage == D3DDECLUSAGE_NORMAL && E[e].Type == D3DDECLTYPE_FLOAT3) NormOff = E[e].Offset;
++			}
++		VD->Release();
++	}
++	double Sum = 0; UINT Cnt = 0;
++	if (NormOff >= 0)
++		for (UINT i = 0; i < Count; i++)
++		{
++			const size_t At = (First + i) * Stride + NormOff;
++			if (At + 12 > Size) break;
++			const float *Nf = (const float *)(Data + At);
++			Sum += sqrt((double)Nf[0] * Nf[0] + (double)Nf[1] * Nf[1] + (double)Nf[2] * Nf[2]); Cnt++;
++		}
++	fprintf(U2.LightProbeFile, "  (prev) decl%s | normal at %d, avg |n| %.3f over %u verts, stride %u\n", Decl, NormOff, Cnt ? Sum / Cnt : -1.0, Cnt, Stride);
++}
+ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount)
+ {
+ 	ApplyClipPlanes();
+@@ -1186,6 +1224,9 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitive(D3DPRIMITIVETYPE Primit
+ 			U2Stream0->U2Shadow.size() - (size_t)StartVertex * U2Stride0, U2Stride0, 0, nullptr, 0, false, 0);
+ 	const bool Shaded = U2Begin();
+ 	U2.LastDrawHR = ProxyInterface->DrawPrimitive(PrimitiveType, StartVertex, PrimitiveCount);
++	if (U2.LightProbeFile && U2Stream0 != nullptr && !U2Stream0->U2Shadow.empty())
++		U2ProbeVB(ProxyInterface, U2Stream0->U2Shadow.data(), U2Stream0->U2Shadow.size(), U2Stride0, StartVertex,
++			PrimitiveType == D3DPT_TRIANGLELIST ? PrimitiveCount * 3 : PrimitiveCount + 2);
+ 	U2After(Shaded);
+ 	return D3D_OK;
+ }
+@@ -1199,11 +1240,65 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawIndexedPrimitive(D3DPRIMITIVETYPE
+ 		U2CaptureDraw(PrimitiveType, PrimitiveCount, U2Stream0->U2Shadow.data(), U2Stream0->U2Shadow.size(), U2Stride0, CurrentBaseVertexIndex,
+ 			U2Indices->U2Shadow.data(), U2Indices->U2Shadow.size(), IbDesc.Format == D3DFMT_INDEX32, StartIndex);
+ 	}
++	if (U2.LightProbeFile && U2Stream0 != nullptr && U2Indices != nullptr && !U2Stream0->U2Shadow.empty() && !U2Indices->U2Shadow.empty())
++	{
++		// lightprobe: the first vertex this draw uses, raw (to compare normals between the shadow pass and the view)
++		D3DINDEXBUFFER_DESC IbDesc;
++		U2Indices->GetProxyInterface()->GetDesc(&IbDesc);
++		const bool I32 = IbDesc.Format == D3DFMT_INDEX32;
++		const size_t Off = (size_t)StartIndex * (I32 ? 4 : 2);
++		if (Off + 4 <= U2Indices->U2Shadow.size())
++		{
++			const UINT Idx = I32 ? *(const UINT *)(U2Indices->U2Shadow.data() + Off) : *(const WORD *)(U2Indices->U2Shadow.data() + Off);
++			const size_t V = ((size_t)CurrentBaseVertexIndex + Idx) * U2Stride0;
++			// the vertex layout (declaration): where the normal is, then its average length over the draw
++			int NormOff = -1;
++			char Decl[200] = "";
++			IDirect3DVertexDeclaration9 *VD = nullptr;
++			if (SUCCEEDED(ProxyInterface->GetVertexDeclaration(&VD)) && VD)
++			{
++				D3DVERTEXELEMENT9 E[MAXD3DDECLLENGTH]; UINT N = MAXD3DDECLLENGTH;
++				if (SUCCEEDED(VD->GetDeclaration(E, &N)))
++					for (UINT e = 0; e + 1 < N && strlen(Decl) < 170; e++)
++					{
++						char b[24]; sprintf_s(b, " s%u@%u:t%u/u%u", E[e].Stream, E[e].Offset, E[e].Type, E[e].Usage); strcat_s(Decl, b);
++						if (E[e].Stream == 0 && E[e].Usage == D3DDECLUSAGE_NORMAL && E[e].Type == D3DDECLTYPE_FLOAT3) NormOff = E[e].Offset;
++					}
++				VD->Release();
++			}
++			double Sum = 0; UINT Cnt = 0;
++			if (NormOff >= 0)
++				for (UINT i = 0; i < NumVertices; i++)
++				{
++					const size_t At = ((size_t)CurrentBaseVertexIndex + MinIndex + i) * U2Stride0 + NormOff;
++					if (At + 12 > U2Stream0->U2Shadow.size()) break;
++					const float *Nf = (const float *)(U2Stream0->U2Shadow.data() + At);
++					Sum += sqrt((double)Nf[0] * Nf[0] + (double)Nf[1] * Nf[1] + (double)Nf[2] * Nf[2]); Cnt++;
++				}
++			fprintf(U2.LightProbeFile, "  decl%s | normal at %d, avg |n| %.3f over %u verts, stride %u\n", Decl, NormOff, Cnt ? Sum / Cnt : -1.0, Cnt, U2Stride0);
++		}
++	}
+ 	const bool Shaded = U2Begin();
+ 	U2.LastDrawHR = ProxyInterface->DrawIndexedPrimitive(PrimitiveType, CurrentBaseVertexIndex, MinIndex, NumVertices, StartIndex, PrimitiveCount);
+ 	U2After(Shaded);
+ 	return D3D_OK;
+ }
++// lightprobe: a user-pointer draw's vertices: the first one raw, and the average length of floats 3-5
++// (the normal, in the usual position + normal + uv layout) over the vertices it uses
++static void U2ProbeVerts(const void *Data, UINT Stride, UINT First, UINT Count)
++{
++	if (!U2.LightProbeFile || Data == nullptr || Stride < 32 || Count == 0)
++		return;
++	double Sum = 0;
++	for (UINT i = 0; i < Count; i++)
++	{
++		const float *F = (const float *)((const BYTE *)Data + (size_t)(First + i) * Stride);
++		Sum += sqrt((double)F[3] * F[3] + (double)F[4] * F[4] + (double)F[5] * F[5]);
++	}
++	const float *F = (const float *)((const BYTE *)Data + (size_t)First * Stride);
++	fprintf(U2.LightProbeFile, "  UP stride %u verts %u v0 %.1f %.1f %.1f | n %.3f %.3f %.3f | %.3f %.3f | avg |n| %.3f\n", Stride, Count,
++		F[0], F[1], F[2], F[3], F[4], F[5], F[6], F[7], Sum / Count);
++}
+ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
+ {
+ 	ApplyClipPlanes();
+@@ -1212,6 +1307,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawPrimitiveUP(D3DPRIMITIVETYPE Prim
+ 			VertexStreamZeroStride, 0, nullptr, 0, false, 0);
+ 	const bool Shaded = U2Begin();
+ 	U2.LastDrawHR = ProxyInterface->DrawPrimitiveUP(PrimitiveType, PrimitiveCount, pVertexStreamZeroData, VertexStreamZeroStride);
++	U2ProbeVerts(pVertexStreamZeroData, VertexStreamZeroStride, 0, PrimitiveType == D3DPT_TRIANGLELIST ? PrimitiveCount * 3 : PrimitiveCount + 2);
+ 	U2After(Shaded);
+ 	return D3D_OK;
+ }
+@@ -1224,6 +1320,7 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::DrawIndexedPrimitiveUP(D3DPRIMITIVETY
+ 			IndexDataFormat == D3DFMT_INDEX32, 0);
+ 	const bool Shaded = U2Begin();
+ 	U2.LastDrawHR = ProxyInterface->DrawIndexedPrimitiveUP(PrimitiveType, MinVertexIndex, NumVertexIndices, PrimitiveCount, pIndexData, IndexDataFormat, pVertexStreamZeroData, VertexStreamZeroStride);
++	U2ProbeVerts(pVertexStreamZeroData, VertexStreamZeroStride, MinVertexIndex, NumVertexIndices);
+ 	U2After(Shaded);
+ 	return D3D_OK;
+ }
+diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
+index e390dc8..b3f23b4 100644
+--- a/source/u2shaders.hpp
++++ b/source/u2shaders.hpp
+@@ -806,6 +806,97 @@ public:
+ 		if (ProbeRT) { ProbeRT->Release(); ProbeRT = nullptr; }
+ 	}
+ 
++	// lightprobe: when U2Shaders\lightprobe.req appears, log the next two frames event by event
++	// (lights set / enabled, draws with their target and active lights) to dump\lightprobe.txt.
++	// For "a character loses its lamp while one of our shadows uses that lamp".
++	int LightProbeFrames = 0;
++	FILE *LightProbeFile = nullptr;
++	void LightProbeCheck()
++	{
++		if (LightProbeFrames > 0 && --LightProbeFrames == 0 && LightProbeFile)
++		{
++			fclose(LightProbeFile);
++			LightProbeFile = nullptr;
++			Message("lightprobe: written");
++		}
++		if (Frame % 30 != 0 || LightProbeFrames > 0 || Dir.empty())
++			return;
++		std::string Req = Dir + "U2Shaders\\lightprobe.req";
++		if (GetFileAttributesA(Req.c_str()) == INVALID_FILE_ATTRIBUTES)
++			return;
++		DeleteFileA(Req.c_str());
++		if (!fopen_s(&LightProbeFile, (Dir + "U2Shaders\\dump\\lightprobe.txt").c_str(), "w") && LightProbeFile)
++			LightProbeFrames = 3;          // the rest of this frame, then two whole frames
++	}
++	void LightProbeLight(IDirect3DDevice9 *Dev, DWORD Index, const D3DLIGHT9 &L)
++	{
++		if (LightProbeFile)
++			fprintf(LightProbeFile, "setlight %u %s type %u dif %.2f %.2f %.2f pos %.0f %.0f %.0f range %.0f\n", Index,
++				Offscreen(Dev) ? "OFF" : "main", (unsigned)L.Type, L.Diffuse.r, L.Diffuse.g, L.Diffuse.b,
++				L.Position.x, L.Position.y, L.Position.z, L.Range);
++	}
++	void LightProbeEnable(DWORD Index, BOOL On)
++	{
++		if (LightProbeFile)
++			fprintf(LightProbeFile, "enable %u %d\n", Index, (int)On);
++	}
++	void LightProbeDraw(IDirect3DDevice9 *Dev, DWORD Hash, bool HasTex, bool FixedFunction)
++	{
++		if (!LightProbeFile)
++			return;
++		DWORD lighting = 0, op0 = 0, arg1 = 0, blend = 0;
++		Dev->GetRenderState(D3DRS_LIGHTING, &lighting);
++		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
++		Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op0);
++		Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &arg1);
++		bool off = Offscreen(Dev);
++		bool map = off && !HasTex && !blend && op0 == D3DTOP_SELECTARG1 && (arg1 & 0xF) == D3DTA_TFACTOR;
++		if (!lighting && !map && FixedFunction)
++			return;                         // unlit draws (world with lightmaps, HUD) don't matter here
++		fprintf(LightProbeFile, "draw %s %08x%s lighting %u %s", off ? "OFF" : "main", HasTex ? Hash : 0, map ? " SILHOUETTE" : "", lighting, FixedFunction ? "ff" : "VS");
++		{
++			DWORD amb = 0, cv = 0, dsrc = 0, asrc = 0, norm = 0, spec = 0, op[2] = {}, a1[2] = {}, a2[2] = {};
++			Dev->GetRenderState(D3DRS_AMBIENT, &amb);
++			Dev->GetRenderState(D3DRS_COLORVERTEX, &cv);
++			Dev->GetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, &dsrc);
++			Dev->GetRenderState(D3DRS_AMBIENTMATERIALSOURCE, &asrc);
++			Dev->GetRenderState(D3DRS_NORMALIZENORMALS, &norm);
++			Dev->GetRenderState(D3DRS_SPECULARENABLE, &spec);
++			for (DWORD st = 0; st < 2; st++)
++			{
++				Dev->GetTextureStageState(st, D3DTSS_COLOROP, &op[st]);
++				Dev->GetTextureStageState(st, D3DTSS_COLORARG1, &a1[st]);
++				Dev->GetTextureStageState(st, D3DTSS_COLORARG2, &a2[st]);
++			}
++			D3DMATERIAL9 M = {};
++			Dev->GetMaterial(&M);
++			D3DMATRIX W = {};
++			Dev->GetTransform(D3DTS_WORLD, &W);
++			DWORD fvf = 0;
++			Dev->GetFVF(&fvf);
++			fprintf(LightProbeFile, " | amb %08x cv %u dsrc %u asrc %u norm %u spec %u st0 %u %x %x st1 %u %x %x mat d %.2f a %.2f e %.2f | W %.2f %.2f %.2f t %.0f %.0f %.0f fvf %x",
++				amb, cv, dsrc, asrc, norm, spec, op[0], a1[0], a2[0], op[1], a1[1], a2[1], M.Diffuse.r, M.Ambient.r, M.Emissive.r,
++				W._11, W._22, W._33, W._41, W._42, W._43, fvf);
++		}
++		if (!FixedFunction)
++		{
++			// a vertex shader lights it: its constants carry the lights
++			float C[24][4] = {};
++			Dev->GetVertexShaderConstantF(0, C[0], 24);
++			fprintf(LightProbeFile, " | vsc");
++			for (int i = 0; i < 24; i++)
++				fprintf(LightProbeFile, " c%d(%.2f %.2f %.2f %.2f)", i, C[i][0], C[i][1], C[i][2], C[i][3]);
++		}
++		for (DWORD i = 0; i < 8; i++)
++		{
++			BOOL on = FALSE;
++			D3DLIGHT9 L = {};
++			if (SUCCEEDED(Dev->GetLightEnable(i, &on)) && on && SUCCEEDED(Dev->GetLight(i, &L)))
++				fprintf(LightProbeFile, " | L%u %.2f %.2f %.2f r%.0f", i, L.Diffuse.r, L.Diffuse.g, L.Diffuse.b, L.Range);
++		}
++		fprintf(LightProbeFile, "\n");
++	}
++
+ 	void ClearBlurSources() { for (auto &It : BlurSource) if (It.second) It.second->Release(); BlurSource.clear(); }
+ 	DWORD OldTCI3 = 0, OldTTF3 = 0, OldSrc = 0, OldDst = 0;
+ 	bool RawDebug = false;
+@@ -2392,7 +2483,10 @@ public:
+ 		}
+ 		PostTraceLine.clear();
+ 		Saw3D = PostDone = false;
++		if (LightProbeFile)
++			fprintf(LightProbeFile, "--- present, frame %u\n", Frame);
+ 		Frame++;
++		LightProbeCheck();
+ 		if (Capture && CaptureDirty && Frame % 300 == 0)
+ 			WriteCapture();
+ 		if (CharProbe)
+-- 
+2.54.0.windows.1
+

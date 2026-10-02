@@ -42,22 +42,30 @@ function ShowWeapon()
 
 event PlayerCalcView(out Actor ViewActor, out vector CameraLocation, out rotator CameraRotation)
 {
+	local vector GameCamera;
+
 	Super.PlayerCalcView(ViewActor, CameraLocation, CameraRotation);
 	if (Body == None || Body.bDeleteMe)
 	{
 		ShowWeapon();
+		WeaponKickOffset = vect(0,0,0);
 		return;
 	}
 	if (ViewActor == Pawn && Pawn != None && !bBehindView && Pawn.Health > 0)
 	{
 		ViewActor = Body;
+		GameCamera = CameraLocation;
 		CameraLocation = Body.Show(Pawn, CameraLocation);
 		HideWeapon(Pawn.Weapon);
+		// the first-person weapon is placed from the game's eye point: move it with the camera
+		// (U2Weapon.CalcDrawOffset adds WeaponKickOffset; the game's own kick code is disabled)
+		WeaponKickOffset = CameraLocation - GameCamera;
 	}
 	else
 	{
 		Body.Hide();
 		ShowWeapon();
+		WeaponKickOffset = vect(0,0,0);
 	}
 }
 

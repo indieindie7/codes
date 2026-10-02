@@ -1,0 +1,16 @@
+# head camera: where is the first-person gun vs the camera, and is the held gun shrunk?
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+wait 1
+shot
+dump WeaponInvUTBio Location Rotation ThirdPersonScale ThirdPersonMesh bHidden DrawScale PlayerViewOffset
+dump BodyController WeaponKickOffset Location
+dump FirstPersonBody Location ShrunkWeapon GunScale Shown
+dump U2PlayerSP Location EyeHeight BaseEyeHeight
+console behindview 1
+wait 1
+shot
+quit

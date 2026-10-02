@@ -148,6 +148,8 @@ public:
 				;
 			else if (sscanf_s(Line, " pcssdebug=%f", &PcssDebug) == 1)
 				;
+			else if (sscanf_s(Line, " pcssprobe=%u", &Hash) == 1)
+				PcssProbe = (int)Hash;
 			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
 				;
 			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
@@ -746,6 +748,155 @@ public:
 		if (RT) RT->Release();
 	}
 
+	// pcssprobe=N: for the first N shadow-map (silhouette) draws, log what happens around the draw:
+	// the HRESULTs of SetPixelShader and of the draw, stages 2/3 texgen before / during / after,
+	// and A read back right after the draw (pixels with alpha < 255 = silhouette). For finding
+	// why a map draw with our pixel shader can write nothing (Advent Rising, sun on terrain).
+	int PcssProbe = 0, ProbeCount = 0;
+	bool ProbePending = false;
+	HRESULT LastDrawHR = S_OK, ProbePSHR = S_OK;
+	DWORD ProbeBefore[4] = {};              // stage 2 TCI/TTF, stage 3 TCI/TTF before the draw
+	IDirect3DSurface9 *ProbeRT = nullptr;
+	DWORD OldMapTCI3 = 0, OldMapTTF3 = 0;
+
+	// silhouette pixels (alpha < 255) and how many pixels were read, -1 if the read failed
+	int CountShadowed(IDirect3DDevice9 *Dev, IDirect3DSurface9 *RT, int &Total)
+	{
+		D3DSURFACE_DESC D = {};
+		RT->GetDesc(&D);
+		Total = 0;
+		if (D.Format != D3DFMT_A8R8G8B8)
+			return -2;
+		IDirect3DSurface9 *Sys = nullptr;
+		int n = -1;
+		if (SUCCEEDED(Dev->CreateOffscreenPlainSurface(D.Width, D.Height, D.Format, D3DPOOL_SYSTEMMEM, &Sys, nullptr)) &&
+			SUCCEEDED(Dev->GetRenderTargetData(RT, Sys)))
+		{
+			D3DLOCKED_RECT L;
+			if (SUCCEEDED(Sys->LockRect(&L, nullptr, D3DLOCK_READONLY)))
+			{
+				n = 0;
+				for (UINT y = 0; y < D.Height; y++)
+				{
+					const BYTE *Row = (const BYTE *)L.pBits + y * L.Pitch;
+					for (UINT x = 0; x < D.Width; x++)
+						n += Row[x * 4 + 3] < 255;
+				}
+				Total = D.Width * D.Height;
+				Sys->UnlockRect();
+			}
+		}
+		if (Sys) Sys->Release();
+		return n;
+	}
+
+	void ProbeAfter(IDirect3DDevice9 *Dev)
+	{
+		if (!ProbePending)
+			return;
+		ProbePending = false;
+		DWORD a[4] = {};
+		Dev->GetTextureStageState(2, D3DTSS_TEXCOORDINDEX, &a[0]);
+		Dev->GetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, &a[1]);
+		Dev->GetTextureStageState(3, D3DTSS_TEXCOORDINDEX, &a[2]);
+		Dev->GetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, &a[3]);
+		int Total = 0, n = ProbeRT ? CountShadowed(Dev, ProbeRT, Total) : -3;
+		Message("pcssprobe %d: draw hr %08x, A shadowed %d of %d; after: st2 %x/%x st3 %x/%x\n",
+			ProbeCount, (unsigned)LastDrawHR, n, Total, a[0], a[1], a[2], a[3]);
+		if (ProbeRT) { ProbeRT->Release(); ProbeRT = nullptr; }
+	}
+
+	// lightprobe: when U2Shaders\lightprobe.req appears, log the next two frames event by event
+	// (lights set / enabled, draws with their target and active lights) to dump\lightprobe.txt.
+	// For "a character loses its lamp while one of our shadows uses that lamp".
+	int LightProbeFrames = 0;
+	FILE *LightProbeFile = nullptr;
+	void LightProbeCheck()
+	{
+		if (LightProbeFrames > 0 && --LightProbeFrames == 0 && LightProbeFile)
+		{
+			fclose(LightProbeFile);
+			LightProbeFile = nullptr;
+			Message("lightprobe: written");
+		}
+		if (Frame % 30 != 0 || LightProbeFrames > 0 || Dir.empty())
+			return;
+		std::string Req = Dir + "U2Shaders\\lightprobe.req";
+		if (GetFileAttributesA(Req.c_str()) == INVALID_FILE_ATTRIBUTES)
+			return;
+		DeleteFileA(Req.c_str());
+		if (!fopen_s(&LightProbeFile, (Dir + "U2Shaders\\dump\\lightprobe.txt").c_str(), "w") && LightProbeFile)
+			LightProbeFrames = 3;          // the rest of this frame, then two whole frames
+	}
+	void LightProbeLight(IDirect3DDevice9 *Dev, DWORD Index, const D3DLIGHT9 &L)
+	{
+		if (LightProbeFile)
+			fprintf(LightProbeFile, "setlight %u %s type %u dif %.2f %.2f %.2f pos %.0f %.0f %.0f range %.0f\n", Index,
+				Offscreen(Dev) ? "OFF" : "main", (unsigned)L.Type, L.Diffuse.r, L.Diffuse.g, L.Diffuse.b,
+				L.Position.x, L.Position.y, L.Position.z, L.Range);
+	}
+	void LightProbeEnable(DWORD Index, BOOL On)
+	{
+		if (LightProbeFile)
+			fprintf(LightProbeFile, "enable %u %d\n", Index, (int)On);
+	}
+	void LightProbeDraw(IDirect3DDevice9 *Dev, DWORD Hash, bool HasTex, bool FixedFunction)
+	{
+		if (!LightProbeFile)
+			return;
+		DWORD lighting = 0, op0 = 0, arg1 = 0, blend = 0;
+		Dev->GetRenderState(D3DRS_LIGHTING, &lighting);
+		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+		Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op0);
+		Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &arg1);
+		bool off = Offscreen(Dev);
+		bool map = off && !HasTex && !blend && op0 == D3DTOP_SELECTARG1 && (arg1 & 0xF) == D3DTA_TFACTOR;
+		if (!lighting && !map && FixedFunction)
+			return;                         // unlit draws (world with lightmaps, HUD) don't matter here
+		fprintf(LightProbeFile, "draw %s %08x%s lighting %u %s", off ? "OFF" : "main", HasTex ? Hash : 0, map ? " SILHOUETTE" : "", lighting, FixedFunction ? "ff" : "VS");
+		{
+			DWORD amb = 0, cv = 0, dsrc = 0, asrc = 0, norm = 0, spec = 0, op[2] = {}, a1[2] = {}, a2[2] = {};
+			Dev->GetRenderState(D3DRS_AMBIENT, &amb);
+			Dev->GetRenderState(D3DRS_COLORVERTEX, &cv);
+			Dev->GetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, &dsrc);
+			Dev->GetRenderState(D3DRS_AMBIENTMATERIALSOURCE, &asrc);
+			Dev->GetRenderState(D3DRS_NORMALIZENORMALS, &norm);
+			Dev->GetRenderState(D3DRS_SPECULARENABLE, &spec);
+			for (DWORD st = 0; st < 2; st++)
+			{
+				Dev->GetTextureStageState(st, D3DTSS_COLOROP, &op[st]);
+				Dev->GetTextureStageState(st, D3DTSS_COLORARG1, &a1[st]);
+				Dev->GetTextureStageState(st, D3DTSS_COLORARG2, &a2[st]);
+			}
+			D3DMATERIAL9 M = {};
+			Dev->GetMaterial(&M);
+			D3DMATRIX W = {};
+			Dev->GetTransform(D3DTS_WORLD, &W);
+			DWORD fvf = 0;
+			Dev->GetFVF(&fvf);
+			fprintf(LightProbeFile, " | amb %08x cv %u dsrc %u asrc %u norm %u spec %u st0 %u %x %x st1 %u %x %x mat d %.2f a %.2f e %.2f | W %.2f %.2f %.2f t %.0f %.0f %.0f fvf %x",
+				amb, cv, dsrc, asrc, norm, spec, op[0], a1[0], a2[0], op[1], a1[1], a2[1], M.Diffuse.r, M.Ambient.r, M.Emissive.r,
+				W._11, W._22, W._33, W._41, W._42, W._43, fvf);
+		}
+		if (!FixedFunction)
+		{
+			// a vertex shader lights it: its constants carry the lights
+			float C[24][4] = {};
+			Dev->GetVertexShaderConstantF(0, C[0], 24);
+			fprintf(LightProbeFile, " | vsc");
+			for (int i = 0; i < 24; i++)
+				fprintf(LightProbeFile, " c%d(%.2f %.2f %.2f %.2f)", i, C[i][0], C[i][1], C[i][2], C[i][3]);
+		}
+		for (DWORD i = 0; i < 8; i++)
+		{
+			BOOL on = FALSE;
+			D3DLIGHT9 L = {};
+			if (SUCCEEDED(Dev->GetLightEnable(i, &on)) && on && SUCCEEDED(Dev->GetLight(i, &L)))
+				fprintf(LightProbeFile, " | L%u %.2f %.2f %.2f r%.0f", i, L.Diffuse.r, L.Diffuse.g, L.Diffuse.b, L.Range);
+		}
+		fprintf(LightProbeFile, "\n");
+	}
+
 	void ClearBlurSources() { for (auto &It : BlurSource) if (It.second) It.second->Release(); BlurSource.clear(); }
 	DWORD OldTCI3 = 0, OldTTF3 = 0, OldSrc = 0, OldDst = 0;
 	bool RawDebug = false;
@@ -1001,6 +1152,11 @@ public:
 			Dev->SetTransform(D3DTS_TEXTURE2, &Identity);
 			Dev->GetRenderState(D3DRS_COLORWRITEENABLE, &OldCWE);
 			Dev->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF);
+			// stage 3 may carry texgen left over from the terrain (Advent outdoors): off for the map
+			Dev->GetTextureStageState(3, D3DTSS_TEXCOORDINDEX, &OldMapTCI3);
+			Dev->GetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, &OldMapTTF3);
+			Dev->SetTextureStageState(3, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_PASSTHRU | 3);
+			Dev->SetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 		}
 		if (proj && PcssDebug > 1.5 && PcssDebug < 2.5)
 		{
@@ -1011,7 +1167,28 @@ public:
 			Dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ZERO);
 			RawDebug = true;
 		}
-		Dev->SetPixelShader(PS);
+		HRESULT PSHR = Dev->SetPixelShader(PS);
+		if (map && ProbeCount < PcssProbe)
+		{
+			ProbeCount++;
+			IDirect3DSurface9 *T = nullptr;
+			if (SUCCEEDED(Dev->GetRenderTarget(0, &T)) && T) { if (ProbeRT) ProbeRT->Release(); ProbeRT = T; }
+			DWORD d[4] = {}, fog = 0, ate = 0;
+			Dev->GetTextureStageState(2, D3DTSS_TEXCOORDINDEX, &d[0]);
+			Dev->GetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, &d[1]);
+			Dev->GetTextureStageState(3, D3DTSS_TEXCOORDINDEX, &d[2]);
+			Dev->GetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, &d[3]);
+			Dev->GetRenderState(D3DRS_FOGENABLE, &fog);
+			Dev->GetRenderState(D3DRS_ALPHATESTENABLE, &ate);
+			D3DVIEWPORT9 VP = {};
+			Dev->GetViewport(&VP);
+			int Total = 0, n = ProbeRT ? CountShadowed(Dev, ProbeRT, Total) : -3;
+			Message("pcssprobe %d: map rt %p vp %u,%u %ux%u, A shadowed before %d, SetPixelShader hr %08x, fog %u alphatest %u; "
+				"stage2 %x/%x stage3 %x/%x before, during st2 %x/%x st3 %x/%x\n",
+				ProbeCount, ProbeRT, VP.X, VP.Y, VP.Width, VP.Height, n, (unsigned)PSHR, fog, ate,
+				OldTCI[2], OldTTF[2], OldMapTCI3, OldMapTTF3, d[0], d[1], d[2], d[3]);
+			ProbePending = true;
+		}
 		Mode = map ? 2 : 3;
 		return true;
 	}
@@ -1369,9 +1546,12 @@ public:
 				Dev->SetTextureStageState(2, D3DTSS_TEXTURETRANSFORMFLAGS, OldTTF[2]);
 				Dev->SetTransform(D3DTS_TEXTURE2, &OldTexMat[2]);
 				Dev->SetRenderState(D3DRS_COLORWRITEENABLE, OldCWE);
+				Dev->SetTextureStageState(3, D3DTSS_TEXCOORDINDEX, OldMapTCI3);
+				Dev->SetTextureStageState(3, D3DTSS_TEXTURETRANSFORMFLAGS, OldMapTTF3);
 			}
 			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
 			Mode = 0;
+			ProbeAfter(Dev);
 			return;
 		}
 		Mode = 0;
@@ -2257,6 +2437,23 @@ public:
 				;
 			else if (sscanf_s(Line, " sharpen=%f", &PostBalance[3]) == 1)
 				;
+			else if (sscanf_s(Line, " pcss=%u", &V) == 1 && (V != 0) != Pcss)
+			{
+				// live switch (Advent: contact hardening indoors only). Off: forget the maps
+				// and snapshots, as after a lost device, so nothing stale is used when it's back
+				Pcss = V != 0;
+				MapRule.File = "pcss_map.hlsl";
+				ProjRule.File = "pcss_proj.hlsl";
+				if (!Pcss)
+				{
+					MapViews.clear();
+					ClearBlurSources();
+					MapTarget = nullptr;
+					MapDirty = false;
+					CopiedFor = nullptr;
+				}
+				Message("pcss: switched %s", Pcss ? "on" : "off");
+			}
 		}
 		fclose(F);
 		if (!Force)
@@ -2286,7 +2483,10 @@ public:
 		}
 		PostTraceLine.clear();
 		Saw3D = PostDone = false;
+		if (LightProbeFile)
+			fprintf(LightProbeFile, "--- present, frame %u\n", Frame);
 		Frame++;
+		LightProbeCheck();
 		if (Capture && CaptureDirty && Frame % 300 == 0)
 			WriteCapture();
 		if (CharProbe)

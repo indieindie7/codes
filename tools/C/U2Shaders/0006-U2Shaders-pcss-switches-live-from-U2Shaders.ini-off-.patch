@@ -1,0 +1,41 @@
+From a698f40b2ee271f85a3d0cad9daf963a425232f1 Mon Sep 17 00:00:00 2001
+From: indieindie7 <lonisquasar@gmail.com>
+Date: Fri, 2 Oct 2026 15:46:43 -0300
+Subject: [PATCH 6/8] U2Shaders: pcss= switches live from U2Shaders.ini (off
+ clears the map/snapshot state)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ source/u2shaders.hpp | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
+index c9206e6..d37ef05 100644
+--- a/source/u2shaders.hpp
++++ b/source/u2shaders.hpp
+@@ -2346,6 +2346,22 @@ public:
+ 				;
+ 			else if (sscanf_s(Line, " sharpen=%f", &PostBalance[3]) == 1)
+ 				;
++			else if (sscanf_s(Line, " pcss=%u", &V) == 1 && (V != 0) != Pcss)
++			{
++				// live switch (Advent: contact hardening indoors only). Off: forget the maps
++				// and snapshots, as after a lost device, so nothing stale is used when it's back
++				Pcss = V != 0;
++				MapRule.File = "pcss_map.hlsl";
++				ProjRule.File = "pcss_proj.hlsl";
++				if (!Pcss)
++				{
++					ClearBlurSources();
++					MapTarget = nullptr;
++					MapDirty = false;
++					CopiedFor = nullptr;
++				}
++				Message("pcss: switched %s", Pcss ? "on" : "off");
++			}
+ 		}
+ 		fclose(F);
+ 		if (!Force)
+-- 
+2.54.0.windows.1
+

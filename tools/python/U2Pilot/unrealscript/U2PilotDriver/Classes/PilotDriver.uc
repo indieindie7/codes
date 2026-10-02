@@ -429,4 +429,5 @@ event Tick(float DeltaTime)
 defaultproperties
 {
 	RemoteRole=ROLE_None
+	bAlwaysTick=True
 }

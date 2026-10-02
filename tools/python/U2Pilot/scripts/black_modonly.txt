@@ -1,0 +1,24 @@
+# stairs shadow on Sanctuary's wide concrete stairs: lamp behind and above, shadow thrown up the
+# steps. Third person (open hall). Shots: floor fit on, fit off, stock; two angles each
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console hub tp -1024 -2784 6330
+wait 1.5
+turn 270 0 0.5
+wait 0.3
+move 1 0 0.5
+wait 0.5
+console hub view on
+turn 180 0 0.4
+wait 0.2
+console hub lamp 255 40 220
+turn 180 0 0.4
+wait 0.3
+wait 2.5
+console hub info
+shot
+wait 6
+quit
