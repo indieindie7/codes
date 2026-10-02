@@ -163,6 +163,8 @@ public:
 				PostBlur.File = "post_blur.hlsl";
 				PostFinal.File = "post_final.hlsl";
 			}
+			else if (sscanf_s(Line, " posttrace=%u", &Hash) == 1)
+				PostTrace = (int)Hash;
 			else if (sscanf_s(Line, " postsplit=%u", &Hash) == 1)
 				PostSplit = Hash != 0 ? 1.0f : 0.0f;
 			else if (sscanf_s(Line, " bloom=%f %f", &PostBloom[0], &PostBloom[1]) == 2)
@@ -1398,6 +1400,8 @@ public:
 	IDirect3DStateBlock9 *PostState = nullptr;
 	IDirect3DDevice9 *LastDev = nullptr;
 	bool Saw3D = false, PostDone = false;
+	int PostTrace = 0;                                   // posttrace=N: log the draw order of N frames
+	std::string PostTraceLine;
 
 	void PostCheck(IDirect3DDevice9 *Dev)
 	{
@@ -1416,11 +1420,34 @@ public:
 		Dev->GetTransform(D3DTS_PROJECTION, &P);
 		const bool rhw = (fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW;
 		const bool ortho = !programmable && !rhw && P._34 == 0.0f && P._44 == 1.0f;
+		// the HUD draws without depth testing; orthographic draws that still test depth are part
+		// of the scene (in third person one came mid-frame: the post ran too early and covered
+		// the rest of the frame with a half-drawn copy)
+		DWORD zenable = 0, zwrite = 0, zfunc = 0, blend = 0;
+		Dev->GetRenderState(D3DRS_ZENABLE, &zenable);
+		Dev->GetRenderState(D3DRS_ZWRITEENABLE, &zwrite);
+		Dev->GetRenderState(D3DRS_ZFUNC, &zfunc);
+		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+		if (PostTrace > 0)
+		{
+			char item[64];
+			if (!rhw && !ortho)
+				snprintf(item, sizeof(item), zenable ? "3 " : "h(w%lu b%lu p%.2f) ", zwrite, blend, P._43);
+			else
+			{
+				D3DVIEWPORT9 vp = {};
+				Dev->GetViewport(&vp);
+				snprintf(item, sizeof(item), "%s(z%lu w%lu f%lu b%lu vp%lux%lu) ", rhw ? "R" : "O", zenable, zwrite, zfunc, blend, vp.Width, vp.Height);
+			}
+			if (PostTraceLine.size() < 3500) PostTraceLine += item;
+		}
 		if (!rhw && !ortho)
 		{
 			Saw3D = true;
 			return;
 		}
+		if (PostTrace > 0)
+			return;                           // tracing: just record the frame
 		if (!Saw3D)
 			return;
 		static int told = 0;
@@ -1468,6 +1495,38 @@ public:
 		IDirect3DSurface9 *OldRT = nullptr, *OldDS = nullptr;
 		Dev->GetRenderTarget(0, &OldRT);
 		Dev->GetDepthStencilSurface(&OldDS);
+		// the game's vertex input, put back by hand: our quads are drawn with DrawPrimitiveUP,
+		// which clears stream 0, and state blocks (at least through dgVoodoo) don't bring
+		// streams back. Without this the HUD draw that follows used our full-screen quad:
+		// the HUD texture sheet filled the screen (tested 2026-10-01 on the PC).
+		IDirect3DVertexBuffer9 *OldVB[2] = {};
+		UINT OldOffset[2] = {}, OldStride[2] = {};
+		for (UINT s = 0; s < 2; s++)
+			Dev->GetStreamSource(s, &OldVB[s], &OldOffset[s], &OldStride[s]);
+		IDirect3DIndexBuffer9 *OldIB = nullptr;
+		Dev->GetIndices(&OldIB);
+		IDirect3DVertexDeclaration9 *OldDecl = nullptr;
+		Dev->GetVertexDeclaration(&OldDecl);
+		DWORD OldFVF = 0;
+		Dev->GetFVF(&OldFVF);
+		// textures, sampler states and shaders too: the state block doesn't restore them
+		// either (the HUD's first draw came out with the bloom texture)
+		IDirect3DBaseTexture9 *OldTex[4] = {};
+		static const D3DSAMPLERSTATETYPE Samp[] = { D3DSAMP_ADDRESSU, D3DSAMP_ADDRESSV, D3DSAMP_MAGFILTER,
+			D3DSAMP_MINFILTER, D3DSAMP_MIPFILTER, D3DSAMP_SRGBTEXTURE };
+		static const D3DTEXTURESTAGESTATETYPE Stage[] = { D3DTSS_TEXCOORDINDEX, D3DTSS_TEXTURETRANSFORMFLAGS };
+		DWORD OldSamp[2][6] = {}, OldStage[2][2] = {};
+		for (DWORD t = 0; t < 4; t++)
+			Dev->GetTexture(t, &OldTex[t]);
+		for (DWORD t = 0; t < 2; t++)
+		{
+			for (int i = 0; i < 6; i++) Dev->GetSamplerState(t, Samp[i], &OldSamp[t][i]);
+			for (int i = 0; i < 2; i++) Dev->GetTextureStageState(t, Stage[i], &OldStage[t][i]);
+		}
+		IDirect3DPixelShader9 *OldPS = nullptr;
+		Dev->GetPixelShader(&OldPS);
+		IDirect3DVertexShader9 *OldVS = nullptr;
+		Dev->GetVertexShader(&OldVS);
 
 		CopyScene(Dev, true);
 		const UINT W = (std::max)(SceneW / 4, 1u), H = (std::max)(SceneH / 4, 1u);
@@ -1546,6 +1605,32 @@ public:
 		Dev->SetRenderTarget(0, OldRT);
 		Dev->SetDepthStencilSurface(OldDS);
 		PostState->Apply();               // after SetRenderTarget, which resets the viewport
+		if (OldDecl)
+			Dev->SetVertexDeclaration(OldDecl);
+		else
+			Dev->SetFVF(OldFVF);
+		for (UINT s = 0; s < 2; s++)
+		{
+			Dev->SetStreamSource(s, OldVB[s], OldOffset[s], OldStride[s]);
+			if (OldVB[s]) OldVB[s]->Release();
+		}
+		Dev->SetIndices(OldIB);
+		if (OldIB) OldIB->Release();
+		for (DWORD t = 0; t < 4; t++)
+		{
+			Dev->SetTexture(t, OldTex[t]);
+			if (OldTex[t]) OldTex[t]->Release();
+		}
+		for (DWORD t = 0; t < 2; t++)
+		{
+			for (int i = 0; i < 6; i++) Dev->SetSamplerState(t, Samp[i], OldSamp[t][i]);
+			for (int i = 0; i < 2; i++) Dev->SetTextureStageState(t, Stage[i], OldStage[t][i]);
+		}
+		Dev->SetPixelShader(OldPS);
+		if (OldPS) OldPS->Release();
+		Dev->SetVertexShader(OldVS);
+		if (OldVS) OldVS->Release();
+		if (OldDecl) OldDecl->Release();
 		if (OldRT) OldRT->Release();
 		if (OldDS) OldDS->Release();
 	}
@@ -1939,6 +2024,16 @@ public:
 			RunPost(LastDev);
 			LastDev->EndScene();
 		}
+		if (PostTrace > 0 && !PostTraceLine.empty())
+		{
+			static int frame = 0;
+			if (++frame % 300 == 0)      // every 300th frame, so both views get sampled
+			{
+				Message("posttrace: %s", PostTraceLine.c_str());
+				PostTrace--;
+			}
+		}
+		PostTraceLine.clear();
 		Saw3D = PostDone = false;
 		Frame++;
 		if (Capture && CaptureDirty && Frame % 300 == 0)
