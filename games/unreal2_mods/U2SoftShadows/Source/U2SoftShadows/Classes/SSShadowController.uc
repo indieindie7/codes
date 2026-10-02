@@ -42,6 +42,7 @@ var config float RepickDistance; // the light set is re-picked only after moving
 var config bool bRespectBaked;   // darkness follows the light's share of all light here (lamps + ambient)
 var config float AmbientWeight;  // how much the zone's ambient brightness counts against the lamps
 var config float MinShare;       // darkness kept even when a light is a small share of the total, 0-1
+var config bool bFitToFloor;     // end the feet-to-head fade where the shadow really lands (stairs, slopes)
 
 var int Allowed;                 // light shadows allowed at the current distance
 
@@ -104,6 +105,7 @@ function Initialize()
 		S.MaxSteepness = MaxSteepness;
 		S.MinStrength = MinStrength;
 		S.FullIntensity = FullIntensity;
+		S.bFitToFloor = bFitToFloor;
 		S.bGradient = true;
 		Shadows[Shadows.Length] = S;
 	}
@@ -471,6 +473,7 @@ defaultproperties
 	bRespectBaked=True
 	AmbientWeight=1.000000
 	MinShare=0.350000
+	bFitToFloor=True
 	bHidden=True
 	RemoteRole=ROLE_None
 }

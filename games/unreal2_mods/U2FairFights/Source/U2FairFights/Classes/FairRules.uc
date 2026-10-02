@@ -13,7 +13,10 @@ function int NetDamage( int OriginalDamage, int Damage, pawn injured, pawn insti
 		if (injured.IsRealPlayer())
 			Settings.PlayerHit(instigatedBy, Damage);
 		else if (instigatedBy.IsRealPlayer())
+		{
 			Settings.PlayerHitSomething(injured, false);
+			Settings.PlayerDealt(injured, Damage);
+		}
 	}
 	if (NextGameRules != None)
 		return NextGameRules.NetDamage(OriginalDamage, Damage, injured, instigatedBy, HitLocation, Momentum, DamageType);

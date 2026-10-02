@@ -1,0 +1,24 @@
+# destruct_probe: can a map's placed props be replaced at runtime (Black-style destruction)?
+# Needs U2Destruct.u in System (EditPackages=U2Destruct, UCC make). The probe turns the view
+# to the nearest solid prop, then every 2 s: hide + collision off, a solid copy in its
+# place, Karma debris from the same mesh. Results: "DestructProbe:" lines in Unreal2.log.
+map M08A1
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+spawn U2Destruct.DestructProbe 200
+wait 1
+shot
+# stage 2: original hidden, collision off
+wait 2
+shot
+# stage 3: the copy in its place
+wait 2
+shot
+# stage 4: debris dropped, then 4 s to settle
+wait 1
+shot
+wait 4
+shot
+quit

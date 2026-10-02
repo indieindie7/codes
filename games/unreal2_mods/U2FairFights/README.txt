@@ -16,7 +16,10 @@ FAIR FIGHTS (enemies)
     comes from
 
 PUNCH (feedback)
-  - a beat of slow motion on kills (hitstop)
+  - a beat of slow motion on kills (hitstop), longer for tough enemies and
+    when you were nearly dead: the payoff grows with what was at stake
+  - a shorter beat on heavy hits that don't kill (rate-limited)
+  - the view flinches when you get hurt, harder for bigger hits
   - view kick per shot of your own weapon
   - a hit tick at the crosshair and a click when you hit something
   - easier knock-downs, more ragdolls, bodies that stay
@@ -33,5 +36,11 @@ SETTINGS ([U2FairFights.FairFights] in User.ini)
   bPunch=True       KillHitstop=0.07  HitstopDilation=0.25  KnockDownScale=0.6
   MaxRagdolls=12    BodyTime=90  KickScale=1  bHitTick=True  HitTickTime=0.12
   bEnemyTracers=True  bLog=True (test lines in Unreal2.log)
+  KillToughMax=2  CloseCallHealth=0.3  CloseCallMul=1.6
+  HeavyHitDamage=40  HeavyHitstop=0.03  HeavyHitCooldown=0.4
+  HurtKick=0.15  HurtKickMax=6
+
+Status of the stakes/heavy-hit/hurt-kick additions: written without the game
+(not compiled yet); they only use calls the rest of this mod already uses.
 
 Status: works and tested with U2Pilot runs; not packaged for Nexus.

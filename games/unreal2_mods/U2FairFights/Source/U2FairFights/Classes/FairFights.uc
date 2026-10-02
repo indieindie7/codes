@@ -12,7 +12,13 @@
 //
 // Punch (feedback):
 //   KillHitstop     a beat of slow-motion when you kill something (seconds of
-//                   real time); HitstopDilation is the speed during it
+//                   real time); HitstopDilation is the speed during it. Longer
+//                   for tough enemies (KillToughMax) and close calls, when you
+//                   are below CloseCallHealth (CloseCallMul)
+//   HeavyHitstop    a shorter beat for a heavy hit that doesn't kill
+//                   (HeavyHitDamage, at most every HeavyHitCooldown seconds)
+//   HurtKick        the view flinches when you take damage (per point, up to
+//                   HurtKickMax)
 //   KnockDownScale  lowers the momentum needed to knock an enemy down
 //   MaxRagdolls     more simultaneous ragdoll deaths (the game allows 5)
 //   BodyTime        bodies stay this long instead of sinking away at once
@@ -48,6 +54,16 @@ var() config float KickScale;         // view kick per shot of your own weapon (
 var() config bool  bHitTick;          // a tick at the crosshair and a click when you hit something
 var() config float HitTickTime;
 var() config bool  bEnemyTracers;     // a visible line along every enemy hitscan shot
+// stakes: the kill beat grows with what was at risk (see PlayerKilled)
+var() config float KillToughMax;      // tough enemy: hitstop x (its starting health / 100), at most this
+var() config float CloseCallHealth;   // you below this share of your starting health: a close call...
+var() config float CloseCallMul;      // ...and the kill beat is this much longer
+var() config float HeavyHitDamage;    // a hit of yours this strong that doesn't kill: a short beat too
+var() config float HeavyHitstop;      // (seconds of real time; 0 = off)
+var() config float HeavyHitCooldown;  // at least this long between them, so rapid fire doesn't stutter
+var() config float HurtKick;          // view kick per point of damage you take (0 = off)
+var() config float HurtKickMax;
+var float LastHeavyHit;
 
 var int LastPlayerAmmo;
 var U2Weapon LastPlayerWeapon;
@@ -449,6 +465,7 @@ function PlayerHit(Pawn instigatedBy, int Damage)
 {
 	local int i;
 
+	PlayerHurt(Damage);
 	if (!bLog)
 		return;
 	for (i = 0; i < NPCs.Length; i++)
@@ -466,14 +483,68 @@ function PlayerHit(Pawn instigatedBy, int Damage)
 	Log("FairFights: hit by "$instigatedBy$" damage "$Damage);
 }
 
-// the player killed something: a beat of slow motion
+// the player killed something: a beat of slow motion, longer the more was at stake (a tough
+// enemy, or you nearly dead): winning should feel bigger when losing was possible
 function PlayerKilled(Pawn Killed)
 {
+	local float Secs;
+	local bool bClose;
+
 	if (!bPunch || KillHitstop <= 0)
 		return;
+	Secs = KillHitstop * FClamp(float(Killed.default.Health) / 100.0, 1.0, FMax(KillToughMax, 1.0));
+	bClose = PlayerNearlyDead();
+	if (bClose)
+		Secs *= FMax(CloseCallMul, 1.0);
+	StartBeat(Secs);
+	if (bLog)
+		Log("FairFights: kill beat "$Secs$"s ("$Killed.Class.Name$" start health "$Killed.default.Health$", close call "$bClose$")");
+}
+
+// a heavy hit of the player's that doesn't kill: a shorter beat, rate-limited
+function PlayerDealt(Pawn Victim, int Damage)
+{
+	if (!bPunch || HeavyHitstop <= 0 || Damage < HeavyHitDamage || Damage >= Victim.Health)
+		return;                         // too light, or lethal (PlayerKilled has that one)
+	if (LastHeavyHit > 0 && Level.TimeSeconds - LastHeavyHit < HeavyHitCooldown)
+		return;
+	LastHeavyHit = Level.TimeSeconds;
+	StartBeat(HeavyHitstop);
+	if (bLog)
+		Log("FairFights: heavy hit beat "$HeavyHitstop$"s (damage "$Damage$")");
+}
+
+// the player got hurt: the view flinches, harder for bigger hits
+function PlayerHurt(int Damage)
+{
+	local PlayerController PC;
+	local float Mag;
+
+	if (!bPunch || HurtKick <= 0)
+		return;
+	PC = LocalPC();
+	if (PC == None || PC.Pawn == None)
+		return;
+	Mag = FMin(Damage * HurtKick, HurtKickMax);
+	PC.ShakeView(Mag, 0.15);
+	if (bLog)
+		Log("FairFights: hurt kick "$Mag$" (damage "$Damage$")");
+}
+
+function bool PlayerNearlyDead()
+{
+	local PlayerController PC;
+
+	PC = LocalPC();
+	return PC != None && PC.Pawn != None && PC.Pawn.Health > 0
+		&& PC.Pawn.Health < PC.Pawn.default.Health * CloseCallHealth;
+}
+
+function StartBeat(float Secs)
+{
 	if (Beat == None)
 		Beat = Spawn(class'Hitstop');
-	Beat.Start(KillHitstop, HitstopDilation);
+	Beat.Start(Secs, HitstopDilation);
 }
 
 defaultproperties
@@ -501,6 +572,14 @@ defaultproperties
 	bHitTick=True
 	HitTickTime=0.120000
 	bEnemyTracers=True
+	KillToughMax=2.000000
+	CloseCallHealth=0.300000
+	CloseCallMul=1.600000
+	HeavyHitDamage=40.000000
+	HeavyHitstop=0.030000
+	HeavyHitCooldown=0.400000
+	HurtKick=0.150000
+	HurtKickMax=6.000000
 	HitSound=Sound'UISounds.MouseDown'
 	KillSound=Sound'UISounds.MousePowerdown'
 	bLog=True

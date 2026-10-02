@@ -23,6 +23,7 @@ float4 TF    : register(c1);    // neutral colour (the draw's texture factor): n
 float4 P     : register(c2);    // search radius, min radius, radius per unit of gap, max radius (UV)
 float4 Texel : register(c3);    // 1/width, 1/height of the shadow map
 float4 Zrow  : register(c4);    // camera space -> world height
+float4 Tint  : register(c5);    // how strongly each channel darkens (shadowtint=, 1 1 1 = grey)
 
 #define SEARCH_TAPS 12
 #define LIT 0.9                 // sharp-map alpha above this: no blocker
@@ -71,7 +72,11 @@ float4 main(float3 t0 : TEXCOORD0, float3 t1 : TEXCOORD1, float3 t2 : TEXCOORD2,
 		lit += tex2D(Sharp, uv + Tap(j, SEARCH_TAPS, cs2) * (radius * 0.6)).a;
 	}
 	lit /= 2 * SEARCH_TAPS;
-	float3 col = blockers > 0 ? 0.502 * lit : TF.rgb;
+	// the shadow darkens each channel by its tint weight: 1 1 1 is the engine's grey, a lower
+	// blue weight leaves more blue in the shadow (cool fill light). Tint.w is 1 only from a
+	// d3d8.dll that sets c5; an older one leaves it 0, and the shadow stays grey
+	float3 weight = Tint.w > 0.5 ? Tint.rgb : 1;
+	float3 col = blockers > 0 ? 0.502 * saturate(1 - (1 - lit) * weight) : TF.rgb;
 
 	// debug views (pcssdebug=N): 1 gap as colour (red touching .. blue 128 units up)
 	if (Info.y > 0.5 && Info.y < 1.5 && blockers > 0)

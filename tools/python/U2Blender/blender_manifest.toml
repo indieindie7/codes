@@ -1,0 +1,11 @@
+schema_version = "1.0.0"
+
+id = "u2blender"
+version = "0.1.0"
+name = "U2Blender: Unreal T3D maps"
+tagline = "Edit Unreal Engine 2 maps through UnrealEd's T3D text format"
+maintainer = "indieindie7"
+type = "add-on"
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+tags = ["Import-Export"]
