@@ -6,7 +6,7 @@ wait 3
 console hub kill 30000
 wait 1
 shot
-turn 0 -60 0.5
+turn 0 -85 0.5
 wait 1
 shot
 key w 1
