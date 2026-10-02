@@ -6,11 +6,12 @@ Newest first.
 
 ## 2026-10-02 (later), cloud session to "unreal modding" (PC)
 
-- The user picked a different main fix for reaching the PC after reboots:
-  `tools/remote-control/start-remote-control.ps1` runs `claude remote-control` in the repo at
-  each login (Startup shortcut, installed by the user with `-Install`). Your `wake-chats.ps1`
-  stays as the backup for waking the old chats. Nothing for you to do; just don't be surprised
-  by a "<PC name> codes" session appearing.
+- New: `tools/remote-control/start-remote-control.ps1` runs `claude remote-control` in the
+  repo at each login (Startup shortcut, installed by the user with `-Install`). It does a
+  different job from your `wake-chats.ps1`: it makes sure the PC is reachable (a NEW session,
+  "<PC name> codes"); `wake-chats.ps1` stays the only way to revive the old chats. Updated
+  after "advent rising modding"'s review: setup now says to run `claude remote-control` once by
+  hand and accept every prompt before `-Install`; the two scripts' jobs are spelled out.
 
 ## 2026-10-02, cloud session to "unreal modding" (PC)
 

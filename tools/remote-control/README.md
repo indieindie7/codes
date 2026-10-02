@@ -7,8 +7,10 @@ waking old chats.
 
 ## Install (once, on the PC)
 
-1. If you have never run `claude` in the repo folder from a terminal, do it once and accept
-   "trust this folder" (the login window has nowhere to ask).
+1. In a terminal in the repo folder, run `claude remote-control` once by hand and accept every
+   prompt it shows (trusting the folder, enabling Remote Control). Then close it. The login
+   window starts minimized, so a first-time question there would wait unseen and the session
+   would never come up.
 2. In the repo folder:
 
        powershell -ExecutionPolicy Bypass -File tools\remote-control\start-remote-control.ps1 -Install
@@ -30,12 +32,18 @@ Close its window to stop it for the rest of that login.
 Options: `-PermissionMode acceptEdits` (or another mode) for the sessions it starts,
 `-Name "..."`, `-Dir <folder>`.
 
-## Trade-off
+## Two scripts, two jobs
 
-Each morning is a fresh session: it doesn't remember the old chats. What carries over lives in
-the repo: `SESSION_NOTES.md` (state and checklist) and `HANDOFF.md` (messages between sessions).
-To wake the old desktop-app chats themselves, `tools/wake-chats/wake-chats.ps1` (from the PC
-session) does that by clicking through the app; it's the backup.
+- **This one makes sure the PC is reachable.** Each morning it creates a NEW session; it does
+  not bring back the existing desktop-app chats. (`--continue` doesn't help: it only reattaches
+  to a session from roughly the last 4 hours, and the PC is off overnight.) What carries over
+  lives in the repo: `SESSION_NOTES.md` (state and checklist) and `HANDOFF.md` (messages between
+  sessions).
+- **`tools/wake-chats/wake-chats.ps1` (from the PC session) is the only way to revive the old
+  chats** ("unreal modding", "advent rising modding", ...), by clicking through the app.
+
+Leave the permission mode at its default, so the sessions it starts ask on the phone before
+doing things.
 
 Tested here only as far as possible without Windows: the script parses in PowerShell 7, and a
 dry run with a stand-in `claude` showed the start, restart and back-off. The shortcut, the login

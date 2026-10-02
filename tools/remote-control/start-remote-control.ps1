@@ -9,8 +9,9 @@
     each time it stops quickly. It first waits until the internet is reachable, as it starts at
     login. Everything it does goes to %LOCALAPPDATA%\claude-remote-control-startup.log.
 
-    Each morning this gives a fresh session: it doesn't carry the old chats' memory. What
-    matters between sessions lives in the repo (SESSION_NOTES.md, HANDOFF.md).
+    Each morning this gives a NEW session: it keeps the PC reachable, but doesn't bring back the
+    old desktop-app chats (tools\wake-chats\wake-chats.ps1 does that). What matters between
+    sessions lives in the repo (SESSION_NOTES.md, HANDOFF.md).
 
     Install once (creates a Startup shortcut that runs this, minimized, at login):
         powershell -ExecutionPolicy Bypass -File tools\remote-control\start-remote-control.ps1 -Install
@@ -79,8 +80,9 @@ if ($Install) {
     $link.Save()
     Write-Host "Installed: $Shortcut"
     Write-Host "At each login it runs 'claude remote-control' in $Dir (log: $Log)."
-    Write-Host "If you have never run 'claude' in that folder, do it once now: it asks whether to trust the folder,"
-    Write-Host 'and the login window has nowhere to ask.'
+    Write-Host "Before the next login: run 'claude remote-control' once by hand in $Dir, accept every prompt"
+    Write-Host '(folder trust, enabling Remote Control), then close it. The login window is minimized, so a'
+    Write-Host 'first-time question there would wait unseen.'
     exit 0
 }
 
