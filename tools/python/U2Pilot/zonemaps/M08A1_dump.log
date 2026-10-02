@@ -1,0 +1,1643 @@
+Log: Log file open, 10/02/26 19:47:58
+Init: Name subsystem initialized
+Init: Detected: Microsoft Windows NT 6.2 (Build: 9200)
+Init: Version: 2001
+Init: Compiled: Mar 14 2003 13:18:30
+Init: Command line: M08A1?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261002-194756_beats_dump -forcelogflush -nosound -ini=PilotRun.ini -userini=PilotRunUser.ini LOG=PilotZones.log
+Init: Base directory: C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening\SystemBuild\
+Init: Character set: Unicode
+Progress: Bound to Window.dll
+Progress: calling packageinit
+Progress: Bound to Core.dll
+Progress: calling packageinit
+Progress: Bound to Engine.dll
+Progress: calling packageinit
+Init: Object subsystem initialized
+Init: Computer: DESKTOPJ1BBEKD
+Init: User: john
+Init: Memory total: Phys=2097151K Pagef=4194303K Virt=2097024K
+Init: Working set: 32000 / 159000
+Init: CPU Speed=4117.341260 MHz
+Init: CPU Page size=4096, Processors=12
+Init: CPU Detected: PentiumPro-class processor (GenuineIntel)
+Init: CPU Features: CMov FPU RDTSC PAE MMX SSE
+Init: FirstRun=2001
+Log: Verifying ALevelInfo class size
+Log: Save=0.861914
+Log: Moving 'Save.tmp' to 'Golem.u'
+Log: Golem: [Log] Library initialized
+Init: Unreal engine initialized
+Init: Client initialized
+Init: Direct3D adapters detected:
+Log: 	dgvdumd.dll/NVIDIA GeForce RTX 4070 Ti (dgVoodoo DX API Layer)
+Log: 	dgvdumd.dll/NVIDIA GeForce RTX 4070 Ti (dgVoodoo DX API Layer)
+Init: D3D Driver: MaxTextureBlendStages=8
+Init: D3D Driver: MaxSimultaneousTextures=8
+Init: D3D Driver: MaxActiveLights=8
+Init: D3D Driver: MaxPrimitiveCount=16777216
+Init: D3D Driver: MaxVertexIndex=268435455
+Init: D3D Driver: MaxStreams=16
+Init: D3D Driver: MaxStreamStride=65536
+Init: D3D Driver: MaxVertexShaderConst=256
+Init: D3D Driver: VertexShaderVersion=1.1
+Init: D3D Driver: PixelShaderVersion=1.4
+Init: D3D Driver: AGP support detected
+Init: D3D Driver: Using w- pixel fog
+Init: D3D Driver: Supports trilinear
+Init: D3D Driver: Supports BLENDDIFFUSEALPHA
+Init: D3D Driver: Supports LOD biasing
+Init: D3D Driver: Supports Z biasing
+Init: D3D Driver: Supports D3DTOP_ADDSIGNED2X
+Init: D3D Driver: Supports D3DTOP_BUMPENVMAP
+Init: D3D Driver: Supports D3DTOP_BUMPENVMAPLUMINANCE
+Init: D3D Driver: Supports D3DTOP_DOTPRODUCT3
+Init: D3D Driver: Supports D3DTOP_MODULATEALPHA_ADDCOLOR
+Init: D3D Driver: Supports D3DTOP_MODULATECOLOR_ADDALPHA
+Init: D3D Driver: Textures (16384x16384), Max aspect 16384
+Init: Unreal Engine Direct3D support - internal version: SB2.5
+Init: D3D Device: szDriver=dgvdumd.dll
+Init: D3D Device: szDescription=NVIDIA GeForce RTX 4070 Ti (dgVoodoo DX API Layer)
+Init: D3D Device: wProduct=17479
+Init: D3D Device: wVersion=2
+Init: D3D Device: wSubVersion=8
+Init: D3D Device: wBuild=7
+Init: D3D Device: dwVendorId=0
+Init: D3D Device: dwDeviceId=0
+Init: D3D Device: dwSubSysId=0
+Init: D3D Device: dwRevision=0
+Init: D3D Detected: Generic 3D accelerator
+Init: D3D Device: using cubemaps [with mipmaps]
+Log: (Karma): Beginning Karma for game.
+Init: Warning: [Entry] Level-loading information not found, progress bar will not function properly
+Log: LoadMap: Entry
+Log: Static mesh batches: 0 vertex bytes, 0 index bytes, 0.0 setup seconds
+Log: Game class is 'GameInfo'
+Log: Level is Level Entry.MyLevel
+
+-------------------------------------------------------------------------------
+
+Log: Bringing Level Entry.MyLevel up for play (0)...
+ScriptLog: InitGame: 
+ScriptLog: Base Mutator is Entry.Mutator0
+DM: GameSpeed: 1.000000
+Log: Browse: M08A1?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261002-194756_beats_dump
+Log: LoadMap: M08A1?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261002-194756_beats_dump
+Log: (Karma): Initializing Karma for Level.
+Log: Static mesh batches: 0 vertex bytes, 0 index bytes, 0.0 setup seconds
+Log: 1919.2ms Collecting garbage
+Log: 1987.6ms Purging garbage
+Log: Garbage: objects: 28716->28602; refs: 351669
+Log: 1988.2ms Finished garbage
+Log: Game class is 'U2GameInfo'
+Log: Level is Level M08A1.MyLevel
+
+-------------------------------------------------------------------------------
+
+Log: Bringing Level M08A1.MyLevel up for play (0)...
+ScriptLog: InitGame: ?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261002-194756_beats_dump
+ScriptLog: Base Mutator is M08A1.U2Mutator0
+ScriptLog: Mutators U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver
+ScriptLog: Add mutator U2SoftShadows.SSShadowMutator
+ScriptLog: U2SoftShadows: manager active on Elara V: Sanctuary
+ScriptLog: Add mutator U2WeaponTune.WeaponTune
+ScriptLog: Add mutator U2UTFlak.UTFlakMutator
+ScriptLog: Add mutator U2Enemies.EnemyMutator
+ScriptLog: Add mutator U2TestHub.HubMutator
+ScriptLog: Add mutator U2FairFights.FairFights
+ScriptLog: FairFights: active (fair True, punch True)
+ScriptLog: Add mutator U2Wardrobe.WardrobeMutator
+ScriptLog: Add mutator U2PilotDriver.PilotDriver
+ScriptLog: PilotDriver: loaded 7 steps
+DM: GameSpeed: 1.000000
+DM: precaching actors
+DM:   ActorFactory added: 1 classes
+DM:   LevelInfo.PreCacheList added: 6 classes
+DM:     SpawnTemporaryPrecacheInstance spawned M08A1.U2Izarian18
+DM:     SpawnTemporaryPrecacheInstance spawned M08A1.weaponInvAssaultRifle0
+DM:     SpawnTemporaryPrecacheInstance spawned M08A1.weaponInvGrenadeLauncher0
+DM:     SpawnTemporaryPrecacheInstance spawned M08A1.weaponEnergyRifle1
+DM:     SpawnTemporaryPrecacheInstance spawned M08A1.weaponInvDispersion0
+DM:     SpawnTemporaryPrecacheInstance spawned M08A1.AmmoInvGrenadeFragment0
+DM:     SpawnTemporaryPrecacheInstance failed to spawn a None at -768.394775,5954.485352,6530.702148
+DM: Allocated Game AI Controllers: 0
+Log: Initializing DirectMusic...
+Log: Loading DirectMusic Script: M08.Script1...
+ScriptLog: Team 0
+ScriptLog: Login: Player
+Log: Possessed PlayerPawn: BodyController M08A1.BodyController0
+Log: BodyController0 got player WindowsViewport0
+Init: Input system initialized for WindowsViewport0
+Log: Opened viewport
+Log: Couldn't bring window to foreground.
+Log: Enter SetRes: 960x540 Fullscreen 0
+Log: Current display mode is 32 bits (22)
+Log: Using back-buffer format 22(32-bit)
+Log: Using depth-buffer format 77(32-bit)
+Log: Creating device
+Init: D3D Driver: CreateDevice: will use hardware transform and lighting.
+Init: D3D Driver: CreateDevice: will use hardware vertexprocessing.
+Init: Game engine initialized
+Log: Startup time: 2.823555 seconds
+ScriptLog: PilotDriver: input attached to M08A1.BodyController0
+ScriptLog: PilotDriver: step 1: waitcontrol 180
+Log: Allocating 16384 byte dynamic index buffer.
+ScriptLog: U2Wardrobe: fitted U2PlayerSP0 (GlmCharactersG.PlayerGame -> GlmMalcolmG.Malcolm) scale 1.000000 -> 1.064106
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian15 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian23 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian5 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian24 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian7 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian8 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian9 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian1 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian2 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian0 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian6 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian3 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2CivilianScientist3 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2CivilianScientist0 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian12 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian19 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian20 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian16 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian17 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2ColonistHumanMaleA0 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2CivilianScientist1 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian13 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2Izarian21 (4 max)
+ScriptLog: U2TestHub: commands ready for M08A1.BodyController0 (type: hub help)
+ScriptLog: U2SoftShadows: multi-light shadows for U2CivilianScientist7 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2CivilianScientist8 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2CivilianScientist9 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2CivilianScientist2 (4 max)
+ScriptLog: U2SoftShadows: multi-light shadows for U2PlayerSP0 (4 max)
+ScriptLog: FairFights: watching 27 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 27 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 27 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 27 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 25 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 25 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 22 enemies, tracer weapons 0
+ScriptLog: U2UTFlak: gave the Flak Cannon to M08A1.U2PlayerSP0 ammo=M08A1.ammoInvShotgun0
+ScriptLog: U2UTFlak: replaced the grenade launcher with the Flak Cannon
+DM:   38.155 Warning (ASSERT): tried to give M08A1.WeaponInvUTRipper0 to M08A1.U2PlayerSP0 where M08A1.U2PlayerSP0 already has a M08A1.weaponInvAssaultRifle1!
+ScriptLog: U2UTFlak: gave Ripper to M08A1.U2PlayerSP0
+DM:   38.155 Warning (ASSERT): tried to give M08A1.WeaponInvUTBio0 to M08A1.U2PlayerSP0 where M08A1.U2PlayerSP0 already has a M08A1.weaponInvDispersion1!
+ScriptLog: U2UTFlak: gave GES Bio Rifle to M08A1.U2PlayerSP0
+ScriptLog: U2UTFlak: replaced weaponInvDispersion with GES Bio Rifle
+ScriptLog: PilotDriver: in control after 37.800301s
+ScriptLog: PilotDriver: step 2: wait 1
+ScriptLog: U2UTFlak: replaced weaponInvAssaultRifle with Ripper
+ScriptLog: PilotDriver: step 3: console hub zones
+ScriptLog: Zones: zoneinfo 0 LevelInfo0 None -288 -480 0
+ScriptLog: Zones: zoneinfo 10 ZoneInfo3 None -830 1779 6540
+ScriptLog: Zones: zoneinfo 7 ZoneInfo9 None -1147 1128 6228
+ScriptLog: Zones: zoneinfo 7 ZoneInfo10 None -1008 -176 6320
+ScriptLog: Zones: zoneinfo 14 SkyZoneInfo1 None -9802 3106 -1749
+ScriptLog: Zones: zoneinfo 13 ZoneInfo7 None -1728 2960 6008
+ScriptLog: Zones: zoneinfo 15 ZoneInfo8 None -1800 2050 6018
+ScriptLog: Zones: zoneinfo 9 U2ZoneInfo0 None 1391 1674 5602
+ScriptLog: Zones: zoneinfo 8 U2ZoneInfo2 None 600 1621 5602
+ScriptLog: Zones: zoneinfo 1 ZoneInfo11 None -1144 -4568 7567
+ScriptLog: Zones: zoneinfo 3 ZoneInfo0 None -256 -5258 7720
+ScriptLog: Zones: zoneinfo 4 ZoneInfo13 None 5994 -11664 7476
+ScriptLog: Zones: nav 7 -1204 1136 5975 AutoLadder AutoLadder7
+ScriptLog: Zones: edge AutoLadder7 AutoLadder6 205
+ScriptLog: Zones: link 7 8 -1204 1136 5873
+ScriptLog: Zones: nav 8 -1204 1136 5770 AutoLadder AutoLadder6
+ScriptLog: Zones: edge AutoLadder6 AutoLadder7 205
+ScriptLog: Zones: link 8 7 -1204 1136 5873
+ScriptLog: Zones: nav 1 -1152 -4503 7459 AutoLadder AutoLadder5
+ScriptLog: Zones: edge AutoLadder5 AutoLadder4 1649
+ScriptLog: Zones: edge AutoLadder5 PathNode63 171
+ScriptLog: Zones: edge AutoLadder5 Door1 323
+ScriptLog: Zones: nav 1 -1152 -4503 5810 AutoLadder AutoLadder4
+ScriptLog: Zones: edge AutoLadder4 AutoLadder5 1649
+ScriptLog: Zones: edge AutoLadder4 PathNode60 582
+ScriptLog: Zones: edge AutoLadder4 PathNode61 278
+ScriptLog: Zones: nav 11 -77 2043 5910 PathNode PathNode120
+ScriptLog: Zones: edge PathNode120 PathNode45 492
+ScriptLog: Zones: edge PathNode120 PathNode41 377
+ScriptLog: Zones: nav 10 -1763 4434 6486 PathNode PathNode119
+ScriptLog: Zones: edge PathNode119 PathNode107 512
+ScriptLog: Zones: edge PathNode119 PathNode115 340
+ScriptLog: Zones: edge PathNode119 PathNode116 290
+ScriptLog: Zones: edge PathNode119 PathNode118 219
+ScriptLog: Zones: nav 10 -1727 4650 6479 PathNode PathNode118
+ScriptLog: Zones: edge PathNode118 PathNode107 573
+ScriptLog: Zones: edge PathNode118 PathNode116 158
+ScriptLog: Zones: edge PathNode118 PathNode119 219
+ScriptLog: Zones: nav 10 -1569 4650 6477 PathNode PathNode116
+ScriptLog: Zones: edge PathNode116 PathNode67 777
+ScriptLog: Zones: edge PathNode116 PathNode115 151
+ScriptLog: Zones: edge PathNode116 PathNode118 158
+ScriptLog: Zones: edge PathNode116 PathNode119 290
+ScriptLog: Zones: nav 10 -1447 4560 6486 PathNode PathNode115
+ScriptLog: Zones: edge PathNode115 PathNode107 310
+ScriptLog: Zones: edge PathNode115 PathNode116 151
+ScriptLog: Zones: edge PathNode115 PathNode119 340
+ScriptLog: Zones: nav 10 -1266 4309 6465 PathNode PathNode107
+ScriptLog: Zones: edge PathNode107 PathNode67 332
+ScriptLog: Zones: edge PathNode107 PathNode115 310
+ScriptLog: Zones: edge PathNode107 PathNode118 573
+ScriptLog: Zones: edge PathNode107 PathNode119 512
+ScriptLog: Zones: nav 10 -1141 4001 6467 PathNode PathNode67
+ScriptLog: Zones: edge PathNode67 PathNode107 332
+ScriptLog: Zones: nav 10 -732 6077 6523 PlayerStart PlayerStart0
+ScriptLog: Zones: nav 13 -1152 3556 6454 PathNode PathNode106
+ScriptLog: Zones: nav 3 2563 -10898 7486 SpawnPoint SpawnPoint5
+ScriptLog: Zones: edge SpawnPoint5 PathNode93 151
+ScriptLog: Zones: edge SpawnPoint5 PathNode94 193
+ScriptLog: Zones: nav 3 -851 -6221 7555 SpawnPoint SpawnPoint9
+ScriptLog: Zones: edge SpawnPoint9 PathNode66 304
+ScriptLog: Zones: edge SpawnPoint9 PathNode113 175
+ScriptLog: Zones: nav 1 -1115 -4822 7499 Door Door1
+ScriptLog: Zones: edge Door1 PathNode63 153
+ScriptLog: Zones: edge Door1 PathNode64 263
+ScriptLog: Zones: link 1 3 -1122 -4953 7484
+ScriptLog: Zones: nav 3 -1037 -5750 7469 PathNode PathNode114
+ScriptLog: Zones: edge PathNode114 PathNode65 230
+ScriptLog: Zones: edge PathNode114 PathNode66 230
+ScriptLog: Zones: nav 3 -975 -6309 7469 PathNode PathNode113
+ScriptLog: Zones: edge PathNode113 PathNode66 332
+ScriptLog: Zones: edge PathNode113 PathNode112 293
+ScriptLog: Zones: nav 3 5314 -11646 7469 PathNode PathNode62
+ScriptLog: Zones: edge PathNode62 PathNode105 439
+ScriptLog: Zones: nav 3 4875 -11630 7469 PathNode PathNode105
+ScriptLog: Zones: edge PathNode105 PathNode100 894
+ScriptLog: Zones: edge PathNode105 PathNode104 611
+ScriptLog: Zones: edge PathNode105 PathNode62 439
+ScriptLog: Zones: nav 3 4266 -11572 7469 PathNode PathNode104
+ScriptLog: Zones: edge PathNode104 PathNode100 295
+ScriptLog: Zones: edge PathNode104 PathNode105 611
+ScriptLog: Zones: nav 3 3980 -11646 7469 PathNode PathNode100
+ScriptLog: Zones: edge PathNode100 PathNode99 227
+ScriptLog: Zones: edge PathNode100 PathNode104 295
+ScriptLog: Zones: edge PathNode100 PathNode105 894
+ScriptLog: Zones: nav 3 3784 -11530 7472 PathNode PathNode99
+ScriptLog: Zones: edge PathNode99 PathNode97 365
+ScriptLog: Zones: edge PathNode99 PathNode100 227
+ScriptLog: Zones: nav 3 3498 -11302 7469 PathNode PathNode97
+ScriptLog: Zones: edge PathNode97 PathNode96 497
+ScriptLog: Zones: edge PathNode97 PathNode99 365
+ScriptLog: Zones: nav 3 3049 -11091 7469 PathNode PathNode96
+ScriptLog: Zones: edge PathNode96 PathNode92 819
+ScriptLog: Zones: edge PathNode96 PathNode93 383
+ScriptLog: Zones: edge PathNode96 PathNode97 497
+ScriptLog: Zones: nav 3 2292 -10562 7471 PathNode PathNode95
+ScriptLog: Zones: edge PathNode95 PathNode89 300
+ScriptLog: Zones: edge PathNode95 PathNode94 347
+ScriptLog: Zones: nav 3 2606 -10710 7469 PathNode PathNode94
+ScriptLog: Zones: edge PathNode94 PathNode89 646
+ScriptLog: Zones: edge PathNode94 PathNode93 295
+ScriptLog: Zones: edge PathNode94 PathNode95 347
+ScriptLog: Zones: nav 3 2677 -10997 7469 PathNode PathNode93
+ScriptLog: Zones: edge PathNode93 PathNode92 438
+ScriptLog: Zones: edge PathNode93 PathNode94 295
+ScriptLog: Zones: edge PathNode93 PathNode96 383
+ScriptLog: Zones: nav 3 2240 -10961 7469 PathNode PathNode92
+ScriptLog: Zones: edge PathNode92 PathNode90 328
+ScriptLog: Zones: edge PathNode92 PathNode93 438
+ScriptLog: Zones: edge PathNode92 PathNode96 819
+ScriptLog: Zones: nav 3 1976 -10766 7472 PathNode PathNode90
+ScriptLog: Zones: edge PathNode90 PathNode89 297
+ScriptLog: Zones: edge PathNode90 PathNode92 328
+ScriptLog: Zones: nav 3 2006 -10470 7469 PathNode PathNode89
+ScriptLog: Zones: edge PathNode89 PathNode85 870
+ScriptLog: Zones: edge PathNode89 PathNode88 347
+ScriptLog: Zones: edge PathNode89 PathNode90 297
+ScriptLog: Zones: edge PathNode89 PathNode94 646
+ScriptLog: Zones: edge PathNode89 PathNode95 300
+ScriptLog: Zones: nav 3 1673 -10370 7469 PathNode PathNode88
+ScriptLog: Zones: edge PathNode88 PathNode85 542
+ScriptLog: Zones: edge PathNode88 PathNode89 347
+ScriptLog: Zones: edge PathNode88 PathNode95 647
+ScriptLog: Zones: nav 3 1266 -10011 7469 PathNode PathNode85
+ScriptLog: Zones: edge PathNode85 PathNode80 601
+ScriptLog: Zones: edge PathNode85 PathNode84 363
+ScriptLog: Zones: edge PathNode85 PathNode88 542
+ScriptLog: Zones: edge PathNode85 PathNode89 870
+ScriptLog: Zones: nav 3 -300 -7969 7469 PathNode PathNode78
+ScriptLog: Zones: edge PathNode78 PathNode72 311
+ScriptLog: Zones: edge PathNode78 PathNode74 239
+ScriptLog: Zones: nav 3 -169 -8504 7469 PathNode PathNode83
+ScriptLog: Zones: edge PathNode83 PathNode74 314
+ScriptLog: Zones: edge PathNode83 PathNode77 338
+ScriptLog: Zones: edge PathNode83 PathNode82 606
+ScriptLog: Zones: nav 3 250 -8942 7469 PathNode PathNode82
+ScriptLog: Zones: edge PathNode82 PathNode77 284
+ScriptLog: Zones: edge PathNode82 PathNode81 293
+ScriptLog: Zones: edge PathNode82 PathNode83 606
+ScriptLog: Zones: nav 3 1102 -9688 7469 PathNode PathNode84
+ScriptLog: Zones: edge PathNode84 PathNode79 498
+ScriptLog: Zones: edge PathNode84 PathNode80 243
+ScriptLog: Zones: edge PathNode84 PathNode85 363
+ScriptLog: Zones: nav 3 939 -9506 7471 PathNode PathNode80
+ScriptLog: Zones: edge PathNode80 PathNode79 255
+ScriptLog: Zones: edge PathNode80 PathNode84 243
+ScriptLog: Zones: nav 3 758 -9326 7469 PathNode PathNode79
+ScriptLog: Zones: edge PathNode79 PathNode81 348
+ScriptLog: Zones: edge PathNode79 PathNode80 255
+ScriptLog: Zones: edge PathNode79 PathNode84 498
+ScriptLog: Zones: nav 3 459 -9147 7469 PathNode PathNode81
+ScriptLog: Zones: edge PathNode81 PathNode79 348
+ScriptLog: Zones: edge PathNode81 PathNode82 293
+ScriptLog: Zones: nav 3 9 -8791 7469 PathNode PathNode77
+ScriptLog: Zones: edge PathNode77 PathNode82 284
+ScriptLog: Zones: edge PathNode77 PathNode83 338
+ScriptLog: Zones: nav 3 -275 -8208 7472 PathNode PathNode74
+ScriptLog: Zones: edge PathNode74 PathNode77 649
+ScriptLog: Zones: edge PathNode74 PathNode83 314
+ScriptLog: Zones: edge PathNode74 PathNode78 239
+ScriptLog: Zones: nav 3 -404 -7676 7469 PathNode PathNode72
+ScriptLog: Zones: edge PathNode72 PathNode70 270
+ScriptLog: Zones: edge PathNode72 PathNode78 311
+ScriptLog: Zones: nav 3 -598 -7488 7469 PathNode PathNode70
+ScriptLog: Zones: edge PathNode70 PathNode69 210
+ScriptLog: Zones: edge PathNode70 PathNode72 270
+ScriptLog: Zones: nav 3 -660 -7287 7469 PathNode PathNode69
+ScriptLog: Zones: edge PathNode69 PathNode68 325
+ScriptLog: Zones: edge PathNode69 PathNode70 210
+ScriptLog: Zones: nav 3 -841 -7015 7469 PathNode PathNode68
+ScriptLog: Zones: edge PathNode68 PathNode112 426
+ScriptLog: Zones: edge PathNode68 PathNode69 325
+ScriptLog: Zones: nav 3 -939 -6600 7472 PathNode PathNode112
+ScriptLog: Zones: edge PathNode112 PathNode68 426
+ScriptLog: Zones: edge PathNode112 PathNode113 293
+ScriptLog: Zones: nav 3 -1016 -5980 7469 PathNode PathNode66
+ScriptLog: Zones: edge PathNode66 PathNode113 332
+ScriptLog: Zones: edge PathNode66 PathNode114 230
+ScriptLog: Zones: nav 3 -1059 -5521 7469 PathNode PathNode65
+ScriptLog: Zones: edge PathNode65 PathNode64 443
+ScriptLog: Zones: edge PathNode65 PathNode114 230
+ScriptLog: Zones: edge PathNode65 Door1 702
+ScriptLog: Zones: link 3 1 -1087 -5172 7484
+ScriptLog: Zones: nav 3 -1130 -5083 7469 PathNode PathNode64
+ScriptLog: Zones: edge PathNode64 PathNode65 443
+ScriptLog: Zones: edge PathNode64 Door1 263
+ScriptLog: Zones: link 3 1 -1122 -4953 7484
+ScriptLog: Zones: nav 1 -1146 -4673 7478 PathNode PathNode63
+ScriptLog: Zones: edge PathNode63 Door1 153
+ScriptLog: Zones: edge PathNode63 AutoLadder5 171
+ScriptLog: Zones: nav 2 -1086 -1508 6330 SpawnPoint SpawnPoint7
+ScriptLog: Zones: edge SpawnPoint7 PathNode46 155
+ScriptLog: Zones: edge SpawnPoint7 PathNode47 390
+ScriptLog: Zones: edge SpawnPoint7 PathNode48 271
+ScriptLog: Zones: edge SpawnPoint7 PathNode54 1147
+ScriptLog: Zones: edge SpawnPoint7 door5 286
+ScriptLog: Zones: link 2 7 -1118 -1385 6264
+ScriptLog: Zones: edge SpawnPoint7 PathNode49 348
+ScriptLog: Zones: nav 2 -1164 -1821 6198 PathNode PathNode49
+ScriptLog: Zones: edge PathNode49 PathNode46 264
+ScriptLog: Zones: edge PathNode49 PathNode0 295
+ScriptLog: Zones: edge PathNode49 PathNode50 244
+ScriptLog: Zones: edge PathNode49 PathNode51 409
+ScriptLog: Zones: edge PathNode49 PathNode52 400
+ScriptLog: Zones: nav 2 -1435 -1506 6345 SpawnPoint SpawnPoint2
+ScriptLog: Zones: edge SpawnPoint2 PathNode46 322
+ScriptLog: Zones: edge SpawnPoint2 PathNode47 160
+ScriptLog: Zones: edge SpawnPoint2 PathNode48 602
+ScriptLog: Zones: edge SpawnPoint2 door5 402
+ScriptLog: Zones: link 2 7 -1293 -1384 6271
+ScriptLog: Zones: nav 2 -1514 -1466 6345 SpawnPoint SpawnPoint6
+ScriptLog: Zones: edge SpawnPoint6 PathNode46 400
+ScriptLog: Zones: edge SpawnPoint6 PathNode47 190
+ScriptLog: Zones: edge SpawnPoint6 PathNode48 682
+ScriptLog: Zones: nav 2 -1510 -1540 6345 SpawnPoint SpawnPoint8
+ScriptLog: Zones: edge SpawnPoint8 PathNode46 386
+ScriptLog: Zones: edge SpawnPoint8 PathNode47 161
+ScriptLog: Zones: edge SpawnPoint8 PathNode50 332
+ScriptLog: Zones: nav 7 -1150 -1262 6198 Door door5
+ScriptLog: Zones: edge door5 PathNode111 119
+ScriptLog: Zones: edge door5 PathNode46 295
+ScriptLog: Zones: link 7 2 -1151 -1410 6198
+ScriptLog: Zones: edge door5 PathNode47 427
+ScriptLog: Zones: link 7 2 -1299 -1415 6198
+ScriptLog: Zones: nav 1 -1094 -4231 5814 PathNode PathNode61
+ScriptLog: Zones: edge PathNode61 PathNode60 308
+ScriptLog: Zones: edge PathNode61 AutoLadder4 278
+ScriptLog: Zones: nav 1 -1102 -3923 5814 PathNode PathNode60
+ScriptLog: Zones: edge PathNode60 PathNode56 844
+ScriptLog: Zones: link 1 2 -1036 -3506 5814
+ScriptLog: Zones: edge PathNode60 PathNode59 268
+ScriptLog: Zones: link 1 2 -1110 -3789 5814
+ScriptLog: Zones: edge PathNode60 PathNode61 308
+ScriptLog: Zones: nav 2 -1118 -3655 5814 PathNode PathNode59
+ScriptLog: Zones: edge PathNode59 PathNode57 228
+ScriptLog: Zones: edge PathNode59 PathNode58 257
+ScriptLog: Zones: edge PathNode59 PathNode60 268
+ScriptLog: Zones: link 2 1 -1110 -3789 5814
+ScriptLog: Zones: nav 2 -1328 -3506 5814 PathNode PathNode58
+ScriptLog: Zones: edge PathNode58 PathNode55 460
+ScriptLog: Zones: edge PathNode58 PathNode56 549
+ScriptLog: Zones: edge PathNode58 PathNode57 351
+ScriptLog: Zones: edge PathNode58 PathNode59 257
+ScriptLog: Zones: nav 2 -978 -3474 5814 PathNode PathNode57
+ScriptLog: Zones: edge PathNode57 PathNode55 565
+ScriptLog: Zones: edge PathNode57 PathNode56 385
+ScriptLog: Zones: edge PathNode57 PathNode58 351
+ScriptLog: Zones: edge PathNode57 PathNode59 228
+ScriptLog: Zones: nav 2 -970 -3089 5814 PathNode PathNode56
+ScriptLog: Zones: edge PathNode56 PathNode51 1054
+ScriptLog: Zones: edge PathNode56 PathNode53 622
+ScriptLog: Zones: edge PathNode56 PathNode57 385
+ScriptLog: Zones: edge PathNode56 PathNode58 549
+ScriptLog: Zones: edge PathNode56 PathNode60 844
+ScriptLog: Zones: link 2 1 -1036 -3506 5814
+ScriptLog: Zones: nav 2 -1348 -3046 5814 PathNode PathNode55
+ScriptLog: Zones: edge PathNode55 PathNode52 1034
+ScriptLog: Zones: edge PathNode55 PathNode54 512
+ScriptLog: Zones: edge PathNode55 PathNode57 565
+ScriptLog: Zones: edge PathNode55 PathNode58 460
+ScriptLog: Zones: nav 2 -1353 -2586 6039 PathNode PathNode54
+ScriptLog: Zones: edge PathNode54 PathNode50 782
+ScriptLog: Zones: edge PathNode54 PathNode51 431
+ScriptLog: Zones: edge PathNode54 PathNode53 393
+ScriptLog: Zones: edge PathNode54 PathNode55 512
+ScriptLog: Zones: nav 2 -966 -2522 6071 PathNode PathNode53
+ScriptLog: Zones: edge PathNode53 PathNode48 991
+ScriptLog: Zones: edge PathNode53 PathNode52 377
+ScriptLog: Zones: edge PathNode53 PathNode54 393
+ScriptLog: Zones: edge PathNode53 PathNode56 622
+ScriptLog: Zones: nav 2 -961 -2167 6198 PathNode PathNode52
+ScriptLog: Zones: edge PathNode52 PathNode48 631
+ScriptLog: Zones: edge PathNode52 PathNode0 356
+ScriptLog: Zones: edge PathNode52 PathNode50 565
+ScriptLog: Zones: edge PathNode52 PathNode51 393
+ScriptLog: Zones: edge PathNode52 PathNode53 377
+ScriptLog: Zones: edge PathNode52 PathNode55 1034
+ScriptLog: Zones: edge PathNode52 PathNode49 400
+ScriptLog: Zones: nav 2 -1354 -2185 6198 PathNode PathNode51
+ScriptLog: Zones: edge PathNode51 PathNode47 623
+ScriptLog: Zones: edge PathNode51 PathNode0 605
+ScriptLog: Zones: edge PathNode51 PathNode50 367
+ScriptLog: Zones: edge PathNode51 PathNode52 393
+ScriptLog: Zones: edge PathNode51 PathNode54 431
+ScriptLog: Zones: edge PathNode51 PathNode56 1054
+ScriptLog: Zones: edge PathNode51 PathNode49 409
+ScriptLog: Zones: nav 2 -1409 -1821 6198 PathNode PathNode50
+ScriptLog: Zones: edge PathNode50 PathNode47 255
+ScriptLog: Zones: edge PathNode50 PathNode51 367
+ScriptLog: Zones: edge PathNode50 PathNode52 565
+ScriptLog: Zones: edge PathNode50 PathNode49 244
+ScriptLog: Zones: nav 2 -869 -1821 6198 PathNode PathNode0
+ScriptLog: Zones: edge PathNode0 PathNode48 277
+ScriptLog: Zones: edge PathNode0 PathNode51 605
+ScriptLog: Zones: edge PathNode0 PathNode52 356
+ScriptLog: Zones: edge PathNode0 PathNode53 717
+ScriptLog: Zones: edge PathNode0 PathNode49 295
+ScriptLog: Zones: nav 2 -852 -1545 6198 PathNode PathNode48
+ScriptLog: Zones: edge PathNode48 PathNode46 301
+ScriptLog: Zones: edge PathNode48 PathNode0 277
+ScriptLog: Zones: edge PathNode48 PathNode53 991
+ScriptLog: Zones: nav 2 -1449 -1569 6198 PathNode PathNode47
+ScriptLog: Zones: edge PathNode47 PathNode46 296
+ScriptLog: Zones: edge PathNode47 PathNode50 255
+ScriptLog: Zones: edge PathNode47 door5 427
+ScriptLog: Zones: link 2 7 -1299 -1415 6198
+ScriptLog: Zones: nav 2 -1153 -1558 6198 PathNode PathNode46
+ScriptLog: Zones: edge PathNode46 PathNode47 296
+ScriptLog: Zones: edge PathNode46 PathNode48 301
+ScriptLog: Zones: edge PathNode46 door5 295
+ScriptLog: Zones: link 2 7 -1151 -1410 6198
+ScriptLog: Zones: edge PathNode46 PathNode49 264
+ScriptLog: Zones: nav 7 -418 357 6849 SpawnPoint SpawnPoint4
+ScriptLog: Zones: edge SpawnPoint4 PathNode75 798
+ScriptLog: Zones: edge SpawnPoint4 PathNode86 189
+ScriptLog: Zones: edge SpawnPoint4 PathNode87 136
+ScriptLog: Zones: nav 7 -336 342 6742 PathNode PathNode87
+ScriptLog: Zones: edge PathNode87 PathNode75 765
+ScriptLog: Zones: edge PathNode87 PathNode86 239
+ScriptLog: Zones: nav 7 -574 368 6742 PathNode PathNode86
+ScriptLog: Zones: edge PathNode86 PathNode22 912
+ScriptLog: Zones: edge PathNode86 PathNode110 746
+ScriptLog: Zones: edge PathNode86 PathNode39 1158
+ScriptLog: Zones: edge PathNode86 PathNode71 584
+ScriptLog: Zones: edge PathNode86 PathNode73 1089
+ScriptLog: Zones: edge PathNode86 PathNode75 644
+ScriptLog: Zones: edge PathNode86 PathNode87 239
+ScriptLog: Zones: nav 7 -1514 631 6198 PathNode PathNode76
+ScriptLog: Zones: edge PathNode76 PathNode22 407
+ScriptLog: Zones: edge PathNode76 PathNode71 794
+ScriptLog: Zones: edge PathNode76 PathNode75 732
+ScriptLog: Zones: nav 7 -782 644 6198 PathNode PathNode75
+ScriptLog: Zones: edge PathNode75 PathNode22 408
+ScriptLog: Zones: edge PathNode75 PathNode73 810
+ScriptLog: Zones: edge PathNode75 PathNode76 732
+ScriptLog: Zones: nav 7 -1516 300 6198 PathNode PathNode73
+ScriptLog: Zones: edge PathNode73 PathNode108 362
+ScriptLog: Zones: edge PathNode73 PathNode71 734
+ScriptLog: Zones: edge PathNode73 PathNode75 810
+ScriptLog: Zones: nav 7 -782 321 6198 PathNode PathNode71
+ScriptLog: Zones: edge PathNode71 PathNode108 377
+ScriptLog: Zones: edge PathNode71 PathNode73 734
+ScriptLog: Zones: edge PathNode71 PathNode76 794
+ScriptLog: Zones: nav 7 -1478 -635 6198 PathNode PathNode43
+ScriptLog: Zones: edge PathNode43 PathNode9 392
+ScriptLog: Zones: edge PathNode43 PathNode101 324
+ScriptLog: Zones: edge PathNode43 PathNode25 752
+ScriptLog: Zones: edge PathNode43 PathNode35 461
+ScriptLog: Zones: edge PathNode43 PathNode39 690
+ScriptLog: Zones: nav 7 -788 -632 6198 PathNode PathNode39
+ScriptLog: Zones: edge PathNode39 PathNode101 371
+ScriptLog: Zones: edge PathNode39 PathNode36 787
+ScriptLog: Zones: edge PathNode39 PathNode43 690
+ScriptLog: Zones: nav 7 -1508 -952 6198 PathNode PathNode36
+ScriptLog: Zones: edge PathNode36 PathNode111 406
+ScriptLog: Zones: edge PathNode36 PathNode35 379
+ScriptLog: Zones: edge PathNode36 PathNode39 787
+ScriptLog: Zones: nav 7 -1129 -937 6198 PathNode PathNode35
+ScriptLog: Zones: edge PathNode35 PathNode101 353
+ScriptLog: Zones: edge PathNode35 PathNode111 206
+ScriptLog: Zones: edge PathNode35 PathNode25 331
+ScriptLog: Zones: edge PathNode35 PathNode36 379
+ScriptLog: Zones: edge PathNode35 PathNode43 461
+ScriptLog: Zones: nav 7 -798 -958 6198 PathNode PathNode25
+ScriptLog: Zones: edge PathNode25 PathNode111 396
+ScriptLog: Zones: edge PathNode25 PathNode35 331
+ScriptLog: Zones: edge PathNode25 PathNode43 752
+ScriptLog: Zones: nav 7 -1443 1156 6119 PathNode PathNode29
+ScriptLog: Zones: edge PathNode29 PathNode117 213
+ScriptLog: Zones: edge PathNode29 PathNode2 342
+ScriptLog: Zones: nav 7 -1736 1146 5942 PathNode PathNode2
+ScriptLog: Zones: edge PathNode2 PathNode117 553
+ScriptLog: Zones: edge PathNode2 PathNode29 342
+ScriptLog: Zones: nav 9 1627 3224 5910 PathNode PathNode1
+ScriptLog: Zones: edge PathNode1 PathNode27 958
+ScriptLog: Zones: edge PathNode1 PathNode24 494
+ScriptLog: Zones: nav 9 1635 872 5910 PathNode PathNode20
+ScriptLog: Zones: edge PathNode20 PathNode10 265
+ScriptLog: Zones: nav 9 1631 3259 6205 SpawnPoint SpawnPoint3
+ScriptLog: Zones: edge SpawnPoint3 PathNode24 656
+ScriptLog: Zones: edge SpawnPoint3 PathNode1 297
+ScriptLog: Zones: nav 9 1630 810 6205 SpawnPoint SpawnPoint1
+ScriptLog: Zones: edge SpawnPoint1 PathNode10 457
+ScriptLog: Zones: edge SpawnPoint1 PathNode20 301
+ScriptLog: Zones: nav 9 1632 1136 5884 PathNode PathNode10
+ScriptLog: Zones: edge PathNode10 PathNode30 232
+ScriptLog: Zones: edge PathNode10 PathNode17 356
+ScriptLog: Zones: edge PathNode10 PathNode32 384
+ScriptLog: Zones: edge PathNode10 PathNode20 265
+ScriptLog: Zones: nav 9 2432 1904 5892 PathNode PathNode3
+ScriptLog: Zones: edge PathNode3 PathNode6 258
+ScriptLog: Zones: edge PathNode3 PathNode33 612
+ScriptLog: Zones: edge PathNode3 PathNode4 104
+ScriptLog: Zones: edge PathNode3 PathNode15 249
+ScriptLog: Zones: nav 9 2712 2176 5910 PathNode PathNode5
+ScriptLog: Zones: edge PathNode5 PathNode11 524
+ScriptLog: Zones: nav 9 2680 1924 5910 PathNode PathNode15
+ScriptLog: Zones: edge PathNode15 PathNode16 791
+ScriptLog: Zones: edge PathNode15 PathNode3 249
+ScriptLog: Zones: nav 9 2444 2008 5898 PathNode PathNode4
+ScriptLog: Zones: edge PathNode4 PathNode11 321
+ScriptLog: Zones: edge PathNode4 PathNode19 768
+ScriptLog: Zones: edge PathNode4 PathNode3 104
+ScriptLog: Zones: nav 9 2190 2727 5802 PathNode PathNode19
+ScriptLog: Zones: edge PathNode19 PathNode11 535
+ScriptLog: Zones: edge PathNode19 PathNode26 284
+ScriptLog: Zones: edge PathNode19 PathNode4 768
+ScriptLog: Zones: nav 9 1330 2742 5802 PathNode PathNode31
+ScriptLog: Zones: edge PathNode31 PathNode34 1154
+ScriptLog: Zones: edge PathNode31 PathNode7 437
+ScriptLog: Zones: edge PathNode31 PathNode8 232
+ScriptLog: Zones: edge PathNode31 PathNode24 289
+ScriptLog: Zones: nav 9 2191 1347 5802 PathNode PathNode33
+ScriptLog: Zones: edge PathNode33 PathNode6 522
+ScriptLog: Zones: edge PathNode33 PathNode17 287
+ScriptLog: Zones: edge PathNode33 PathNode3 612
+ScriptLog: Zones: nav 9 1323 1351 5802 PathNode PathNode32
+ScriptLog: Zones: edge PathNode32 PathNode34 249
+ScriptLog: Zones: edge PathNode32 PathNode8 1161
+ScriptLog: Zones: edge PathNode32 PathNode30 304
+ScriptLog: Zones: edge PathNode32 PathNode10 384
+ScriptLog: Zones: nav 9 1903 1814 5802 PathNode PathNode16
+ScriptLog: Zones: edge PathNode16 PathNode6 293
+ScriptLog: Zones: edge PathNode16 PathNode11 478
+ScriptLog: Zones: edge PathNode16 PathNode27 530
+ScriptLog: Zones: edge PathNode16 PathNode28 460
+ScriptLog: Zones: edge PathNode16 PathNode18 275
+ScriptLog: Zones: edge PathNode16 PathNode4 581
+ScriptLog: Zones: nav 9 1627 1811 5802 PathNode PathNode18
+ScriptLog: Zones: edge PathNode18 PathNode91 520
+ScriptLog: Zones: edge PathNode18 PathNode34 434
+ScriptLog: Zones: edge PathNode18 PathNode6 567
+ScriptLog: Zones: edge PathNode18 PathNode8 774
+ScriptLog: Zones: edge PathNode18 PathNode11 686
+ScriptLog: Zones: edge PathNode18 PathNode27 460
+ScriptLog: Zones: edge PathNode18 PathNode28 543
+ScriptLog: Zones: edge PathNode18 PathNode30 458
+ScriptLog: Zones: edge PathNode18 PathNode16 275
+ScriptLog: Zones: edge PathNode18 PathNode4 844
+ScriptLog: Zones: edge PathNode18 PathNode15 1063
+ScriptLog: Zones: nav 9 1904 1350 5802 PathNode PathNode17
+ScriptLog: Zones: edge PathNode17 PathNode30 275
+ScriptLog: Zones: edge PathNode17 PathNode33 287
+ScriptLog: Zones: edge PathNode17 PathNode10 356
+ScriptLog: Zones: nav 9 1628 1353 5802 PathNode PathNode30
+ScriptLog: Zones: edge PathNode30 PathNode17 275
+ScriptLog: Zones: edge PathNode30 PathNode18 458
+ScriptLog: Zones: edge PathNode30 PathNode32 304
+ScriptLog: Zones: edge PathNode30 PathNode10 232
+ScriptLog: Zones: nav 9 1906 2741 5802 PathNode PathNode26
+ScriptLog: Zones: edge PathNode26 PathNode24 286
+ScriptLog: Zones: edge PathNode26 PathNode19 284
+ScriptLog: Zones: nav 9 1910 2275 5802 PathNode PathNode28
+ScriptLog: Zones: edge PathNode28 PathNode91 1004
+ScriptLog: Zones: edge PathNode28 PathNode6 492
+ScriptLog: Zones: edge PathNode28 PathNode11 299
+ScriptLog: Zones: edge PathNode28 PathNode27 275
+ScriptLog: Zones: edge PathNode28 PathNode26 466
+ScriptLog: Zones: edge PathNode28 PathNode17 924
+ScriptLog: Zones: edge PathNode28 PathNode18 543
+ScriptLog: Zones: edge PathNode28 PathNode16 460
+ScriptLog: Zones: edge PathNode28 PathNode4 604
+ScriptLog: Zones: nav 9 1620 2741 5802 PathNode PathNode24
+ScriptLog: Zones: edge PathNode24 PathNode27 469
+ScriptLog: Zones: edge PathNode24 PathNode26 286
+ScriptLog: Zones: edge PathNode24 PathNode31 289
+ScriptLog: Zones: edge PathNode24 PathNode1 494
+ScriptLog: Zones: nav 9 1635 2272 5802 PathNode PathNode27
+ScriptLog: Zones: edge PathNode27 PathNode34 780
+ScriptLog: Zones: edge PathNode27 PathNode8 413
+ScriptLog: Zones: edge PathNode27 PathNode24 469
+ScriptLog: Zones: edge PathNode27 PathNode28 275
+ScriptLog: Zones: edge PathNode27 PathNode18 460
+ScriptLog: Zones: edge PathNode27 PathNode16 530
+ScriptLog: Zones: edge PathNode27 PathNode1 958
+ScriptLog: Zones: nav 12 575 2045 5894 PathNode PathNode14
+ScriptLog: Zones: edge PathNode14 PathNode41 277
+ScriptLog: Zones: link 12 11 437 2048 5886
+ScriptLog: Zones: edge PathNode14 PathNode12 460
+ScriptLog: Zones: edge PathNode14 PathNode13 374
+ScriptLog: Zones: nav 12 597 1671 5894 PathNode PathNode13
+ScriptLog: Zones: edge PathNode13 PathNode12 833
+ScriptLog: Zones: edge PathNode13 PathNode14 374
+ScriptLog: Zones: nav 12 616 2504 5894 PathNode PathNode12
+ScriptLog: Zones: edge PathNode12 PathNode7 360
+ScriptLog: Zones: link 12 9 796 2504 5894
+ScriptLog: Zones: edge PathNode12 PathNode14 460
+ScriptLog: Zones: nav 9 2199 2192 5802 PathNode PathNode11
+ScriptLog: Zones: edge PathNode11 PathNode6 321
+ScriptLog: Zones: edge PathNode11 PathNode28 299
+ScriptLog: Zones: edge PathNode11 PathNode16 478
+ScriptLog: Zones: edge PathNode11 PathNode19 535
+ScriptLog: Zones: edge PathNode11 PathNode4 321
+ScriptLog: Zones: edge PathNode11 PathNode5 524
+ScriptLog: Zones: nav 9 1299 2512 5802 PathNode PathNode8
+ScriptLog: Zones: edge PathNode8 PathNode7 336
+ScriptLog: Zones: edge PathNode8 PathNode27 413
+ScriptLog: Zones: edge PathNode8 PathNode18 774
+ScriptLog: Zones: edge PathNode8 PathNode32 1161
+ScriptLog: Zones: edge PathNode8 PathNode31 232
+ScriptLog: Zones: nav 9 976 2504 5894 PathNode PathNode7
+ScriptLog: Zones: edge PathNode7 PathNode34 0
+ScriptLog: Zones: edge PathNode7 PathNode8 336
+ScriptLog: Zones: edge PathNode7 PathNode12 360
+ScriptLog: Zones: link 9 12 796 2504 5894
+ScriptLog: Zones: edge PathNode7 PathNode31 437
+ScriptLog: Zones: nav 9 2192 1870 5802 PathNode PathNode6
+ScriptLog: Zones: edge PathNode6 PathNode91 1076
+ScriptLog: Zones: edge PathNode6 PathNode34 979
+ScriptLog: Zones: edge PathNode6 PathNode11 321
+ScriptLog: Zones: edge PathNode6 PathNode28 492
+ScriptLog: Zones: edge PathNode6 PathNode16 293
+ScriptLog: Zones: edge PathNode6 PathNode33 522
+ScriptLog: Zones: edge PathNode6 PathNode3 258
+ScriptLog: Zones: nav 9 1253 1590 5802 PathNode PathNode34
+ScriptLog: Zones: edge PathNode34 PathNode91 130
+ScriptLog: Zones: edge PathNode34 PathNode27 780
+ScriptLog: Zones: edge PathNode34 PathNode18 434
+ScriptLog: Zones: edge PathNode34 PathNode16 687
+ScriptLog: Zones: edge PathNode34 PathNode32 249
+ScriptLog: Zones: edge PathNode34 PathNode31 1154
+ScriptLog: Zones: nav 9 1145 1628 5863 PathNode PathNode91
+ScriptLog: Zones: edge PathNode91 PathNode34 130
+ScriptLog: Zones: edge PathNode91 PathNode6 1076
+ScriptLog: Zones: edge PathNode91 PathNode11 1196
+ScriptLog: Zones: edge PathNode91 PathNode28 1004
+ScriptLog: Zones: edge PathNode91 PathNode18 520
+ScriptLog: Zones: edge PathNode91 PathNode32 335
+ScriptLog: Zones: nav 7 -1148 902 6198 Door door4
+ScriptLog: Zones: edge door4 PathNode117 254
+ScriptLog: Zones: edge door4 PathNode129 237
+ScriptLog: Zones: edge door4 PathNode22 84
+ScriptLog: Zones: nav 13 -1836 2833 6003 Door door2
+ScriptLog: Zones: edge door2 PathNode21 157
+ScriptLog: Zones: edge door2 PathNode40 268
+ScriptLog: Zones: link 13 15 -1843 2703 5969
+ScriptLog: Zones: nav 15 -1832 1538 5936 PathNode PathNode23
+ScriptLog: Zones: edge PathNode23 PathNode98 501
+ScriptLog: Zones: edge PathNode23 PathNode102 190
+ScriptLog: Zones: edge PathNode23 PathNode44 896
+ScriptLog: Zones: link 15 11 -1384 1540 5922
+ScriptLog: Zones: nav 11 -936 1543 5907 PathNode PathNode44
+ScriptLog: Zones: edge PathNode44 PathNode42 357
+ScriptLog: Zones: edge PathNode44 PathNode23 896
+ScriptLog: Zones: link 11 15 -1384 1540 5922
+ScriptLog: Zones: nav 11 -580 1539 5878 PathNode PathNode42
+ScriptLog: Zones: edge PathNode42 PathNode45 501
+ScriptLog: Zones: edge PathNode42 PathNode44 357
+ScriptLog: Zones: nav 11 299 2051 5878 PathNode PathNode41
+ScriptLog: Zones: edge PathNode41 PathNode14 277
+ScriptLog: Zones: link 11 12 437 2048 5886
+ScriptLog: Zones: edge PathNode41 PathNode120 377
+ScriptLog: Zones: nav 11 -568 2041 5878 PathNode PathNode45
+ScriptLog: Zones: edge PathNode45 PathNode38 518
+ScriptLog: Zones: edge PathNode45 PathNode42 501
+ScriptLog: Zones: edge PathNode45 PathNode120 492
+ScriptLog: Zones: nav 11 -568 2560 5878 PathNode PathNode38
+ScriptLog: Zones: edge PathNode38 PathNode37 275
+ScriptLog: Zones: edge PathNode38 PathNode45 518
+ScriptLog: Zones: nav 11 -844 2567 5899 PathNode PathNode37
+ScriptLog: Zones: edge PathNode37 PathNode40 1006
+ScriptLog: Zones: link 11 15 -1347 2570 5918
+ScriptLog: Zones: edge PathNode37 PathNode38 275
+ScriptLog: Zones: nav 15 -1850 2574 5936 PathNode PathNode40
+ScriptLog: Zones: edge PathNode40 PathNode103 210
+ScriptLog: Zones: edge PathNode40 PathNode37 1006
+ScriptLog: Zones: link 15 11 -1347 2570 5918
+ScriptLog: Zones: edge PathNode40 PathNode23 1035
+ScriptLog: Zones: edge PathNode40 door2 268
+ScriptLog: Zones: link 15 13 -1843 2703 5969
+ScriptLog: Zones: nav 15 -1848 1728 5938 PathNode PathNode102
+ScriptLog: Zones: edge PathNode102 PathNode98 312
+ScriptLog: Zones: edge PathNode102 PathNode23 190
+ScriptLog: Zones: nav 15 -1852 2364 5938 PathNode PathNode103
+ScriptLog: Zones: edge PathNode103 PathNode98 324
+ScriptLog: Zones: edge PathNode103 PathNode40 210
+ScriptLog: Zones: nav 15 -1844 2040 5938 PathNode PathNode98
+ScriptLog: Zones: edge PathNode98 PathNode103 324
+ScriptLog: Zones: edge PathNode98 PathNode102 312
+ScriptLog: Zones: edge PathNode98 PathNode23 501
+ScriptLog: Zones: nav 13 -1834 2978 5942 PathNode PathNode21
+ScriptLog: Zones: edge PathNode21 door2 157
+ScriptLog: Zones: nav 7 -1149 -1143 6198 PathNode PathNode111
+ScriptLog: Zones: edge PathNode111 PathNode25 396
+ScriptLog: Zones: edge PathNode111 PathNode35 206
+ScriptLog: Zones: edge PathNode111 PathNode36 406
+ScriptLog: Zones: edge PathNode111 door5 119
+ScriptLog: Zones: nav 7 -1157 -585 6198 PathNode PathNode101
+ScriptLog: Zones: edge PathNode101 PathNode9 169
+ScriptLog: Zones: edge PathNode101 PathNode35 353
+ScriptLog: Zones: edge PathNode101 PathNode39 371
+ScriptLog: Zones: edge PathNode101 PathNode43 324
+ScriptLog: Zones: nav 7 -1151 -423 6246 PathNode PathNode9
+ScriptLog: Zones: edge PathNode9 PathNode109 498
+ScriptLog: Zones: edge PathNode9 PathNode110 429
+ScriptLog: Zones: edge PathNode9 PathNode101 169
+ScriptLog: Zones: edge PathNode9 PathNode43 392
+ScriptLog: Zones: nav 7 -851 -116 6246 PathNode PathNode110
+ScriptLog: Zones: edge PathNode110 PathNode109 355
+ScriptLog: Zones: edge PathNode110 PathNode9 429
+ScriptLog: Zones: nav 7 -1151 75 6246 PathNode PathNode109
+ScriptLog: Zones: edge PathNode109 PathNode108 195
+ScriptLog: Zones: edge PathNode109 PathNode110 355
+ScriptLog: Zones: edge PathNode109 PathNode9 498
+ScriptLog: Zones: nav 7 -1155 264 6198 PathNode PathNode108
+ScriptLog: Zones: edge PathNode108 PathNode22 554
+ScriptLog: Zones: edge PathNode108 PathNode109 195
+ScriptLog: Zones: edge PathNode108 PathNode71 377
+ScriptLog: Zones: edge PathNode108 PathNode73 362
+ScriptLog: Zones: nav 7 -1152 818 6198 PathNode PathNode22
+ScriptLog: Zones: edge PathNode22 PathNode108 554
+ScriptLog: Zones: edge PathNode22 door4 84
+ScriptLog: Zones: edge PathNode22 PathNode75 408
+ScriptLog: Zones: edge PathNode22 PathNode76 407
+ScriptLog: Zones: nav 7 -1143 1140 6198 PathNode PathNode129
+ScriptLog: Zones: edge PathNode129 PathNode117 102
+ScriptLog: Zones: edge PathNode129 door4 237
+ScriptLog: Zones: nav 7 -1245 1138 6198 PathNode PathNode117
+ScriptLog: Zones: edge PathNode117 PathNode129 102
+ScriptLog: Zones: edge PathNode117 door4 254
+ScriptLog: Zones: edge PathNode117 PathNode29 213
+ScriptLog: Zones: actor start 10 -732 6077 6523 PlayerStart tag=PlayerStart event=SceneManager
+ScriptLog: Zones: actor trigger 10 -1652 3348 6960 AlarmTrigger tag=a1jc6 event=None
+ScriptLog: Zones: actor trigger 13 -1737 2888 6045 U2Dispatcher tag=idea event=None
+ScriptLog: Zones: actor trigger 13 -1730 2860 5981 Trigger tag=Trigger event=seal_door1
+ScriptLog: Zones: actor trigger 7 -1150 881 6184 Trigger tag=Trigger event=glassdoor2
+ScriptLog: Zones: actor trigger 7 -1152 1058 6269 Trigger tag=Trigger event=tauntyou1
+ScriptLog: Zones: actor trigger 7 -1158 811 6184 Trigger tag=Trigger event=Jump1
+ScriptLog: Zones: actor trigger 0 0 1 39 Trigger tag=Trigger event=None
+ScriptLog: Zones: actor pawn 2 -1153 -1991 6209 U2Izarian tag=U2Izarian event=h1
+ScriptLog: Zones: actor mover 3 2848 -5720 7680 Mover tag=Mover event=None
+ScriptLog: Zones: actor trigger 3 -1121 -4826 7464 Trigger tag=Trigger event=NewIndustrialDoor1
+ScriptLog: Zones: actor mover 0 -1726 2847 5976 Mover tag=seal_door1 event=seal1
+ScriptLog: Zones: actor trigger 15 -1939 2804 5985 Trigger tag=Trigger event=seal_door1b
+ScriptLog: Zones: actor trigger 11 -577 2046 6002 AlarmTrigger tag=tube4 event=None
+ScriptLog: Zones: actor trigger 15 -1832 2802 5928 Trigger tag=Trigger event=Distubekill
+ScriptLog: Zones: actor trigger 15 -1796 2784 5928 U2Dispatcher tag=Distubekill event=None
+ScriptLog: Zones: actor trigger 11 -1001 1537 5896 Trigger tag=Trigger event=ENCOUNTER1
+ScriptLog: Zones: actor trigger 11 -1205 2550 5972 AlarmTrigger tag=carrot1 event=None
+ScriptLog: Zones: actor mover 9 1956 1680 5744 Mover tag=runoffbasinHs event=None
+ScriptLog: Zones: actor mover 9 1956 2416 5744 Mover tag=runoffbasinHs event=None
+ScriptLog: Zones: actor trigger 9 1760 2032 5874 U2Dispatcher tag=DisFallingWall event=None
+ScriptLog: Zones: actor trigger 9 2523 3019 6058 Trigger tag=Trigger event=GoBigK
+ScriptLog: Zones: actor trigger 15 -1804 2635 5986 Trigger tag=Trigger event=DisIzarianAmbientnumber1
+ScriptLog: Zones: actor trigger 15 -1808 2549 6001 U2Dispatcher tag=DisIzarianAmbientnumber1 event=None
+ScriptLog: Zones: actor trigger 11 -966 2511 5994 AlarmTrigger tag=ThingFalling1 event=None
+ScriptLog: Zones: actor trigger 11 -912 2580 6041 AlarmTrigger tag=DoorClosingSound1 event=None
+ScriptLog: Zones: actor trigger 15 -1812 1326 5972 AlarmTrigger tag=carrot2 event=None
+ScriptLog: Zones: actor mover 0 -1940 2816 5976 Mover tag=seal_door1b event=seal1
+ScriptLog: Zones: actor mover 0 -1935 1279 5976 Mover tag=OneBrokenDoor event=BrokenDoor
+ScriptLog: Zones: actor mover 0 -1736 1248 5976 Mover tag=seal_door1b event=seal1
+ScriptLog: Zones: actor trigger 11 -598 2548 5920 AlarmTrigger tag=carrot3 event=None
+ScriptLog: Zones: actor trigger 15 -1808 1330 6024 AlarmTrigger tag=ThingBreaking2 event=None
+ScriptLog: Zones: actor trigger 11 -509 2073 5986 Trigger tag=Trigger event=DisHumanDeath1
+ScriptLog: Zones: actor trigger 11 -6 2036 5938 AlarmTrigger tag=DeathCarrot1 event=None
+ScriptLog: Zones: actor trigger 11 -252 2043 6001 U2Dispatcher tag=DisHumanDeath1 event=None
+ScriptLog: Zones: actor trigger 11 194 2032 5993 AlarmTrigger tag=SniffSniff event=None
+ScriptLog: Zones: actor trigger 13 -1278 2986 6096 AlarmTrigger tag=AmbIzarian1 event=None
+ScriptLog: Zones: actor trigger 13 -1646 2929 6067 AlarmTrigger tag=AmbIzarian1 event=None
+ScriptLog: Zones: actor trigger 13 -1434 2974 6093 Trigger tag=Trigger event=CreakNumbertwo
+ScriptLog: Zones: actor trigger 13 -1426 2967 6155 AlarmTrigger tag=CreakNumbertwo event=None
+ScriptLog: Zones: actor trigger 11 -292 2020 5986 Trigger tag=Trigger event=DisSteamScare1
+ScriptLog: Zones: actor trigger 11 -251 2019 6001 U2Dispatcher tag=DisSteamScare1 event=None
+ScriptLog: Zones: actor trigger 11 -293 1969 5985 AlarmTrigger tag=QQQSteamScare1 event=None
+ScriptLog: Zones: actor trigger 11 -35 2048 5993 AlarmTrigger tag=Izarianhaha1 event=None
+ScriptLog: Zones: actor trigger 11 19 2004 5993 AlarmTrigger tag=Izarianhaha2 event=None
+ScriptLog: Zones: actor trigger 11 -653 2047 6024 AlarmTrigger tag=Izarianhaha3 event=None
+ScriptLog: Zones: actor trigger 11 21 2090 5993 AlarmTrigger tag=Izarianhaha4 event=None
+ScriptLog: Zones: actor trigger 11 55 2046 5993 AlarmTrigger tag=Izarianhaha4 event=None
+ScriptLog: Zones: actor trigger 11 -317 1977 5992 AlarmTrigger tag=QQQSteamScare1 event=None
+ScriptLog: Zones: actor trigger 11 -404 1996 5985 AlarmTrigger tag=QQQSteamScare1 event=None
+ScriptLog: Zones: actor trigger 12 529 2017 5993 AlarmTrigger tag=Somethingisthere2 event=None
+ScriptLog: Zones: actor trigger 12 528 2073 5993 AlarmTrigger tag=Somethingisthere1 event=None
+ScriptLog: Zones: actor trigger 12 576 2043 6001 U2Dispatcher tag=DisMoreCreatureNoises event=None
+ScriptLog: Zones: actor trigger 11 308 2053 5986 Trigger tag=Trigger event=DisMoreCreatureNoises
+ScriptLog: Zones: actor trigger 9 1697 2033 5958 U2Dispatcher tag=IzarianPackcallsOut event=None
+ScriptLog: Zones: actor trigger 9 1260 1665 5993 AlarmTrigger tag=IzarianMatingCall1 event=None
+ScriptLog: Zones: actor trigger 9 1261 1666 5969 AlarmTrigger tag=IzarianMatingCall2 event=None
+ScriptLog: Zones: actor trigger 9 1262 1667 5942 AlarmTrigger tag=IzarianMatingCall3 event=None
+ScriptLog: Zones: actor trigger 9 1263 1667 5913 AlarmTrigger tag=IzarianMatingCall4 event=None
+ScriptLog: Zones: actor trigger 9 1264 1668 5884 AlarmTrigger tag=IzarianMatingCall5 event=None
+ScriptLog: Zones: actor trigger 9 1265 1669 5850 AlarmTrigger tag=IzarianMatingCall6 event=None
+ScriptLog: Zones: actor trigger 9 1247 2416 5993 AlarmTrigger tag=IzarianMatingCall1 event=None
+ScriptLog: Zones: actor trigger 9 1248 2417 5969 AlarmTrigger tag=IzarianMatingCall2 event=None
+ScriptLog: Zones: actor trigger 9 1249 2418 5942 AlarmTrigger tag=IzarianMatingCall3 event=None
+ScriptLog: Zones: actor trigger 9 1250 2418 5913 AlarmTrigger tag=IzarianMatingCall4 event=None
+ScriptLog: Zones: actor trigger 9 1251 2419 5884 AlarmTrigger tag=IzarianMatingCall5 event=None
+ScriptLog: Zones: actor trigger 9 1252 2420 5850 AlarmTrigger tag=IzarianMatingCall6 event=None
+ScriptLog: Zones: actor trigger 15 -1938 1293 5985 Trigger tag=Trigger event=OneBrokenDoor
+ScriptLog: Zones: actor trigger 15 -1842 1292 6001 U2Dispatcher tag=sealdoor2 event=None
+ScriptLog: Zones: actor trigger 15 -1856 1279 5980 AlarmTrigger tag=ElectricBrokenSound1 event=None
+ScriptLog: Zones: actor trigger 15 -1808 1280 5980 AlarmTrigger tag=ElectricBrokenSound1 event=None
+ScriptLog: Zones: actor trigger 7 -1773 1213 6037 AlarmTrigger tag=ZarianMock1 event=None
+ScriptLog: Zones: actor trigger 7 -1717 1214 6069 AlarmTrigger tag=ThatstairCreakingSound1 event=None
+ScriptLog: Zones: actor trigger 7 -1350 1147 6000 AlarmTrigger tag=Distransitionupstairs1 event=None
+ScriptLog: Zones: actor trigger 7 -1474 1135 6070 Trigger tag=Trigger event=Distransitionupstairs1
+ScriptLog: Zones: actor trigger 7 -1392 1141 6163 U2Dispatcher tag=Distransitionupstairs1 event=None
+ScriptLog: Zones: actor trigger 7 -1099 854 6284 AlarmTrigger tag=manscreamininbackground1 event=None
+ScriptLog: Zones: actor trigger 7 -1195 830 6284 AlarmTrigger tag=MachineEndingSound1 event=None
+ScriptLog: Zones: actor trigger 7 -1078 816 6284 AlarmTrigger tag=GoodOlIzarianbushcall event=None
+ScriptLog: Zones: actor trigger 7 -1147 -177 6346 Trigger tag=Trigger event=QQQDisRushIntoSolarium
+ScriptLog: Zones: actor trigger 7 -1161 -1130 6284 AlarmTrigger tag=WillRushIn_1 event=None
+ScriptLog: Zones: actor trigger 7 -864 369 6409 AlarmTrigger tag=WillRushIn_4 event=None
+ScriptLog: Zones: actor trigger 7 -844 331 6409 AlarmTrigger tag=WillRushIn_4 event=None
+ScriptLog: Zones: actor trigger 2 -1151 -1269 6184 Trigger tag=secondspeachoftheimbicile event=glassdoor1
+ScriptLog: Zones: actor trigger 2 -1155 -1349 6274 Trigger tag=Trigger event=Jump2
+ScriptLog: Zones: actor pawn 2 -701 -1446 6203 U2Izarian tag=U2Izarian event=hoardfuck
+ScriptLog: Zones: actor pawn 2 -1153 -3180 5835 U2Izarian tag=U2Izarian event=boopex
+ScriptLog: Zones: actor pawn 2 -1552 -3200 5803 U2Izarian tag=U2Izarian event=h2
+ScriptLog: Zones: actor pawn 2 -756 -3204 5803 U2Izarian tag=U2Izarian event=h3
+ScriptLog: Zones: actor trigger 2 -1104 -3867 5830 Trigger tag=Trigger event=jump03b
+ScriptLog: Zones: actor pawn 1 -1354 -4122 5835 U2Izarian tag=U2Izarian event=onemoredeadalieng
+ScriptLog: Zones: actor pawn 1 -960 -4160 5837 U2Izarian tag=U2Izarian event=h4
+ScriptLog: Zones: actor pawn 1 -1360 -4444 5835 U2Izarian tag=U2Izarian event=asinlala
+ScriptLog: Zones: actor trigger 0 -1933 -1599 6001 U2Dispatcher tag=DisRushIntoSolarium event=None
+ScriptLog: Zones: actor trigger 2 -1157 -3360 5793 Trigger tag=Trigger event=AllWillAttackPlayer
+ScriptLog: Zones: actor pawn 1 -1345 -4115 6583 U2Izarian tag=U2Izarian event=None
+ScriptLog: Zones: actor pawn 1 -941 -4285 7468 U2Izarian tag=U2Izarian event=neversawdatcomen
+ScriptLog: Zones: actor trigger 1 -1152 -4511 5793 Trigger tag=Trigger event=YeOldGrassGrowlers
+ScriptLog: Zones: actor trigger 1 -1155 -4498 6180 Trigger tag=Trigger event=GrassGrowlingGoodness
+ScriptLog: Zones: actor trigger 1 -1143 -4520 6029 Trigger tag=Trigger event=LadderCreak1
+ScriptLog: Zones: actor trigger 1 -1150 -4500 6119 AlarmTrigger tag=LadderCreak1 event=None
+ScriptLog: Zones: actor trigger 1 -1149 -4514 6759 Trigger tag=Trigger event=LadderCreak2
+ScriptLog: Zones: actor trigger 1 -1156 -4494 6849 AlarmTrigger tag=LadderCreak2 event=None
+ScriptLog: Zones: actor trigger 8 -899 1125 5769 Trigger tag=Trigger event=DisSewerLaugh1
+ScriptLog: Zones: actor trigger 8 -1211 1128 5808 AlarmTrigger tag=SewerChod0 event=None
+ScriptLog: Zones: actor trigger 8 -845 1133 5826 AlarmTrigger tag=CrumlingFloor event=None
+ScriptLog: Zones: actor trigger 8 -1152 1131 5802 U2Dispatcher tag=DisSewerLaugh1 event=None
+ScriptLog: Zones: actor trigger 8 -1210 1129 5831 AlarmTrigger tag=SewerChod1 event=None
+ScriptLog: Zones: actor trigger 8 -750 1127 5826 AlarmTrigger tag=Swered event=None
+ScriptLog: Zones: actor trigger 7 -1531 1135 6174 Trigger tag=Trigger event=KillAllRoaches
+ScriptLog: Zones: actor trigger 8 -247 1136 5775 Trigger tag=Trigger event=GoRoaches
+ScriptLog: Zones: actor mover 1 -1096 -4808 7440 Mover tag=NewIndustrialDoor1 event=None
+ScriptLog: Zones: actor mover 3 5512 -11636 7436 Mover tag=TransyDoor1 event=finalmusictrip
+ScriptLog: Zones: actor trigger 4 5705 -11653 7460 Trigger tag=Trigger event=Bordercreak1
+ScriptLog: Zones: actor mover 4 6488 -11636 7436 Mover tag=NewIndustrialDoor1 event=None
+ScriptLog: Zones: actor trigger 3 5527 -11659 7460 Trigger tag=Trigger event=TransyDoor1
+ScriptLog: Zones: actor trigger 4 5788 -11658 7477 AlarmTrigger tag=Bordercreak1 event=None
+ScriptLog: Zones: actor pawn 3 -432 -7495 7480 U2Izarian tag=U2Izarian event=Mfreaks1a1
+ScriptLog: Zones: actor trigger 3 -1103 -5764 7555 U2Dispatcher tag=DisCrateMonger1 event=None
+ScriptLog: Zones: actor trigger 3 -1278 -5504 7562 AlarmTrigger tag=CHowels1 event=None
+ScriptLog: Zones: actor trigger 3 -950 -6189 7504 Trigger tag=None event=DisCrateMonger1
+ScriptLog: Zones: actor trigger 3 -1030 -5740 7562 AlarmTrigger tag=CHowels2 event=None
+ScriptLog: Zones: actor trigger 3 -930 -5332 7646 AlarmTrigger tag=CHowels3 event=None
+ScriptLog: Zones: actor pawn 3 -596 -7919 7480 U2Izarian tag=U2Izarian event=MonGuts1a1
+ScriptLog: Zones: actor trigger 3 -601 -7505 7504 Trigger tag=Trigger event=BoxBorker
+ScriptLog: Zones: actor trigger 3 -597 -7646 7518 AlarmTrigger tag=BoxBorker event=None
+ScriptLog: Zones: actor trigger 3 742 -9472 7504 Trigger tag=Trigger event=DisTrashTrouts
+ScriptLog: Zones: actor trigger 0 715 -9523 6001 U2Dispatcher tag=DisTrashTrouts event=None
+ScriptLog: Zones: actor trigger 3 506 -9291 7609 AlarmTrigger tag=TT5 event=None
+ScriptLog: Zones: actor trigger 3 507 -9290 7582 AlarmTrigger tag=TT4 event=None
+ScriptLog: Zones: actor trigger 3 508 -9290 7553 AlarmTrigger tag=TT3 event=None
+ScriptLog: Zones: actor trigger 3 509 -9289 7524 AlarmTrigger tag=TT2 event=None
+ScriptLog: Zones: actor trigger 3 510 -9288 7490 AlarmTrigger tag=TT1 event=None
+ScriptLog: Zones: actor trigger 0 652 -9520 6001 U2Dispatcher tag=TheShitheads event=None
+ScriptLog: Zones: actor trigger 3 1282 -9960 7609 AlarmTrigger tag=spunk1 event=None
+ScriptLog: Zones: actor trigger 3 1283 -9959 7582 AlarmTrigger tag=spunk3 event=None
+ScriptLog: Zones: actor trigger 3 1284 -9959 7553 AlarmTrigger tag=spunk2 event=None
+ScriptLog: Zones: actor mover 7 -1168 -1264 6272 Mover tag=glassdoor1 event=None
+ScriptLog: Zones: actor mover 7 -1168 -1264 6272 Mover tag=glassdoor1 event=None
+ScriptLog: Zones: actor mover 7 -1168 904 6272 Mover tag=glassdoor2 event=Musicaleventforthedoor
+ScriptLog: Zones: actor mover 7 -1168 904 6272 Mover tag=glassdoor2 event=None
+ScriptLog: Zones: actor trigger 10 -1208 4748 6652 U2Dispatcher tag=disclosingdoor1 event=None
+ScriptLog: Zones: actor trigger 10 -796 3380 6956 AlarmTrigger tag=a1jc3 event=None
+ScriptLog: Zones: actor mover 0 -1107 3704 6608 Mover tag=m08adoor1 event=starstheMusic1
+ScriptLog: Zones: actor trigger 13 -1147 3470 6429 AlarmTrigger tag=AmbCreak1 event=None
+ScriptLog: Zones: actor trigger 13 -1143 3348 6348 Trigger tag=Trigger event=DisIntroAmb
+ScriptLog: Zones: actor trigger 13 -1132 3223 6349 U2Dispatcher tag=DisIntroAmb event=None
+ScriptLog: Zones: actor trigger 0 -2935 4976 0 SoundDispatcher tag=SoundDispatcher event=None
+ScriptLog: Zones: actor event 10 -1318 4793 6615 SceneManager tag=SceneManager event=MusicScriptEvent1
+ScriptLog: Zones: actor trigger 0 10703 6152 6671 AlarmTrigger tag=Dropship event=None
+ScriptLog: Zones: actor pawn 15 -1841 1264 5953 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor trigger 13 -1794 2889 5950 Trigger tag=Trigger event=SolidGold
+ScriptLog: Zones: actor trigger 7 -1865 1230 6024 AlarmTrigger tag=ElectricBrokenSound1 event=None
+ScriptLog: Zones: actor trigger 7 -1833 1229 6024 AlarmTrigger tag=ElectricBrokenSound1 event=None
+ScriptLog: Zones: actor trigger 10 -1411 4175 6597 U2Dispatcher tag=PodPath event=None
+ScriptLog: Zones: actor trigger 10 -1247 4176 6567 U2Dispatcher tag=DisIzarianlooksup2 event=None
+ScriptLog: Zones: actor pawn 8 539 1642 5607 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor pawn 10 -1598 4432 6500 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor trigger 15 -1862 1288 5931 AlarmTrigger tag=sealdoor2 event=None
+ScriptLog: Zones: actor trigger 15 -1822 1289 5931 AlarmTrigger tag=sealdoor2 event=None
+ScriptLog: Zones: actor trigger 10 -1591 4514 6489 AlarmTrigger tag=notfeelingsogoood event=None
+ScriptLog: Zones: actor trigger 10 -1546 4471 6489 AlarmTrigger tag=notfeelingsogoood event=None
+ScriptLog: Zones: actor trigger 10 -1519 4520 6481 U2Dispatcher tag=notfeelingsogoood event=None
+ScriptLog: Zones: actor trigger 10 -1542 4472 6526 AlarmTrigger tag=zzzbooga2 event=None
+ScriptLog: Zones: actor trigger 10 -1575 4530 6528 AlarmTrigger tag=zzzbooga1 event=None
+ScriptLog: Zones: actor trigger 10 -1982 4171 6604 AlarmTrigger tag=BloodSprayNUm1 event=None
+ScriptLog: Zones: actor trigger 10 -1498 4567 6514 AlarmTrigger tag=nastybloodbath event=None
+ScriptLog: Zones: actor pawn 10 -1980 4868 6534 U2Cockroach tag=U2Cockroach event=None
+ScriptLog: Zones: actor pawn 10 -2162 5418 6655 U2Cockroach tag=U2Cockroach event=None
+ScriptLog: Zones: actor pawn 10 -2195 4430 6688 U2Cockroach tag=U2Cockroach event=None
+ScriptLog: Zones: actor pawn 10 -1956 4907 6513 U2Cockroach tag=U2Cockroach event=None
+ScriptLog: Zones: actor pawn 10 -1678 6314 6437 U2Cockroach tag=U2Cockroach event=None
+ScriptLog: Zones: actor pawn 10 -1796 6247 6434 U2Cockroach tag=U2Cockroach event=None
+ScriptLog: Zones: actor pawn 10 -1857 5478 6421 U2Cockroach tag=U2Cockroach event=None
+ScriptLog: Zones: actor pawn 10 -1724 5189 6421 U2Cockroach tag=U2Cockroach event=None
+ScriptLog: Zones: actor trigger 15 -1860 1299 6064 U2Dispatcher tag=WillSlideDye event=None
+ScriptLog: Zones: actor trigger 7 -1816 1162 5928 Trigger tag=Trigger event=WillSlideDye
+ScriptLog: Zones: actor pawn 7 -1805 1119 5947 U2Izarian tag=U2Izarian event=None
+ScriptLog: Zones: actor trigger 7 -1876 1075 6024 AlarmTrigger tag=IKS1 event=None
+ScriptLog: Zones: actor trigger 7 -1831 1076 6024 AlarmTrigger tag=IKS2 event=None
+ScriptLog: Zones: actor trigger 7 -1781 1076 6024 AlarmTrigger tag=IKS3 event=None
+ScriptLog: Zones: actor trigger 7 -1804 1204 6024 AlarmTrigger tag=IKS4 event=None
+ScriptLog: Zones: actor trigger 10 -1120 3963 6571 AlarmTrigger tag=BloodSprayNUm2 event=None
+ScriptLog: Zones: actor trigger 15 -1921 1302 5992 AlarmTrigger tag=BrokenDoor event=None
+ScriptLog: Zones: actor trigger 4 6136 -11648 7460 LevelChange tag=goestom08a2 event=None
+ScriptLog: Zones: actor trigger 4 6453 -11649 7708 Trigger tag=Trigger event=goestom08a2
+ScriptLog: Zones: actor trigger 8 670 1647 5600 Trigger tag=Trigger event=UnderwaterHijinks
+ScriptLog: Zones: actor pawn 10 -1856 4736 6432 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor trigger 11 416 2051 5880 Trigger tag=Trigger event=ShadowLurkNew1
+ScriptLog: Zones: actor trigger 0 468 2047 6084 Trigger tag=Trigger event=ShadowLurkNew2
+ScriptLog: Zones: actor trigger 12 657 2060 5880 Trigger tag=Trigger event=scriptedWakeup
+ScriptLog: Zones: actor trigger 11 -575 2072 5909 Trigger tag=Trigger event=showtheshadow
+ScriptLog: Zones: actor trigger 9 1754 2243 5784 Counter tag=FallingWall3 event=countfirstroomizarians
+ScriptLog: Zones: actor trigger 9 1759 2170 5784 Counter tag=FallingWall4 event=countfirstroomizarians
+ScriptLog: Zones: actor trigger 9 1767 2203 5840 Counter tag=countfirstroomizarians event=meetPollock1
+ScriptLog: Zones: actor trigger 9 1778 1387 6058 Trigger tag=Trigger event=GoBigK
+ScriptLog: Zones: actor pawn 9 2021 1672 5964 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor event 3 394 -9420 7458 ExplosiveCannister tag=ExplosiveCannister event=barlybyby
+ScriptLog: Zones: actor trigger 7 -872 -541 6232 Trigger tag=Trigger event=solamesolame
+ScriptLog: Zones: actor trigger 7 -1145 871 6265 Trigger tag=Trigger event=CameraAct1
+ScriptLog: Zones: actor trigger 7 -1615 979 6005 Trigger tag=Trigger event=wakeupcameraguys
+ScriptLog: Zones: actor pawn 7 -812 -374 6470 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor trigger 7 -1026 -202 6538 Counter tag=Camerasafe event=secondspeachoftheimbicile
+ScriptLog: Zones: actor trigger 1 -1165 -4494 5873 Trigger tag=Trigger event=QQQQpollockishaha
+ScriptLog: Zones: actor pawn 1 -1231 -4440 5974 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor trigger 3 -1085 -5118 7512 Trigger tag=Trigger event=Pollockflashbang
+ScriptLog: Zones: actor pawn 3 -939 -4920 7637 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor event 3 -912 -4869 7482 ExplosiveCannister tag=ExplosiveCannister event=barlybyby
+ScriptLog: Zones: actor event 3 -797 -7338 7459 ExplosiveCannister tag=ExplosiveCannister event=barlybyby
+ScriptLog: Zones: actor event 3 1973 -10324 7459 ExplosiveCannister tag=ExplosiveCannister event=barlybyby
+ScriptLog: Zones: actor event 3 1937 -10279 7459 ExplosiveCannister tag=ExplosiveCannister event=barlybyby
+ScriptLog: Zones: actor event 3 872 -9769 7459 ExplosiveCannister tag=ExplosiveCannister event=barlybyby
+ScriptLog: Zones: actor event 3 -322 -7647 7473 ExplosiveCannister tag=ExplosiveCannister event=barlybyby
+ScriptLog: Zones: actor event 3 -834 -7363 7459 ExplosiveCannister tag=ExplosiveCannister event=barlybyby
+ScriptLog: Zones: actor trigger 7 -730 -394 6498 U2Dispatcher tag=DisCameraisnowbroken1 event=None
+ScriptLog: Zones: actor trigger 7 -844 -376 6566 AlarmTrigger tag=Camer1isbroken event=None
+ScriptLog: Zones: actor mover 9 2048 1652 6033 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 7 -829 -346 6511 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 1 -1317 -4452 6010 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 2 -1147 -1728 6398 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 3 -877 -4913 7675 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor pawn 2 -1172 -1701 6364 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor pawn 1 -1281 -4735 7668 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor mover 1 -1294 -4731 7704 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor pawn 3 66 -9008 7637 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor trigger 3 846 -9600 7589 Counter tag=TheTrouts event=pollockcommentsontrouts1
+ScriptLog: Zones: actor trigger 3 824 -9640 7589 Counter tag=TheTrouts event=pollockcommentsontrouts2
+ScriptLog: Zones: actor trigger 3 793 -9686 7589 Counter tag=TheTrouts event=ajapornfar
+ScriptLog: Zones: actor trigger 3 815 -9793 7438 Counter tag=Spunkers1 event=ploockcommentsonspunkers1
+ScriptLog: Zones: actor trigger 3 777 -9823 7438 Counter tag=Spunkers1 event=ploockcommentsonspunkers2
+ScriptLog: Zones: actor trigger 3 741 -9849 7438 Counter tag=Spunkers1 event=ajapornfar
+ScriptLog: Zones: actor trigger 3 5129 -11666 7522 Trigger tag=Trigger event=elvishasleftthebuilding1a1
+ScriptLog: Zones: actor mover 3 5435 -11832 7683 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 3 983 -9418 7690 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 3 2280 -10456 7690 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 2 -1504 -2810 6345 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 2 -898 -3677 6016 Mover tag=lockdown_trigger event=None
+ScriptLog: Zones: actor mover 13 -1840 2832 6007 Mover tag=seal1 event=None
+ScriptLog: Zones: actor mover 15 -1840 1264 6021 Mover tag=lilhuey event=None
+ScriptLog: Zones: actor pawn 7 -856 -270 6249 U2Izarian tag=U2Izarian event=Camerasafe
+ScriptLog: Zones: actor pawn 7 -950 -345 6249 U2Izarian tag=U2Izarian event=Camerasafe
+ScriptLog: Zones: actor pawn 7 -736 -301 6249 U2Izarian tag=U2Izarian event=Camerasafe
+ScriptLog: Zones: actor pawn 7 -889 -320 6324 LevelMaster tag=LevelMaster event=None
+ScriptLog: Zones: actor pawn 9 1914 1402 5807 U2Izarian tag=SEEMEEATME event=None
+ScriptLog: Zones: actor pawn 9 1897 1575 5791 U2ColonistHumanMaleA tag=U2ColonistHumanMaleA event=None
+ScriptLog: Zones: actor trigger 9 1884 1360 5871 LineOfSightTrigger tag=LineOfSightTrigger event=puppetlos
+ScriptLog: Zones: actor trigger 2 -1456 -2800 6288 Counter tag=onemoredeadalieng event=Countpollockishaha
+ScriptLog: Zones: actor trigger 2 -1408 -2800 6288 Counter tag=asinlala event=Countpollockishaha
+ScriptLog: Zones: actor trigger 2 -1360 -2800 6288 Counter tag=h4 event=Countpollockishaha
+ScriptLog: Zones: actor trigger 2 -1296 -2800 6288 Counter tag=h2 event=Countpollockishaha
+ScriptLog: Zones: actor trigger 2 -1216 -2800 6304 Counter tag=boopex event=Countpollockishaha
+ScriptLog: Zones: actor trigger 2 -1472 -2800 6096 Counter tag=h3 event=Countpollockishaha
+ScriptLog: Zones: actor trigger 2 -1392 -2800 6096 Counter tag=h1 event=Countpollockishaha
+ScriptLog: Zones: actor trigger 2 -1328 -2800 6080 Counter tag=hoardfuck event=Countpollockishaha
+ScriptLog: Zones: actor trigger 2 -1360 -2736 6448 Counter tag=Countpollockishaha event=pollockishaha
+ScriptLog: Zones: actor trigger 3 928 -9584 7472 Counter tag=ajapornfar event=pollockcommentsontrouts3
+ScriptLog: Zones: actor pawn 10 -1024 4018 6431 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor pawn 10 -1716 5287 6430 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor pawn 13 -1114 2945 6159 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor pawn 10 -1321 4471 6490 U2CivilianScientist tag=DeadGuy event=None
+ScriptLog: Zones: actor pawn 13 -1132 2876 5903 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor pawn 7 -1069 1215 6159 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor pawn 8 -464 1167 5727 U2CivilianScientist tag=U2CivilianScientist event=None
+ScriptLog: Zones: actor trigger 10 -954 6055 6510 AlarmTrigger tag=DropshipPowerDown event=None
+ScriptLog: Zones: actor trigger 11 -1143 2555 5864 Trigger tag=Trigger event=WillSlideDye
+ScriptLog: Zones: actor pawn 12 605 1864 5899 U2Izarian tag=U2Izarian event=None
+ScriptLog: Zones: actor trigger 10 -1151 3758 6817 U2Dispatcher tag=Diskillallslowasses event=killallslowasses
+ScriptLog: Zones: actor trigger 4 6381 -11661 7708 Trigger tag=Trigger event=goestom08a2
+ScriptLog: Zones: actor trigger 4 6225 -11665 7708 Trigger tag=Trigger event=goestom08a2
+ScriptLog: Zones: actor trigger 4 6126 -11656 7708 Trigger tag=Trigger event=goestom08a2
+ScriptLog: Zones: actor trigger 10 -714 6092 6544 ObjectiveEvent tag=M08_Objective02_Activate event=O02
+ScriptLog: Zones: actor trigger 10 -698 6108 6544 ObjectiveEvent tag=M08_Objective03_Activate event=O03
+ScriptLog: Zones: actor trigger 10 -691 6132 6544 ObjectiveEvent tag=M08_Objective01_Complete event=O01
+ScriptLog: Zones: actor event 0 1875 6167 0 PropertyFlipper tag=DropshipDummyON event=DropShipDummy
+ScriptLog: Zones: actor trigger 10 -1320 3664 6962 MusicScriptEvent tag=MusicScriptEvent1 event=None
+ScriptLog: Zones: actor trigger 10 -1297 3627 6949 MusicScriptEvent tag=MusicScriptEvent2 event=None
+ScriptLog: Zones: actor trigger 10 -1267 3645 6960 MusicScriptEvent tag=MusicScriptEvent3 event=None
+ScriptLog: Zones: actor trigger 10 -1203 3528 7032 MusicScriptEvent tag=MusicScriptEvent4 event=None
+ScriptLog: Zones: actor trigger 10 -1174 3528 7031 MusicScriptEvent tag=MusicScriptEvent5 event=None
+ScriptLog: Zones: actor trigger 10 -1137 3557 7050 MusicScriptEvent tag=MusicScriptEvent6 event=None
+ScriptLog: Zones: actor trigger 10 -1061 3628 6971 MusicScriptEvent tag=MusicScriptEvent7 event=None
+ScriptLog: Zones: actor trigger 10 -1037 3626 6973 MusicScriptEvent tag=MusicScriptEvent8 event=None
+ScriptLog: Zones: actor trigger 3 841 -9443 7507 U2Dispatcher tag=DisTrashTrouts event=None
+ScriptLog: Zones: actor trigger 3 5496 -11670 7536 Counter tag=finalmusictrip event=MusicScriptEvent2
+ScriptLog: Zones: actor trigger 9 1790 1794 5931 Counter tag=SpaceClown event=MusicScriptEvent5
+ScriptLog: Zones: actor trigger 8 1077 1634 5615 Trigger tag=Trigger event=MusicScriptEvent1
+ScriptLog: Zones: actor trigger 7 -1117 766 6184 Trigger tag=Trigger event=None
+ScriptLog: Zones: actor trigger 7 -1150 881 6184 Trigger tag=Trigger event=MusicScriptEvent2
+ScriptLog: Zones: actor trigger 9 2480 2064 5920 U2Dispatcher tag=U2Dispatcher event=None
+ScriptLog: Zones: actor trigger 10 -1470 3627 6992 MusicScriptEvent tag=MusicScriptEventFadeDn event=None
+ScriptLog: Zones: actor trigger 10 -1430 3628 6992 MusicScriptEvent tag=MusicScriptEventFadeUp event=None
+ScriptLog: Zones: actor trigger 9 2479 2303 6000 U2Dispatcher tag=meetPollock1 event=None
+ScriptLog: Zones: actor event 0 1875 6167 0 PropertyFlipper tag=None event=DropShipDummy
+ScriptLog: Zones: water WaterVolume0 9 1264 1296 5744 friction=2.400000 gravity=-1250.000000 terminal=4096.000000 velocity=0.000000,0.000000,0.000000 pain=False tag=WaterVolume
+ScriptLog: Zones: water WaterVolume1 0 -424 1000 5696 friction=2.400000 gravity=-1250.000000 terminal=4096.000000 velocity=0.000000,0.000000,0.000000 pain=False tag=WaterVolume
+ScriptLog: Zones: water WaterVolume3 0 -3104 1536 5296 friction=2.400000 gravity=-1250.000000 terminal=4096.000000 velocity=0.000000,0.000000,0.000000 pain=False tag=WaterVolume
+ScriptLog: Zones: water WaterVolume2 0 -3104 2176 5296 friction=2.400000 gravity=-1250.000000 terminal=4096.000000 velocity=0.000000,0.000000,0.000000 pain=False tag=WaterVolume
+ScriptLog: Zones: water WaterVolume4 0 6320 -11227 7343 friction=2.400000 gravity=-1250.000000 terminal=4096.000000 velocity=0.000000,0.000000,0.000000 pain=False tag=WaterVolume
+ScriptLog: Zones: swim WaterSpeed=140.000000 GroundSpeed=263.000000 UnderWaterTime=20.000000
+ScriptLog: Zones: player 10 -732 6077 6529
+ScriptLog: Zones: map M08A1
+ScriptLog: Hub: zones: 140 navigation points, 25 zone-crossing paths (see the log)
+ScriptLog: PilotDriver: console -> 
+ScriptLog: PilotDriver: step 4: console hub beats
+ScriptLog: Beats: other 13 -1156 3016 6196 PatrolPoint PatrolPoint7 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 7 -1138 -370 6242 PatrolPoint PatrolPoint9 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 11 -583 2038 5908 PatrolPoint PatrolPoint0 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 11 -580 2556 5908 PatrolPoint PatrolPoint1 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 11 -580 1536 5908 PatrolPoint PatrolPoint2 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 11 -1480 2560 5908 PatrolPoint PatrolPoint3 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 11 -1476 1536 5908 PatrolPoint PatrolPoint4 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 15 -1848 2370 5942 PatrolPoint PatrolPoint6 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 15 -1832 1508 5942 PatrolPoint PatrolPoint5 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 9 1630 810 6205 SpawnPoint SpawnPoint1 tag=FallingWall3 event=None
+ScriptLog: Beats: other 9 1631 3259 6205 SpawnPoint SpawnPoint3 tag=FallingWall4 event=None
+ScriptLog: Beats: other 7 -544 -416 7024 StaticMeshActor StaticMeshActor330 tag=lameo event=None
+ScriptLog: Beats: other 7 -418 357 6849 SpawnPoint SpawnPoint4 tag=WillRushIn_4 event=None
+ScriptLog: Beats: other 2 -1080 -2743 6584 StaticMeshActor StaticMeshActor257 tag=lameo event=None
+ScriptLog: Beats: other 2 -1463 -2743 6584 StaticMeshActor StaticMeshActor216 tag=lameo event=None
+ScriptLog: Beats: other 2 -674 -1446 6170 PatrolPoint PatrolPoint10 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 2 -1113 -3630 5810 PatrolPoint PatrolPoint11 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 2 -947 -2181 6194 PatrolPoint PatrolPoint12 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 2 -1364 -2186 6194 PatrolPoint PatrolPoint13 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 1 -1092 -4140 5810 PatrolPoint PatrolPoint19 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 2 -1510 -1540 6345 SpawnPoint SpawnPoint8 tag=WillRushIn_2 event=None
+ScriptLog: Beats: other 2 -1514 -1466 6345 SpawnPoint SpawnPoint6 tag=WillRushIn_3 event=None
+ScriptLog: Beats: other 2 -1435 -1506 6345 SpawnPoint SpawnPoint2 tag=WillRushIn_1 event=None
+ScriptLog: Beats: other 2 -1376 -2432 6784 StaticMeshActor StaticMeshActor145 tag=lameo event=None
+ScriptLog: Beats: other 2 -1152 -3184 6070 StaticMeshActor StaticMeshActor146 tag=lameo event=None
+ScriptLog: Beats: other 2 -1648 -3360 6078 StaticMeshActor StaticMeshActor655 tag=lameo event=None
+ScriptLog: Beats: other 2 -656 -3362 6078 StaticMeshActor StaticMeshActor149 tag=lameo event=None
+ScriptLog: Beats: other 2 -1528 -2124 6164 StaticMeshActor StaticMeshActor212 tag=lameo event=None
+ScriptLog: Beats: other 2 -1152 -2124 6164 StaticMeshActor StaticMeshActor143 tag=lameo event=None
+ScriptLog: Beats: other 2 -768 -2124 6164 StaticMeshActor StaticMeshActor254 tag=lameo event=None
+ScriptLog: Beats: other 2 -1220 -3458 5744 StaticMeshActor StaticMeshActor169 tag=lameo event=None
+ScriptLog: Beats: other 0 -1220 -3138 5744 StaticMeshActor StaticMeshActor170 tag=lameo event=None
+ScriptLog: Beats: other 2 -964 -3460 5744 StaticMeshActor StaticMeshActor327 tag=lameo event=None
+ScriptLog: Beats: other 0 -964 -3140 5744 StaticMeshActor StaticMeshActor325 tag=lameo event=None
+ScriptLog: Beats: other 2 -520 -3391 5948 StaticMeshActor StaticMeshActor160 tag=lameo event=None
+ScriptLog: Beats: other 2 -1787 -3552 5948 StaticMeshActor StaticMeshActor159 tag=lameo event=None
+ScriptLog: Beats: other 2 -1182 -3686 5488 StaticMeshActor StaticMeshActor162 tag=lameo event=None
+ScriptLog: Beats: other 2 -1552 -3408 5746 StaticMeshActor StaticMeshActor237 tag=lameo event=None
+ScriptLog: Beats: other 2 -1552 -3408 5746 StaticMeshActor StaticMeshActor281 tag=lameo event=None
+ScriptLog: Beats: other 2 -752 -3408 5746 StaticMeshActor StaticMeshActor156 tag=lameo event=None
+ScriptLog: Beats: other 2 -752 -3408 5746 StaticMeshActor StaticMeshActor157 tag=lameo event=None
+ScriptLog: Beats: other 2 -1086 -1508 6330 SpawnPoint SpawnPoint7 tag=Ramya event=None
+ScriptLog: Beats: other 2 -1152 -2400 6304 StaticMeshActor StaticMeshActor261 tag=lameo event=None
+ScriptLog: Beats: other 2 -784 -2400 6320 StaticMeshActor StaticMeshActor573 tag=lameo event=None
+ScriptLog: Beats: other 2 -1552 -2384 6320 StaticMeshActor StaticMeshActor324 tag=lameo event=None
+ScriptLog: Beats: other 2 -1157 -2393 6429 StaticMeshActor StaticMeshActor574 tag=lameo event=None
+ScriptLog: Beats: other 3 -851 -6221 7555 SpawnPoint SpawnPoint9 tag=TheTrouts event=None
+ScriptLog: Beats: other 3 2563 -10898 7486 SpawnPoint SpawnPoint5 tag=Spunkers1 event=None
+ScriptLog: Beats: other 13 -1156 3628 6452 PatrolPoint PatrolPoint8 tag=U2PatrolPoint event=None
+ScriptLog: Beats: other 10 -732 6077 6523 PlayerStart PlayerStart0 tag=PlayerStart event=SceneManager
+ScriptLog: Beats: other 10 -1480 4341 6518 InterpolationPoint InterpolationPoint13 tag=IZ_Tag1 event=None
+ScriptLog: Beats: other 10 -1902 4369 6447 StaticMeshActor StaticMeshActor241 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1000 6224 6646 StaticMeshActor StaticMeshActor119 tag=DropShipDummy event=None
+ScriptLog: Beats: other 10 -1007 6186 6680 StaticMeshActor StaticMeshActor135 tag=DropShipDummy event=None
+ScriptLog: Beats: other 10 -1900 4373 6454 StaticMeshActor StaticMeshActor484 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1486 4225 6420 StaticMeshActor StaticMeshActor236 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -641 4025 6436 StaticMeshActor StaticMeshActor192 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1887 3876 6474 StaticMeshActor StaticMeshActor194 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -467 5229 6417 StaticMeshActor StaticMeshActor205 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -486 5776 6417 StaticMeshActor StaticMeshActor195 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -467 5255 6423 StaticMeshActor StaticMeshActor203 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1598 4226 6437 StaticMeshActor StaticMeshActor239 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1431 3964 6409 StaticMeshActor StaticMeshActor240 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1651 5423 6409 StaticMeshActor StaticMeshActor224 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1878 5261 6405 StaticMeshActor StaticMeshActor223 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1685 5151 6414 StaticMeshActor StaticMeshActor208 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1883 5320 6403 StaticMeshActor StaticMeshActor210 tag=donotsololmondo event=None
+ScriptLog: Beats: other 0 -13631 -2191 -1004 StaticMeshActor StaticMeshActor228 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -13719 -1964 -1002 StaticMeshActor StaticMeshActor235 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -13472 -2223 -1000 StaticMeshActor StaticMeshActor230 tag=notonmygrass event=None
+ScriptLog: Beats: other 6 -14027 -2192 -990 StaticMeshActor StaticMeshActor231 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -14146 -1961 -995 StaticMeshActor StaticMeshActor232 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -13814 -2223 -998 StaticMeshActor StaticMeshActor233 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -13181 -2251 -1003 StaticMeshActor StaticMeshActor209 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -13249 -2020 -1016 StaticMeshActor StaticMeshActor234 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -13022 -2282 -1023 StaticMeshActor StaticMeshActor207 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -13371 -2087 -1008 StaticMeshActor StaticMeshActor197 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -13546 -2026 -1016 StaticMeshActor StaticMeshActor229 tag=notonmygrass event=None
+ScriptLog: Beats: other 0 -1827 4449 6424 StaticMeshActor StaticMeshActor225 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1767 4682 6429 StaticMeshActor StaticMeshActor226 tag=donotsololmondo event=None
+ScriptLog: Beats: other 10 -1861 4806 6427 StaticMeshActor StaticMeshActor679 tag=donotsololmondo event=None
+ScriptLog: Beats: trigger 10 -1652 3348 6960 AlarmTrigger AlarmTrigger16 tag=a1jc6 event=None
+ScriptLog: Beats: trigger 13 -1737 2888 6045 U2Dispatcher U2Dispatcher1 tag=idea event=None
+ScriptLog: Beats: fires U2Dispatcher1 QQQ
+ScriptLog: Beats: fires U2Dispatcher1 initscream1
+ScriptLog: Beats: trigger 13 -1730 2860 5981 Trigger Trigger6 tag=Trigger event=seal_door1
+ScriptLog: Beats: trigger 7 -1150 881 6184 Trigger Trigger16 tag=Trigger event=glassdoor2
+ScriptLog: Beats: trigger 7 -1152 1058 6269 Trigger Trigger11 tag=Trigger event=tauntyou1
+ScriptLog: Beats: trigger 7 -1158 811 6184 Trigger Trigger25 tag=Trigger event=Jump1
+ScriptLog: Beats: pawn 2 -1153 -1991 6209 U2Izarian U2Izarian15 tag=U2Izarian event=h1
+ScriptLog: Beats: trigger 3 -1121 -4826 7464 Trigger Trigger34 tag=Trigger event=NewIndustrialDoor1
+ScriptLog: Beats: door 0 -1726 2847 5976 Mover Mover22 tag=seal_door1 event=seal1
+ScriptLog: Beats: trigger 15 -1939 2804 5985 Trigger Trigger9 tag=Trigger event=seal_door1b
+ScriptLog: Beats: trigger 11 -577 2046 6002 AlarmTrigger AlarmTrigger19 tag=tube4 event=None
+ScriptLog: Beats: trigger 15 -1832 2802 5928 Trigger Trigger3 tag=Trigger event=Distubekill
+ScriptLog: Beats: trigger 15 -1796 2784 5928 U2Dispatcher U2Dispatcher12 tag=Distubekill event=None
+ScriptLog: Beats: fires U2Dispatcher12 tube1
+ScriptLog: Beats: fires U2Dispatcher12 tube2
+ScriptLog: Beats: fires U2Dispatcher12 tube3
+ScriptLog: Beats: fires U2Dispatcher12 tube4
+ScriptLog: Beats: trigger 11 -1001 1537 5896 Trigger Trigger28 tag=Trigger event=ENCOUNTER1
+ScriptLog: Beats: trigger 11 -1205 2550 5972 AlarmTrigger AlarmTrigger6 tag=carrot1 event=None
+ScriptLog: Beats: other 0 -1936 2830 5899 AntiPortalActor AntiPortalActor4 tag=antiportalseal1 event=None
+ScriptLog: Beats: other 0 -1936 1262 5934 AntiPortalActor AntiPortalActor5 tag=antiportallilhuey event=None
+ScriptLog: Beats: door 9 1956 1680 5744 Mover Mover3 tag=runoffbasinHs event=None
+ScriptLog: Beats: door 9 1956 2416 5744 Mover Mover1 tag=runoffbasinHs event=None
+ScriptLog: Beats: other 9 2136 1733 5938 PawnFactory PawnFactory1 tag=FallingWall3 event=None
+ScriptLog: Beats: other 9 1543 3369 6689 PawnFactory PawnFactory2 tag=FallingWall4 event=None
+ScriptLog: Beats: trigger 9 1760 2032 5874 U2Dispatcher U2Dispatcher10 tag=DisFallingWall event=None
+ScriptLog: Beats: fires U2Dispatcher10 FallingWall3
+ScriptLog: Beats: fires U2Dispatcher10 FallingWall4
+ScriptLog: Beats: trigger 9 2523 3019 6058 Trigger Trigger42 tag=Trigger event=GoBigK
+ScriptLog: Beats: trigger 15 -1804 2635 5986 Trigger Trigger19 tag=Trigger event=DisIzarianAmbientnumber1
+ScriptLog: Beats: trigger 15 -1808 2549 6001 U2Dispatcher U2Dispatcher18 tag=DisIzarianAmbientnumber1 event=None
+ScriptLog: Beats: fires U2Dispatcher18 carrot1
+ScriptLog: Beats: fires U2Dispatcher18 ThingFalling1
+ScriptLog: Beats: fires U2Dispatcher18 DoorClosingSound1
+ScriptLog: Beats: fires U2Dispatcher18 carrot2
+ScriptLog: Beats: fires U2Dispatcher18 carrot3
+ScriptLog: Beats: fires U2Dispatcher18 ThingBreaking2
+ScriptLog: Beats: trigger 11 -966 2511 5994 AlarmTrigger AlarmTrigger5 tag=ThingFalling1 event=None
+ScriptLog: Beats: trigger 11 -912 2580 6041 AlarmTrigger AlarmTrigger23 tag=DoorClosingSound1 event=None
+ScriptLog: Beats: trigger 15 -1812 1326 5972 AlarmTrigger AlarmTrigger0 tag=carrot2 event=None
+ScriptLog: Beats: door 0 -1940 2816 5976 Mover Mover26 tag=seal_door1b event=seal1
+ScriptLog: Beats: door 0 -1935 1279 5976 Mover Mover19 tag=OneBrokenDoor event=BrokenDoor
+ScriptLog: Beats: door 0 -1736 1248 5976 Mover Mover5 tag=seal_door1b event=seal1
+ScriptLog: Beats: trigger 11 -598 2548 5920 AlarmTrigger AlarmTrigger8 tag=carrot3 event=None
+ScriptLog: Beats: trigger 15 -1808 1330 6024 AlarmTrigger AlarmTrigger80 tag=ThingBreaking2 event=None
+ScriptLog: Beats: trigger 11 -509 2073 5986 Trigger Trigger8 tag=Trigger event=DisHumanDeath1
+ScriptLog: Beats: trigger 11 -6 2036 5938 AlarmTrigger AlarmTrigger21 tag=DeathCarrot1 event=None
+ScriptLog: Beats: trigger 11 -252 2043 6001 U2Dispatcher U2Dispatcher7 tag=DisHumanDeath1 event=None
+ScriptLog: Beats: fires U2Dispatcher7 DeathCarrot1
+ScriptLog: Beats: fires U2Dispatcher7 SniffSniff
+ScriptLog: Beats: trigger 11 194 2032 5993 AlarmTrigger AlarmTrigger31 tag=SniffSniff event=None
+ScriptLog: Beats: trigger 13 -1278 2986 6096 AlarmTrigger AlarmTrigger4 tag=AmbIzarian1 event=None
+ScriptLog: Beats: trigger 13 -1646 2929 6067 AlarmTrigger AlarmTrigger20 tag=AmbIzarian1 event=None
+ScriptLog: Beats: trigger 13 -1434 2974 6093 Trigger Trigger10 tag=Trigger event=CreakNumbertwo
+ScriptLog: Beats: trigger 13 -1426 2967 6155 AlarmTrigger AlarmTrigger54 tag=CreakNumbertwo event=None
+ScriptLog: Beats: trigger 11 -292 2020 5986 Trigger Trigger14 tag=Trigger event=DisSteamScare1
+ScriptLog: Beats: trigger 11 -251 2019 6001 U2Dispatcher U2Dispatcher13 tag=DisSteamScare1 event=None
+ScriptLog: Beats: fires U2Dispatcher13 SteamScare1
+ScriptLog: Beats: fires U2Dispatcher13 Izarianhaha1
+ScriptLog: Beats: fires U2Dispatcher13 Izarianhaha2
+ScriptLog: Beats: fires U2Dispatcher13 Izarianhaha3
+ScriptLog: Beats: fires U2Dispatcher13 Izarianhaha4
+ScriptLog: Beats: fires U2Dispatcher13 SteamScare1
+ScriptLog: Beats: trigger 11 -293 1969 5985 AlarmTrigger AlarmTrigger30 tag=QQQSteamScare1 event=None
+ScriptLog: Beats: trigger 11 -35 2048 5993 AlarmTrigger AlarmTrigger25 tag=Izarianhaha1 event=None
+ScriptLog: Beats: trigger 11 19 2004 5993 AlarmTrigger AlarmTrigger26 tag=Izarianhaha2 event=None
+ScriptLog: Beats: trigger 11 -653 2047 6024 AlarmTrigger AlarmTrigger27 tag=Izarianhaha3 event=None
+ScriptLog: Beats: trigger 11 21 2090 5993 AlarmTrigger AlarmTrigger28 tag=Izarianhaha4 event=None
+ScriptLog: Beats: trigger 11 55 2046 5993 AlarmTrigger AlarmTrigger32 tag=Izarianhaha4 event=None
+ScriptLog: Beats: other 11 -290 1975 5957 ParticleSalamander ParticleSalamander6 tag=QQQZZZSteamScare1 event=None
+ScriptLog: Beats: trigger 11 -317 1977 5992 AlarmTrigger AlarmTrigger86 tag=QQQSteamScare1 event=None
+ScriptLog: Beats: other 11 -283 1986 5963 ParticleSalamander ParticleSalamander7 tag=QQQZZZSteamScare1 event=None
+ScriptLog: Beats: trigger 11 -404 1996 5985 AlarmTrigger AlarmTrigger29 tag=QQQSteamScare1 event=None
+ScriptLog: Beats: trigger 12 529 2017 5993 AlarmTrigger AlarmTrigger24 tag=Somethingisthere2 event=None
+ScriptLog: Beats: trigger 12 528 2073 5993 AlarmTrigger AlarmTrigger33 tag=Somethingisthere1 event=None
+ScriptLog: Beats: trigger 12 576 2043 6001 U2Dispatcher U2Dispatcher9 tag=DisMoreCreatureNoises event=None
+ScriptLog: Beats: fires U2Dispatcher9 Somethingisthere1
+ScriptLog: Beats: fires U2Dispatcher9 Somethingisthere2
+ScriptLog: Beats: trigger 11 308 2053 5986 Trigger Trigger7 tag=Trigger event=DisMoreCreatureNoises
+ScriptLog: Beats: trigger 9 1697 2033 5958 U2Dispatcher U2Dispatcher0 tag=IzarianPackcallsOut event=None
+ScriptLog: Beats: fires U2Dispatcher0 IzarianMatingCall1
+ScriptLog: Beats: fires U2Dispatcher0 IzarianMatingCall2
+ScriptLog: Beats: fires U2Dispatcher0 IzarianMatingCall3
+ScriptLog: Beats: fires U2Dispatcher0 IzarianMatingCall4
+ScriptLog: Beats: fires U2Dispatcher0 IzarianMatingCall5
+ScriptLog: Beats: fires U2Dispatcher0 IzarianMatingCall6
+ScriptLog: Beats: trigger 9 1260 1665 5993 AlarmTrigger AlarmTrigger39 tag=IzarianMatingCall1 event=None
+ScriptLog: Beats: trigger 9 1261 1666 5969 AlarmTrigger AlarmTrigger65 tag=IzarianMatingCall2 event=None
+ScriptLog: Beats: trigger 9 1262 1667 5942 AlarmTrigger AlarmTrigger66 tag=IzarianMatingCall3 event=None
+ScriptLog: Beats: trigger 9 1263 1667 5913 AlarmTrigger AlarmTrigger67 tag=IzarianMatingCall4 event=None
+ScriptLog: Beats: trigger 9 1264 1668 5884 AlarmTrigger AlarmTrigger68 tag=IzarianMatingCall5 event=None
+ScriptLog: Beats: trigger 9 1265 1669 5850 AlarmTrigger AlarmTrigger69 tag=IzarianMatingCall6 event=None
+ScriptLog: Beats: trigger 9 1247 2416 5993 AlarmTrigger AlarmTrigger34 tag=IzarianMatingCall1 event=None
+ScriptLog: Beats: trigger 9 1248 2417 5969 AlarmTrigger AlarmTrigger35 tag=IzarianMatingCall2 event=None
+ScriptLog: Beats: trigger 9 1249 2418 5942 AlarmTrigger AlarmTrigger36 tag=IzarianMatingCall3 event=None
+ScriptLog: Beats: trigger 9 1250 2418 5913 AlarmTrigger AlarmTrigger37 tag=IzarianMatingCall4 event=None
+ScriptLog: Beats: trigger 9 1251 2419 5884 AlarmTrigger AlarmTrigger38 tag=IzarianMatingCall5 event=None
+ScriptLog: Beats: trigger 9 1252 2420 5850 AlarmTrigger AlarmTrigger7 tag=IzarianMatingCall6 event=None
+ScriptLog: Beats: trigger 15 -1938 1293 5985 Trigger Trigger15 tag=Trigger event=OneBrokenDoor
+ScriptLog: Beats: other 15 -1935 1284 5985 ParticleSalamander ParticleSalamander5 tag=BrokenDoor event=None
+ScriptLog: Beats: trigger 15 -1842 1292 6001 U2Dispatcher U2Dispatcher20 tag=sealdoor2 event=None
+ScriptLog: Beats: fires U2Dispatcher20 BrokenDoor
+ScriptLog: Beats: fires U2Dispatcher20 ElectricBrokenSound1
+ScriptLog: Beats: fires U2Dispatcher20 ZarianMock1
+ScriptLog: Beats: fires U2Dispatcher20 ThatstairCreakingSound1
+ScriptLog: Beats: trigger 15 -1856 1279 5980 AlarmTrigger AlarmTrigger61 tag=ElectricBrokenSound1 event=None
+ScriptLog: Beats: trigger 15 -1808 1280 5980 AlarmTrigger AlarmTrigger46 tag=ElectricBrokenSound1 event=None
+ScriptLog: Beats: trigger 7 -1773 1213 6037 AlarmTrigger AlarmTrigger47 tag=ZarianMock1 event=None
+ScriptLog: Beats: trigger 7 -1717 1214 6069 AlarmTrigger AlarmTrigger56 tag=ThatstairCreakingSound1 event=None
+ScriptLog: Beats: trigger 7 -1350 1147 6000 AlarmTrigger AlarmTrigger13 tag=Distransitionupstairs1 event=None
+ScriptLog: Beats: trigger 7 -1474 1135 6070 Trigger Trigger5 tag=Trigger event=Distransitionupstairs1
+ScriptLog: Beats: trigger 7 -1392 1141 6163 U2Dispatcher U2Dispatcher6 tag=Distransitionupstairs1 event=None
+ScriptLog: Beats: fires U2Dispatcher6 manscreamininbackground1
+ScriptLog: Beats: fires U2Dispatcher6 MachineEndingSound1
+ScriptLog: Beats: fires U2Dispatcher6 GoodOlIzarianbushcall
+ScriptLog: Beats: trigger 7 -1099 854 6284 AlarmTrigger AlarmTrigger52 tag=manscreamininbackground1 event=None
+ScriptLog: Beats: trigger 7 -1195 830 6284 AlarmTrigger AlarmTrigger50 tag=MachineEndingSound1 event=None
+ScriptLog: Beats: trigger 7 -1078 816 6284 AlarmTrigger AlarmTrigger53 tag=GoodOlIzarianbushcall event=None
+ScriptLog: Beats: trigger 7 -1147 -177 6346 Trigger Trigger24 tag=Trigger event=QQQDisRushIntoSolarium
+ScriptLog: Beats: trigger 7 -1161 -1130 6284 AlarmTrigger AlarmTrigger11 tag=WillRushIn_1 event=None
+ScriptLog: Beats: other 7 -317 367 6868 PawnFactory PawnFactory5 tag=WillRushIn_4 event=None
+ScriptLog: Beats: trigger 7 -864 369 6409 AlarmTrigger AlarmTrigger49 tag=WillRushIn_4 event=None
+ScriptLog: Beats: trigger 7 -844 331 6409 AlarmTrigger AlarmTrigger51 tag=WillRushIn_4 event=None
+ScriptLog: Beats: trigger 2 -1151 -1269 6184 Trigger Trigger2 tag=secondspeachoftheimbicile event=glassdoor1
+ScriptLog: Beats: trigger 2 -1155 -1349 6274 Trigger Trigger12 tag=Trigger event=Jump2
+ScriptLog: Beats: pawn 2 -701 -1446 6203 U2Izarian U2Izarian23 tag=U2Izarian event=hoardfuck
+ScriptLog: Beats: pawn 2 -1153 -3180 5835 U2Izarian U2Izarian5 tag=U2Izarian event=boopex
+ScriptLog: Beats: pawn 2 -1552 -3200 5803 U2Izarian U2Izarian24 tag=U2Izarian event=h2
+ScriptLog: Beats: pawn 2 -756 -3204 5803 U2Izarian U2Izarian7 tag=U2Izarian event=h3
+ScriptLog: Beats: trigger 2 -1104 -3867 5830 Trigger Trigger30 tag=Trigger event=jump03b
+ScriptLog: Beats: pawn 1 -1354 -4122 5835 U2Izarian U2Izarian8 tag=U2Izarian event=onemoredeadalieng
+ScriptLog: Beats: pawn 1 -960 -4160 5837 U2Izarian U2Izarian9 tag=U2Izarian event=h4
+ScriptLog: Beats: pawn 1 -1360 -4444 5835 U2Izarian U2Izarian1 tag=U2Izarian event=asinlala
+ScriptLog: Beats: trigger 0 -1933 -1599 6001 U2Dispatcher U2Dispatcher16 tag=DisRushIntoSolarium event=None
+ScriptLog: Beats: fires U2Dispatcher16 WillRushIn_1
+ScriptLog: Beats: fires U2Dispatcher16 WillRushIn_2
+ScriptLog: Beats: fires U2Dispatcher16 WillRushIn_3
+ScriptLog: Beats: fires U2Dispatcher16 WillRushIn_4
+ScriptLog: Beats: trigger 2 -1157 -3360 5793 Trigger Trigger13 tag=Trigger event=AllWillAttackPlayer
+ScriptLog: Beats: pawn 1 -941 -4285 7468 U2Izarian U2Izarian0 tag=U2Izarian event=neversawdatcomen
+ScriptLog: Beats: trigger 1 -1152 -4511 5793 Trigger Trigger20 tag=Trigger event=YeOldGrassGrowlers
+ScriptLog: Beats: trigger 1 -1155 -4498 6180 Trigger Trigger29 tag=Trigger event=GrassGrowlingGoodness
+ScriptLog: Beats: trigger 1 -1143 -4520 6029 Trigger Trigger21 tag=Trigger event=LadderCreak1
+ScriptLog: Beats: trigger 1 -1150 -4500 6119 AlarmTrigger AlarmTrigger55 tag=LadderCreak1 event=None
+ScriptLog: Beats: trigger 1 -1149 -4514 6759 Trigger Trigger17 tag=Trigger event=LadderCreak2
+ScriptLog: Beats: trigger 1 -1156 -4494 6849 AlarmTrigger AlarmTrigger60 tag=LadderCreak2 event=None
+ScriptLog: Beats: trigger 8 -899 1125 5769 Trigger Trigger23 tag=Trigger event=DisSewerLaugh1
+ScriptLog: Beats: trigger 8 -1211 1128 5808 AlarmTrigger AlarmTrigger58 tag=SewerChod0 event=None
+ScriptLog: Beats: trigger 8 -845 1133 5826 AlarmTrigger AlarmTrigger59 tag=CrumlingFloor event=None
+ScriptLog: Beats: trigger 8 -1152 1131 5802 U2Dispatcher U2Dispatcher11 tag=DisSewerLaugh1 event=None
+ScriptLog: Beats: fires U2Dispatcher11 SewerChod0
+ScriptLog: Beats: fires U2Dispatcher11 SewerChod1
+ScriptLog: Beats: fires U2Dispatcher11 CrumlingFloor
+ScriptLog: Beats: trigger 8 -1210 1129 5831 AlarmTrigger AlarmTrigger57 tag=SewerChod1 event=None
+ScriptLog: Beats: trigger 8 -750 1127 5826 AlarmTrigger AlarmTrigger45 tag=Swered event=None
+ScriptLog: Beats: trigger 7 -1531 1135 6174 Trigger Trigger27 tag=Trigger event=KillAllRoaches
+ScriptLog: Beats: trigger 8 -247 1136 5775 Trigger Trigger0 tag=Trigger event=GoRoaches
+ScriptLog: Beats: other 0 -992 -4820 7712 AntiPortalActor AntiPortalActor10 tag=AnzipNewIndustrialDoor1 event=None
+ScriptLog: Beats: door 1 -1096 -4808 7440 Mover Mover9 tag=NewIndustrialDoor1 event=None
+ScriptLog: Beats: door 3 5512 -11636 7436 Mover Mover0 tag=TransyDoor1 event=finalmusictrip
+ScriptLog: Beats: trigger 4 5705 -11653 7460 Trigger Trigger22 tag=Trigger event=Bordercreak1
+ScriptLog: Beats: door 4 6488 -11636 7436 Mover Mover21 tag=NewIndustrialDoor1 event=None
+ScriptLog: Beats: other 3 5528 -11660 7564 AntiPortalActor AntiPortalActor0 tag=azipTransyDoor1 event=None
+ScriptLog: Beats: trigger 3 5527 -11659 7460 Trigger Trigger33 tag=Trigger event=TransyDoor1
+ScriptLog: Beats: trigger 4 5788 -11658 7477 AlarmTrigger AlarmTrigger2 tag=Bordercreak1 event=None
+ScriptLog: Beats: pawn 3 -432 -7495 7480 U2Izarian U2Izarian6 tag=U2Izarian event=Mfreaks1a1
+ScriptLog: Beats: trigger 3 -1103 -5764 7555 U2Dispatcher U2Dispatcher14 tag=DisCrateMonger1 event=None
+ScriptLog: Beats: fires U2Dispatcher14 CHowels1
+ScriptLog: Beats: fires U2Dispatcher14 CHowels2
+ScriptLog: Beats: fires U2Dispatcher14 CHowels3
+ScriptLog: Beats: fires U2Dispatcher14 Monger1Activate
+ScriptLog: Beats: trigger 3 -1278 -5504 7562 AlarmTrigger AlarmTrigger62 tag=CHowels1 event=None
+ScriptLog: Beats: trigger 3 -950 -6189 7504 Trigger Trigger35 tag=None event=DisCrateMonger1
+ScriptLog: Beats: trigger 3 -1030 -5740 7562 AlarmTrigger AlarmTrigger64 tag=CHowels2 event=None
+ScriptLog: Beats: trigger 3 -930 -5332 7646 AlarmTrigger AlarmTrigger22 tag=CHowels3 event=None
+ScriptLog: Beats: pawn 3 -596 -7919 7480 U2Izarian U2Izarian3 tag=U2Izarian event=MonGuts1a1
+ScriptLog: Beats: trigger 3 -601 -7505 7504 Trigger Trigger36 tag=Trigger event=BoxBorker
+ScriptLog: Beats: trigger 3 -597 -7646 7518 AlarmTrigger AlarmTrigger63 tag=BoxBorker event=None
+ScriptLog: Beats: trigger 3 742 -9472 7504 Trigger Trigger32 tag=Trigger event=DisTrashTrouts
+ScriptLog: Beats: other 3 791 -9503 6689 PawnFactory PawnFactory9 tag=TheTrouts event=None
+ScriptLog: Beats: trigger 0 715 -9523 6001 U2Dispatcher U2Dispatcher17 tag=DisTrashTrouts event=None
+ScriptLog: Beats: fires U2Dispatcher17 TT1
+ScriptLog: Beats: fires U2Dispatcher17 TT2
+ScriptLog: Beats: fires U2Dispatcher17 TT3
+ScriptLog: Beats: fires U2Dispatcher17 TT4
+ScriptLog: Beats: fires U2Dispatcher17 TT5
+ScriptLog: Beats: fires U2Dispatcher17 TheTrouts
+ScriptLog: Beats: fires U2Dispatcher17 TheShitheads
+ScriptLog: Beats: trigger 3 506 -9291 7609 AlarmTrigger AlarmTrigger70 tag=TT5 event=None
+ScriptLog: Beats: trigger 3 507 -9290 7582 AlarmTrigger AlarmTrigger71 tag=TT4 event=None
+ScriptLog: Beats: trigger 3 508 -9290 7553 AlarmTrigger AlarmTrigger72 tag=TT3 event=None
+ScriptLog: Beats: trigger 3 509 -9289 7524 AlarmTrigger AlarmTrigger73 tag=TT2 event=None
+ScriptLog: Beats: trigger 3 510 -9288 7490 AlarmTrigger AlarmTrigger74 tag=TT1 event=None
+ScriptLog: Beats: trigger 0 652 -9520 6001 U2Dispatcher U2Dispatcher8 tag=TheShitheads event=None
+ScriptLog: Beats: fires U2Dispatcher8 spunk1
+ScriptLog: Beats: fires U2Dispatcher8 spunk2
+ScriptLog: Beats: fires U2Dispatcher8 spunk3
+ScriptLog: Beats: fires U2Dispatcher8 Spunkers1
+ScriptLog: Beats: trigger 3 1282 -9960 7609 AlarmTrigger AlarmTrigger40 tag=spunk1 event=None
+ScriptLog: Beats: trigger 3 1283 -9959 7582 AlarmTrigger AlarmTrigger41 tag=spunk3 event=None
+ScriptLog: Beats: trigger 3 1284 -9959 7553 AlarmTrigger AlarmTrigger42 tag=spunk2 event=None
+ScriptLog: Beats: other 3 4239 -11457 6689 PawnFactory PawnFactory6 tag=Spunkers1 event=None
+ScriptLog: Beats: door 7 -1168 -1264 6272 Mover Mover4 tag=glassdoor1 event=None
+ScriptLog: Beats: door 7 -1168 -1264 6272 Mover Mover6 tag=glassdoor1 event=None
+ScriptLog: Beats: other 0 -1250 -1266 6400 AntiPortalActor AntiPortalActor8 tag=anzipglassdoor1 event=None
+ScriptLog: Beats: door 7 -1168 904 6272 Mover Mover10 tag=glassdoor2 event=Musicaleventforthedoor
+ScriptLog: Beats: door 7 -1168 904 6272 Mover Mover11 tag=glassdoor2 event=None
+ScriptLog: Beats: other 0 -1250 902 6400 AntiPortalActor AntiPortalActor1 tag=anzipglassdoor2 event=None
+ScriptLog: Beats: trigger 10 -1208 4748 6652 U2Dispatcher U2Dispatcher4 tag=disclosingdoor1 event=None
+ScriptLog: Beats: fires U2Dispatcher4 m08adoor1
+ScriptLog: Beats: fires U2Dispatcher4 Open
+ScriptLog: Beats: fires U2Dispatcher4 Closed
+ScriptLog: Beats: trigger 10 -796 3380 6956 AlarmTrigger AlarmTrigger17 tag=a1jc3 event=None
+ScriptLog: Beats: door 0 -1107 3704 6608 Mover Mover20 tag=m08adoor1 event=starstheMusic1
+ScriptLog: Beats: other 0 -1205 3694 6418 AntiPortalActor AntiPortalActor6 tag=anzipm08adoor1 event=None
+ScriptLog: Beats: trigger 13 -1147 3470 6429 AlarmTrigger AlarmTrigger44 tag=AmbCreak1 event=None
+ScriptLog: Beats: trigger 13 -1143 3348 6348 Trigger Trigger1 tag=Trigger event=DisIntroAmb
+ScriptLog: Beats: trigger 13 -1132 3223 6349 U2Dispatcher U2Dispatcher2 tag=DisIntroAmb event=None
+ScriptLog: Beats: fires U2Dispatcher2 AmbCreak1
+ScriptLog: Beats: fires U2Dispatcher2 AmbIzarian1
+ScriptLog: Beats: scene SceneManager0 actions 23
+ScriptLog: Beats: cutscene 10 -1318 4793 6615 SceneManager SceneManager0 tag=SceneManager event=MusicScriptEvent1
+ScriptLog: Beats: fires SceneManager0 BloodSprayNUm1_disabled
+ScriptLog: Beats: fires SceneManager0 SoundDispatcher
+ScriptLog: Beats: fires SceneManager0 scurryawayroaches
+ScriptLog: Beats: fires SceneManager0 BloodSprayNUm2
+ScriptLog: Beats: fires SceneManager0 notfeelingsogoood
+ScriptLog: Beats: fires SceneManager0 PodPath
+ScriptLog: Beats: fires SceneManager0 StartStabbing
+ScriptLog: Beats: fires SceneManager0 BlackFlower
+ScriptLog: Beats: fires SceneManager0 killallslowasses
+ScriptLog: Beats: fires SceneManager0 DisIzarianlooksup2
+ScriptLog: Beats: fires SceneManager0 M08_Objective01_Activate
+ScriptLog: Beats: fires SceneManager0 Dropship
+ScriptLog: Beats: fires SceneManager0 DropshipPowerDown
+ScriptLog: Beats: fires SceneManager0 DropshipDummyON
+ScriptLog: Beats: scene SceneManager1 actions 9
+ScriptLog: Beats: cutscene 0 -500 -300 300 SceneManager SceneManager1 tag=PodPath event=None
+ScriptLog: Beats: fires SceneManager1 Dropship
+ScriptLog: Beats: fires SceneManager1 JetFire1
+ScriptLog: Beats: trigger 0 10703 6152 6671 AlarmTrigger AlarmTrigger3 tag=Dropship event=None
+ScriptLog: Beats: trigger 13 -1794 2889 5950 Trigger Trigger37 tag=Trigger event=SolidGold
+ScriptLog: Beats: trigger 7 -1865 1230 6024 AlarmTrigger AlarmTrigger10 tag=ElectricBrokenSound1 event=None
+ScriptLog: Beats: trigger 7 -1833 1229 6024 AlarmTrigger AlarmTrigger18 tag=ElectricBrokenSound1 event=None
+ScriptLog: Beats: trigger 10 -1411 4175 6597 U2Dispatcher U2Dispatcher19 tag=PodPath event=None
+ScriptLog: Beats: fires U2Dispatcher19 Izarianlooksup1
+ScriptLog: Beats: trigger 10 -1247 4176 6567 U2Dispatcher U2Dispatcher21 tag=DisIzarianlooksup2 event=None
+ScriptLog: Beats: fires U2Dispatcher21 Izarianlooksup2
+ScriptLog: Beats: other 10 -1855 4261 6547 ParticleSalamander ParticleSalamander2 tag=BloodSprayNUm1 event=None
+ScriptLog: Beats: trigger 15 -1862 1288 5931 AlarmTrigger AlarmTrigger43 tag=sealdoor2 event=None
+ScriptLog: Beats: trigger 15 -1822 1289 5931 AlarmTrigger AlarmTrigger48 tag=sealdoor2 event=None
+ScriptLog: Beats: trigger 10 -1591 4514 6489 AlarmTrigger AlarmTrigger79 tag=notfeelingsogoood event=None
+ScriptLog: Beats: trigger 10 -1546 4471 6489 AlarmTrigger AlarmTrigger76 tag=notfeelingsogoood event=None
+ScriptLog: Beats: trigger 10 -1519 4520 6481 U2Dispatcher U2Dispatcher5 tag=notfeelingsogoood event=None
+ScriptLog: Beats: fires U2Dispatcher5 zzzbooga1
+ScriptLog: Beats: fires U2Dispatcher5 zzzbooga2
+ScriptLog: Beats: fires U2Dispatcher5 nastybloodbath
+ScriptLog: Beats: trigger 10 -1542 4472 6526 AlarmTrigger AlarmTrigger78 tag=zzzbooga2 event=None
+ScriptLog: Beats: trigger 10 -1575 4530 6528 AlarmTrigger AlarmTrigger15 tag=zzzbooga1 event=None
+ScriptLog: Beats: other 10 -1619 4462 6457 ParticleSalamander ParticleSalamander0 tag=notfeelingsogoood event=None
+ScriptLog: Beats: trigger 10 -1982 4171 6604 AlarmTrigger AlarmTrigger85 tag=BloodSprayNUm1 event=None
+ScriptLog: Beats: trigger 10 -1498 4567 6514 AlarmTrigger AlarmTrigger77 tag=nastybloodbath event=None
+ScriptLog: Beats: other 7 -1847 1261 5906 ParticleSalamander ParticleSalamander1 tag=SpritxSpurt1 event=None
+ScriptLog: Beats: trigger 15 -1860 1299 6064 U2Dispatcher U2Dispatcher15 tag=WillSlideDye event=None
+ScriptLog: Beats: fires U2Dispatcher15 lilhuey
+ScriptLog: Beats: fires U2Dispatcher15 IKS1
+ScriptLog: Beats: fires U2Dispatcher15 IKS2
+ScriptLog: Beats: fires U2Dispatcher15 IKS3
+ScriptLog: Beats: fires U2Dispatcher15 IKS4
+ScriptLog: Beats: trigger 7 -1816 1162 5928 Trigger Trigger26 tag=Trigger event=WillSlideDye
+ScriptLog: Beats: trigger 7 -1876 1075 6024 AlarmTrigger AlarmTrigger84 tag=IKS1 event=None
+ScriptLog: Beats: trigger 7 -1831 1076 6024 AlarmTrigger AlarmTrigger83 tag=IKS2 event=None
+ScriptLog: Beats: trigger 7 -1781 1076 6024 AlarmTrigger AlarmTrigger1 tag=IKS3 event=None
+ScriptLog: Beats: trigger 7 -1804 1204 6024 AlarmTrigger AlarmTrigger82 tag=IKS4 event=None
+ScriptLog: Beats: other 10 -1142 3959 6537 ParticleSalamander ParticleSalamander3 tag=BloodSprayNUm2_TURNEDOFF event=None
+ScriptLog: Beats: trigger 10 -1120 3963 6571 AlarmTrigger AlarmTrigger12 tag=BloodSprayNUm2 event=None
+ScriptLog: Beats: trigger 15 -1921 1302 5992 AlarmTrigger AlarmTrigger88 tag=BrokenDoor event=None
+ScriptLog: Beats: trigger 4 6136 -11648 7460 LevelChange LevelChange0 tag=goestom08a2 event=None
+ScriptLog: Beats: trigger 4 6453 -11649 7708 Trigger Trigger51 tag=Trigger event=goestom08a2
+ScriptLog: Beats: trigger 8 670 1647 5600 Trigger Trigger38 tag=Trigger event=UnderwaterHijinks
+ScriptLog: Beats: trigger 11 416 2051 5880 Trigger Trigger39 tag=Trigger event=ShadowLurkNew1
+ScriptLog: Beats: trigger 0 468 2047 6084 Trigger Trigger40 tag=Trigger event=ShadowLurkNew2
+ScriptLog: Beats: trigger 12 657 2060 5880 Trigger Trigger41 tag=Trigger event=scriptedWakeup
+ScriptLog: Beats: trigger 11 -575 2072 5909 Trigger Trigger43 tag=Trigger event=showtheshadow
+ScriptLog: Beats: counter 9 1754 2243 5784 Counter Counter1 tag=FallingWall3 event=countfirstroomizarians
+ScriptLog: Beats: counter 9 1759 2170 5784 Counter Counter2 tag=FallingWall4 event=countfirstroomizarians
+ScriptLog: Beats: counter 9 1767 2203 5840 Counter Counter0 tag=countfirstroomizarians event=meetPollock1
+ScriptLog: Beats: trigger 9 1778 1387 6058 Trigger Trigger4 tag=Trigger event=GoBigK
+ScriptLog: Beats: other 3 394 -9420 7458 ExplosiveCannister ExplosiveCannister9 tag=ExplosiveCannister event=barlybyby
+ScriptLog: Beats: trigger 7 -872 -541 6232 Trigger Trigger44 tag=Trigger event=solamesolame
+ScriptLog: Beats: trigger 7 -1145 871 6265 Trigger Trigger45 tag=Trigger event=CameraAct1
+ScriptLog: Beats: trigger 7 -1615 979 6005 Trigger Trigger46 tag=Trigger event=wakeupcameraguys
+ScriptLog: Beats: counter 7 -1026 -202 6538 Counter Counter3 tag=Camerasafe event=secondspeachoftheimbicile
+ScriptLog: Beats: trigger 1 -1165 -4494 5873 Trigger Trigger47 tag=Trigger event=QQQQpollockishaha
+ScriptLog: Beats: trigger 3 -1085 -5118 7512 Trigger Trigger48 tag=Trigger event=Pollockflashbang
+ScriptLog: Beats: other 3 -912 -4869 7482 ExplosiveCannister ExplosiveCannister2 tag=ExplosiveCannister event=barlybyby
+ScriptLog: Beats: other 3 -797 -7338 7459 ExplosiveCannister ExplosiveCannister20 tag=ExplosiveCannister event=barlybyby
+ScriptLog: Beats: other 3 1973 -10324 7459 ExplosiveCannister ExplosiveCannister11 tag=ExplosiveCannister event=barlybyby
+ScriptLog: Beats: other 3 1937 -10279 7459 ExplosiveCannister ExplosiveCannister15 tag=ExplosiveCannister event=barlybyby
+ScriptLog: Beats: other 3 872 -9769 7459 ExplosiveCannister ExplosiveCannister16 tag=ExplosiveCannister event=barlybyby
+ScriptLog: Beats: other 3 -322 -7647 7473 ExplosiveCannister ExplosiveCannister19 tag=ExplosiveCannister event=barlybyby
+ScriptLog: Beats: other 3 -834 -7363 7459 ExplosiveCannister ExplosiveCannister3 tag=ExplosiveCannister event=barlybyby
+ScriptLog: Beats: other 7 -844 -341 6481 ParticleSalamander ParticleSalamander13 tag=Camer1isbroken event=None
+ScriptLog: Beats: trigger 7 -730 -394 6498 U2Dispatcher U2Dispatcher3 tag=DisCameraisnowbroken1 event=None
+ScriptLog: Beats: fires U2Dispatcher3 Camer1isbroken
+ScriptLog: Beats: fires U2Dispatcher3 Camer1isbroken
+ScriptLog: Beats: trigger 7 -844 -376 6566 AlarmTrigger AlarmTrigger81 tag=Camer1isbroken event=None
+ScriptLog: Beats: door 9 2048 1652 6033 Mover Mover13 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 7 -829 -346 6511 Mover Mover14 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 1 -1317 -4452 6010 Mover Mover8 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 2 -1147 -1728 6398 Mover Mover60 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 3 -877 -4913 7675 Mover Mover23 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 1 -1294 -4731 7704 Mover Mover16 tag=lockdown_trigger event=None
+ScriptLog: Beats: counter 3 846 -9600 7589 Counter Counter4 tag=TheTrouts event=pollockcommentsontrouts1
+ScriptLog: Beats: counter 3 824 -9640 7589 Counter Counter6 tag=TheTrouts event=pollockcommentsontrouts2
+ScriptLog: Beats: counter 3 793 -9686 7589 Counter Counter5 tag=TheTrouts event=ajapornfar
+ScriptLog: Beats: counter 3 815 -9793 7438 Counter Counter7 tag=Spunkers1 event=ploockcommentsonspunkers1
+ScriptLog: Beats: counter 3 777 -9823 7438 Counter Counter8 tag=Spunkers1 event=ploockcommentsonspunkers2
+ScriptLog: Beats: counter 3 741 -9849 7438 Counter Counter9 tag=Spunkers1 event=ajapornfar
+ScriptLog: Beats: trigger 3 5129 -11666 7522 Trigger Trigger49 tag=Trigger event=elvishasleftthebuilding1a1
+ScriptLog: Beats: door 3 5435 -11832 7683 Mover Mover7 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 3 983 -9418 7690 Mover Mover24 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 3 2280 -10456 7690 Mover Mover18 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 2 -1504 -2810 6345 Mover Mover17 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 2 -898 -3677 6016 Mover Mover2 tag=lockdown_trigger event=None
+ScriptLog: Beats: door 13 -1840 2832 6007 Mover Mover25 tag=seal1 event=None
+ScriptLog: Beats: door 15 -1840 1264 6021 Mover Mover15 tag=lilhuey event=None
+ScriptLog: Beats: pawn 7 -856 -270 6249 U2Izarian U2Izarian19 tag=U2Izarian event=Camerasafe
+ScriptLog: Beats: pawn 7 -950 -345 6249 U2Izarian U2Izarian20 tag=U2Izarian event=Camerasafe
+ScriptLog: Beats: pawn 7 -736 -301 6249 U2Izarian U2Izarian16 tag=U2Izarian event=Camerasafe
+ScriptLog: Beats: pawn 9 1914 1402 5807 U2Izarian U2Izarian17 tag=SEEMEEATME event=None
+ScriptLog: Beats: trigger 9 1884 1360 5871 LineOfSightTrigger LineOfSightTrigger0 tag=LineOfSightTrigger event=puppetlos
+ScriptLog: Beats: counter 2 -1456 -2800 6288 Counter Counter10 tag=onemoredeadalieng event=Countpollockishaha
+ScriptLog: Beats: counter 2 -1408 -2800 6288 Counter Counter11 tag=asinlala event=Countpollockishaha
+ScriptLog: Beats: counter 2 -1360 -2800 6288 Counter Counter12 tag=h4 event=Countpollockishaha
+ScriptLog: Beats: counter 2 -1296 -2800 6288 Counter Counter13 tag=h2 event=Countpollockishaha
+ScriptLog: Beats: counter 2 -1216 -2800 6304 Counter Counter14 tag=boopex event=Countpollockishaha
+ScriptLog: Beats: counter 2 -1472 -2800 6096 Counter Counter15 tag=h3 event=Countpollockishaha
+ScriptLog: Beats: counter 2 -1392 -2800 6096 Counter Counter16 tag=h1 event=Countpollockishaha
+ScriptLog: Beats: counter 2 -1328 -2800 6080 Counter Counter17 tag=hoardfuck event=Countpollockishaha
+ScriptLog: Beats: counter 2 -1360 -2736 6448 Counter Counter18 tag=Countpollockishaha event=pollockishaha
+ScriptLog: Beats: counter 3 928 -9584 7472 Counter Counter19 tag=ajapornfar event=pollockcommentsontrouts3
+ScriptLog: Beats: pawn 10 -1321 4471 6490 U2CivilianScientist U2CivilianScientist11 tag=DeadGuy event=None
+ScriptLog: Beats: trigger 10 -954 6055 6510 AlarmTrigger AlarmTrigger87 tag=DropshipPowerDown event=None
+ScriptLog: Beats: other 0 10644 6011 6646 AtlantisDropshipBIG AtlantisDropshipBIG0 tag=Purple event=None
+ScriptLog: Beats: trigger 11 -1143 2555 5864 Trigger Trigger50 tag=Trigger event=WillSlideDye
+ScriptLog: Beats: trigger 10 -1151 3758 6817 U2Dispatcher U2Dispatcher22 tag=Diskillallslowasses event=killallslowasses
+ScriptLog: Beats: trigger 4 6381 -11661 7708 Trigger Trigger52 tag=Trigger event=goestom08a2
+ScriptLog: Beats: trigger 4 6225 -11665 7708 Trigger Trigger53 tag=Trigger event=goestom08a2
+ScriptLog: Beats: trigger 4 6126 -11656 7708 Trigger Trigger18 tag=Trigger event=goestom08a2
+ScriptLog: Beats: trigger 10 -714 6092 6544 ObjectiveEvent ObjectiveEvent1 tag=M08_Objective02_Activate event=O02
+ScriptLog: Beats: trigger 10 -698 6108 6544 ObjectiveEvent ObjectiveEvent0 tag=M08_Objective03_Activate event=O03
+ScriptLog: Beats: trigger 10 -691 6132 6544 ObjectiveEvent ObjectiveEvent2 tag=M08_Objective01_Complete event=O01
+ScriptLog: Beats: other 0 1875 6167 0 PropertyFlipper PropertyFlipper0 tag=DropshipDummyON event=DropShipDummy
+ScriptLog: Beats: trigger 10 -1320 3664 6962 MusicScriptEvent MusicScriptEvent0 tag=MusicScriptEvent1 event=None
+ScriptLog: Beats: trigger 10 -1297 3627 6949 MusicScriptEvent MusicScriptEvent1 tag=MusicScriptEvent2 event=None
+ScriptLog: Beats: trigger 10 -1267 3645 6960 MusicScriptEvent MusicScriptEvent8 tag=MusicScriptEvent3 event=None
+ScriptLog: Beats: trigger 10 -1203 3528 7032 MusicScriptEvent MusicScriptEvent3 tag=MusicScriptEvent4 event=None
+ScriptLog: Beats: trigger 10 -1174 3528 7031 MusicScriptEvent MusicScriptEvent4 tag=MusicScriptEvent5 event=None
+ScriptLog: Beats: trigger 10 -1137 3557 7050 MusicScriptEvent MusicScriptEvent5 tag=MusicScriptEvent6 event=None
+ScriptLog: Beats: trigger 10 -1061 3628 6971 MusicScriptEvent MusicScriptEvent6 tag=MusicScriptEvent7 event=None
+ScriptLog: Beats: trigger 10 -1037 3626 6973 MusicScriptEvent MusicScriptEvent7 tag=MusicScriptEvent8 event=None
+ScriptLog: Beats: trigger 3 841 -9443 7507 U2Dispatcher U2Dispatcher24 tag=DisTrashTrouts event=None
+ScriptLog: Beats: fires U2Dispatcher24 MusicScriptEvent5
+ScriptLog: Beats: counter 3 5496 -11670 7536 Counter Counter21 tag=finalmusictrip event=MusicScriptEvent2
+ScriptLog: Beats: counter 9 1790 1794 5931 Counter Counter20 tag=SpaceClown event=MusicScriptEvent5
+ScriptLog: Beats: trigger 8 1077 1634 5615 Trigger Trigger54 tag=Trigger event=MusicScriptEvent1
+ScriptLog: Beats: trigger 7 -1150 881 6184 Trigger Trigger56 tag=Trigger event=MusicScriptEvent2
+ScriptLog: Beats: trigger 10 -1470 3627 6992 MusicScriptEvent MusicScriptEvent9 tag=MusicScriptEventFadeDn event=None
+ScriptLog: Beats: trigger 10 -1430 3628 6992 MusicScriptEvent MusicScriptEvent2 tag=MusicScriptEventFadeUp event=None
+ScriptLog: Beats: trigger 9 2479 2303 6000 U2Dispatcher U2Dispatcher23 tag=meetPollock1 event=None
+ScriptLog: Beats: fires U2Dispatcher23 MusicScriptEventFadeDn
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode0 tag=Sanctuary_10_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode1 tag=Sanctuary_10_003 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode2 tag=Sanctuary_11_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode3 tag=Sanctuary_13_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode4 tag=Sanctuary_13_003 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode5 tag=Sanctuary_14_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode6 tag=Sanctuary_15G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode7 tag=Sanctuary_15G_003 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode8 tag=Sanctuary_15G_004 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode9 tag=Sanctuary_15G_005 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode10 tag=Sanctuary_15G_006a event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode11 tag=Sanctuary_15G_006b event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode12 tag=Sanctuary_15G_006c event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode13 tag=Sanctuary_15G_007 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode14 tag=Sanctuary_15G_008 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode15 tag=Sanctuary_20_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode16 tag=Sanctuary_16bG_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode17 tag=Sanctuary_16bG_003 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode18 tag=Sanctuary_16bg_003b event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode19 tag=Sanctuary_16bG_004 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode20 tag=Sanctuary_16bg_004b event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode21 tag=Sanctuary_16bG_005 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode22 tag=Sanctuary_16G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode23 tag=Sanctuary_16G_003 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode24 tag=Sanctuary_17bG_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode25 tag=Sanctuary_17G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode26 tag=Sanctuary_17G_002b event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode27 tag=Sanctuary_18G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode28 tag=Sanctuary_19G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode29 tag=Sanctuary_20G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode30 tag=Sanctuary_21G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode31 tag=Sanctuary_21G_004 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode32 tag=Sanctuary_21G_007 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode33 tag=Sanctuary_21g_007b event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode34 tag=Sanctuary_22G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode35 tag=Sanctuary_22g_003 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode36 tag=Sanctuary_22g_004 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode37 tag=Sanctuary_23G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode38 tag=Sanctuary_24G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode39 tag=Sanctuary_24G_003 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode40 tag=Sanctuary_25G_002 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode41 tag=Sanctuary_25G_003 event=None
+ScriptLog: Beats: other 0 0 0 0 DialogNode DialogNode42 tag=Sanctuary_25G_004 event=None
+ScriptLog: Beats: other 0 1875 6167 0 PropertyFlipper PropertyFlipper1 tag=None event=DropShipDummy
+ScriptLog: Beats: map M08A1
+ScriptLog: Hub: beats: 403 wired actors (see the log)
+ScriptLog: PilotDriver: console -> 
+ScriptLog: PilotDriver: step 5: wait 1
+ScriptLog: PilotDriver: step 6: wait 1
+ScriptLog: PilotDriver: step 7: quit
+ScriptLog: PilotDriver: done
+Log: appRequestExit(0)
+Exit: Preparing to exit.
+Log: 44625.0ms Purging garbage
+Exit: Game engine shut down
+Log: Golem: [Log] Workspace shutting down
+Log: (Karma): Ending Karma for game.
+Log: (Karma): Destroying Framework.
+Log: (Karma): MePoolMallocDestroy(): 1 structs still allocated
+Log: Shutting down DirectMusic...
+Log: Golem: [Log] Library shutting down
+Exit: Windows client shut down
+Log: Garbage: objects: 34377->0; refs: 351669
+Exit: Object subsystem successfully closed.
+Exit: Exiting.
+Log: Waiting for file streaming thread to finish...
+Uninitialized: Name subsystem shut down
+Uninitialized: Memory Allocation Status
+Uninitialized: Curr Memory  3.497M /  12.563M
+Uninitialized: Peak Memory  214.512M /  217.016M
+Uninitialized: Allocs       14759 Current /  9914458 Total
+Uninitialized: Log file closed, 10/02/26 19:48:44

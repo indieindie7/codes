@@ -687,16 +687,19 @@ function Zones()
 	local ReachSpec R;
 	local string Kind;
 	local ZoneInfo Z;
+	local PhysicsVolume V;
 
 	foreach PC.AllActors(class'ZoneInfo', Z)
 		Log("Zones: zoneinfo "$Z.Region.ZoneNumber$" "$Z.Name$" "$Z.ZoneTag$" "$int(Z.Location.X)$" "$int(Z.Location.Y)$" "$int(Z.Location.Z));
 	for (N = PC.Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
 	{
 		Navs++;
-		Log("Zones: nav "$N.Region.ZoneNumber$" "$int(N.Location.X)$" "$int(N.Location.Y)$" "$int(N.Location.Z)$" "$N.Class.Name);
+		Log("Zones: nav "$N.Region.ZoneNumber$" "$int(N.Location.X)$" "$int(N.Location.Y)$" "$int(N.Location.Z)$" "$N.Class.Name$" "$N.Name);
 		for (i = 0; i < N.PathList.Length; i++)
 		{
 			R = N.PathList[i];
+			if (R != None && R.End != None)
+				Log("Zones: edge "$N.Name$" "$R.End.Name$" "$R.Distance);
 			if (R == None || R.End == None || R.End.Region.ZoneNumber == N.Region.ZoneNumber)
 				continue;
 			Links++;
@@ -719,6 +722,15 @@ function Zones()
 		if (Kind != "")
 			Log("Zones: actor "$Kind$" "$A.Region.ZoneNumber$" "$int(A.Location.X)$" "$int(A.Location.Y)$" "$int(A.Location.Z)$" "$A.Class.Name$" tag="$A.Tag$" event="$A.Event);
 	}
+	// water: every water volume with its physics, every path point inside one, and how the player swims
+	foreach PC.AllActors(class'PhysicsVolume', V)
+		if (V.bWaterVolume)
+			Log("Zones: water "$V.Name$" "$V.Region.ZoneNumber$" "$int(V.Location.X)$" "$int(V.Location.Y)$" "$int(V.Location.Z)$" friction="$V.FluidFriction$" gravity="$V.Gravity.Z$" terminal="$V.TerminalVelocity$" velocity="$V.ZoneVelocity$" pain="$V.bPainCausing$" tag="$V.Tag);
+	for (N = PC.Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+		if (N.PhysicsVolume != None && N.PhysicsVolume.bWaterVolume)
+			Log("Zones: wetnav "$N.Name$" "$N.PhysicsVolume.Name$" "$int(N.Location.X)$" "$int(N.Location.Y)$" "$int(N.Location.Z));
+	if (PC.Pawn != None)
+		Log("Zones: swim WaterSpeed="$PC.Pawn.WaterSpeed$" GroundSpeed="$PC.Pawn.GroundSpeed$" UnderWaterTime="$PC.Pawn.UnderWaterTime);
 	if (PC.Pawn != None)
 		Log("Zones: player "$PC.Pawn.Region.ZoneNumber$" "$int(PC.Pawn.Location.X)$" "$int(PC.Pawn.Location.Y)$" "$int(PC.Pawn.Location.Z));
 	Log("Zones: map "$PC.Level.Outer.Name);
@@ -731,36 +743,65 @@ function Zones()
 // reacts. Logs "Beats:" lines for every actor that fires an event or receives one: class, zone,
 // position, tag, event, plus what kind of thing it is (door, cutscene, sound, exit...).
 // tools/python/U2Pilot/beatgraph.py draws the graph and finds the order along the path.
+// events an actor fires besides its Event: dispatchers' lists, cutscene trigger sub-actions,
+// spawners, stage triggers, door bumps, AI script chains
+function ExtraEvents(Actor A, out array<name> E)
+{
+	local int i, k;
+	local SceneManager S;
+
+	E.Length = 0;
+	if (Dispatcher(A) != None)
+		for (i = 0; i < 8; i++)
+			if (Dispatcher(A).OutEvents[i] != '') E[E.Length] = Dispatcher(A).OutEvents[i];
+	if (RoundRobin(A) != None)
+		for (i = 0; i < 16; i++)
+			if (RoundRobin(A).OutEvents[i] != '') E[E.Length] = RoundRobin(A).OutEvents[i];
+	if (StageTrigger(A) != None)
+		for (i = 0; i < 8; i++)
+		{
+			if (StageTrigger(A).DispatcherTags[i] != '') E[E.Length] = StageTrigger(A).DispatcherTags[i];
+			if (StageTrigger(A).WaterEvents[i] != '') E[E.Length] = StageTrigger(A).WaterEvents[i];
+		}
+	if (ActorFactory(A) != None)
+	{
+		if (ActorFactory(A).DepletedEvent != '') E[E.Length] = ActorFactory(A).DepletedEvent;
+	}
+	if (Mover(A) != None)
+	{
+		if (Mover(A).BumpEvent != '') E[E.Length] = Mover(A).BumpEvent;
+		if (Mover(A).PlayerBumpEvent != '') E[E.Length] = Mover(A).PlayerBumpEvent;
+	}
+	if (AIScript(A) != None && AIScript(A).NextScriptTag != '')
+		E[E.Length] = AIScript(A).NextScriptTag;
+	S = SceneManager(A);
+	if (S != None)
+		Log("Beats: scene "$S.Name$" actions "$S.Actions.Length);
+	if (S != None)
+		for (i = 0; i < S.Actions.Length; i++)
+			if (S.Actions[i] != None)
+				for (k = 0; k < S.Actions[i].SubActions.Length; k++)
+					if (SubActionTrigger(S.Actions[i].SubActions[k]) != None && SubActionTrigger(S.Actions[i].SubActions[k]).EventName != '')
+						E[E.Length] = SubActionTrigger(S.Actions[i].SubActions[k]).EventName;
+}
+
 function Beats()
 {
 	local Actor A;
-	local array<name> Fired;
-	local int i, Fires, Receives;
-	local bool bReceives;
+	local array<name> More;
+	local int k, Logged;
+	local bool bCustomTag;
 	local string Kind, Extra;
 
-	foreach PC.AllActors(class'Actor', A)
-		if (A.Event != '' && A.Event != 'None')
-		{
-			for (i = 0; i < Fired.Length; i++)
-				if (Fired[i] == A.Event)
-					break;
-			if (i == Fired.Length)
-				Fired[Fired.Length] = A.Event;
-		}
+	// one pass: every actor that fires something (Event or an event list) or carries its own tag
+	// (anything else keeps its class name as tag and can't be a target). beatgraph.py links them.
 	foreach PC.AllActors(class'Actor', A)
 	{
-		bReceives = false;
-		for (i = 0; i < Fired.Length; i++)
-			if (Fired[i] == A.Tag)
-			{
-				bReceives = true;
-				break;
-			}
-		if (!bReceives && (A.Event == '' || A.Event == 'None') && SceneManager(A) == None && Teleporter(A) == None)
+		ExtraEvents(A, More);
+		bCustomTag = A.Tag != '' && A.Tag != 'None' && string(A.Tag) != string(A.Class.Name);
+		if (!bCustomTag && (A.Event == '' || A.Event == 'None') && More.Length == 0 && SceneManager(A) == None && Teleporter(A) == None)
 			continue;
-		if (bReceives) Receives++;
-		if (A.Event != '' && A.Event != 'None') Fires++;
+		Logged++;
 		Kind = "other";
 		Extra = "";
 		if (Mover(A) != None)                Kind = "door";
@@ -776,9 +817,11 @@ function Beats()
 		else if (Triggers(A) != None)        Kind = "trigger";
 		else if (InStr(Caps(string(A.Class.Name)), "SOUND") >= 0) Kind = "sound";
 		Log("Beats: "$Kind$" "$A.Region.ZoneNumber$" "$int(A.Location.X)$" "$int(A.Location.Y)$" "$int(A.Location.Z)$" "$A.Class.Name$" "$A.Name$" tag="$A.Tag$" event="$A.Event$Extra);
+		for (k = 0; k < More.Length; k++)
+			Log("Beats: fires "$A.Name$" "$More[k]);
 	}
 	Log("Beats: map "$PC.Level.Outer.Name);
-	Say("beats: "$Fired.Length$" event names, "$Fires$" actors fire, "$Receives$" react (see the log)");
+	Say("beats: "$Logged$" wired actors (see the log)");
 }
 
 defaultproperties
