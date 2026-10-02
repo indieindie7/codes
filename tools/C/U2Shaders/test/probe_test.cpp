@@ -7,6 +7,8 @@
 // vertex colour on stage 0, a lightmap times 2 on stage 1), with and without the surface= rule.
 // Modes "sphere" / "spherelit": a textured, D3D-lit sphere seen through an Unreal-style view
 // (world X forward, Z up), without and with charlight=1 (per-pixel character lighting).
+// Modes "decalmul" / "decalmulflat": a multiplying bullet hole (white = no change, DESTCOLOR x
+// ZERO, as Unreal II's), with and without the decal= rule.
 // Mode "wallcap": the wall with lmcapture=1 (writes U2Shaders\capture\scene.obj). Mode
 // "wallbaked": the wall with its lightmap replaced by U2Shaders\baked\<hash>.dds, if a bake made one.
 // Mode "wallgi": the wall with its lightmap swapped (replace=) for a DDS this program writes
@@ -15,6 +17,7 @@
 #include <windows.h>
 #include <d3d8.h>
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <vector>
 
@@ -24,7 +27,7 @@ struct SV { float x, y, z, rhw; };
 
 static D3DMATRIX Ident() { D3DMATRIX m = {}; m._11 = m._22 = m._33 = m._44 = 1; return m; }
 
-enum Kind { CHECKER, DECAL, BRICK, LIGHTMAP };
+enum Kind { CHECKER, DECAL, BRICK, LIGHTMAP, DECALMUL };
 static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, Kind kind, DWORD *hashOut)
 {
 	IDirect3DTexture8 *T = nullptr;
@@ -49,6 +52,13 @@ static IDirect3DTexture8 *MakeTex(IDirect3DDevice8 *D, Kind kind, DWORD *hashOut
 			{
 				// bright towards the top left, darker to the bottom right (x2 on stage 1: 0x80 = unchanged)
 				int l = 0x40 + (127 - x - y) * 0x50 / 127;
+				c = 0xFF000000 | (l << 16) | (l << 8) | l;
+			}
+			else if (kind == DECALMUL)
+			{
+				// white = no change; a dark hole with a dark ring, opaque alpha everywhere
+				float r = std::hypot((x + 0.5f) / 64 - 0.5f, (y + 0.5f) / 64 - 0.5f);
+				int l = r < 0.12f ? 40 : r < 0.22f ? 40 + (int)((r - 0.12f) / 0.10f * 215) : 255;
 				c = 0xFF000000 | (l << 16) | (l << 8) | l;
 			}
 			else if (kind == DECAL)
@@ -126,12 +136,14 @@ int main(int argc, char **argv)
 	const bool postMode = argc >= 2 && strcmp(argv[1], "post") == 0;
 	const bool wallMode = argc >= 2 && strncmp(argv[1], "wall", 4) == 0;
 	const bool sphereMode = argc >= 2 && strncmp(argv[1], "sphere", 6) == 0;
-	const bool charLight = sphereMode && strcmp(argv[1], "spherelit") == 0;
+	const bool charLight = sphereMode && (strcmp(argv[1], "spherelit") == 0 || strcmp(argv[1], "sphere2lit") == 0);
+	const bool sphere2 = sphereMode && strncmp(argv[1], "sphere2", 7) == 0;   // + a 2nd texture x2 on stage 1
 	const bool giMode = wallMode && strcmp(argv[1], "wallgi") == 0;
 	const bool capMode = wallMode && strcmp(argv[1], "wallcap") == 0;
 	const bool bakedMode = wallMode && strcmp(argv[1], "wallbaked") == 0;
 	const bool useWallRule = wallMode && (strcmp(argv[1], "wall") == 0 || giMode);
-	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode && !wallMode && !sphereMode);
+	const bool mulMode = argc >= 2 && strncmp(argv[1], "decalmul", 8) == 0;
+	const bool useDecalRule = argc < 2 || (strcmp(argv[1], "flat") != 0 && !postMode && !wallMode && !sphereMode && strcmp(argv[1], "decalmulflat") != 0);
 	WNDCLASSA wc = {}; wc.lpfnWndProc = DefWindowProcA; wc.hInstance = GetModuleHandle(nullptr); wc.lpszClassName = "u2t";
 	RegisterClassA(&wc);
 	HWND hw = CreateWindowA("u2t", "u2t", WS_OVERLAPPEDWINDOW, 0, 0, 320, 240, nullptr, nullptr, wc.hInstance, nullptr);
@@ -147,12 +159,12 @@ int main(int argc, char **argv)
 	if (FAILED(hr)) { printf("CreateDevice failed %08lx\n", hr); return 1; }
 
 	DWORD decalHash = 0, brickHash = 0, lightHash = 0;
-	IDirect3DTexture8 *Wall = MakeTex(D, CHECKER, nullptr), *Hole = MakeTex(D, DECAL, &decalHash);
+	IDirect3DTexture8 *Wall = MakeTex(D, CHECKER, nullptr), *Hole = MakeTex(D, mulMode ? DECALMUL : DECAL, &decalHash);
 	IDirect3DTexture8 *Brick = MakeTex(D, BRICK, &brickHash), *Light = MakeTex(D, LIGHTMAP, &lightHash);
 	FILE *F = fopen("U2Shaders.ini", "w");
 	fprintf(F, "charprobe=1\n");
 	if (useDecalRule) fprintf(F, "decal=%08lx decal_parallax.hlsl\n", decalHash);
-	if (postMode) fprintf(F, "post=1\npostsplit=1\nbloom=0.7 1.0\n");
+	if (postMode) fprintf(F, "post=1\npostsplit=1\npostdebug=1\nbloom=0.7 1.0\n");
 	if (charLight) fprintf(F, "charlight=1\n");
 	if (useWallRule) fprintf(F, "surface=%08lx world_parallax.hlsl\n", brickHash);
 	if (capMode) fprintf(F, "lmcapture=1\n");
@@ -179,6 +191,22 @@ int main(int argc, char **argv)
 	V wall[4] = { P(-40, 30, 0, 0, 0), P(40, 30, 0, 5, 0), P(-40, -30, 0, 0, 4), P(40, -30, 0, 5, 4) };
 	V hole[4] = { P(-8, 8, 0.05f, 0, 0), P(8, 8, 0.05f, 1, 0), P(-8, -8, 0.05f, 0, 1), P(8, -8, 0.05f, 1, 1) };
 	SV sil[4] = { { 20, 20, 0.5f, 1 }, { 100, 20, 0.5f, 1 }, { 20, 100, 0.5f, 1 }, { 100, 100, 0.5f, 1 } };
+
+	// the post test's HUD box: a vertex buffer and a declaration-only "vertex shader", as U2 draws
+	struct HV { float x, y, z, u, v; };
+	IDirect3DVertexBuffer8 *HudVB = nullptr;
+	DWORD HudDecl = 0;
+	if (postMode)
+	{
+		const HV box[4] = { { 10, 200, 0.5f, 0, 0 }, { 110, 200, 0.5f, 1, 0 }, { 10, 230, 0.5f, 0, 1 }, { 110, 230, 0.5f, 1, 1 } };
+		D->CreateVertexBuffer(sizeof(box), D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED, &HudVB);
+		BYTE *p = nullptr;
+		HudVB->Lock(0, 0, &p, 0);
+		memcpy(p, box, sizeof(box));
+		HudVB->Unlock();
+		const DWORD decl[] = { D3DVSD_STREAM(0), D3DVSD_REG(D3DVSDE_POSITION, D3DVSDT_FLOAT3), D3DVSD_REG(D3DVSDE_TEXCOORD0, D3DVSDT_FLOAT2), D3DVSD_END() };
+		D->CreateVertexShader(decl, nullptr, &HudDecl, 0);
+	}
 
 	D3DMATRIX W = Ident(), Vw = Ident(), Pr = {};
 	float zn = 1, zf = 1000, fy = 1 / std::tan(0.6f);
@@ -250,8 +278,21 @@ int main(int argc, char **argv)
 			D->SetTransform(D3DTS_VIEW, &UView);
 			D->SetLight(0, &S0); D->SetLight(1, &S1);
 			D->SetTexture(0, Wall);
+			if (sphere2)
+			{
+				// as one of Unreal II's lit setups: stage 0 texture x lit colour x2, stage 1 a second texture x2
+				D->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
+				D->SetTexture(1, Light);
+				D->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 0);
+				D->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_MODULATE2X);
+				D->SetTextureStageState(1, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+				D->SetTextureStageState(1, D3DTSS_COLORARG2, D3DTA_CURRENT);
+			}
 			D->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
 			D->DrawPrimitiveUP(D3DPT_TRIANGLELIST, (UINT)sphere.size() / 3, sphere.data(), sizeof(V));
+			D->SetTexture(1, nullptr);
+			D->SetTextureStageState(1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+			D->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
 			D->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);
 			D->SetTransform(D3DTS_VIEW, &Vw);
 		}
@@ -284,8 +325,8 @@ int main(int argc, char **argv)
 		D->SetRenderState(D3DRS_LIGHTING, FALSE);
 		D->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
 		D->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
-		D->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-		D->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+		D->SetRenderState(D3DRS_SRCBLEND, mulMode ? D3DBLEND_DESTCOLOR : D3DBLEND_SRCALPHA);
+		D->SetRenderState(D3DRS_DESTBLEND, mulMode ? D3DBLEND_ZERO : D3DBLEND_INVSRCALPHA);
 		D->SetRenderState(D3DRS_ZFUNC, D3DCMP_ALWAYS);
 		D->SetTexture(0, Hole);
 		if (!wallMode && !sphereMode)
@@ -303,13 +344,28 @@ int main(int argc, char **argv)
 			D->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
 			D->SetVertexShader(FVF);
 			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, lamp, sizeof(V));
-			// the HUD after it, pre-transformed: a box at the bottom left and a crosshair (must stay sharp)
-			SV box[4] = { { 10, 200, 0, 1 }, { 110, 200, 0, 1 }, { 10, 230, 0, 1 }, { 110, 230, 0, 1 } };
+			// the HUD after it, the way Unreal II draws it: from a vertex buffer, through a vertex
+			// declaration (no FVF), with an orthographic projection in pixels. A textured box at the
+			// bottom left (if post-processing leaves stream 0 unbound, this box's texture fills the
+			// screen instead), then a pre-transformed crosshair (must stay sharp)
+			D3DMATRIX Ortho = Ident();
+			Ortho._11 = 2.0f / 320; Ortho._22 = -2.0f / 240; Ortho._41 = -1; Ortho._42 = 1;
+			D->SetTransform(D3DTS_PROJECTION, &Ortho);
+			D->SetTransform(D3DTS_VIEW, &W);
+			D->SetRenderState(D3DRS_ZENABLE, FALSE);
+			D->SetTexture(0, Wall);
+			D->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+			D->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
+			D->SetStreamSource(0, HudVB, sizeof(HV));
+			D->SetVertexShader(HudDecl);
+			D->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
+			D->SetTransform(D3DTS_PROJECTION, &Pr);
+			D->SetTransform(D3DTS_VIEW, &Vw);
+			D->SetTexture(0, nullptr);
+			D->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TFACTOR);
 			SV cross1[4] = { { 150, 119, 0, 1 }, { 170, 119, 0, 1 }, { 150, 121, 0, 1 }, { 170, 121, 0, 1 } };
 			SV cross2[4] = { { 159, 110, 0, 1 }, { 161, 110, 0, 1 }, { 159, 130, 0, 1 }, { 161, 130, 0, 1 } };
-			D->SetRenderState(D3DRS_ZENABLE, FALSE);
 			D->SetVertexShader(D3DFVF_XYZRHW);
-			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, box, sizeof(SV));
 			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, cross1, sizeof(SV));
 			D->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, cross2, sizeof(SV));
 			D->SetRenderState(D3DRS_ZENABLE, TRUE);
@@ -326,7 +382,7 @@ int main(int argc, char **argv)
 			D3DLOCKED_RECT LR;
 			if (Sys && SUCCEEDED(Sys->LockRect(&LR, nullptr, D3DLOCK_READONLY)))
 			{
-				const char *name = sphereMode ? (charLight ? "frame_spherelit.bmp" : "frame_sphere.bmp") : postMode ? "frame_post.bmp" : wallMode ? (giMode ? "frame_wallgi.bmp" : bakedMode ? "frame_wallbaked.bmp" : capMode ? "frame_wallcap.bmp" : useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
+				const char *name = mulMode ? (useDecalRule ? "frame_decalmul.bmp" : "frame_decalmulflat.bmp") : sphereMode ? (sphere2 ? (charLight ? "frame_sphere2lit.bmp" : "frame_sphere2.bmp") : charLight ? "frame_spherelit.bmp" : "frame_sphere.bmp") : postMode ? "frame_post.bmp" : wallMode ? (giMode ? "frame_wallgi.bmp" : bakedMode ? "frame_wallbaked.bmp" : capMode ? "frame_wallcap.bmp" : useWallRule ? "frame_wall.bmp" : "frame_wallflat.bmp")
 					: useDecalRule ? "frame_parallax.bmp" : "frame_flat.bmp";
 				FILE *B = fopen(name, "wb");
 				BITMAPFILEHEADER fh = {}; BITMAPINFOHEADER ih = {};

@@ -8,7 +8,10 @@
 # and that wall with its lightmap swapped by replace= (frame_wallgi.bmp); then a lit sphere
 # without and with charlight=1 (frame_sphere.bmp, frame_spherelit.bmp); last the wall with
 # lmcapture=1 (U2Shaders/capture/: what tools/python/U2Blender/bake_lightmaps.py bakes from;
-# with a bake in U2Shaders/baked/, "wine probe_test.exe wallbaked" shows it in place). Wine's d3d9 is not dgVoodoo: the depth probe results
+# with a bake in U2Shaders/baked/, "wine probe_test.exe wallbaked" shows it in place).
+# Also: the sphere with a second texture on stage 1 (sphere2, sphere2lit), and a multiplying
+# bullet hole like Unreal II's (decalmulflat, decalmul). The post test's HUD box is drawn the
+# way Unreal II draws its HUD (vertex buffer, declaration, orthographic), with postdebug=1. Wine's d3d9 is not dgVoodoo: the depth probe results
 # here say nothing about the real game setup.
 #
 # Needs: ../build-mingw.sh run first, g++-mingw-w64-i686, wine32:i386, xvfb, and the x86
@@ -43,6 +46,12 @@ echo "== U2Shaders.log (wallgi)"; cat U2Shaders.log
 xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe sphere
 xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe spherelit
 echo "== U2Shaders.log (spherelit)"; cat U2Shaders.log
+xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe sphere2
+xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe sphere2lit
+echo "== U2Shaders.log (sphere2lit)"; cat U2Shaders.log
+xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe decalmulflat
+xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe decalmul
+echo "== U2Shaders.log (decalmul)"; cat U2Shaders.log
 xvfb-run -a -s "-screen 0 1024x768x24" wine probe_test.exe wallcap
 echo "== U2Shaders.log (wallcap)"; cat U2Shaders.log
 echo "== capture"; cat U2Shaders/capture/lightmaps.txt

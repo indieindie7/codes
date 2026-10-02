@@ -8,17 +8,20 @@
 // Used with charlight=1 (see CharBegin in u2shaders.hpp for the constants).
 
 sampler2D Tex     : register(s0);
+sampler2D Second  : register(s1);   // stage 1's texture, when stage 1 uses one
 float4    Info    : register(c0);   // time, 1, -, -
-float4    Setup   : register(c2);   // x: stage 0 factor (1, 2, 4), y: number of lights (0-4)
+float4    Setup   : register(c2);   // x: stage 0 factor (1, 2, 4), y: number of lights (0-4),
+                                    // z: stage 1 (0 nothing, 1 x texture, 2 + alpha x texture), w: its factor
 float4    Ambient : register(c3);   // rgb: ambient x material ambient + emissive
 float4    Up      : register(c4);   // xyz: world up, in view space
+float4    Use     : register(c5);   // x: 1 = stage 0 multiplies by its texture, 0 = lit colour alone
 float4    Lights[16] : register(c8);  // 4 per light, see CharBegin
 
 #define WRAP 0.5      // 0 = Lambert, as the game; 1 = full half-Lambert (Valve)
 #define HEMI 0.4      // how much darker the ambient is from below (0 = flat ambient)
 #define RIM 0.25      // rim strength (0 = off)
 
-float4 main(float2 uv : TEXCOORD0, float3 normal : TEXCOORD1, float3 pos : TEXCOORD2) : COLOR
+float4 main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float3 normal : TEXCOORD2, float3 pos : TEXCOORD3) : COLOR
 {
 	float3 n = normalize(normal);
 	float3 v = normalize(-pos);
@@ -46,6 +49,14 @@ float4 main(float2 uv : TEXCOORD0, float3 normal : TEXCOORD1, float3 pos : TEXCO
 	float rim = pow(1 - saturate(dot(n, v)), 3) * RIM;
 
 	float3 lit = saturate(ambient + direct + reach * rim);   // the fixed-function clamp
-	float4 t = tex2D(Tex, uv);
-	return float4(saturate(t.rgb * lit * Setup.x), t.a);
+	float4 t = Use.x > 0.5 ? tex2D(Tex, uv) : float4(1, 1, 1, 1);
+	float4 c = float4(saturate(t.rgb * lit * Setup.x), t.a);
+
+	// stage 1, as the game set it
+	float4 t1 = tex2D(Second, uv1);
+	if (Setup.z > 1.5)
+		c.rgb = saturate(c.rgb + c.a * t1.rgb);              // MODULATEALPHA_ADDCOLOR
+	else if (Setup.z > 0.5)
+		c.rgb = saturate(c.rgb * t1.rgb * Setup.w);          // MODULATE (x2, x4)
+	return c;
 }

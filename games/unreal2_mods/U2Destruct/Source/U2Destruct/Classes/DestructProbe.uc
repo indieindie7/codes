@@ -4,7 +4,9 @@
 // engine may or may not allow on a level's StaticMeshActors, which are bStatic:
 //   1. hiding the original and switching its collision off
 //   2. a spawned, non-static copy with the same mesh that blocks like the original
-//   3. Karma debris made from that mesh that falls and comes to rest
+//   3. debris made from that mesh that falls, bounces and comes to rest
+//      (not Karma: rigid-body Karma is switched off in Unreal II, "physKarma: This physics
+//      type is obsolete in U2 829"; DestructDebris uses PHYS_Falling and bounces itself)
 // Spawn it in front of the player (U2Pilot: spawn U2Destruct.DestructProbe 300).
 // It picks the nearest solid prop, turns the view to it and runs one stage every
 // two seconds, logging "DestructProbe: ..." lines to Unreal2.log.
@@ -14,7 +16,7 @@ class DestructProbe extends Actor;
 var StaticMeshActor Target;
 var PlayerController PC;
 var DestructPiece Piece;
-var Actor Debris;
+var DestructDebris Debris;
 var vector DebrisStart;
 var int Stage;
 
@@ -40,21 +42,25 @@ event PostBeginPlay()
 	SetTimer(2.0, true);
 }
 
-// the nearest prop with a mesh, preferring solid ones (cover is what destruction is for)
+// the nearest prop with a mesh, preferring solid ones near the player's eye height (cover is
+// what destruction is for; a roof or canopy far above makes a poor test)
 function StaticMeshActor FindTarget()
 {
 	local StaticMeshActor S, Best, BestAny;
-	local float D, BestD, BestAnyD;
+	local float D, BestD, BestAnyD, EyeZ;
 
 	BestD = 1500;
 	BestAnyD = 1500;
+	EyeZ = Location.Z;
+	if (PC != None && PC.Pawn != None)
+		EyeZ = PC.Pawn.Location.Z + PC.Pawn.EyeHeight;
 	foreach AllActors(class'StaticMeshActor', S)
 	{
 		if (S.StaticMesh == None)
 			continue;
 		D = VSize(S.Location - Location);
 		if (D < BestAnyD) { BestAnyD = D; BestAny = S; }
-		if (S.bBlockActors && D < BestD) { BestD = D; Best = S; }
+		if (S.bBlockActors && Abs(S.Location.Z - EyeZ) < 150 && D < BestD) { BestD = D; Best = S; }
 	}
 	if (Best != None)
 		return Best;
@@ -73,27 +79,45 @@ function FaceTarget()
 	PC.ClientSetRotation(R);
 }
 
-// what a trace from the player's eyes through the prop's middle hits first
+// what traces from the player's eyes towards the prop hit first: nine rays aimed across the
+// prop (its collision cylinder: middle, sides, top and bottom), each continuing 200 units
+// past it. A single ray through the origin can miss a prop whose origin is in empty space.
+// "prop" = the target (or its copy), "world" = level geometry, else the actor hit.
 function string BlockedBy()
 {
-	local vector Start, End, HitLoc, HitNorm;
+	local vector Start, Aim, Side, End, HitLoc, HitNorm;
 	local Actor Hit;
+	local int i, OnProp, OnWorld, OnOther, Missed;
+	local float R, H;
+	local string First;
 
 	if (PC == None || PC.Pawn == None)
 		return "no player";
 	Start = PC.Pawn.Location + vect(0,0,1) * PC.Pawn.EyeHeight;
-	End = Target.Location + vect(0,0,32);
-	End += Normal(End - Start) * 200;
-	Hit = PC.Pawn.Trace(HitLoc, HitNorm, End, Start, true);
-	if (Hit == None)
-		return "nothing";
-	return string(Hit)$" at "$int(VSize(HitLoc - Start))$" units";
+	R = FMax(Target.CollisionRadius, 16) * 0.5;
+	H = FMax(Target.CollisionHeight, 16) * 0.5;
+	Side = Normal((Target.Location - Start) cross vect(0,0,1));
+	for (i = 0; i < 9; i++)
+	{
+		Aim = Target.Location + Side * R * ((i % 3) - 1) + vect(0,0,1) * H * ((i / 3) - 1);
+		End = Aim + Normal(Aim - Start) * 200;
+		Hit = PC.Pawn.Trace(HitLoc, HitNorm, End, Start, true);
+		if (Hit == None)
+			Missed++;
+		else if (Hit == Target || (Piece != None && Hit == Piece))
+			OnProp++;
+		else if (Hit == Level || Hit.IsA('LevelInfo'))
+			OnWorld++;
+		else
+			OnOther++;
+		if (Hit != None && First == "")
+			First = " (first hit: "$Hit$" at "$int(VSize(HitLoc - Start))$" units)";
+	}
+	return "of 9 rays: prop "$OnProp$", world "$OnWorld$", other "$OnOther$", nothing "$Missed$First;
 }
 
 event Timer()
 {
-	local class<Actor> KClass;
-
 	Stage++;
 	if (Target == None || Target.bDeleteMe)
 	{
@@ -123,36 +147,24 @@ event Timer()
 			$" collide "$Piece.bCollideActors$" block "$Piece.bBlockActors$" trace hits: "$BlockedBy());
 		break;
 	case 3:
-		// stage 4: Karma debris from the same mesh, half size, dropped from above
-		KClass = class<Actor>(DynamicLoadObject("Engine.KActor", class'Class'));
-		if (KClass == None)
-		{
-			Log("DestructProbe: stage 4 no Engine.KActor class");
-			break;
-		}
+		// stage 4: debris from the same mesh, a quarter size, thrown up and sideways from
+		// above the prop: it should fall, bounce and come to rest on the floor
 		DebrisStart = Target.Location + vect(0,0,160);
-		Debris = Spawn(KClass,,, DebrisStart, Target.Rotation);
+		Debris = Spawn(class'DestructDebris',,, DebrisStart, Target.Rotation);
 		if (Debris == None)
 		{
-			Log("DestructProbe: stage 4 KActor spawn FAILED");
+			Log("DestructProbe: stage 4 debris spawn FAILED");
 			break;
 		}
-		// the mesh changes after spawning, so restart the KActor's own physics (Karma,
-		// named through its default rather than PHYS_Karma, which this build may lack)
-		Debris.StaticMesh = Target.StaticMesh;
-		Debris.SetDrawType(DT_StaticMesh);
-		Debris.SetDrawScale(Target.DrawScale * 0.5);
-		Debris.SetPhysics(PHYS_None);
-		Debris.SetPhysics(KClass.default.Physics);
-		Log("DestructProbe: stage 4 debris "$Debris$" physics "$Debris.GetPropertyText("Physics")
-			$" KParams "$Debris.GetPropertyText("KParams")$" at "$Debris.Location);
+		Debris.Launch(Target.StaticMesh, Target.DrawScale * 0.25, VRand() * 150 + vect(0,0,200));
+		Log("DestructProbe: stage 4 debris "$Debris$" physics "$Debris.GetPropertyText("Physics")$" at "$Debris.Location);
 		break;
 	case 4:
 		break;
 	case 5:
 		if (Debris != None)
-			Log("DestructProbe: stage 4 result after 4 s: physics "$Debris.GetPropertyText("Physics")$" dropped "
-				$int(DebrisStart.Z - Debris.Location.Z)$" units (about 160 = landed on the floor,"
+			Log("DestructProbe: stage 4 result after 4 s: physics "$Debris.GetPropertyText("Physics")$" bounces "$Debris.Bounces
+				$" dropped "$int(DebrisStart.Z - Debris.Location.Z)$" units (about 160 = landed on the floor,"
 				$" 0 = never moved, far more = fell through)");
 		Log("DestructProbe: done");
 		SetTimer(0, false);
