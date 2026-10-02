@@ -177,3 +177,24 @@ Open problems: no shadows on glass is wanted but shadows still land on transpare
 - **Testing approach that worked:** a test console with "spawn a lamp at angle X", "third-person
   view" and "print every shadow's state"; scripted runs with screenshots before/after; compare
   against the stock shadow at the same spot.
+
+## Advent Rising port: what was different (from the "advent rising modding" chat, 2026-10-02)
+
+The script layer works in Advent for Gideon (real lamps, held light sets, light share, fades, long
+gradient; stock blob gone). Advent-specific findings:
+
+1. Advent's engine places and aims a ShadowProjector natively only for the **exact** class
+   `ShadowProjector`; a script subclass (like `SSLightShadow`) keeps its spawn rotation and never
+   renders a silhouette. So the port uses an `Info` helper (`ModLightShadow`) that steers a plain
+   ShadowProjector.
+2. The engine only updates shadows of pawns with `bActorShadows=True`. Clearing it (as
+   `SSShadowManager.Adopt` does in Unreal II) kills every extra shadow; the stock shadow is kept
+   with `ShadowDarkness 0` instead.
+3. `DetachProjector` or `bShadowActive=false` stops the native updates for good: hide a shadow
+   with darkness 0.
+4. Advent lamps are often low (~17 degrees): long, thin, faint shadows. Added `MinSteepness` 35
+   and a frustum distance cap of 600.
+5. Debugging with the raw-texture view shows only the top shadow when a character has several:
+   test with `MaxShadows=1`.
+
+Next there: strength tuning, more scenes, NPCs, then PCSS.
