@@ -1,0 +1,8 @@
+# zone map: log the level as zones, doorways and scripted actors (hub zones)
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub zones
+wait 1
+quit

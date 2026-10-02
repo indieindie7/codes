@@ -113,6 +113,8 @@ exec function Hub(optional string Args)
 	else if (Cmd == "KILL")                 Kill(NumOr(Word(Args), 400));
 	else if (Cmd == "MENUTEST")             MenuTest(Word(Args));
 	else if (Cmd == "GOTO")                 GotoLevel(Word(Args));
+	else if (Cmd == "ZONES")                Zones();
+	else if (Cmd == "BEATS")                Beats();
 	else
 		Say("hub: unknown command '"$Cmd$"' - try: hub help");
 }
@@ -125,6 +127,8 @@ function Help()
 	Say("hub shadows mod|stock|off - soft shadows / game's own / none");
 	Say("hub info - your shadows: light, darkness, fade");
 	Say("hub probe - log frame hitches;  hub goto MAP - open a level");
+	Say("hub zones - log the level's zones, doorways and scripted actors (for the zone map)");
+	Say("hub beats - log the level's event wiring (who fires what, who reacts) for the beat graph");
 	Say("hub bones - where the skeleton's bones are (capsule shadow research)");
 }
 
@@ -668,6 +672,113 @@ function GotoLevel(string Map)
 	}
 	Say("goto "$Map);
 	PC.ConsoleCommand("open "$Map);
+}
+
+
+// hub zones: the level as zones (rooms split by zone portals) for the zone map / level remixing.
+// Logs "Zones:" lines: every navigation point with its zone, every path that crosses into another
+// zone (a doorway), and per zone the actors that matter (enemies, triggers, movers, anything
+// that fires an event). tools/python/U2Pilot/zonemap.py turns them into a report and a picture.
+function Zones()
+{
+	local NavigationPoint N;
+	local Actor A;
+	local int i, Navs, Links;
+	local ReachSpec R;
+	local string Kind;
+	local ZoneInfo Z;
+
+	foreach PC.AllActors(class'ZoneInfo', Z)
+		Log("Zones: zoneinfo "$Z.Region.ZoneNumber$" "$Z.Name$" "$Z.ZoneTag$" "$int(Z.Location.X)$" "$int(Z.Location.Y)$" "$int(Z.Location.Z));
+	for (N = PC.Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+	{
+		Navs++;
+		Log("Zones: nav "$N.Region.ZoneNumber$" "$int(N.Location.X)$" "$int(N.Location.Y)$" "$int(N.Location.Z)$" "$N.Class.Name);
+		for (i = 0; i < N.PathList.Length; i++)
+		{
+			R = N.PathList[i];
+			if (R == None || R.End == None || R.End.Region.ZoneNumber == N.Region.ZoneNumber)
+				continue;
+			Links++;
+			Log("Zones: link "$N.Region.ZoneNumber$" "$R.End.Region.ZoneNumber$" "$int((N.Location.X + R.End.Location.X) / 2)$" "$int((N.Location.Y + R.End.Location.Y) / 2)$" "$int((N.Location.Z + R.End.Location.Z) / 2));
+		}
+	}
+	foreach PC.AllActors(class'Actor', A)
+	{
+		Kind = "";
+		if (Pawn(A) != None && A != PC.Pawn)
+			Kind = "pawn";
+		else if (Mover(A) != None)
+			Kind = "mover";
+		else if (Triggers(A) != None)
+			Kind = "trigger";
+		else if (A.Event != '' && NavigationPoint(A) == None)
+			Kind = "event";
+		else if (PlayerStart(A) != None)
+			Kind = "start";
+		if (Kind != "")
+			Log("Zones: actor "$Kind$" "$A.Region.ZoneNumber$" "$int(A.Location.X)$" "$int(A.Location.Y)$" "$int(A.Location.Z)$" "$A.Class.Name$" tag="$A.Tag$" event="$A.Event);
+	}
+	if (PC.Pawn != None)
+		Log("Zones: player "$PC.Pawn.Region.ZoneNumber$" "$int(PC.Pawn.Location.X)$" "$int(PC.Pawn.Location.Y)$" "$int(PC.Pawn.Location.Z));
+	Log("Zones: map "$PC.Level.Outer.Name);
+	Say("zones: "$Navs$" navigation points, "$Links$" zone-crossing paths (see the log)");
+}
+
+
+// hub beats: the level's event wiring, for the beat graph (story spine) of a level remix.
+// Unreal levels are wired with names: an actor fires its Event, every actor whose Tag matches
+// reacts. Logs "Beats:" lines for every actor that fires an event or receives one: class, zone,
+// position, tag, event, plus what kind of thing it is (door, cutscene, sound, exit...).
+// tools/python/U2Pilot/beatgraph.py draws the graph and finds the order along the path.
+function Beats()
+{
+	local Actor A;
+	local array<name> Fired;
+	local int i, Fires, Receives;
+	local bool bReceives;
+	local string Kind, Extra;
+
+	foreach PC.AllActors(class'Actor', A)
+		if (A.Event != '' && A.Event != 'None')
+		{
+			for (i = 0; i < Fired.Length; i++)
+				if (Fired[i] == A.Event)
+					break;
+			if (i == Fired.Length)
+				Fired[Fired.Length] = A.Event;
+		}
+	foreach PC.AllActors(class'Actor', A)
+	{
+		bReceives = false;
+		for (i = 0; i < Fired.Length; i++)
+			if (Fired[i] == A.Tag)
+			{
+				bReceives = true;
+				break;
+			}
+		if (!bReceives && (A.Event == '' || A.Event == 'None') && SceneManager(A) == None && Teleporter(A) == None)
+			continue;
+		if (bReceives) Receives++;
+		if (A.Event != '' && A.Event != 'None') Fires++;
+		Kind = "other";
+		Extra = "";
+		if (Mover(A) != None)                Kind = "door";
+		else if (SceneManager(A) != None)    Kind = "cutscene";
+		else if (Teleporter(A) != None)      { Kind = "exit"; Extra = " url="$Teleporter(A).URL; }
+		else if (AIScript(A) != None)        Kind = "aiscript";
+		else if (Pawn(A) != None)            Kind = "pawn";
+		else if (AmbientSound(A) != None)    Kind = "sound";
+		else if (Counter(A) != None)         Kind = "counter";
+		else if (ObjectivesTrigger(A) != None) Kind = "objective";
+		else if (Light(A) != None)           Kind = "light";
+		else if (Emitter(A) != None)         Kind = "effect";
+		else if (Triggers(A) != None)        Kind = "trigger";
+		else if (InStr(Caps(string(A.Class.Name)), "SOUND") >= 0) Kind = "sound";
+		Log("Beats: "$Kind$" "$A.Region.ZoneNumber$" "$int(A.Location.X)$" "$int(A.Location.Y)$" "$int(A.Location.Z)$" "$A.Class.Name$" "$A.Name$" tag="$A.Tag$" event="$A.Event$Extra);
+	}
+	Log("Beats: map "$PC.Level.Outer.Name);
+	Say("beats: "$Fired.Length$" event names, "$Fires$" actors fire, "$Receives$" react (see the log)");
 }
 
 defaultproperties
