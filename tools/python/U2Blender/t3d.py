@@ -136,14 +136,41 @@ def parse_scale(text):
     s = parse_struct(text)
     return parse_vector(s.get('Scale'), (1.0, 1.0, 1.0)), float(s.get('SheerRate', 0) or 0)
 
+def clean(v, places=3):
+    """v rounded (coordinates come back from Blender's 32-bit floats as -10240.000153), and
+    never -0."""
+    v = round(v, places)
+    return 0.0 if v == 0 else v
+
 def fmt_float(v):
-    return '%+013.6f' % v
+    return '%+013.6f' % (0.0 if abs(v) < 5e-7 else v)
 
 def fmt_vec_line(v):
     return ','.join(fmt_float(c) for c in v)
 
 def fmt_vector(v):
-    return '(X=%s,Y=%s,Z=%s)' % tuple(('%.6f' % c).rstrip('0').rstrip('.') or '0' for c in v)
+    """As UnrealEd writes a vector property: six decimals, zero components left out."""
+    parts = ['%s=%.6f' % (k, c) for k, c in zip('XYZ', v) if abs(c) >= 5e-7]
+    return '(' + ','.join(parts or ['X=0.000000']) + ')'
+
+def tex_coords(poly):
+    """Texture coordinates at each vertex: what an alignment means, whatever its origin."""
+    return [dot(sub(v, poly.origin), poly.texture_u) + poly.pan[0] for v in poly.verts] + \
+           [dot(sub(v, poly.origin), poly.texture_v) + poly.pan[1] for v in poly.verts]
+
+def same_polys(a, b, eps=0.01):
+    """Two brushes' polygons (world coordinates) describe the same faces, textures and texture
+    alignment, within eps units (texels for the alignment)."""
+    if len(a) != len(b):
+        return False
+    for x, y in zip(a, b):
+        if (x.texture or '') != (y.texture or '') or len(x.verts) != len(y.verts):
+            return False
+        if any(abs(c - d) > eps for u, v in zip(x.verts, y.verts) for c, d in zip(u, v)):
+            return False
+        if any(abs(c - d) > eps for c, d in zip(tex_coords(x), tex_coords(y))):
+            return False
+    return True
 
 def fmt_rotator(r):
     return '(Pitch=%d,Yaw=%d,Roll=%d)' % r

@@ -23,15 +23,17 @@ float4    Info    : register(c0);  // time, 1, 1/width, 1/height
 float4    Combine : register(c2);  // x: vertex colour factor, y: stage 1 factor (0 = not used)
 float4    Levels  : register(c3);  // the texture's surface brightness, deepest brightness, 0, 1 = measured
 
-#define DEPTH 2.0                  // how deep the deepest part looks, in world units
+#define DEPTH 0.04                 // how deep the deepest part looks, as a fraction of the
+                                   // texture's size on the wall (one repeat): 0.04 of a 512-unit
+                                   // tile is 20 units; the same on any texture scale
 #define STEPS 8                    // search steps into the surface
 #define AUTO_LEVELS 1              // 1: the measured levels (c3), 0: the two below
 #define FLAT_ABOVE 0.45            // brightness at or above this is the surface itself
 #define DEEP_BELOW 0.12            // brightness at or below this is the deepest
 #define HEIGHT_BLUR 1.0            // read the height from a smaller mip: smooths texture noise
 #define CAVITY 0.3                 // how much darker the deepest parts are (0-1)
-#define FADE_START 400.0           // distance (world units) where the effect starts to fade
-#define FADE_END 1200.0            // and where it is gone (far away it only shimmers)
+#define FADE_START 1500.0          // distance (world units) where the effect starts to fade
+#define FADE_END 4000.0            // and where it is gone (far away it only shimmers)
 
 float DepthOf(float2 uv, float2 levels)
 {
@@ -55,7 +57,8 @@ float4 main(float2 uv : TEXCOORD0, float2 t1 : TEXCOORD1, float3 pos : TEXCOORD2
 
 	float2 levels = AUTO_LEVELS && Levels.w > 0.5 ? Levels.xy : float2(FLAT_ABOVE, DEEP_BELOW);
 	float fade = saturate((FADE_END - length(pos)) / (FADE_END - FADE_START));
-	float2 perDepth = -float2(dot(v, gu), dot(v, gv)) / max(dot(v, n), 0.25) * (DEPTH * fade);
+	float tile = 2 / max(length(gu) + length(gv), 0.000001);   // world units per texture repeat
+	float2 perDepth = -float2(dot(v, gu), dot(v, gv)) / max(dot(v, n), 0.25) * (DEPTH * tile * fade);
 
 	// first step where the view ray is below the height map, the crossing interpolated
 	// between that step and the one before

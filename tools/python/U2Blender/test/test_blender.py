@@ -96,10 +96,7 @@ def test_round_trip(tmp):
     a, b = t3d.read(SAMPLE), t3d.read(path)
     check([x.name for x in a.actors] == [x.name for x in b.actors], "unchanged export: same actors, same order")
     for x, y in zip(a.actors, b.actors):
-        if x.polys is None:
-            check([l.rstrip() for l in x.lines] == [l.rstrip() for l in y.lines], "unchanged export: %s text identical" % x.name)
-        else:
-            check(same_brush(x, y), "unchanged export: %s same faces and texture alignment" % x.name)
+        check([l.rstrip() for l in x.lines] == [l.rstrip() for l in y.lines], "unchanged export: %s text identical" % x.name)
 
     # edits: move the trigger 1 Blender unit (50 Unreal units) along X, turn the static mesh a
     # quarter more, add a new add-brush cube and a new light
@@ -170,11 +167,28 @@ def render(path):
     bpy.ops.render.render(write_still=True)
     print("rendered", path)
 
+def test_real_map(tmp):
+    """A real Unreal II map as UnrealEd exported it (HoverTest, from the PC test run), if the
+    repo has it: imported and exported unchanged, it must come back line for line."""
+    real = os.path.join(HERE, "..", "..", "..", "..", "test-results", "2026-10-01-pc", "11-blender-roundtrip", "HoverTest.t3d")
+    if not os.path.isfile(real):
+        print("skip  real map (test-results/2026-10-01-pc/11-blender-roundtrip/HoverTest.t3d not here)")
+        return
+    fresh_scene()
+    made, _ = U2Blender.import_t3d(bpy.context, real, scale=SCALE)
+    out = os.path.join(tmp, "HoverTest_rt.t3d")
+    U2Blender.export_t3d(bpy.context, out)
+    norm = lambda path: [l.rstrip() for l in open(path, encoding="latin-1").read().splitlines()]
+    a, b = norm(real), norm(out)
+    diff = sum(1 for x, y in zip(a, b) if x != y) + abs(len(a) - len(b))
+    check(diff == 0, "real map HoverTest (%d actors): exported unchanged, %d lines differ" % (made, diff))
+
 if __name__ == "__main__":
     import tempfile
     test_import()
     with tempfile.TemporaryDirectory() as tmp:
         test_round_trip(tmp)
+        test_real_map(tmp)
     if len(sys.argv) > 1:
         fresh_scene()
         U2Blender.import_t3d(bpy.context, SAMPLE, scale=SCALE)

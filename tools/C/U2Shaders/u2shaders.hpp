@@ -28,7 +28,8 @@
  *                                 elsewhere: U2Shaders\capture\scene.obj + lightmaps.txt,
  *                                 lightmaps saved in U2Shaders\dump (see CaptureDraw)
  *     post=1                      bloom, sharpening and colour grading before the HUD
- *                                 (bloom=, grade=, colour=, sharpen=, postsplit=; see PostCheck)
+ *                                 (bloom=, grade=, colour=, sharpen=, postsplit=, postdebug=;
+ *                                 see PostCheck)
  *     charprobe=1                 record how opaque on-screen draws (characters) are lit, in
  *                                 U2Shaders\dump\chars.txt, and whether scene depth can be
  *                                 read as a texture (U2Shaders.log; logging only, see ProbeDraw)
@@ -41,6 +42,8 @@
  *     COLOR0        the vertex lighting
  *     c0            (time in seconds, 1 if normals/positions are valid, 1/width, 1/height)
  *     c1.x          1 if TEXCOORD0 is projected (projector decals): divide .xy by .z
+ *     c1.yz         decal= rules: how the draw blends (y: 0 alpha, 1 multiply, 2 multiply x2) and
+ *                   the texture's neutral brightness for it (z: 1, or 0.5 for x2); see DecalBlend
  *     c4..c7        the projection matrix (rows), to turn a position into a screen place
  *
  * While a shader draws, alpha blending is off: the shader has the frame behind it in s1
@@ -163,6 +166,8 @@ public:
 				PostBlur.File = "post_blur.hlsl";
 				PostFinal.File = "post_final.hlsl";
 			}
+			else if (sscanf_s(Line, " postdebug=%u", &Hash) == 1)
+				PostDebug = Hash != 0;
 			else if (sscanf_s(Line, " postsplit=%u", &Hash) == 1)
 				PostSplit = Hash != 0 ? 1.0f : 0.0f;
 			else if (sscanf_s(Line, " bloom=%f %f", &PostBloom[0], &PostBloom[1]) == 2)
@@ -338,11 +343,15 @@ public:
 		return R.PS;
 	}
 
-	void CopyScene(IDirect3DDevice9 *Dev, bool Force = false)
+	// Copies the current render target into SceneTex; false if the copy failed (SceneTex then
+	// holds whatever was in that memory: never draw it). LastCopyHr says why.
+	HRESULT LastCopyHr = S_OK;
+	bool CopyScene(IDirect3DDevice9 *Dev, bool Force = false)
 	{
 		IDirect3DSurface9 *Target = nullptr, *Copy = nullptr;
+		bool Ok = !Force;                  // not forced and already copied this frame: fine
 		if (FAILED(Dev->GetRenderTarget(0, &Target)) || Target == nullptr)
-			return;
+			return false;
 		D3DSURFACE_DESC Desc;
 		Target->GetDesc(&Desc);
 		if (SceneTex != nullptr && (SceneW != Desc.Width || SceneH != Desc.Height || SceneFmt != Desc.Format))
@@ -361,11 +370,30 @@ public:
 		}
 		if (SceneTex != nullptr && (Force || SceneFrame != Frame) && SUCCEEDED(SceneTex->GetSurfaceLevel(0, &Copy)))
 		{
-			Dev->StretchRect(Target, nullptr, Copy, nullptr, D3DTEXF_NONE);
+			LastCopyHr = Dev->StretchRect(Target, nullptr, Copy, nullptr, D3DTEXF_NONE);
+			if (FAILED(LastCopyHr))
+			{
+				// some wrappers won't copy from the current target object: try the back buffer itself
+				IDirect3DSurface9 *BB = nullptr;
+				if (SUCCEEDED(Dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &BB)) && BB != nullptr)
+				{
+					const HRESULT Again = Dev->StretchRect(BB, nullptr, Copy, nullptr, D3DTEXF_NONE);
+					static int Told = 0;
+					if (Told++ < 3)
+						Message("scene copy: from the render target failed (%08lx), from the back buffer %s (%08lx)",
+							(unsigned long)LastCopyHr, SUCCEEDED(Again) ? "worked" : "failed too", (unsigned long)Again);
+					LastCopyHr = Again;
+					BB->Release();
+				}
+			}
+			Ok = SUCCEEDED(LastCopyHr);
 			Copy->Release();
 			SceneFrame = Frame;
 		}
+		else if (SceneTex == nullptr)
+			Ok = false;
 		Target->Release();
+		return Ok;
 	}
 
 	// Draws that render into something other than the back buffer (shadow maps are built this way)
@@ -524,6 +552,28 @@ public:
 		return T;
 	}
 
+	// decal=: what kind of decal the draw is, from its blending. Alpha decals (SRCALPHA,
+	// INVSRCALPHA) are deeper where more opaque; multiplying ones (the wall times the texture)
+	// are deeper where darker than their neutral colour: white for DESTCOLOR x ZERO, mid-grey for
+	// DESTCOLOR x SRCCOLOR (twice the wall times the texture). Logged once per rule.
+	void DecalBlend(IDirect3DDevice9 *Dev, U2Rule &R, float &Mode, float &Neutral)
+	{
+		DWORD Src = 0, Dst = 0;
+		Dev->GetRenderState(D3DRS_SRCBLEND, &Src);
+		Dev->GetRenderState(D3DRS_DESTBLEND, &Dst);
+		const char *Kind = "alpha";
+		Mode = 0; Neutral = 1;
+		if ((Src == D3DBLEND_DESTCOLOR && Dst == D3DBLEND_SRCCOLOR) || (Src == D3DBLEND_SRCCOLOR && Dst == D3DBLEND_DESTCOLOR))
+		{ Mode = 2; Neutral = 0.5f; Kind = "multiply x2 (grey = no change)"; }
+		else if ((Src == D3DBLEND_DESTCOLOR && Dst == D3DBLEND_ZERO) || (Src == D3DBLEND_ZERO && Dst == D3DBLEND_SRCCOLOR))
+		{ Mode = 1; Neutral = 1; Kind = "multiply (white = no change)"; }
+		else if (!(Src == D3DBLEND_SRCALPHA && (Dst == D3DBLEND_INVSRCALPHA || Dst == D3DBLEND_ONE)))
+			Kind = "unknown, treated as alpha";
+		if (!R.Refused)
+			Message("decal %08x: blend src %u dst %u: %s", R.Hash, Src, Dst, Kind);
+		R.Refused = true;              // (reused as "logged" for decal rules)
+	}
+
 	// Called before a draw. Hash = the stage 0 texture's hash (0: not yet known, read it from
 	// Tex). Returns true if a shader was put in place; End() must then follow the draw.
 	bool Begin(IDirect3DDevice9 *Dev, IDirect3DTexture9 *Tex, DWORD &Hash, bool FixedFunction)
@@ -617,6 +667,8 @@ public:
 		Const[0][2] = SceneW ? 1.0f / SceneW : 0;
 		Const[0][3] = SceneH ? 1.0f / SceneH : 0;
 		Const[1][0] = Projected ? 1.0f : 0.0f;
+		if (Rule->KeepBlend)
+			DecalBlend(Dev, *Rule, Const[1][1], Const[1][2]);
 		D3DMATRIX Proj;
 		Dev->GetTransform(D3DTS_PROJECTION, &Proj);
 		for (int r = 0; r < 4; r++)
@@ -1108,13 +1160,19 @@ public:
 	// charlight=1: a solid, fixed-function, lit draw (characters, weapons, pickups: the level
 	// itself is lightmapped or vertex-coloured, unlit) gets its lighting per pixel from the same
 	// D3D lights, in char_light.hlsl. Taken only when the shader can redo what the stages did:
-	// stage 0 = texture x lit colour (x1/2/4), stage 1 off, material colours from the material
-	// (not the vertices). Anything else is drawn as before and its setup logged once.
-	// Constants: c2 (stage 0 factor, light count), c3 ambient + emissive, c4 world up in view
-	// space, c8.. 4 per light (up to 4), in view space:
+	//   stage 0: texture x lit colour (x1/2/4), or the lit colour alone (SELECTARG2 DIFFUSE)
+	//   stage 1: off; passing the result on (SELECT CURRENT); x a 2D texture (x1/2/4); or
+	//            MODULATEALPHA_ADDCOLOR (result + result alpha x texture: a masked shine)
+	//   stage 2: off
+	// with material colours from the material (not the vertices). Anything else is drawn as
+	// before; each setup is logged once, taken or not ("charlight: ...").
+	// Constants: c2 (stage 0 factor, light count, stage 1 kind: 0 none, 1 multiply, 2 masked add;
+	// stage 1 factor), c3 ambient + emissive, c4 world up in view space, c5.x 1 = stage 0 uses
+	// its texture, c8.. 4 per light (up to 4), in view space:
 	//   position xyz, type (1 point, 2 spot, 3 directional) | direction xyz, cos(phi / 2)
 	//   colour (light x material diffuse) rgb, range | attenuation 0, 1, 2, cos(theta / 2)
-	// Stage 1 and 2 coordinates carry the camera-space normal and position (TEXCOORD1/2).
+	// Stage 1 keeps its own coordinates (TEXCOORD1); stages 2 and 3 carry the camera-space
+	// normal and position (TEXCOORD2/3).
 	bool CharBegin(IDirect3DDevice9 *Dev, bool FixedFunction)
 	{
 		DWORD Blending = 0, Lighting = 0, DiffSrc = 0, AmbSrc = 0, ColorVertex = 0;
@@ -1125,24 +1183,52 @@ public:
 		Dev->GetRenderState(D3DRS_COLORVERTEX, &ColorVertex);
 		Dev->GetRenderState(D3DRS_DIFFUSEMATERIALSOURCE, &DiffSrc);
 		Dev->GetRenderState(D3DRS_AMBIENTMATERIALSOURCE, &AmbSrc);
-		DWORD op[2] = {}, a1 = 0, a2 = 0, Fvf = 0;
-		Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op[0]);
-		Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &a1);
-		Dev->GetTextureStageState(0, D3DTSS_COLORARG2, &a2);
-		Dev->GetTextureStageState(1, D3DTSS_COLOROP, &op[1]);
+		DWORD op[3] = {}, a1[2] = {}, a2[2] = {}, Fvf = 0;
+		for (DWORD st = 0; st < 3; st++)
+			Dev->GetTextureStageState(st, D3DTSS_COLOROP, &op[st]);
+		for (DWORD st = 0; st < 2; st++)
+		{
+			Dev->GetTextureStageState(st, D3DTSS_COLORARG1, &a1[st]);
+			Dev->GetTextureStageState(st, D3DTSS_COLORARG2, &a2[st]);
+		}
 		Dev->GetFVF(&Fvf);
 		const bool VertexColours = ColorVertex && (Fvf & D3DFVF_DIFFUSE) && (DiffSrc != D3DMCS_MATERIAL || AmbSrc != D3DMCS_MATERIAL);
-		const float Factor = ModulateFactor(op[0]);
-		if (Factor == 0 || !(ArgsAre(a1, a2, D3DTA_TEXTURE, D3DTA_DIFFUSE) || ArgsAre(a1, a2, D3DTA_TEXTURE, D3DTA_CURRENT))
-			|| op[1] != D3DTOP_DISABLE || VertexColours)
+		// stage 0: texture x lit colour, or the lit colour alone
+		float Factor = ModulateFactor(op[0]), UseTex0 = 1;
+		bool Ok0 = Factor > 0 && (ArgsAre(a1[0], a2[0], D3DTA_TEXTURE, D3DTA_DIFFUSE) || ArgsAre(a1[0], a2[0], D3DTA_TEXTURE, D3DTA_CURRENT));
+		if ((op[0] == D3DTOP_SELECTARG2 && (a2[0] == D3DTA_DIFFUSE || a2[0] == D3DTA_CURRENT))
+			|| (op[0] == D3DTOP_SELECTARG1 && (a1[0] == D3DTA_DIFFUSE || a1[0] == D3DTA_CURRENT)))
 		{
-			char Key[160];
-			sprintf_s(Key, "st0 op %u %x %x | st1 op %u | vertex colours as material %d", op[0], a1, a2, op[1], (int)VertexColours);
-			if (!CharRefused[Key])
-				Message("charlight: setup not supported, drawn as before (%s)", Key);
-			CharRefused[Key] = true;
-			return false;
+			Ok0 = true; Factor = 1; UseTex0 = 0;
 		}
+		// stage 1: nothing, pass on, x texture, or + alpha x texture
+		float Kind1 = -1, Factor1 = 1;
+		if (op[1] == D3DTOP_DISABLE
+			|| (op[1] == D3DTOP_SELECTARG1 && a1[1] == D3DTA_CURRENT) || (op[1] == D3DTOP_SELECTARG2 && a2[1] == D3DTA_CURRENT))
+			Kind1 = 0;
+		else if (ModulateFactor(op[1]) > 0 && ArgsAre(a1[1], a2[1], D3DTA_TEXTURE, D3DTA_CURRENT))
+		{
+			Kind1 = 1; Factor1 = ModulateFactor(op[1]);
+		}
+		else if (op[1] == D3DTOP_MODULATEALPHA_ADDCOLOR && a1[1] == D3DTA_CURRENT && a2[1] == D3DTA_TEXTURE)
+			Kind1 = 2;
+		IDirect3DBaseTexture9 *T1 = nullptr;
+		if (Kind1 > 0)
+		{
+			Dev->GetTexture(1, &T1);
+			if (T1 == nullptr || T1->GetType() != D3DRTYPE_TEXTURE)
+				Kind1 = -1;                   // no texture, or a cube map (reflections): not handled
+			if (T1) T1->Release();
+		}
+		const bool Ok = Ok0 && Kind1 >= 0 && (Kind1 == 0 && op[1] == D3DTOP_DISABLE ? true : op[2] == D3DTOP_DISABLE) && !VertexColours;
+		char Key[200];
+		sprintf_s(Key, "st0 op %u %x %x | st1 op %u %x %x | st2 op %u | vertex colours as material %d",
+			op[0], a1[0], a2[0], op[1], a1[1], a2[1], op[2], (int)VertexColours);
+		if (!CharRefused[Key])
+			Message(Ok ? "charlight: taken (%s)" : "charlight: setup not supported, drawn as before (%s)", Key);
+		CharRefused[Key] = true;
+		if (!Ok)
+			return false;
 		IDirect3DPixelShader9 *PS = Compile(Dev, CharRule);
 		if (PS == nullptr)
 			return false;
@@ -1194,6 +1280,9 @@ public:
 		C[0][1] = 1;
 		C[2][0] = Factor;
 		C[2][1] = (float)Count;
+		C[2][2] = Kind1;
+		C[2][3] = Factor1;
+		C[5][0] = UseTex0;
 		C[3][0] = AmbR * M.Ambient.r + M.Emissive.r;
 		C[3][1] = AmbG * M.Ambient.g + M.Emissive.g;
 		C[3][2] = AmbB * M.Ambient.b + M.Emissive.b;
@@ -1203,12 +1292,12 @@ public:
 		Dev->GetPixelShader(&OldPS);
 		Dev->GetPixelShaderConstantF(0, OldCharConst[0], 24);
 		static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
-		for (DWORD s = 1; s <= 2; s++)
+		for (DWORD s = 2; s <= 3; s++)
 		{
-			Dev->GetTextureStageState(s, D3DTSS_TEXCOORDINDEX, &OldTCI[s]);
-			Dev->GetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTTF[s]);
-			Dev->GetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &OldTexMat[s]);
-			Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, (s == 1 ? D3DTSS_TCI_CAMERASPACENORMAL : D3DTSS_TCI_CAMERASPACEPOSITION) | s);
+			Dev->GetTextureStageState(s, D3DTSS_TEXCOORDINDEX, &OldCharTCI[s]);
+			Dev->GetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, &OldCharTTF[s]);
+			Dev->GetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &OldCharTexMat[s]);
+			Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, (s == 2 ? D3DTSS_TCI_CAMERASPACENORMAL : D3DTSS_TCI_CAMERASPACEPOSITION) | s);
 			Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
 			Dev->SetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &Identity);
 		}
@@ -1224,11 +1313,11 @@ public:
 		{
 			Dev->SetPixelShader(OldPS);
 			Dev->SetPixelShaderConstantF(0, OldCharConst[0], 24);
-			for (DWORD s = 1; s <= 2; s++)
+			for (DWORD s = 2; s <= 3; s++)
 			{
-				Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, OldTCI[s]);
-				Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, OldTTF[s]);
-				Dev->SetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &OldTexMat[s]);
+				Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, OldCharTCI[s]);
+				Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, OldCharTTF[s]);
+				Dev->SetTransform((D3DTRANSFORMSTATETYPE)(D3DTS_TEXTURE0 + s), &OldCharTexMat[s]);
 			}
 			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
 			Mode = 0;
@@ -1385,8 +1474,10 @@ public:
 	// Bloom, sharpening and colour grading on the finished 3D frame, before the HUD is drawn
 	// over it: run just before the first 2D draw (pre-transformed vertices or an orthographic
 	// projection) into the back buffer of a frame that drew 3D, or at Present if no 2D came.
-	// Frames with no 3D (menus) are left alone. Every device state touched is restored (a state
-	// block, plus the render target and depth buffer, which state blocks don't cover).
+	// Frames with no 3D (menus) are left alone. Every device state it touches is saved and put
+	// back by hand (PostSave), stream 0 and the vertex declaration included: on the real game
+	// (dgVoodoo) a state block did not bring those back, so the HUD draw that followed drew our
+	// fullscreen quad with the HUD's texture. The quad comes from our own vertex buffer.
 	bool Post = false;
 	float PostSplit = 0;                                 // postsplit=1: right half untouched
 	float PostBloom[4] = { 0.75f, 0.5f, 0, 0 };          // threshold, intensity
@@ -1395,7 +1486,7 @@ public:
 	U2Rule PostBright, PostBlur, PostFinal;
 	IDirect3DTexture9 *BloomA = nullptr, *BloomB = nullptr;
 	UINT BloomW = 0, BloomH = 0;
-	IDirect3DStateBlock9 *PostState = nullptr;
+	IDirect3DVertexBuffer9 *PostQuadVB = nullptr;
 	IDirect3DDevice9 *LastDev = nullptr;
 	bool Saw3D = false, PostDone = false;
 
@@ -1425,19 +1516,147 @@ public:
 			return;
 		static int told = 0;
 		if (told++ < 6)
-			Message("post: applied before a 2D draw (fvf %x, pre-transformed %d, orthographic %d)", (unsigned)fvf, (int)rhw, (int)ortho);
+		{
+			DWORD z = 0, blend = 0;
+			Dev->GetRenderState(D3DRS_ZENABLE, &z);
+			Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+			Message("post: applied before a 2D draw (fvf %x, pre-transformed %d, orthographic %d, z %u, blend %u)",
+				(unsigned)fvf, (int)rhw, (int)ortho, z, blend);
+		}
 		RunPost(Dev);
 	}
 
+	// postdebug=1: the device as post-processing finds and uses it, for the first 3 frames
+	bool PostDebug = false;
+	void PostLog(IDirect3DDevice9 *Dev, const char *Where)
+	{
+		IDirect3DSurface9 *RT = nullptr, *DS = nullptr, *BB = nullptr;
+		D3DSURFACE_DESC R = {}, D = {};
+		Dev->GetRenderTarget(0, &RT);
+		Dev->GetDepthStencilSurface(&DS);
+		Dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &BB);
+		if (RT) RT->GetDesc(&R);
+		if (DS) DS->GetDesc(&D);
+		DWORD Z = 0, Blend = 0;
+		Dev->GetRenderState(D3DRS_ZENABLE, &Z);
+		Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &Blend);
+		IDirect3DPixelShader9 *PS = nullptr;
+		Dev->GetPixelShader(&PS);
+		char Tex[200] = {};
+		for (DWORD s = 0; s < 4; s++)
+		{
+			IDirect3DBaseTexture9 *T = nullptr;
+			Dev->GetTexture(s, &T);
+			char One[48];
+			sprintf_s(One, " s%u=%p%s", s, (void *)T, T == SceneTex && T ? "(copy)" : T == BloomA && T ? "(bloom)" : "");
+			strcat_s(Tex, One);
+			if (T) T->Release();
+		}
+		Message("postdebug %s: target %p %ux%u format %u%s msaa %u, depth %p %ux%u, z %u blend %u, pixel shader %p,%s",
+			Where, (void *)RT, R.Width, R.Height, (unsigned)R.Format, RT == BB ? " (the back buffer)" : " (NOT the back buffer)",
+			(unsigned)R.MultiSampleType, (void *)DS, D.Width, D.Height, Z, Blend, (void *)PS, Tex);
+		if (RT) RT->Release();
+		if (DS) DS->Release();
+		if (BB) BB->Release();
+		if (PS) PS->Release();
+	}
+
 	struct U2QuadVertex { float x, y, z, rhw, u, v; };
-	static void Quad(IDirect3DDevice9 *Dev, UINT W, UINT H)
+	// a W x H fullscreen quad from PostQuadVB (pre-transformed; FVF and stream set by RunPost)
+	void Quad(IDirect3DDevice9 *Dev, UINT W, UINT H)
 	{
 		// half-pixel offset: Direct3D 9 pixel centres sit on integer coordinates
 		const float w = W - 0.5f, h = H - 0.5f;
 		const U2QuadVertex q[4] = { { -0.5f, -0.5f, 0, 1, 0, 0 }, { w, -0.5f, 0, 1, 1, 0 }, { -0.5f, h, 0, 1, 0, 1 }, { w, h, 0, 1, 1, 1 } };
-		Dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_TEX1);
-		Dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, q, sizeof(U2QuadVertex));
+		void *p = nullptr;
+		if (FAILED(PostQuadVB->Lock(0, sizeof(q), &p, D3DLOCK_DISCARD)) || p == nullptr)
+			return;
+		memcpy(p, q, sizeof(q));
+		PostQuadVB->Unlock();
+		Dev->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
 	}
+
+	// Everything RunPost changes, saved before and put back after, one by one.
+	static constexpr D3DRENDERSTATETYPE PostRS[] = { D3DRS_ZENABLE, D3DRS_ZWRITEENABLE, D3DRS_ALPHABLENDENABLE, D3DRS_ALPHATESTENABLE,
+		D3DRS_FOGENABLE, D3DRS_STENCILENABLE, D3DRS_SCISSORTESTENABLE, D3DRS_LIGHTING, D3DRS_SRGBWRITEENABLE, D3DRS_CLIPPLANEENABLE,
+		D3DRS_CULLMODE, D3DRS_COLORWRITEENABLE };
+	static constexpr D3DSAMPLERSTATETYPE PostSS[] = { D3DSAMP_ADDRESSU, D3DSAMP_ADDRESSV, D3DSAMP_MAGFILTER, D3DSAMP_MINFILTER,
+		D3DSAMP_MIPFILTER, D3DSAMP_SRGBTEXTURE };
+	struct PostSave
+	{
+		IDirect3DSurface9 *RT = nullptr, *DS = nullptr;
+		D3DVIEWPORT9 Viewport = {};
+		IDirect3DVertexBuffer9 *Stream = nullptr;
+		UINT StreamOffset = 0, StreamStride = 0;
+		IDirect3DIndexBuffer9 *Indices = nullptr;
+		IDirect3DVertexDeclaration9 *Decl = nullptr;
+		DWORD Fvf = 0;
+		IDirect3DVertexShader9 *VS = nullptr;
+		IDirect3DPixelShader9 *PS = nullptr;
+		IDirect3DBaseTexture9 *Tex[2] = {};
+		DWORD RS[sizeof(PostRS) / sizeof(PostRS[0])] = {};
+		DWORD SS[2][sizeof(PostSS) / sizeof(PostSS[0])] = {};
+		DWORD TCI[2] = {}, TTF[2] = {};
+		float Const[4][4] = {};
+
+		void Save(IDirect3DDevice9 *Dev)
+		{
+			Dev->GetRenderTarget(0, &RT);
+			Dev->GetDepthStencilSurface(&DS);
+			Dev->GetViewport(&Viewport);
+			Dev->GetStreamSource(0, &Stream, &StreamOffset, &StreamStride);
+			Dev->GetIndices(&Indices);
+			Dev->GetVertexDeclaration(&Decl);
+			Dev->GetFVF(&Fvf);
+			Dev->GetVertexShader(&VS);
+			Dev->GetPixelShader(&PS);
+			for (DWORD s = 0; s < 2; s++)
+			{
+				Dev->GetTexture(s, &Tex[s]);
+				for (size_t i = 0; i < sizeof(PostSS) / sizeof(PostSS[0]); i++)
+					Dev->GetSamplerState(s, PostSS[i], &SS[s][i]);
+				Dev->GetTextureStageState(s, D3DTSS_TEXCOORDINDEX, &TCI[s]);
+				Dev->GetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, &TTF[s]);
+			}
+			for (size_t i = 0; i < sizeof(PostRS) / sizeof(PostRS[0]); i++)
+				Dev->GetRenderState(PostRS[i], &RS[i]);
+			Dev->GetPixelShaderConstantF(0, Const[0], 4);
+		}
+
+		void Restore(IDirect3DDevice9 *Dev)
+		{
+			Dev->SetRenderTarget(0, RT);
+			Dev->SetDepthStencilSurface(DS);
+			Dev->SetViewport(&Viewport);       // after SetRenderTarget, which resets it
+			Dev->SetStreamSource(0, Stream, StreamOffset, StreamStride);
+			Dev->SetIndices(Indices);
+			if (Decl != nullptr)
+				Dev->SetVertexDeclaration(Decl);
+			else
+				Dev->SetFVF(Fvf);
+			Dev->SetVertexShader(VS);
+			Dev->SetPixelShader(PS);
+			for (DWORD s = 0; s < 2; s++)
+			{
+				Dev->SetTexture(s, Tex[s]);
+				for (size_t i = 0; i < sizeof(PostSS) / sizeof(PostSS[0]); i++)
+					Dev->SetSamplerState(s, PostSS[i], SS[s][i]);
+				Dev->SetTextureStageState(s, D3DTSS_TEXCOORDINDEX, TCI[s]);
+				Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, TTF[s]);
+			}
+			for (size_t i = 0; i < sizeof(PostRS) / sizeof(PostRS[0]); i++)
+				Dev->SetRenderState(PostRS[i], RS[i]);
+			Dev->SetPixelShaderConstantF(0, Const[0], 4);
+		}
+
+		~PostSave()
+		{
+			IUnknown *All[] = { RT, DS, Stream, Indices, Decl, VS, PS, Tex[0], Tex[1] };
+			for (IUnknown *U : All)
+				if (U != nullptr)
+					U->Release();
+		}
+	};
 
 	static void Target(IDirect3DDevice9 *Dev, IDirect3DTexture9 *T)
 	{
@@ -1459,17 +1678,34 @@ public:
 			Post = false;
 			return;
 		}
-		if (PostState == nullptr && FAILED(Dev->CreateStateBlock(D3DSBT_ALL, &PostState)))
+		if (PostQuadVB == nullptr && FAILED(Dev->CreateVertexBuffer(4 * sizeof(U2QuadVertex), D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC,
+				D3DFVF_XYZRHW | D3DFVF_TEX1, D3DPOOL_DEFAULT, &PostQuadVB, nullptr)))
 		{
-			PostState = nullptr;
+			PostQuadVB = nullptr;
+			Message("post: could not make the quad's vertex buffer, post-processing off");
+			Post = false;
 			return;
 		}
-		PostState->Capture();
-		IDirect3DSurface9 *OldRT = nullptr, *OldDS = nullptr;
-		Dev->GetRenderTarget(0, &OldRT);
-		Dev->GetDepthStencilSurface(&OldDS);
+		PostSave Saved;
+		Saved.Save(Dev);
+		IDirect3DSurface9 *OldRT = Saved.RT;
+		static int Debugged = 0;
+		const bool Debug = PostDebug && Debugged++ < 3;
+		if (Debug)
+			PostLog(Dev, "at the hook");
 
-		CopyScene(Dev, true);
+		if (!CopyScene(Dev, true))
+		{
+			// a failed copy leaves old memory in SceneTex (on real cards often another texture):
+			// drawing it would cover the frame, so this frame stays unprocessed
+			static int Told = 0;
+			if (Told++ < 3)
+				Message("post: the scene copy failed (%08lx), frame left unprocessed", (unsigned long)LastCopyHr);
+			Saved.Restore(Dev);
+			return;
+		}
+		if (Debug)
+			Message("postdebug: scene copy ok (%ux%u format %u), copy texture %p", SceneW, SceneH, (unsigned)SceneFmt, (void *)SceneTex);
 		const UINT W = (std::max)(SceneW / 4, 1u), H = (std::max)(SceneH / 4, 1u);
 		if (BloomA != nullptr && (BloomW != W || BloomH != H))
 		{
@@ -1486,14 +1722,15 @@ public:
 		}
 		if (SceneTex != nullptr && BloomA != nullptr && BloomB != nullptr && OldRT != nullptr)
 		{
-			static const D3DRENDERSTATETYPE Off[] = { D3DRS_ZENABLE, D3DRS_ZWRITEENABLE, D3DRS_ALPHABLENDENABLE, D3DRS_ALPHATESTENABLE,
-				D3DRS_FOGENABLE, D3DRS_STENCILENABLE, D3DRS_SCISSORTESTENABLE, D3DRS_LIGHTING, D3DRS_SRGBWRITEENABLE, D3DRS_CLIPPLANEENABLE };
-			for (D3DRENDERSTATETYPE R : Off)
-				Dev->SetRenderState(R, FALSE);
+			for (D3DRENDERSTATETYPE R : PostRS)
+				if (R != D3DRS_CULLMODE && R != D3DRS_COLORWRITEENABLE)
+					Dev->SetRenderState(R, FALSE);
 			Dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
 			Dev->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF);
 			Dev->SetDepthStencilSurface(nullptr);
 			Dev->SetVertexShader(nullptr);
+			Dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_TEX1);
+			Dev->SetStreamSource(0, PostQuadVB, 0, sizeof(U2QuadVertex));
 			for (DWORD s = 0; s < 2; s++)
 			{
 				Dev->SetSamplerState(s, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
@@ -1517,6 +1754,8 @@ public:
 			Dev->SetTexture(0, SceneTex);
 			Dev->SetPixelShader(Bright);
 			Dev->SetPixelShaderConstantF(0, c[0], 4);
+			if (Debug)
+				PostLog(Dev, "before the bright pass (stage 0 should be the copy)");
 			Quad(Dev, W, H);
 
 			// 2: blurred, across then down, twice
@@ -1540,21 +1779,32 @@ public:
 			Dev->SetTexture(1, BloomA);
 			Dev->SetPixelShader(Final);
 			Dev->SetPixelShaderConstantF(0, c[0], 4);
+			if (Debug)
+				PostLog(Dev, "before the final pass (stage 0 the copy, stage 1 the bloom)");
 			Quad(Dev, SceneW, SceneH);
 		}
 
-		Dev->SetRenderTarget(0, OldRT);
-		Dev->SetDepthStencilSurface(OldDS);
-		PostState->Apply();               // after SetRenderTarget, which resets the viewport
-		if (OldRT) OldRT->Release();
-		if (OldDS) OldDS->Release();
+		Saved.Restore(Dev);
+		static int Checked = 0;
+		if (Checked++ < 3)
+		{
+			// what the next game draw will find: the game's own vertex stream and declaration
+			IDirect3DVertexBuffer9 *VB = nullptr;
+			IDirect3DVertexDeclaration9 *D = nullptr;
+			UINT Off = 0, Stride = 0;
+			Dev->GetStreamSource(0, &VB, &Off, &Stride);
+			Dev->GetVertexDeclaration(&D);
+			Message("post: state put back: stream 0 %s, declaration %s", VB == Saved.Stream ? "ok" : "DIFFERENT", D == Saved.Decl ? "ok" : "DIFFERENT");
+			if (VB) VB->Release();
+			if (D) D->Release();
+		}
 	}
 
 	void PostRelease()
 	{
 		if (BloomA) { BloomA->Release(); BloomA = nullptr; }
 		if (BloomB) { BloomB->Release(); BloomB = nullptr; }
-		if (PostState) { PostState->Release(); PostState = nullptr; }
+		if (PostQuadVB) { PostQuadVB->Release(); PostQuadVB = nullptr; }
 	}
 
 	// ---- character probe (charprobe=1) -----------------------------------------------------
@@ -1820,6 +2070,8 @@ public:
 	U2Rule CharRule;
 	std::map<std::string, bool> CharRefused;   // stage/material setups charlight= logged and left alone
 	float OldCharConst[24][4] = {};
+	DWORD OldCharTCI[4] = {}, OldCharTTF[4] = {};
+	D3DMATRIX OldCharTexMat[4] = {};
 	unsigned MapsThisFrame = 0, ProbeFrames = 0, FramesWithMaps = 0;
 	struct U2Probe { unsigned Draws = 0, AfterMaps = 0, FirstFrame = 0; std::string Sample; };
 	std::map<std::string, U2Probe> Probes;

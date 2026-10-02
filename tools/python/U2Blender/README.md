@@ -46,6 +46,7 @@ python u2ed.py exec MAP EXPORT FILE="C:\work\MyMap.t3d"
     (Blender: import, edit, export C:\work\MyMap_edit.t3d)
 python u2ed.py exec MAP IMPORT FILE="C:\work\MyMap_edit.t3d"
 python u2ed.py exec MAP REBUILD
+python u2ed.py exec LIGHT APPLY
 python u2ed.py exec PATHS BUILD
 python u2ed.py exec MAP SAVE FILE="..\Maps\MyMap_edit.un2"
 python u2ed.py stop
@@ -53,12 +54,27 @@ python u2ed.py stop
 
 Always save under a new name: the original map stays as it was.
 
+`MAP REBUILD` only rebuilds geometry: lighting (`LIGHT APPLY`, UnrealEd 2's lighting build;
+if Unreal II's editor names it differently, its Build menu does the same) and AI paths must be
+built too, or the map comes out unlit and without paths.
+
+## What the first PC test showed (Oct 1, HoverTest)
+
+- 456 actors in and out, 0 warnings. The first exporter rewrote the 3 untouched brushes (float
+  noise like `-10240.000153`, `Texture=Engine.DefaultTexture` added, `MainScale`/`PostScale`
+  dropped). Fixed: untouched brushes now go back word for word, edited ones with rounded
+  coordinates and no attributes they didn't have. `test/test_blender.py` checks the real map:
+  exported unchanged, 0 lines differ.
+- The rebuilt map was 70 KB instead of 705 KB, and loading it hung. No terrain was lost (the
+  map has no TerrainInfo; its ground is 443 static meshes, all in the T3D). Most likely the
+  difference is the baked lighting of those 443 meshes and the AI paths, which only
+  `MAP REBUILD` was run for. **Next test:** the same, with `LIGHT APPLY` and `PATHS BUILD`.
+
 ## Not known yet (needs a test on the PC)
 
-- Whether Unreal II's `MAP EXPORT` / `MAP IMPORT` round-trip a whole map. **First test:**
-  export a map, import that T3D unchanged, rebuild, and play it. Things a T3D does not carry:
-  resources stored inside the map's own package (`myLevel`: static meshes, textures made in the
-  editor); terrain height maps (separate textures). Lighting and AI paths are rebuilt anyway.
+- Whether the full build above gives back a map that plays like the original. Things a T3D
+  does not carry: resources stored inside the map's own package (`myLevel`: static meshes,
+  textures made in the editor; HoverTest's come from packages, so it doesn't test this).
 - Sheared brushes (MainScale/PostScale SheerRate): the sheer is ignored on import, with a warning.
 - How umodel-exported static meshes are oriented (the importer assumes X forward, Z up).
 

@@ -5,11 +5,12 @@
 // Use with decal=<hash> decal_parallax.hlsl: the draw keeps its own blending, so this returns
 // what the texture itself would have (decals then still layer over each other).
 //
-// The decal's own texture doubles as its depth map (the fork has no second texture):
-//   ALPHA_DECAL 1  alpha decals (the hole drawn over the wall): more opaque = deeper
-//   ALPHA_DECAL 0  modulating decals (the wall multiplied by the texture, white = no change):
-//                  darker = deeper
-// For the other kind, copy this file, flip the setting and point that texture's rule at it.
+// The decal's own texture doubles as its depth map (the fork has no second texture). Which
+// part counts as deep depends on how the decal is blended, which the fork reads from the draw
+// (c1.y, logged once per rule as "decal <hash>: blend ..."):
+//   alpha decals (the hole drawn over the wall): more opaque = deeper
+//   multiplying decals (the wall times the texture): darker than the neutral colour (c1.z:
+//   white, or mid-grey for "x2" blending) = deeper; neutral parts stay flat and unchanged
 //
 // The surface's direction and the texture's axes come from screen-space derivatives of the
 // position and texture coordinates, so the walls' vertices need no normals (level geometry
@@ -18,15 +19,16 @@
 sampler2D Tex  : register(s0);   // the decal
 float4    Info : register(c0);   // time, 1 = positions valid (fixed function), 1/width, 1/height
 float4    Mode : register(c1);   // x: 1 = projected texture coordinates (projector decals)
+                                 // y: 0 alpha decal, 1 multiply, 2 multiply x2; z: neutral brightness
 
-#define ALPHA_DECAL 1
 #define DEPTH 3.0                 // how deep the deepest part looks, in world units
 #define STEPS 8                   // search steps into the surface
 #define CAVITY 0.5                // how much darker the bottom of the hole is (0-1)
 
 float DepthOf(float4 t)
 {
-	return ALPHA_DECAL ? t.a : 1 - dot(t.rgb, float3(0.30, 0.59, 0.11));
+	float dark = saturate((Mode.z - dot(t.rgb, float3(0.30, 0.59, 0.11))) / Mode.z);
+	return Mode.y < 0.5 ? t.a : dark;
 }
 
 float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
@@ -72,5 +74,5 @@ float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
 
 	float4 decal = tex2D(Tex, hit);
 	float shade = 1 - CAVITY * hitDepth;
-	return ALPHA_DECAL ? float4(decal.rgb * shade, decal.a) : float4(decal.rgb * shade, 1);
+	return float4(decal.rgb * shade, decal.a);
 }
