@@ -1,0 +1,8 @@
+# crash handling check: the runner should save the Critical Error text and close the dialog
+background
+map HoverTest
+waitcontrol 180
+wait 1
+console debug crash
+wait 10
+quit

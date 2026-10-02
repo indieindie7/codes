@@ -457,6 +457,53 @@ def cursor_clipped():
     return (r.right - r.left, r.bottom - r.top) != (full[2], full[3])
 
 
+def crash_dialog(pid):
+    """The game's "Critical Error" window, if it shows one: (hwnd, its text). A crash in a background
+    run puts this dialog off-screen where nobody clicks it, and the process hangs half-dead (it held
+    System files for hours on 2026-10-02); a second assertion (TopChunk==NULL, UnMem.cpp) often
+    follows while the engine shuts down after the first error."""
+    found = []
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def top(h, _):
+        p = wt.DWORD()
+        user32.GetWindowThreadProcessId(h, ctypes.byref(p))
+        if p.value == pid:
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(h, buf, 256)
+            if "critical" in buf.value.lower() or "error" in buf.value.lower():
+                found.append(h)
+        return True
+    user32.EnumWindows(top, 0)
+    if not found:
+        return None, ""
+    texts = []
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def child(h, _):
+        n = user32.SendMessageW(h, 0x000E, 0, 0)          # WM_GETTEXTLENGTH
+        if n > 0:
+            buf = ctypes.create_unicode_buffer(n + 1)
+            user32.SendMessageW(h, 0x000D, n + 1, buf)    # WM_GETTEXT
+            if buf.value.strip() and buf.value.strip() not in ("Ok", "OK", "Copy Text", "Submit Bug Report"):
+                texts.append(buf.value.strip())
+        return True
+    user32.EnumChildWindows(found[0], child, 0)
+    return found[0], "\n".join(texts)
+
+
+def close_crash(pid, run_dir, log):
+    """Save the crash dialog's text into the run and close it so the process can exit."""
+    hwnd, text = crash_dialog(pid)
+    if not hwnd:
+        return False
+    with open(os.path.join(run_dir, "crash.txt"), "a", encoding="utf-8") as f:
+        f.write(text + "\n----\n")
+    log("GAME CRASHED: " + " | ".join(l for l in text.splitlines() if l.strip())[:300])
+    user32.PostMessageW(hwnd, 0x0010, 0, 0)                 # WM_CLOSE (same as Ok)
+    return True
+
+
 def run_background(steps, run_dir, log, keep_open, sound=False):
     """Background mode: the in-game PilotDriver mutator plays the steps, so the
     game runs unfocused and the real keyboard/mouse are never touched. Frames
@@ -517,7 +564,16 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
     prev_fg = user32.GetForegroundWindow()   # where the user is working
 
     seen, done_at, deadline = 0, None, time.time() + 600
+    crashes = 0
     while game.poll() is None and time.time() < deadline:
+        if close_crash(game.pid, run_dir, log):
+            crashes += 1
+            if crashes >= 3:          # dialogs keep coming: the process is stuck in its error handler
+                log("still crashing after closing 3 dialogs - killing the game")
+                game.kill()
+                break
+            time.sleep(1.0)
+            continue
         text = log_since(0)
         # keep the window out of the way and check it never grabs the user's focus or mouse
         hwnd, _ = find_window(game.pid)
@@ -549,7 +605,10 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
             game.terminate()
         time.sleep(0.1)
     if game.poll() is None and not keep_open:
-        game.kill()
+        close_crash(game.pid, run_dir, log)       # a dialog left at the end: close it before killing
+        time.sleep(0.5)
+        if game.poll() is None:
+            game.kill()
 
     log(f"game grabbed focus {stole_focus} time(s) (handed straight back), cursor clipped in {clipped} checks (released if it was the game's)")
     shots = sorted(set(glob.glob(os.path.join(GAME_SYSTEM, "Shot*.bmp"))) - existing, key=os.path.getmtime)

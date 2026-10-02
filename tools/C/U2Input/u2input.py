@@ -109,6 +109,28 @@ class U2Input:
     def key(self, dik, down=True):
         return self.send("key %d %s" % (dik, "down" if down else "up"))
 
+    def char(self, ch):
+        """Type one character (console line, text boxes)."""
+        return self.send("char %d" % ord(ch))
+
+    def exec(self, command, open_key=0x09, delay=0.03):
+        """Run a console command by typing it, as a player does: open the console line (Tab, bound to
+        "SendEvent Type" in Unreal II), type the text, press Enter. Output goes to the game log."""
+        import time
+        self.vkey(open_key)
+        time.sleep(0.15)
+        for ch in command:
+            self.char(ch)
+            time.sleep(delay)
+        time.sleep(0.05)
+        return self.vkey(0x0D)
+
+    def vdown(self, vk):
+        return self.send("vdown %d" % vk)
+
+    def vup(self, vk):
+        return self.send("vup %d" % vk)
+
 
 if __name__ == "__main__":
     a = sys.argv[1:]

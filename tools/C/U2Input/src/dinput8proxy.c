@@ -21,6 +21,9 @@
  *     vkey VK           press+release a key by Windows virtual-key code (the keyboard is read from
  *     vdown VK / vup VK   window messages, not DirectInput); e.g. vkey 117 = F6
  *     ping              "pong"; also reports which read path the game uses
+ *     char CODE         type one character (WM_CHAR): console and menu text boxes
+ *     nativeexec CMD    EXPERIMENTAL, crashes Unreal II: calls UGameEngine::Exec on the main thread.
+ *                       Use typing instead (Tab, chars, Enter: u2ctl.py exec does that).
  *
  * Injected input also flows while the game window is in the background: if
  * the real device call fails only because the device isn't acquired, the
@@ -175,10 +178,12 @@ static HRESULT WINAPI HookGetState(void *self, DWORD cb, void *data)
 	return hr;
 }
 
+static void RunPendingExec(void);   /* console commands queued by the pipe (below) */
 static HRESULT WINAPI HookGetData(void *self, DWORD cbObj, void *rgdod, DWORD *inout, DWORD flags)
 {
 	DWORD cap = inout ? *inout : 0;
 	HRESULT hr;
+	RunPendingExec();
 	if (g_spoof && (self == g_mouse || self == g_keyboard) && inout)
 	{
 		*inout = 0;               /* focus mode: only injected input, never the real device */
@@ -385,6 +390,136 @@ static BOOL CALLBACK FindGameWindow(HWND h, LPARAM lp)
 }
 
 /* ---------------------------------------------------------------- pipe server */
+/* ------------------------------------------------- console commands (exec) */
+/* The game's console runs through UGameEngine::Exec. Unreal II doesn't export GEngine, so the engine
+ * object is found once in the global object list (UObject::GObjObjects) by its class. Commands are
+ * handed from the pipe thread to the game's main thread, which polls DirectInput (GetDeviceData)
+ * hundreds of times a second: they run there, between frames, like console input. */
+typedef void *(__cdecl *StaticClassFn)(void);
+typedef int (__fastcall *ExecFn)(void *self, void *edx, const wchar_t *cmd, void *ar);
+static void *g_engine;
+static ExecFn g_exec;
+static void **g_glog;
+static wchar_t g_execCmd[512];
+static volatile LONG g_execPending;
+static int g_execResult;
+static HANDLE g_execDone;
+static int g_execSlot = -1;
+
+/* a real UGameEngine has UGameEngine::Exec in its virtual table (other objects can hold the class
+ * pointer at the same offset, e.g. properties that point to the class) */
+/* follow "jmp rel32" stubs (an export or vtable entry can be one) to the code itself */
+static void *Resolve(void *p)
+{
+	int hops;
+	for (hops = 0; hops < 4 && p && !IsBadReadPtr(p, 5) && *(BYTE *)p == 0xE9; hops++)
+		p = (BYTE *)p + 5 + *(LONG *)((BYTE *)p + 1);
+	return p;
+}
+
+static int HasExec(void *o)
+{
+	void **vt;
+	int k;
+	void *want = Resolve((void *)g_exec);
+	if (IsBadReadPtr(o, 4))
+		return 0;
+	vt = *(void ***)o;
+	if (!vt || IsBadReadPtr(vt, 200 * sizeof(void *)))
+		return 0;
+	for (k = 0; k < 200; k++)
+		if (vt[k] == (void *)g_exec || Resolve(vt[k]) == want)
+		{
+			g_execSlot = k;
+			return 1;
+		}
+	return 0;
+}
+
+static int FindEngine(void)
+{
+	HMODULE eng = GetModuleHandleA("Engine.dll"), core = GetModuleHandleA("Core.dll");
+	StaticClassFn sc;
+	struct { void **Data; int Num, Max; } *objs;
+	void *cls;
+	int i, off;
+	if (g_engine)
+		return 1;
+	if (!eng || !core)
+		return 0;
+	sc = (StaticClassFn)GetProcAddress(eng, "?StaticClass@UGameEngine@@SAPAVUClass@@XZ");
+	g_exec = (ExecFn)GetProcAddress(eng, "?Exec@UGameEngine@@UAEHPBGAAVFOutputDevice@@@Z");
+	g_glog = (void **)GetProcAddress(core, "?GLog@@3PAVFOutputDevice@@A");
+	objs = (void *)GetProcAddress(core, "?GObjObjects@UObject@@0V?$TArray@PAVUObject@@@@A");
+	if (!sc || !g_exec || !g_glog || !objs)
+	{
+		Log("exec: engine exports not found (StaticClass %p Exec %p GLog %p GObjObjects %p)", (void *)sc, (void *)g_exec, (void *)g_glog, (void *)objs);
+		return 0;
+	}
+	cls = sc();
+	/* UObject keeps its class a few pointers in (36 in UE2); try nearby offsets, log the one that matches */
+	for (off = 36; off <= 48 && !g_engine; off += 4)
+		for (i = 0; i < objs->Num; i++)
+		{
+			void *o = objs->Data[i];
+			if (o && *(void **)((char *)o + off) == cls && HasExec(o))
+			{
+				g_engine = o;
+				Log("exec: game engine object %p (class at offset %d, %d objects)", o, off, objs->Num);
+				break;
+			}
+		}
+	if (!g_engine)
+	{
+		Log("exec: no UGameEngine object found among %d objects; Exec export %p -> %p", objs->Num, (void *)g_exec, Resolve((void *)g_exec));
+		for (i = 0; i < objs->Num; i++)
+		{
+			void *o = objs->Data[i];
+			if (o && *(void **)((char *)o + 36) == cls)
+				Log("exec: candidate %p (index %d), vtable %p, flags %08lx, outer %p", o, i, *(void **)o,
+				    *(DWORD *)((char *)o + 28), *(void **)((char *)o + 24));
+		}
+	}
+	else
+		Log("exec: Exec is virtual slot %d", g_execSlot);
+	return g_engine != NULL;
+}
+
+/* called on the game's main thread */
+static void RunPendingExec(void)
+{
+	if (!g_execPending)
+		return;
+	g_execResult = FindEngine() ? g_exec(g_engine, NULL, g_execCmd, *g_glog) : -1;
+	Log("exec: %ls -> %d", g_execCmd, g_execResult);
+	InterlockedExchange(&g_execPending, 0);
+	SetEvent(g_execDone);
+}
+
+/* called on the pipe thread: hand the command over and wait for it to run */
+static void ExecCommand(const char *text, char *reply, int size)
+{
+	if (!g_execDone)
+		g_execDone = CreateEventA(NULL, FALSE, FALSE, NULL);
+	if (g_execPending)
+	{
+		strcpy_s(reply, size, "error: busy");
+		return;
+	}
+	MultiByteToWideChar(CP_ACP, 0, text, -1, g_execCmd, (int)(sizeof(g_execCmd) / sizeof(g_execCmd[0])));
+	ResetEvent(g_execDone);
+	InterlockedExchange(&g_execPending, 1);
+	if (WaitForSingleObject(g_execDone, 3000) != WAIT_OBJECT_0)
+	{
+		strcpy_s(reply, size, "error: the game didn't run it within 3 s (not polling input: loading or paused?)");
+		return;
+	}
+	if (g_execResult < 0)
+		strcpy_s(reply, size, "error: game engine not found (see U2Input.log)");
+	else
+		sprintf_s(reply, size, "ok %d", g_execResult);
+}
+
 static void Command(char *line, char *reply, int size)
 {
 	char cmd[16] = {0};
@@ -392,6 +527,13 @@ static void Command(char *line, char *reply, int size)
 	char word[16] = {0};
 	int n = sscanf_s(line, "%15s %ld %ld", cmd, (unsigned)sizeof(cmd), &a, &b);
 
+	if (n >= 1 && !strcmp(cmd, "nativeexec"))
+	{
+		const char *rest = line + 10;
+		while (*rest == ' ') rest++;
+		ExecCommand(rest, reply, size);
+		return;
+	}
 	EnterCriticalSection(&g_lock);
 	strcpy_s(reply, size, "ok");
 	if (n >= 1 && !strcmp(cmd, "ping"))
@@ -431,6 +573,11 @@ static void Command(char *line, char *reply, int size)
 		if (!g_hwnd) EnumWindows(FindGameWindow, (LPARAM)&g_hwnd);
 		if (cmd[1] != 'u') PostMessageA(g_hwnd, WM_KEYDOWN, (WPARAM)a, 1 | (sc << 16));
 		if (cmd[1] != 'd') PostMessageA(g_hwnd, WM_KEYUP, (WPARAM)a, 1 | (sc << 16) | (1u << 30) | (1u << 31));
+	}
+	else if (n == 2 && !strcmp(cmd, "char") && a > 0 && a < 0x10000)
+	{
+		if (!g_hwnd) EnumWindows(FindGameWindow, (LPARAM)&g_hwnd);
+		PostMessageW(g_hwnd, WM_CHAR, (WPARAM)a, 1);
 	}
 	else if (n == 3 && !strcmp(cmd, "move"))
 		{ g_dx += a; g_dy += b; }
