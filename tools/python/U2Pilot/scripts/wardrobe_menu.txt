@@ -1,9 +1,8 @@
-# U2Wardrobe: just the F6 menu
+# open the pause menu and hold it (U2Input/probe.py navigates to Options > MISC)
 background
 map HoverTest
 waitcontrol 180
-wait 3
-console SendEvent ShowWardrobe
-wait 1.5
-shot
+wait 2
+console SendEvent ShowMenus
+wait 240
 quit

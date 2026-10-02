@@ -1,0 +1,10 @@
+# U2Blender round trip: the re-imported HoverTest
+background
+map HoverTest_RT
+waitcontrol 180
+wait 2
+shot
+turn 90 0 0.3
+wait 1
+shot
+quit

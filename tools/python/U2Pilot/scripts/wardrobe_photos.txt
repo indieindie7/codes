@@ -1,0 +1,34 @@
+# outfit portraits for the MISC menu: each outfit stood in front of the camera, then the empty background
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+console hub clean 23
+turn 0 1 0.3
+wait 1
+console wardrobe photo 0 430
+wait 2
+shot
+console wardrobe photo 1 430
+wait 2
+shot
+console wardrobe photo 2 430
+wait 2
+shot
+console wardrobe photo 3 430
+wait 2
+shot
+console wardrobe photo 4 430
+wait 2
+shot
+console wardrobe photo 5 430
+wait 2
+shot
+console wardrobe photo 6 430
+wait 2
+shot
+console wardrobe photo off
+wait 1.5
+shot
+quit

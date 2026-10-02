@@ -40,7 +40,11 @@ import imageio_ffmpeg
 
 GAME_SYSTEM = r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening\System"
 GAME_EXE = os.path.join(GAME_SYSTEM, "Unreal2.exe")
-GAME_LOG = os.path.join(GAME_SYSTEM, "Unreal2.log")
+# U2PILOT_LOG=Name.log: the game logs there instead (LOG= on its command line), e.g.
+# when a crashed game stuck in the graphics driver still holds Unreal2.log open
+LOG_NAME = os.environ.get("U2PILOT_LOG", "Unreal2.log")
+LOG_ARGS = [] if LOG_NAME.lower() == "unreal2.log" else ["LOG=" + LOG_NAME]
+GAME_LOG = os.path.join(GAME_SYSTEM, LOG_NAME)
 REF_W, REF_H = 1600, 900
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -200,10 +204,28 @@ def focus(hwnd):
     time.sleep(0.3)
 
 
-def game_running():
-    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Unreal2.exe", "/NH"],
+def game_pids():
+    """Live Unreal2.exe processes. A crashed game can linger in the list after it has
+    exited (stuck in the graphics driver); those are skipped."""
+    out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Unreal2.exe", "/FO", "CSV", "/NH"],
                          capture_output=True, text=True).stdout
-    return "Unreal2.exe" in out
+    pids = []
+    for line in out.splitlines():
+        if "Unreal2.exe" not in line:
+            continue
+        pid = int(line.split('","')[1])
+        h = kernel32.OpenProcess(0x1000, False, pid)    # PROCESS_QUERY_LIMITED_INFORMATION
+        code = wt.DWORD(259)
+        if h:
+            kernel32.GetExitCodeProcess(h, ctypes.byref(code))
+            kernel32.CloseHandle(h)
+        if code.value == 259:                           # STILL_ACTIVE
+            pids.append(pid)
+    return pids
+
+
+def game_running():
+    return bool(game_pids())
 
 # ------------------------------------------------------------ recording ----
 
@@ -478,7 +500,7 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
     si.wShowWindow = 4   # SW_SHOWNOACTIVATE: show the window without taking focus
     log(f"background launch: Unreal2.exe {url}")
     extra = [] if sound else ["-nosound"]
-    game = subprocess.Popen([GAME_EXE, url, "-forcelogflush", *extra, *ini_args], cwd=GAME_SYSTEM, startupinfo=si)
+    game = subprocess.Popen([GAME_EXE, url, "-forcelogflush", *extra, *ini_args, *LOG_ARGS], cwd=GAME_SYSTEM, startupinfo=si)
     stole_focus = clipped = 0
     prev_fg = user32.GetForegroundWindow()   # where the user is working
 
@@ -572,6 +594,7 @@ def main():
         launch_args = [steps.pop(0)[2]]
     # -forcelogflush makes the game write its log live, so waitlevel/waitlog work
     launch_args.append("-forcelogflush")
+    launch_args += LOG_ARGS
     log(f"launching Unreal2.exe {' '.join(launch_args)}")
     game = subprocess.Popen([GAME_EXE, *launch_args], cwd=GAME_SYSTEM)
 

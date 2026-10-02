@@ -21,10 +21,20 @@ DIK = {"ESCAPE": 0x01, "RETURN": 0x1C, "SPACE": 0x39, "TAB": 0x0F, "F1": 0x3B, "
 
 
 def game_pid(image="Unreal2.exe"):
+    """The running game's process id (a crashed game can linger in the list after exiting: skipped)."""
+    import ctypes
+    k32 = ctypes.windll.kernel32
     out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq " + image, "/NH"], capture_output=True, text=True).stdout
     for line in out.splitlines():
         if line.lower().startswith(image.lower()):
-            return int(line.split()[1])
+            pid = int(line.split()[1])
+            h = k32.OpenProcess(0x1000, False, pid)
+            code = ctypes.c_ulong(259)
+            if h:
+                k32.GetExitCodeProcess(h, ctypes.byref(code))
+                k32.CloseHandle(h)
+            if code.value == 259:
+                return pid
     return None
 
 

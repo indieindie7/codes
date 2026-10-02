@@ -8,6 +8,28 @@
 //=============================================================================
 class WardrobeMenuHelper extends UIHelper;
 
+// the outfits' portraits beside the dropdown (Textures\Portraits.tga, made by
+// make_portraits.py; the menu script cuts it into WardrobePic0..N): the menu
+// shows portrait N on the event "WardrobePortraitN"
+#exec TEXTURE IMPORT NAME=Portraits FILE=Textures\Portraits.tga GROUP=UI MIPS=OFF ALPHA=1
+
+var int Shown;                       // the portrait last asked for (-1: none yet)
+
+function ShowPortrait(string L)
+{
+	local int i;
+
+	for (i = 0; i < class'WardrobeMutator'.default.Labels.Length; i++)
+		if (class'WardrobeMutator'.default.Labels[i] ~= L)
+			break;
+	if (i >= class'WardrobeMutator'.default.Labels.Length)
+		i = 0;
+	if (i == Shown)
+		return;
+	Shown = i;
+	class'UIConsole'.static.SendEvent("WardrobePortrait"$i);
+}
+
 function array<string> GetOutfitList()
 {
 	return class'WardrobeMutator'.default.Labels;
@@ -15,9 +37,13 @@ function array<string> GetOutfitList()
 
 function string GetOutfit()
 {
-	if (class'WardrobeMutator'.default.Outfit == "")
-		return class'WardrobeMutator'.default.Labels[0];
-	return class'WardrobeMutator'.default.Outfit;
+	local string L;
+
+	L = class'WardrobeMutator'.default.Outfit;
+	if (L == "")
+		L = class'WardrobeMutator'.default.Labels[0];
+	ShowPortrait(L);         // the page asks for this when shown: start on the right picture
+	return L;
 }
 
 function SetOutfit(string L)
@@ -25,6 +51,7 @@ function SetOutfit(string L)
 	local WardrobeMutator M;
 	local PlayerController PC;
 
+	ShowPortrait(L);
 	PC = GetPlayerOwner();
 	if (PC != None)
 		foreach PC.DynamicActors(class'WardrobeMutator', M)
@@ -39,4 +66,5 @@ function SetOutfit(string L)
 
 defaultproperties
 {
+	Shown=-1
 }

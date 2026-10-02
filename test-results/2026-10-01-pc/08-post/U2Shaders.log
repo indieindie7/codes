@@ -1,0 +1,30 @@
+U2Shaders: log 0, 1 rule(s), 0 replacement(s), pcss 1 (0.05 0.004 0.0006 0.06), shadow tint 1 1 1
+post: applied before a 2D draw (fvf 0, pre-transformed 0, orthographic 1)
+shader post_bright.hlsl: ready for texture 00000000
+shader post_blur.hlsl: ready for texture 00000000
+shader post_final.hlsl: ready for texture 00000000
+post: applied before a 2D draw (fvf 0, pre-transformed 0, orthographic 1)
+post: applied before a 2D draw (fvf 0, pre-transformed 0, orthographic 1)
+post: applied before a 2D draw (fvf 0, pre-transformed 0, orthographic 1)
+post: applied before a 2D draw (fvf 0, pre-transformed 0, orthographic 1)
+post: applied before a 2D draw (fvf 0, pre-transformed 0, orthographic 1)
+shader pcss_map.hlsl: ready for texture 00000000
+pcss map target 128x128 format 21 usage 1
+
+shader pcss_proj.hlsl: ready for texture 00000000
+pcss projector texture 128x128 format 21 usage 1
+
+pcss map target 512x512 format 21 usage 1
+
+pcss projector texture 512x512 format 21 usage 1
+
+pcss projector texture 32x32 format 827611204 usage 0
+
+pcss: projector without a known sharp map, left stock
+
+pcss: projector without a known sharp map, left stock
+
+pcss: projector without a known sharp map, left stock
+
+pcss: projector without a known sharp map, left stock
+

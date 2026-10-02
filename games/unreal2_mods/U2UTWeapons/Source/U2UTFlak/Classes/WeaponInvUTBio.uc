@@ -190,4 +190,6 @@ defaultproperties
 	FlashSkin=None
 	PickupAmmoCount=0   // takes over the Dispersion Pistol's recharging ammo
 	ItemName="GES Bio Rifle"
+	InventoryGroup=1     // key 1, first (where the shotgun was)
+	GroupOffset=1
 }

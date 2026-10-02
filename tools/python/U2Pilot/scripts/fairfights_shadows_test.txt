@@ -1,0 +1,25 @@
+# cloud checklist items 4 + 7: U2FairFights kill beat / heavy hit / hurt kick lines, and the
+# floor-fitted soft shadow fade (third person shots)
+background
+map M08A1
+waitcontrol 180
+wait 2
+console BeMyMonkey
+spawn U2Pawns.U2MercJapLight 350
+wait 4
+console hub kill 600
+wait 2
+spawn U2Pawns.U2MercJapLight 350
+wait 3
+console hub kill 600
+wait 2
+console behindview 1
+wait 1
+shot
+turn 90 0 0.4
+wait 1
+shot
+turn 90 -20 0.4
+wait 1
+shot
+quit

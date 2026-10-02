@@ -44,6 +44,7 @@ struct Fit
 var array<Fit> Fits;
 
 var Mesh Wanted;
+var Pawn PhotoPawn;                    // "wardrobe photo": a model stood in front of the camera
 
 event PostBeginPlay()
 {
@@ -87,7 +88,7 @@ function bool IsDalton(Pawn P, PlayerController PC)
 {
 	local string M;
 
-	if (P == None || P.bDeleteMe)
+	if (P == None || P.bDeleteMe || P == PhotoPawn)
 		return false;
 	if (PC != None && P == PC.Pawn)
 		return true;
@@ -302,6 +303,62 @@ function FitHeight(int i)
 	P.SetDrawScale(Fits[i].Scale * R);
 	P.PrePivot = Fits[i].PrePivot + vect(0,0,1) * (Fits[i].Foot - NewFoot);
 	Log("U2Wardrobe: fitted "$P.Name$" x"$R);
+}
+
+// "wardrobe photo N": stand outfit N (menu order) facing the camera, Dist units
+// ahead, at Dalton's height, for the menu portraits (tools: make_portraits.py);
+// "wardrobe photo off" removes it
+function Photo(string Args, PlayerController PC)
+{
+	local int N;
+	local float Dist, H0, F0, H1, F1, S;
+	local rotator R;
+	local vector Loc;
+	local Mesh M;
+
+	if (Args ~= "off" || Args == "")
+	{
+		if (PhotoPawn != None)
+			PhotoPawn.Destroy();
+		PhotoPawn = None;
+		return;
+	}
+	N = int(Args);
+	Dist = 160;
+	if (InStr(Args, " ") > 0)
+		Dist = float(Mid(Args, InStr(Args, " ") + 1));
+	if (N < 0 || N >= Meshes.Length || PC.Pawn == None)
+		return;
+	M = Mesh(DynamicLoadObject(Meshes[N], class'Mesh', true));
+	if (M == None)
+		return;
+	R.Yaw = PC.Rotation.Yaw;
+	Loc = PC.Pawn.Location + vector(R) * Dist;
+	R.Yaw += 32768;
+	if (PhotoPawn == None || PhotoPawn.bDeleteMe)
+		PhotoPawn = Spawn(PC.Pawn.Class,,, Loc, R);
+	if (PhotoPawn == None)
+	{
+		PC.ClientMessage("wardrobe photo: no room there");
+		return;
+	}
+	PhotoPawn.SetLocation(Loc);
+	PhotoPawn.SetRotation(R);
+	PhotoPawn.Mesh = M;
+	if (N == 0)
+		PhotoPawn.Skins = PhotoPawn.default.Skins;
+	else
+		PhotoPawn.Skins.Length = 0;
+	// Dalton's height, feet on the ground (as FitMeasured, against his own model)
+	S = PhotoPawn.default.DrawScale;
+	PhotoPawn.SetDrawScale(S);
+	PhotoPawn.PrePivot = PhotoPawn.default.PrePivot;
+	if (N > 0 && Measured(Mesh(DynamicLoadObject(Meshes[0], class'Mesh', true)), H0, F0) && Measured(M, H1, F1))
+	{
+		PhotoPawn.SetDrawScale(S * (H0 - F0) / (H1 - F1));
+		PhotoPawn.PrePivot.Z += S * F0 - PhotoPawn.DrawScale * F1;
+	}
+	Log("U2Wardrobe: photo "$Labels[N]$" scale "$PhotoPawn.DrawScale);
 }
 
 function DressAll(PlayerController PC)

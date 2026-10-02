@@ -1,0 +1,36 @@
+background
+map HoverTest
+waitcontrol 180
+wait 1
+give U2UTFlak.WeaponInvUTBio
+give U2Weapons.weaponInvPistol
+give U2UTFlak.WeaponInvUTRipper
+give U2Weapons.weaponInvShotgun
+give U2UTFlak.WeaponInvUTFlak
+give U2Weapons.weaponInvFlamethrower
+give U2Weapons.weaponInvEnergyRifle
+give U2Weapons.weaponInvSniperRifle
+give U2Weapons.weaponInvRocketLauncher
+give U2Weapons.weaponInvLeechGun
+give U2Weapons.weaponInvTakkra
+give U2Weapons.weaponInvSingularityCannon
+give U2Weapons.weaponInvGrenadeLauncher
+give U2Weapons.weaponInvAssaultRifle
+give U2Weapons.weaponInvDispersion
+wait 1
+dump WeaponInvUTBio InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvPistol InventoryGroup GroupOffset AmmoName ItemName
+dump WeaponInvUTRipper InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvShotgun InventoryGroup GroupOffset AmmoName ItemName
+dump WeaponInvUTFlak InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvFlamethrower InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvEnergyRifle InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvSniperRifle InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvRocketLauncher InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvLeechGun InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvTakkra InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvSingularityCannon InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvGrenadeLauncher InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvAssaultRifle InventoryGroup GroupOffset AmmoName ItemName
+dump weaponInvDispersion InventoryGroup GroupOffset AmmoName ItemName
+quit

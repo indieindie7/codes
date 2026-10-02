@@ -1,0 +1,68 @@
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint1 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint3 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint4 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint8 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint6 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint2 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint7 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint9 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.SpawnPoint5 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian15 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.PawnFactory1 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.PawnFactory2 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.PawnFactory5 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian23 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian5 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian24 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian7 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian8 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian9 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian1 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian2 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian0 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian6 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian3 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.PawnFactory9 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.PawnFactory6 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist3 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist0 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist10 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Cockroach8 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Cockroach9 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Cockroach12 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Cockroach1 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Cockroach2 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Cockroach0 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Cockroach6 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Cockroach3 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian12 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian19 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian20 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian16 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian17 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2ColonistHumanMaleA0 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist6 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist5 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist7 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist11 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist8 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist9 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2CivilianScientist2 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2Izarian21 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2PlayerSP0 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2MarineLight0 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.PowerSuitMarineLight0 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.VoiceListMarine0 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.U2MarineLight1 AmbientGlow=17 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.PowerSuitMarineLight1 AmbientGlow=0 ScaleGlow=1.000000 bUnlit=False Style=STY_Normal bDramaticLighting= LightType=LT_None bActorShadows=False
+ScriptLog: PilotDriver: dump M08A1.ZoneInfo3 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.ZoneInfo9 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.ZoneInfo10 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.SkyZoneInfo1 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.ZoneInfo7 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.ZoneInfo8 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.U2ZoneInfo0 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.U2ZoneInfo2 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.ZoneInfo11 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.ZoneInfo0 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255
+ScriptLog: PilotDriver: dump M08A1.ZoneInfo13 AmbientBrightness=0 AmbientHue=0 AmbientSaturation=255

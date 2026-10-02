@@ -1,0 +1,71 @@
+Init: Command line: M08A1?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261001-233651_fairfights_shadows_test -forcelogflush -nosound -ini=PilotRun.ini -userini=PilotRunUser.ini
+Log: Browse: M08A1?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261001-233651_fairfights_shadows_test
+Log: LoadMap: M08A1?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261001-233651_fairfights_shadows_test
+ScriptLog: InitGame: ?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261001-233651_fairfights_shadows_test
+ScriptLog: Mutators U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver
+ScriptLog: Add mutator U2FairFights.FairFights
+ScriptLog: FairFights: active (fair True, punch True)
+ScriptLog: U2TestHub: commands ready for M08A1.BodyController0 (type: hub help)
+ScriptLog: FairFights: watching 27 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 27 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 27 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 27 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 25 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 25 enemies, tracer weapons 0
+ScriptLog: FairFights: watching 22 enemies, tracer weapons 0
+ScriptLog: FairFights: U2MercJapLight0 spotted the player at 40.875881
+ScriptLog: FairFights: U2MercJapLight0 weaponInvAssaultRifle2 spread 3.000000 -> 4.500000 (+3.000000 at burst start)
+ScriptLog: FairFights: watching 23 enemies, tracer weapons 0
+ScriptLog: FairFights: tokens 1 of 1 engaged at 42.369049: U2MercJapLight0
+ScriptLog: FairFights: hurt kick 0.450000 (damage 3)
+ScriptLog: FairFights: first hit by U2MercJapLight0 2.636734s after spotting, damage 3 t=43.512615 token=True
+ScriptLog: Hub: kill: 0 within 600
+ScriptLog: FairFights: tokens 1 of 1 engaged at 44.861729: U2MercJapLight0
+ScriptLog: FairFights: hurt kick 0.900000 (damage 6)
+ScriptLog: FairFights: hit by U2MercJapLight0 damage 6 t=45.586800 token=True
+ScriptLog: FairFights: watching 24 enemies, tracer weapons 0
+ScriptLog: FairFights: U2MercJapLight1 spotted the player at 46.872135
+ScriptLog: FairFights: U2MercJapLight1 weaponInvAssaultRifle3 spread 3.000000 -> 4.500000 (+3.000000 at burst start)
+ScriptLog: FairFights: tokens 2 of 2 engaged at 47.360134: U2MercJapLight1 U2MercJapLight0
+ScriptLog: FairFights: hurt kick 0.150000 (damage 1)
+ScriptLog: FairFights: hit by U2MercJapLight0 damage 1 t=47.728054 token=True
+ScriptLog: FairFights: hurt kick 0.300000 (damage 2)
+ScriptLog: FairFights: hit by U2MercJapLight0 damage 2 t=47.934711 token=True
+ScriptLog: FairFights: hurt kick 1.350000 (damage 9)
+ScriptLog: FairFights: first hit by U2MercJapLight1 1.151714s after spotting, damage 9 t=48.023849 token=True
+ScriptLog: FairFights: hurt kick 0.300000 (damage 2)
+ScriptLog: FairFights: hit by U2MercJapLight1 damage 2 t=48.037926 token=True
+ScriptLog: FairFights: hurt kick 0.450000 (damage 3)
+ScriptLog: FairFights: hit by U2MercJapLight1 damage 3 t=48.037926 token=True
+ScriptLog: FairFights: hurt kick 0.300000 (damage 2)
+ScriptLog: FairFights: hit by U2MercJapLight1 damage 2 t=48.048290 token=True
+ScriptLog: FairFights: hurt kick 0.450000 (damage 3)
+ScriptLog: FairFights: hit by U2MercJapLight1 damage 3 t=49.226933 token=True
+ScriptLog: FairFights: hurt kick 0.450000 (damage 3)
+ScriptLog: FairFights: hit by U2MercJapLight1 damage 3 t=49.331825 token=True
+ScriptLog: FairFights: tokens 2 of 2 engaged at 49.367893: U2MercJapLight1 U2MercJapLight0
+ScriptLog: FairFights: hurt kick 0.450000 (damage 3)
+ScriptLog: FairFights: hit by U2MercJapLight1 damage 3 t=49.428688 token=True
+ScriptLog: FairFights: hurt kick 0.450000 (damage 3)
+ScriptLog: FairFights: hit by U2MercJapLight0 damage 3 t=49.522430 token=True
+ScriptLog: FairFights: hurt kick 0.450000 (damage 3)
+ScriptLog: FairFights: hit by U2MercJapLight1 damage 3 t=49.532230 token=True
+ScriptLog: FairFights: hurt kick 0.300000 (damage 2)
+ScriptLog: FairFights: hit by U2MercJapLight0 damage 2 t=49.632435 token=True
+ScriptLog: FairFights: hurt kick 0.450000 (damage 3)
+ScriptLog: FairFights: hit by U2MercJapLight0 damage 3 t=49.729866 token=True
+ScriptLog: FairFights: tick kill=False shown=True
+ScriptLog: FairFights: tick kill=False shown=True
+ScriptLog: FairFights: hitstop 0.070000s at x0.250000 (t=49.780098)
+ScriptLog: FairFights: kill beat 0.070000s (U2MercJapLight start health 75, close call False)
+ScriptLog: FairFights: tick kill=True shown=True
+ScriptLog: FairFights: tick kill=False shown=True
+ScriptLog: FairFights: tick kill=False shown=True
+ScriptLog: FairFights: kill beat 0.070000s (U2MercJapLight start health 75, close call False)
+ScriptLog: FairFights: tick kill=True shown=True
+ScriptLog: Hub: kill: 2 within 600
+ScriptLog: FairFights: watching 22 enemies, tracer weapons 0
+Log: 52.811 screenshot taken at -586.002,6087.679,6521.150 in M08A1?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261001-233651_fairfights_shadows_test
+Log: 54.553 screenshot taken at -586.002,6087.679,6521.150 in M08A1?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261001-233651_fairfights_shadows_test
+Log: 56.348 screenshot taken at -586.002,6087.679,6521.150 in M08A1?Name=Player?Class=U2Pawns.U2PlayerSP?Team=0?Skin=?Face=?Mutator=U2SoftShadows.SSShadowMutator,U2WeaponTune.WeaponTune,U2UTFlak.UTFlakMutator,U2Enemies.EnemyMutator,U2TestHub.HubMutator,U2FairFights.FairFights,U2Wardrobe.WardrobeMutator,U2PilotDriver.PilotDriver?PilotRun=20261001-233651_fairfights_shadows_test
+ScriptLog: FairFights: watching 22 enemies, tracer weapons 0

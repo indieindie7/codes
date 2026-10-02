@@ -54,6 +54,32 @@ ROWS = [
 ]
 
 
+# U2Wardrobe's portrait of the chosen outfit, right of the dropdown and sliders
+# (widget-column coordinates). Cells of U2Wardrobe\Textures\Portraits.tga, as
+# U2Wardrobe\make_portraits.py prints them; WardrobeMenuHelper sends the event
+# "WardrobePortraitN" when outfit N is picked or the page is shown.
+PORTRAITS = 7
+PORTRAIT_CELL = (240, 400, 4)       # cell width, height, cells per row
+PORTRAIT_AT = (240, -62)
+PORTRAIT_SIZE = (240, 400)
+
+
+def portrait_sections():
+    w, h, cols = PORTRAIT_CELL
+    img = ["[WardrobePortraitImages]", "Class=Image", "Material=U2Wardrobe.UI.Portraits"]
+    for i in range(PORTRAITS):
+        img.append("Image=WardrobePic%d,%d,%d,%d,%d" % (i, (i % cols) * w, (i // cols) * h, w, h))
+    ms = ["[WardrobePortrait]", "Class=MultiStateComponent"]
+    for i in range(PORTRAITS):
+        ms.append("State=WardrobePortraitPic:%d" % i)
+    for i in range(PORTRAITS):
+        ms.append("Transition=WardrobePortrait%d,%d,%d,0,NULL" % (i, i, i))
+    ms += ["Location=%d,%d" % PORTRAIT_AT, "DrawOrder=1"]
+    pic = ["[WardrobePortraitPic]", "Class=ImageComponent", "Image=WardrobePic%0%",
+           "Size=%d,%d" % PORTRAIT_SIZE]
+    return img + [""] + ms + [""] + pic + [""]
+
+
 def block_bounds(lines, header, end_pred):
     """[start, end) of a section starting at `header`, ending where end_pred(line) (exclusive)."""
     s = lines.index(header)
@@ -80,6 +106,9 @@ def patch_ui(text):
     if "[WardrobeMenuHelper]" not in lines:
         i = lines.index("[OptionWidgets_SHADOWS]")
         lines[i:i] = ["[WardrobeMenuHelper]", "Helper=U2Wardrobe$WardrobeMenuHelper", "RegisterObj=WardrobeMenuHelper", ""]
+    if "[WardrobePortrait]" not in lines:
+        i = lines.index("[OptionWidgets_SHADOWS]")
+        lines[i:i] = portrait_sections()
     if "[SSMenuHelper]" not in lines:
         i = lines.index("[OptionWidgets_SHADOWS]")
         lines[i:i] = ["[SSMenuHelper]", "Helper=U2SoftShadows$SSMenuHelper", "RegisterObj=SSMenuHelper", ""]
@@ -96,6 +125,7 @@ def patch_ui(text):
     for n, (_, _, _, wl) in enumerate(ROWS):
         w.append("Component=" + wl[0].format(y=n * 26))
         w += wl[1:]
+    w += ["Component=WardrobePortraitImages", "Component=WardrobePortrait"]
     w.append("Location=%0%,%1%")
     lines[s:e] = w
     return nl.join(lines)

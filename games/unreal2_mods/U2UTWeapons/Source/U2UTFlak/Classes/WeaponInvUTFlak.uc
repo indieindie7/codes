@@ -404,8 +404,8 @@ defaultproperties
 	AmmoName=Class'U2Weapons.ammoInvShotgun'
 	PickupAmmoCount=16
 	ReloadTime=1.500000
-	InventoryGroup=3
-	GroupOffset=3
+	InventoryGroup=3     // key 3, second (the grenade launcher it replaces; the Leech Gun is third)
+	GroupOffset=2
 	FirstPersonOffset=(X=0.000000,Y=0.000000,Z=0.000000)
 	FireOffset=(X=30.000000,Y=8.000000,Z=-10.000000)
 	bDebugLog=False

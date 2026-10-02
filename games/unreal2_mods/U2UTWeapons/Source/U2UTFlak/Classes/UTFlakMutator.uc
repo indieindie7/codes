@@ -13,6 +13,8 @@
 // bReplaceDispersion (default on): the starting Dispersion Pistol becomes UT's
 //   GES Bio Rifle - sticky gel on primary, a charged glob on alt fire, using
 //   the pistol's recharging ammo. (The tutorial's pistol is left alone.)
+// bReplaceShotgun (default on): there is no shotgun - it becomes the Flak Cannon,
+//   which fires its shells (the shells you carry stay yours).
 // bGiveOnSpawn (default off): also hand the flak out on every spawn (testing).
 //
 // Add with ?Mutator=U2UTFlak.UTFlakMutator (or in User.ini's [DefaultPlayer]
@@ -25,6 +27,7 @@ var() config bool bReplaceGrenadeLauncher;
 var() config bool bGiveOnSpawn;
 var() config bool bReplaceAssaultRifle;
 var() config bool bReplaceDispersion;
+var() config bool bReplaceShotgun;
 
 var Pawn Armed;   // last pawn bGiveOnSpawn handled
 
@@ -41,6 +44,8 @@ function bool CheckReplacement(Actor Other, out byte bSuperRelevant)
 		weaponGrenadeLauncher(Other).PickupMessage = "You got the Flak Cannon.";
 	if (bReplaceAssaultRifle && Other.Class == class'weaponAssaultRifle')
 		weaponAssaultRifle(Other).PickupMessage = "You got the Ripper.";
+	if (bReplaceShotgun && Other.Class == class'weaponShotgun')
+		weaponShotgun(Other).PickupMessage = "You got the Flak Cannon.";
 	if (bReplaceDispersion && Other.Class == class'weaponDispersion')
 		weaponDispersion(Other).PickupMessage = "You got the GES Bio Rifle.";
 	return true;
@@ -139,7 +144,7 @@ event Tick(float DeltaTime)
 {
 	local Controller C;
 	local Pawn P;
-	local Weapon GL, AR, DP;
+	local Weapon GL, AR, DP, SG;
 
 	for (C = Level.ControllerList; C != None; C = C.NextController)
 	{
@@ -168,6 +173,13 @@ event Tick(float DeltaTime)
 				ReplaceWeapon(PlayerController(C), P, AR, class'WeaponInvUTRipper');
 		}
 
+		if (bReplaceShotgun)
+		{
+			SG = Weapon(FindExact(P, class'weaponInvShotgun'));
+			if (SG != None)
+				ReplaceWeapon(PlayerController(C), P, SG, class'WeaponInvUTFlak');
+		}
+
 		if (bReplaceDispersion)
 		{
 			DP = Weapon(FindExact(P, class'weaponInvDispersion'));
@@ -183,5 +195,6 @@ defaultproperties
 	bGiveOnSpawn=False
 	bReplaceAssaultRifle=True
 	bReplaceDispersion=True
+	bReplaceShotgun=True
 	RemoteRole=ROLE_None
 }

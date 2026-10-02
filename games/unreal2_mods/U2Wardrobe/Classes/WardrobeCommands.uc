@@ -31,6 +31,8 @@ exec function Wardrobe(optional string Args)
 		PC.ClientSetBehindView(!PC.bBehindView);
 	else if (Cmd == "LIST")
 		WM.List(PC);
+	else if (Cmd == "PHOTO")
+		WM.Photo(Rest, PC);
 	else if (Cmd == "MEASURE")
 		WM.StartMeasure(PC);
 	else if (Cmd == "BODY")
