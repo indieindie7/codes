@@ -14,6 +14,10 @@ var config bool bVSync, bTrilinear, bWidescreen;
 var config int FOV;                   // the third-person camera's field of view (the game's own is 75)
 var config bool bDebugFOV;            // testing: note every FOV change in AdventNative.log
 var int DebugMovers;
+var config bool bShadowProbe;         // testing: run ShadowProbe on the player in a level
+var config bool bShadowFix;           // character shadows: Engine.dll's sky pass ate them, and the shadow bitmaps lost their alpha (shadowfix.c, shadowalpha.c)
+var config bool bSoftShadows;         // multi-light character shadows (ModShadowManager, ported from U2SoftShadows)
+var config bool bD3DTrace;            // testing: trace Direct3D calls (AdventNative d3dtrace.c) into AdventNative.log
 var config string DebugLevelMenu;     // testing: a menu class ModMutator opens DebugMenuDelay seconds into a level,
 var config float DebugMenuDelay;      // then takes a screenshot (console "shot") 4 seconds later
 var config string DebugCommands;      // testing: console commands (separated by |) run at the title menu, results in AdventNative.log
@@ -177,7 +181,22 @@ static function Startup(PlayerController PC)
 	local bool bReset;
 
 	NativeCall("Init");
-	RemoveLauncherFOV(PC);
+	if (default.bShadowFix)
+	{
+		NativeCall("ShadowFix");
+		NativeCall("ShadowAlpha");
+	}
+	if (default.bD3DTrace)
+		NativeCall("D3DTrace");
+	// testing: a pilot script needs its input class on the player controllers of the levels to come
+	if (class'ModPilot'.default.Steps.Length > 0)
+	{
+		// a class reference (not a console "set", which can't resolve a class it hasn't loaded yet),
+		// on Advent's controller class too: it keeps its own copy of the default
+		class'PlayerController'.default.InputClass = class'ModInput';
+		class'EonPlayerController'.default.InputClass = class'ModInput';
+		Note("pilot: input class set to " $ class'EonPlayerController'.default.InputClass);
+	}	RemoveLauncherFOV(PC);
 	if (!default.bSaved)
 	{
 		default.bVSync = RenderBool(PC, "UseVSync");

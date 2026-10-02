@@ -13,13 +13,18 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+int D3DTraceStart(void);   /* d3dtrace.c */
+int ShadowFixApply(void);  /* shadowfix.c */
+int ShadowAlphaApply(void); /* shadowalpha.c */
+extern int D3DZAlways;
+
 __declspec(dllexport) wchar_t GPackage[] = L"AdventNative";
 
 typedef void* (__cdecl *StaticLoadObject_t)(void* Class, void* Outer, const wchar_t* Name, const wchar_t* File, DWORD Flags, void* Sandbox);
 static StaticLoadObject_t RealSLO;
 
 /* AdventNative.log, next to the game's own log */
-static void Note(const wchar_t* Fmt, ...)
+void Note(const wchar_t* Fmt, ...)
 {
 	static wchar_t Line[1024];
 	char Utf8[2048];
@@ -100,11 +105,23 @@ static int SetBorderless(int On)
 
 static int HandleCommand(const wchar_t* Cmd)
 {
-	if (!_wcsicmp(Cmd, L"Init")) return 1;
+	if (!_wcsicmp(Cmd, L"Init"))
+	{
+		/* which Direct3D 8 the game got: the system's, or a wrapper in the game folder */
+		wchar_t Path[MAX_PATH] = L"(not loaded)";
+		HMODULE D3D = GetModuleHandleW(L"d3d8.dll");
+		if (D3D) GetModuleFileNameW(D3D, Path, MAX_PATH);
+		Note(L"d3d8: %ls", Path);
+		return 1;
+	}
 	if (!_wcsnicmp(Cmd, L"Note:", 5)) { Note(L"%ls", Cmd + 5); return 1; }
 	if (!_wcsicmp(Cmd, L"BorderlessOn")) return SetBorderless(1);
 	if (!_wcsicmp(Cmd, L"BorderlessOff")) return SetBorderless(0);
 	if (!_wcsicmp(Cmd, L"IsBorderless")) return Borderless;
+	if (!_wcsicmp(Cmd, L"D3DTrace")) return D3DTraceStart();
+	if (!_wcsicmp(Cmd, L"ShadowFix")) return ShadowFixApply();
+	if (!_wcsicmp(Cmd, L"ShadowAlpha")) return ShadowAlphaApply();
+	if (!_wcsicmp(Cmd, L"D3DZAlways")) { D3DZAlways = 1; Note(L"d3dtrace: projected draws now always pass the depth test"); return 1; }
 	if (!_wcsnicmp(Cmd, L"Fits:", 5))
 	{
 		/* does WxH fit on the screen the game is on? */
@@ -176,6 +193,13 @@ BOOL WINAPI DllMain(HINSTANCE H, DWORD Reason, LPVOID R)
 			GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)HookSLO, &Pin);
 			DeleteFileW(L"AdventNative.log");
 			Note(L"AdventNative loaded, hook %ls", RealSLO ? L"ready" : L"FAILED");
+			{
+				/* which Direct3D 8 the game got: the system's, or a wrapper in the game folder */
+				wchar_t Path[MAX_PATH] = L"(not loaded yet)";
+				HMODULE D3D = GetModuleHandleW(L"d3d8.dll");
+				if (D3D) GetModuleFileNameW(D3D, Path, MAX_PATH);
+				Note(L"d3d8: %ls", Path);
+			}
 		}
 	}
 	return TRUE;

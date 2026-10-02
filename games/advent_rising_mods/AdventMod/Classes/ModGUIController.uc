@@ -18,7 +18,9 @@ event bool OpenMenu(string NewMenuName, optional string Param1, optional string 
 	// collects every script class nothing refers to, and the engine then fails to load it
 	// again (the page would silently not open from the pause menu). These references keep
 	// the pages alive for as long as this controller is.
-	if (NewMenuName ~= "Interface.MenuPauseOptionsVideo")
+	if (NewMenuName ~= "ini:Engine.GameEngine.InitialMenuClass" || NewMenuName ~= "Interface.MenuTitle_pc")
+		NewMenuName = string(class'ModTitle');
+	else if (NewMenuName ~= "Interface.MenuPauseOptionsVideo")
 		NewMenuName = string(class'ModVideoOptions');
 	else if (NewMenuName ~= "Interface.MenuPCOptions")
 		NewMenuName = string(class'ModPCOptions');
