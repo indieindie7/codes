@@ -46,8 +46,11 @@ Parallax bullet holes: `decal=<hash> decal_parallax.hlsl` draws that decal textu
 into the wall (parallax occlusion, as in F.E.A.R.): the depth shows when the wall is seen at an
 angle, and the inside darkens with depth. No light direction needed. Unlike `shader=`, a
 `decal=` rule keeps the draw's own blending, so overlapping decals still layer. The texture
-doubles as its depth map: `ALPHA_DECAL 1` (alpha decals, more opaque = deeper) or `0`
-(modulating decals, darker = deeper); `DEPTH` sets how deep it looks, in world units. Projector
+doubles as its depth map, read according to how the draw blends (the dll tells from the blend
+mode, and logs it once: "decal <hash>: blend ..."): alpha decals are deeper where more opaque;
+multiplying decals (the wall times the texture, like Unreal II's bullet holes) are deeper where
+darker than their neutral colour (white, or mid-grey for x2 blending), and their neutral parts
+stay untouched. `DEPTH` sets how deep it looks, in world units. Projector
 decals work (their projected coordinates are kept). To find a decal's hash, run with `log=1`,
 shoot a wall, and look in `U2Shaders\dump\` (each alpha-blended texture is saved as
 `<hash>_<w>x<h>.dds`). Needs `ps_2_a` (ddx/ddy).
@@ -58,8 +61,8 @@ angle. The texture's brightness is its height (dark = deep), so use it on textur
 parts are gaps, not on ones whose dark parts are just colour (signs, dirt). The fork measures
 each texture once (its typical brightness = the surface, its darkest few percent = the bottom;
 `U2Shaders.log`: "surface <hash>: brightness levels ..."), so there is nothing to tune per
-texture; `DEPTH` in the shader sets how deep, in world units, and the effect fades out with
-distance (`FADE_START`/`FADE_END`), where it would only shimmer. A pixel shader replaces the
+texture; `DEPTH` in the shader sets how deep, as a fraction of the texture's size on the wall (0.04: 20 units on a 512-unit tile), and the effect fades out with
+distance (`FADE_START`/`FADE_END`, 1500-4000 units), where it would only shimmer. A pixel shader replaces the
 texture stages, so the shader redoes them: the texture, times the vertex lighting, times the
 lightmap on stage 1. Other stage setups are drawn as before and logged once ("stage setup not
 supported", with the setup: send me that line). It only works if the surface's own texture is

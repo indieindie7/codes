@@ -4,6 +4,11 @@ Everything from one long Claude Code session, on branch `claude/pc-integration-n
 (not merged into `master`). Nothing here has run inside Unreal II yet: the PC was off for the
 whole session, so each item says how far it has been checked.
 
+## Workflow
+
+The cloud session merges every change into master as soon as it's done and tested as far as
+the cloud can (Wine, headless Blender). The real check is the user's QA of the game at home.
+
 ## Waiting on the PC (one sitting covers all of it)
 
 1. **New `d3d8.dll`:** copy `tools/C/U2Shaders/d3d8-mingw.dll` over the game's `System\d3d8.dll`

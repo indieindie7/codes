@@ -243,9 +243,16 @@ def _brush_polys(obj, scale, location_ue):
             p.texture_u, p.texture_v = _default_alignment(p.normal)
             p.origin = t3d.sub(p.origin, location_ue)
         mat = obj.material_slots[f.material_index].material if f.material_index < len(obj.material_slots) else None
-        p.header["Texture"] = (mat.get("ue_texture", mat.name) if mat else "") or "Engine.DefaultTexture"
+        texture = mat.get("ue_texture", mat.name) if mat else ""
+        if texture:                          # no texture in, none out (UnrealEd picks its default)
+            p.header["Texture"] = texture
         flags = attr("ue_flags")
-        p.header["Flags"] = str(flags.data[f.index].value if flags else 0)
+        if flags and flags.data[f.index].value:
+            p.header["Flags"] = str(flags.data[f.index].value)
+        p.verts = [tuple(t3d.clean(c) for c in v) for v in p.verts]
+        p.origin = tuple(t3d.clean(c) for c in p.origin)
+        p.texture_u = tuple(t3d.clean(c, 6) for c in p.texture_u)
+        p.texture_v = tuple(t3d.clean(c, 6) for c in p.texture_v)
         polys.append(p)
     return polys
 
@@ -299,9 +306,20 @@ def export_t3d(context, path):
         loc, rot, scale3 = _actor_values(obj, scale)
         props = {}
         if actor.polys is not None and obj.type == "MESH":
-            # brushes: world-space polygons around the object's origin; no rotation/scale/pivot
+            # brushes: unchanged ones go back word for word; edited ones as world-space polygons
+            # around the object's origin, with no rotation, scale or pivot left on them
+            loc = tuple(t3d.clean(c) for c in loc)
+            polys = _brush_polys(obj, scale, loc)
+            moved = [t3d.Poly() for _ in polys]
+            for m, p in zip(moved, polys):
+                m.header, m.pan = p.header, p.pan
+                m.verts = [t3d.add(v, loc) for v in p.verts]
+                m.origin, m.texture_u, m.texture_v = t3d.add(p.origin, loc), p.texture_u, p.texture_v
+            if actor.lines and t3d.same_polys(moved, actor.world_polys()):
+                blocks.append(actor.lines)
+                continue
             props["Location"] = t3d.fmt_vector(loc)
-            blocks.append(actor.to_text(props, _brush_polys(obj, scale, loc),
+            blocks.append(actor.to_text(props, polys,
                                         drop=("Rotation", "PrePivot", "MainScale", "PostScale", "TempScale")))
             continue
         if not _close(loc, actor.location, 0.01):
