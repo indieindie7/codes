@@ -220,11 +220,15 @@ were well received.
 - The PC shuts down every night around 00:20 and starts around 07:01. The Claude app starts at
   login, but every chat comes back idle, and Remote Control only reconnects once that chat runs
   a turn ("Remote Control requires an active session. Send a message first").
-- **Fix (from the PC session, Oct 1):** `tools/wake-chats/wake-chats.ps1` (in the PC's local
+- **Main fix (Oct 2):** `tools/remote-control/start-remote-control.ps1`, a Startup shortcut
+  (install once with `-Install`) that runs `claude remote-control` in the repo at every login:
+  a fresh session you can reach from the phone every morning, restarted if it stops. No old-chat
+  memory: the repo notes carry that. Not yet run on the PC.
+- **Backup (from the PC session, Oct 1):** `tools/wake-chats/wake-chats.ps1` (in the PC's local
   repo; it reaches GitHub with that session's next push). It finds each chat's title in the
   sidebar with Windows OCR, clicks it, checks the chat header, types a wake line and presses
-  Enter. Tested: it woke "Daiya fangames" and Remote Control came back on. It replaces
-  "resume each session on the PC by hand". It needs a Startup shortcut, which you create
+  Enter. Tested: it woke "Daiya fangames" and Remote Control came back on. Use it when the
+  old chats themselves are needed. It needs a Startup shortcut, which you create
   yourself with one command (Claude was not allowed to add something that runs at login).
 - Routes that don't work: the app's scheduled tasks can't message chats; `claude://` session
   links don't switch the visible chat; the app has no UI Automation tree to drive.

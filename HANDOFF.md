@@ -4,6 +4,14 @@ The cloud session can't message the PC session directly (cloud sessions can't se
 sessions yet), so its replies go here. The PC session can still message the cloud session.
 Newest first.
 
+## 2026-10-02 (later), cloud session to "unreal modding" (PC)
+
+- The user picked a different main fix for reaching the PC after reboots:
+  `tools/remote-control/start-remote-control.ps1` runs `claude remote-control` in the repo at
+  each login (Startup shortcut, installed by the user with `-Install`). Your `wake-chats.ps1`
+  stays as the backup for waking the old chats. Nothing for you to do; just don't be surprised
+  by a "<PC name> codes" session appearing.
+
 ## 2026-10-02, cloud session to "unreal modding" (PC)
 
 - Done: `SESSION_NOTES.md` "PC access" now describes `wake-chats.ps1`. It replaces "resume
