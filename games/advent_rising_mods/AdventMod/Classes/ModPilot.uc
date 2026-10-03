@@ -236,6 +236,27 @@ function Aim(float YawDeg, float PitchDeg)
 	Note("aim: view set to " $ R);
 }
 
+function Give(string ClassName)
+{
+	local class<Inventory> C;
+	local Inventory I;
+
+	C = class<Inventory>(DynamicLoadObject(ClassName, class'Class'));
+	if (C == None || PC() == None || PC().Pawn == None)
+	{
+		Note("give: no class " $ ClassName);
+		return;
+	}
+	I = Spawn(C,,, PC().Pawn.Location);
+	if (I == None)
+	{
+		Note("give: didn't spawn");
+		return;
+	}
+	I.GiveTo(PC().Pawn, true);
+	Note("give: " $ I $ " right weapon now " $ PC().Pawn.RightWeapon);
+}
+
 function Hurt(int Damage, string TypeName)
 {
 	local Pawn P, Best;
@@ -424,6 +445,11 @@ function StartStep()
 	case "NEARENEMY":
 		// NEARENEMY [distance]: the player moved to that far from the level's nearest hostile, facing it
 		NearEnemy(ArgF(1, 900));
+		break;
+	case "GIVE":
+		// GIVE Package.WeaponClass: into the player's right hand
+		Give(Args[1]);
+		StepLength = 1.5;
 		break;
 	case "HURT":
 		// HURT damage [Package.DamageType]: the nearest other character takes a shot from the player

@@ -11,6 +11,10 @@ class ModBloodTextures extends Object;
 #exec TEXTURE IMPORT NAME=BloodSpray0 FILE=Textures\blood_spray0.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=BloodSpray1 FILE=Textures\blood_spray1.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=BloodPool0 FILE=Textures\blood_pool0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=Scorch0 FILE=Textures\scorch0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=Scorch1 FILE=Textures\scorch1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=Scorch2 FILE=Textures\scorch2.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=Casing0 FILE=Textures\casing0.tga GROUP=Blood MIPS=1 ALPHA=1
 
 defaultproperties
 {

@@ -6,6 +6,8 @@ surface as it is), imported into AdventMod.u by Classes/ModBloodTextures.uc.
   blood_spray0..1   a wall spray: the same pieces thrown one way (+X), for shots that hit
                     a wall behind the victim (the projector's roll lines it up with the shot)
   blood_pool0       a pool under a body (round, thick, a soft rim)
+  scorch0..2        where an energy bolt hit a wall: a burnt pit and soot rays
+  casing0           a spent shell lying on the floor, from above (ModCasing's flattened self)
 
 Blood is a metaball field: discs of different size summed as r^2/d^2, thresholded
 with value noise on the edge so the outline is ragged, darker where the field is
@@ -114,7 +116,69 @@ def pool(rng):
     return balls
 
 
+def scorch(name, rng, size=64):
+    """an energy bolt's mark: a burnt pit, soot thrown out in rays, a thin dark ring"""
+    noise = fbm(size, rng)
+    rays = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.5, 1.0)) for _ in range(rng.randint(7, 12))]
+    px = bytearray()
+    for y in range(size - 1, -1, -1):
+        for x in range(size):
+            u, v = (x + 0.5) / size - 0.5, (y + 0.5) / size - 0.5
+            d = math.hypot(u, v) * 2            # 0 centre .. 1 edge
+            ang = math.atan2(v, u)
+            ray = 0.0
+            for a0, s in rays:
+                da = math.atan2(math.sin(ang - a0), math.cos(ang - a0))
+                ray = max(ray, s * math.exp(-(da * 7) ** 2))
+            n = noise[y][x]
+            pit = 1 - smoothstep(0.08, 0.22 + 0.06 * n, d)
+            soot = (1 - smoothstep(0.15, 0.55 + 0.35 * ray, d)) * (0.55 + 0.45 * n)
+            dark = min(1.0, max(pit * 0.95, soot * 0.75))
+            dark *= smoothstep(0.0, 0.08, 0.5 - max(abs(u), abs(v)))
+            # 2x modulate: 0.5 = untouched; soot goes toward black, a hint of brown
+            c = [0.5 * (1 - dark * k) for k in (0.97, 0.95, 0.92)]   # b, g, r
+            px += bytes([int(255 * q + 0.5) for q in c] + [int(255 * dark + 0.5)])
+    path = os.path.join(HERE, name + ".tga")
+    with open(path, "wb") as fh:
+        fh.write(struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, size, size, 32, 8))
+        fh.write(px)
+    print(path)
+
+
+def casing(name, rng, size=32):
+    """a spent cartridge seen from above, lying along X: brass body, darker mouth,
+    a rim at the base, a highlight along its length. 2x modulate, so 0.5 = untouched
+    and brass is the floor brightened toward yellow (it can only tint what's there)"""
+    px = bytearray()
+    L, Wd = 0.62, 0.17                       # length and width, in texture units
+    for y in range(size - 1, -1, -1):
+        for x in range(size):
+            u, v = (x + 0.5) / size - 0.5, (y + 0.5) / size - 0.5
+            # a capsule along X
+            du = max(abs(u) - (L / 2 - Wd / 2), 0)
+            d = math.hypot(du, v) / (Wd / 2)
+            a = 1 - smoothstep(0.85, 1.05, d)
+            along = (u + L / 2) / L               # 0 base .. 1 mouth
+            shade = 1.0 - 0.45 * smoothstep(0.82, 1.0, along) - 0.25 * (1 - smoothstep(0.0, 0.08, along))
+            hi = math.exp(-((v + Wd * 0.18) / (Wd * 0.18)) ** 2) * 0.35
+            brass = [0.30 * shade + hi * 0.5, 0.62 * shade + hi * 0.5, 0.85 * shade + hi * 0.4]   # b, g, r (relative, x2)
+            c = [0.5 * (1 - a) + a * min(k, 1.0) * 0.62 for k in brass]
+            # a soft contact shadow around it
+            sh = (1 - smoothstep(0.9, 1.6, d)) * (1 - a) * 0.35
+            c = [q * (1 - sh) for q in c]
+            px += bytes([int(255 * min(max(q, 0), 1) + 0.5) for q in c] + [int(255 * max(a, sh) + 0.5)])
+    path = os.path.join(HERE, name + ".tga")
+    with open(path, "wb") as fh:
+        fh.write(struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, size, size, 32, 8))
+        fh.write(px)
+    print(path)
+
+
 if __name__ == "__main__":
+    casing("casing0", random.Random(5000))
+    for i in range(3):
+        rng = random.Random(4000 + i)
+        scorch("scorch%d" % i, rng)
     for i in range(4):
         rng = random.Random(1000 + i)
         render(128, splat(rng), rng, edge_noise=0.8, name="blood_splat%d" % i)
