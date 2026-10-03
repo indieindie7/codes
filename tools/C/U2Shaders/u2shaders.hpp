@@ -155,6 +155,17 @@ public:
 				Relight = Hash != 0;
 			else if (sscanf_s(Line, " pcssprobe=%u", &Hash) == 1)
 				PcssProbe = (int)Hash;
+			else if (sscanf_s(Line, " psreplace=%x %255s", &Hash, Name, (unsigned)sizeof(Name)) == 2)
+			{
+				// a pixel shader the game made (D3D8 tokens, hashed in CreatePixelShader) drawn with
+				// ours instead: Advent's terrain (PS_Terrain3Layer/4Layer) -> terrain3/4.hlsl
+				U2Rule R;
+				R.Hash = Hash;
+				R.File = Name;
+				PsReplace[Hash] = R;
+			}
+			else if (sscanf_s(Line, " pslog=%u", &Hash) == 1)
+				PsLog = Hash != 0;
 			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
 				;
 			else if (sscanf_s(Line, " charprobe=%u", &Hash) == 1)
@@ -1617,6 +1628,17 @@ public:
 
 	void End(IDirect3DDevice9 *Dev)
 	{
+		if (Mode == 7)
+		{
+			Dev->SetPixelShader(OldPS);
+			Dev->SetPixelShaderConstantF(0, OldTerrConst[0], 7);
+			Dev->SetTextureStageState(5, D3DTSS_TEXCOORDINDEX, OldTerrTCI5);
+			Dev->SetTextureStageState(5, D3DTSS_TEXTURETRANSFORMFLAGS, OldTerrTTF5);
+			Dev->SetTransform(D3DTS_TEXTURE5, &OldTerrTexMat5);
+			if (OldPS != nullptr) { OldPS->Release(); OldPS = nullptr; }
+			Mode = 0;
+			return;
+		}
 		if (Mode == 6)
 		{
 			Dev->SetPixelShader(OldPS);
@@ -1795,6 +1817,66 @@ public:
 	float PostGrade[4] = { 1.05f, 1.05f, 1.0f, 0.25f };  // saturation, contrast, exposure, vignette
 	float PostBalance[4] = { 1, 1, 1, 0.25f };           // colour balance r g b, sharpen
 	float PostFx[4] = { 0, 0, 0, 0 };                    // postfx=a b c d: free per-game knobs (c4 in post_final.hlsl)
+	// psreplace=: game pixel shaders drawn with ours (Advent's terrain). Constants for them:
+	// c0 seconds, c1-c3 inverse view rows (camera -> world), c4 terrainfx=, c5 terrainfog=,
+	// c6 terrainfog2=; TEXCOORD5 = camera-space position (stage 5 texgen)
+	std::map<DWORD, U2Rule> PsReplace;
+	bool PsLog = false;
+	float TerrainFx[4] = { 0, 0, 0, 0 };
+	float TerrainFog[4] = { 0, 0, 0, 0 };
+	float TerrainFog2[4] = { 0, 0, 0, 0 };
+	float OldTerrConst[7][4] = {};
+	DWORD OldTerrTCI5 = 0, OldTerrTTF5 = 0;
+	D3DMATRIX OldTerrTexMat5 = {};
+
+	void LogGamePS(DWORD Hash, DWORD Tokens, DWORD Version)
+	{
+		if (!Loaded)
+			Load();
+		static std::map<DWORD, bool> told;
+		if (!told[Hash] && (PsLog || PsReplace.count(Hash)))
+		{
+			told[Hash] = true;
+			Message("game ps %08x: %u tokens, version %x%s", (unsigned)Hash, (unsigned)Tokens, (unsigned)Version, PsReplace.count(Hash) ? " (replaced)" : "");
+		}
+	}
+
+	bool PsReplaceBegin(IDirect3DDevice9 *Dev, DWORD Hash)
+	{
+		if (!Loaded)
+			Load();
+		auto It = PsReplace.find(Hash);
+		if (It == PsReplace.end())
+			return false;
+		IDirect3DPixelShader9 *PS = Compile(Dev, It->second);
+		if (PS == nullptr)
+			return false;
+		Dev->GetPixelShader(&OldPS);
+		Dev->GetPixelShaderConstantF(0, OldTerrConst[0], 7);
+		Dev->GetTextureStageState(5, D3DTSS_TEXCOORDINDEX, &OldTerrTCI5);
+		Dev->GetTextureStageState(5, D3DTSS_TEXTURETRANSFORMFLAGS, &OldTerrTTF5);
+		Dev->GetTransform(D3DTS_TEXTURE5, &OldTerrTexMat5);
+		static const D3DMATRIX Identity = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+		Dev->SetTextureStageState(5, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION | 5);
+		Dev->SetTextureStageState(5, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
+		Dev->SetTransform(D3DTS_TEXTURE5, &Identity);
+		float c[7][4] = {};
+		c[0][0] = (GetTickCount() % 100000) / 1000.0f;
+		D3DMATRIX V;
+		Dev->GetTransform(D3DTS_VIEW, &V);
+		const D3DMATRIX Inv = InvView(V);   // row vectors: world = camera * Inv
+		for (int r = 0; r < 3; r++)
+		{
+			c[1 + r][0] = Inv.m[0][r]; c[1 + r][1] = Inv.m[1][r]; c[1 + r][2] = Inv.m[2][r]; c[1 + r][3] = Inv.m[3][r];
+		}
+		memcpy(c[4], TerrainFx, sizeof(TerrainFx));
+		memcpy(c[5], TerrainFog, sizeof(TerrainFog));
+		memcpy(c[6], TerrainFog2, sizeof(TerrainFog2));
+		Dev->SetPixelShaderConstantF(0, c[0], 7);
+		Dev->SetPixelShader(PS);
+		Mode = 7;
+		return true;
+	}
 	// lut=FILE (in U2Shaders\, .dds 32-bit or uncompressed .bmp): a colour-grading LUT on s2 for
 	// post_final.hlsl, unwrapped 3D: N slices of NxN side by side (256x16 or 1024x32), slice = blue,
 	// x in a slice = red, y = green (row 0 = top = green 0). c5 = (N, 1/width, 1/height, 1 if loaded).
@@ -2668,6 +2750,12 @@ public:
 			else if (sscanf_s(Line, " sharpen=%f", &PostBalance[3]) == 1)
 				;
 			else if (sscanf_s(Line, " postfx=%f %f %f %f", &PostFx[0], &PostFx[1], &PostFx[2], &PostFx[3]) >= 1)
+				;
+			else if (sscanf_s(Line, " terrainfx=%f %f %f %f", &TerrainFx[0], &TerrainFx[1], &TerrainFx[2], &TerrainFx[3]) >= 1)
+				;
+			else if (sscanf_s(Line, " terrainfog=%f %f %f %f", &TerrainFog[0], &TerrainFog[1], &TerrainFog[2], &TerrainFog[3]) >= 1)
+				;
+			else if (sscanf_s(Line, " terrainfog2=%f %f %f %f", &TerrainFog2[0], &TerrainFog2[1], &TerrainFog2[2], &TerrainFog2[3]) >= 1)
 				;
 			else if (strncmp(Line + strspn(Line, " \t"), "lut=", 4) == 0)
 			{
