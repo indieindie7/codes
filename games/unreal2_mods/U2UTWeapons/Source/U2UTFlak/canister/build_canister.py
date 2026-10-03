@@ -1,5 +1,5 @@
-"""GES Bio Rifle view model with a fuel canister slung under the barrel (two-handed
-flamethrower look): writes Models/ase_can/BioV000-090.ase = UT's 91 frames + the canister.
+"""GES Bio Rifle view model with a fuel canister strapped along the top of the barrel
+(two-handed flamethrower look): writes Models/ase_can/BioV000-090.ase = UT's 91 frames + the canister.
 
 The canister is built once in the idle frame's space (BioV022) and carried into every frame
 by an affine transform fitted to the gun's vertices around the mount point, so it follows the
@@ -19,11 +19,11 @@ OUT = os.path.join(GAME, "Models", "ase_can")
 BASE = 22                       # the idle frame the canister is placed in
 
 # placement in the idle frame (gun units: barrel along +X, Z up, grip at x 25..50)
-CX0, CX1 = -22.0, 52.0          # tank length along X
-CY, CZ = 0.0, -44.0             # axis
-RAD = 19.0
+CX0, CX1 = -52.0, 22.0          # tank length along X (+X points back at the player)
+CY, CZ = 14.0, 58.0             # axis: on top of the gun, toward its right side
+RAD = 11.0
 SIDES = 16
-MOUNT = np.array([15.0, 0.0, -30.0])   # where the tank meets the gun (fit centre)
+MOUNT = np.array([10.0, 10.0, 40.0])   # where the tank meets the gun (fit centre)
 
 # atlas rectangles in image space (u, v from the top) -> ASE stores v flipped
 PANEL = (0.07, 0.04, 0.44, 0.46)        # grey hazard panel
@@ -122,11 +122,10 @@ def canister():
     # clamp bands and the straps up to the gun
     for x in (CX0 + 8, CX1 - 8):
         tube(m, x - 2.5, x + 2.5, RAD + 1.5, uvrect=HOSE)
-        box(m, (x - 3, -5, CZ + RAD - 1), (x + 3, 5, CZ + RAD + 26), HOSE)
-    # feed pipe off the tank's left flank, up into the gun body (kept clear of the gauge)
-    py = CY - RAD - 1
-    box(m, (CX1 - 14, py - 5, CZ - 2.5), (CX1 - 9, py, CZ + 2.5), HOSE)
-    box(m, (CX1 - 14, py - 5, CZ), (CX1 - 9, py, CZ + 40), HOSE)
+        box(m, (x - 3, CY - 5, CZ - RAD - 22), (x + 3, CY + 5, CZ - RAD + 1), HOSE)   # strap down to the gun
+    # feed pipe from the front (muzzle-side) cap down into the gun
+    box(m, (CX0 - 8, CY - 2.5, CZ - 2.5), (CX0 - 2, CY + 2.5, CZ + 2.5), HOSE)
+    box(m, (CX0 - 8, CY - 2.5, CZ - 34), (CX0 - 3, CY + 2.5, CZ), HOSE)
     return m
 
 

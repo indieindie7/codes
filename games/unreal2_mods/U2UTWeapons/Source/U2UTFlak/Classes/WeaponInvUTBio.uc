@@ -373,7 +373,7 @@ defaultproperties
 	FirstPersonOffset=(X=0.000000,Y=0.000000,Z=0.000000)
 	FireOffset=(X=25.000000,Y=9.000000,Z=-6.000000)
 	FlameOffset=(X=40.000000,Y=9.000000,Z=-8.000000)
-	PilotOffset=(X=30.000000,Y=10.000000,Z=-9.000000)
+	PilotOffset=(X=40.000000,Y=6.000000,Z=-3.500000)
 	ProjectileClass=Class'UTBioGel'
 	AltProjectileClass=Class'UTBioGlob'
 	FireSound=Sound'BioGelShot'
