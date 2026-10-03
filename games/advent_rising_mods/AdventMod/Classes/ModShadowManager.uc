@@ -25,6 +25,7 @@ var float OutdoorTime;             // how long the player has been on the other 
 var int PcssState;                 // -1 unknown, 0 off, 1 on
 var float LastFrameTime;           // newest LastRenderTime seen: what "on screen now" means
 var config int NpcShadows;         // how many other characters cast shadows at once: the nearest ones in view
+var config bool bCrowdShadows;     // also Advent's simpleAnim crowd actors (off: switching their bActorShadows on crashed the game)
 var config float NpcSwapTime;      // a character out of that set this long gives its shadows up
 var array<Actor> TurnedOn;          // characters whose bActorShadows we switched on (put back when they leave the pool)
 
@@ -162,7 +163,7 @@ function UpdatePool()
 			if (P.Health <= 0)
 				continue;
 		}
-		else if (!A.IsA('simpleAnim'))
+		else if (!bCrowdShadows || !A.IsA('simpleAnim'))
 			continue;
 		if (class'ModShadowController'.default.bPlayerOnly || NpcShadows <= 0 || Viewer == None)
 			continue;
@@ -222,7 +223,8 @@ function UpdatePool()
 		if (Find(Want[k]) < 0)
 		{
 			// the engine only updates the shadows of actors that have bActorShadows
-			if (!Want[k].bActorShadows)
+			// (never on anything else: on the crowd actors it crashed the game)
+			if (!Want[k].bActorShadows && Pawn(Want[k]) != None)
 			{
 				Want[k].bActorShadows = true;
 				TurnedOn[TurnedOn.Length] = Want[k];
@@ -332,6 +334,7 @@ defaultproperties
 	bPcssIndoorsOnly=True
 	NpcShadows=4
 	NpcSwapTime=1.5
+	bCrowdShadows=False
 	PcssState=-1
 	RemoteRole=ROLE_None
 }

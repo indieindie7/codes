@@ -2,9 +2,13 @@
    The engine's own "shot" command reads the frame before anything that a Direct3D
    layer draws over it (post-processing), so for testing those this copies the back
    buffer when the frame is presented and writes System\ShotP00000.bmp, ShotP00001.bmp ...
-   (32-bit back buffers only). */
+   (32-bit back buffers only).
+   The same Present hook caps the frame rate (NativeCall "MaxFps:N"): uncapped, the game
+   runs at hundreds of frames a second and its per-frame time steps get so small that
+   gameplay runs in slow motion. */
 #include <windows.h>
 #include <stdio.h>
+#pragma comment(lib, "winmm.lib")
 
 void Note(const wchar_t* Fmt, ...);
 void* D3DGameDevice(void);    /* d3dtrace.c */
@@ -18,6 +22,8 @@ typedef HR (__stdcall *Present_t)(void*, const void*, const void*, HWND, const v
 static Present_t RealPresent;
 static void** HookedTable;
 static int Wanted, Count;
+static double MinFrame;          /* seconds per frame at the cap, 0 = no cap */
+static LARGE_INTEGER Freq, Last;
 
 static void Save(void* Dev)
 {
@@ -70,14 +76,33 @@ static void Save(void* Dev)
 	((Release_t)VT(Img)[SURF_Release])(Img);
 }
 
+/* wait until a whole frame's time has passed since the last present: sleep while more
+   than 2 ms are left (the system timer is set to 1 ms), then spin the rest */
+static void Pace(void)
+{
+	LARGE_INTEGER Now;
+	double Left;
+	if (MinFrame <= 0) return;
+	for (;;)
+	{
+		QueryPerformanceCounter(&Now);
+		Left = MinFrame - (double)(Now.QuadPart - Last.QuadPart) / Freq.QuadPart;
+		if (Left <= 0) break;
+		if (Left > 0.002) Sleep(1); else YieldProcessor();
+	}
+	/* a long frame (loading, a hitch) doesn't earn the next frames a burst */
+	if ((double)(Now.QuadPart - Last.QuadPart) / Freq.QuadPart > 2 * MinFrame) Last = Now;
+	else Last.QuadPart += (LONGLONG)(MinFrame * Freq.QuadPart);
+}
+
 static HR __stdcall HookPresent(void* D, const void* A, const void* B, HWND C, const void* E)
 {
 	if (Wanted) { Wanted = 0; Save(D); }
+	Pace();
 	return RealPresent(D, A, B, C, E);
 }
 
-/* NativeCall("Capture"): the next presented frame goes to a ShotP file */
-int CaptureNext(void)
+static int HookDevice(void)
 {
 	void* Dev = D3DGameDevice();
 	void** Table;
@@ -92,6 +117,31 @@ int CaptureNext(void)
 		Table[DEV_Present] = (void*)HookPresent;
 		VirtualProtect(&Table[DEV_Present], sizeof(void*), Prot, &Prot);
 	}
+	return 1;
+}
+
+/* NativeCall("MaxFps:N"): at most N frames a second (0 = no cap) */
+int SetMaxFps(int Fps)
+{
+	if (!HookDevice()) return 0;
+	if (Fps > 0 && MinFrame <= 0)
+	{
+		timeBeginPeriod(1);
+		QueryPerformanceFrequency(&Freq);
+		QueryPerformanceCounter(&Last);
+	}
+	else if (Fps <= 0 && MinFrame > 0)
+		timeEndPeriod(1);
+	if ((Fps > 0 ? 1.0 / Fps : 0) != MinFrame)
+		Note(L"frame cap: %d fps", Fps);
+	MinFrame = Fps > 0 ? 1.0 / Fps : 0;
+	return 1;
+}
+
+/* NativeCall("Capture"): the next presented frame goes to a ShotP file */
+int CaptureNext(void)
+{
+	if (!HookDevice()) return 0;
 	Wanted = 1;
 	return 1;
 }

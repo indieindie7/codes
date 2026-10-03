@@ -1,4 +1,4 @@
-param([string[]]$Ini = @('bBorderless=False'), [int]$Wait = 40, [string]$Shot = '', [string[]]$Keys = @(), [switch]$Visible, [string[]]$Steps = @())
+﻿param([string[]]$Ini = @('bBorderless=False'), [int]$Wait = 40, [string]$Shot = '', [string[]]$Keys = @(), [switch]$Visible, [string[]]$Steps = @())
 $R = "$env:USERPROFILE\Documents\github\codes\games\advent_rising_mods"; $S = 'H:\SteamLibrary\steamapps\common\Advent Rising\System'; $shots = "$env:LOCALAPPDATA\Temp\claude\C--\f3249b13-f3e8-405c-b38e-bb64ed12fba1\scratchpad"
 if (Get-Process advent -ErrorAction SilentlyContinue) { 'game already running'; exit 1 }
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -63,6 +63,7 @@ foreach ($k in $Keys) {
 if ($Shot -and $n -eq 0) { Shot "$Shot.png" }
 if (Test-Path "$S\AdventNative.log") { Get-Content "$S\AdventNative.log" }
 "AdventMod.ini: " + ((Get-Content "$S\AdventMod.ini") -join ' ; ')
+$q.Refresh(); $c1 = $q.CPU; Start-Sleep 2; $q.Refresh(); "end state: responding $($q.Responding), cpu over 2 s $([math]::Round($q.CPU - $c1, 2)) s"
 $q.CloseMainWindow() | Out-Null; if (-not $q.WaitForExit(15000)) { $q.Kill(); 'had to kill the game'; Remove-Item "$S\Running.ini" -Confirm:$false -ErrorAction SilentlyContinue }
 $now = Get-Content "$S\Mydefault.ini"; $d = Compare-Object $saved $now; if ($d) { "Mydefault.ini changes by the game:"; $d | ForEach-Object { "  $($_.SideIndicator) $($_.InputObject)" } }
 $saved | Set-Content "$S\Mydefault.ini" -Encoding ascii

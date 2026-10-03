@@ -61,6 +61,7 @@ function Every()
 		Shadows = Spawn(class'ModShadowManager');
 	if (class'ModSettings'.default.bD3DTrace)
 		class'ModSettings'.static.NativeCall("D3DTrace");     // testing: follows the game to a new device
+	class'ModSettings'.static.NativeCall("MaxFps:" $ class'ModSettings'.default.MaxFps);  // follows the game to a new device
 	if (!bPiloted && class'ModPilot'.default.Steps.Length > 0 && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 	{
 		// testing: a pilot script plays this level (see ModPilot)

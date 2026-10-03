@@ -18,6 +18,7 @@ var config bool bShadowProbe;         // testing: run ShadowProbe on the player 
 var config bool bShadowFix;           // character shadows: Engine.dll's sky pass ate them, and the shadow bitmaps lost their alpha (shadowfix.c, shadowalpha.c)
 var config bool bNoGamePostFx;        // remove the game's own camera effects (blurs, distortion, DOF) every frame: the Direct3D layer's post effects replace them
 var config bool bSoftShadows;         // multi-light character shadows (ModShadowManager, ported from U2SoftShadows)
+var config int MaxFps;                // frame cap (0 = none): uncapped, gameplay runs in slow motion at hundreds of fps (AdventNative capture.c)
 var config bool bD3DTrace;            // testing: trace Direct3D calls (AdventNative d3dtrace.c) into AdventNative.log
 var config string DebugLevelMenu;     // testing: a menu class ModMutator opens DebugMenuDelay seconds into a level,
 var config float DebugMenuDelay;      // then takes a screenshot (console "shot") 4 seconds later
@@ -223,6 +224,7 @@ defaultproperties
 {
      bTrilinear=True
      FOV=75
+     MaxFps=60
      DebugMovers=-1
      bWidescreen=True
 }

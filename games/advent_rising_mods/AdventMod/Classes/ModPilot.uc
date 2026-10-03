@@ -246,6 +246,7 @@ function Where()
 		Note("where: controller " $ P.Name $ " state " $ P.GetStateName() $ ", no pawn");
 	else
 		Note("where: " $ P.Pawn.Location $ " rotation " $ P.Rotation $ " pawn " $ P.Pawn.Rotation $ " velocity " $ int(VSize(P.Pawn.Velocity)) $ " physics " $ P.Pawn.Physics $ " state " $ P.GetStateName());
+	Note("where: time " $ Level.TimeSeconds $ " dilation " $ Level.TimeDilation $ " gamespeed " $ Level.Game.GameSpeed $ " paused " $ (Level.Pauser != None) $ " groundspeed " $ P.Pawn.GroundSpeed $ " velocity " $ VSize(P.Pawn.Velocity) $ " at " $ P.Pawn.Location);
 	E = EonPlayerController(P);
 	if (E != None && E.Camera != None && E.Camera.MoveController != None)
 		Note("where: camera " $ E.Camera.MoveController.Name $ " desired " $ E.Camera.MoveController.DesiredXAxisRotation $ " current " $ E.Camera.MoveController.CurrentXAxisRotation $ " camera rot " $ E.Camera.Rotation);

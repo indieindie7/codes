@@ -18,6 +18,7 @@ int D3DTraceStart(void);   /* d3dtrace.c */
 int ShadowFixApply(void);  /* shadowfix.c */
 int ShadowAlphaApply(void); /* shadowalpha.c */
 int CaptureNext(void);      /* capture.c */
+int SetMaxFps(int Fps);     /* capture.c */
 extern int D3DZAlways;
 
 __declspec(dllexport) wchar_t GPackage[] = L"AdventNative";
@@ -163,6 +164,7 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsicmp(Cmd, L"ShadowFix")) return ShadowFixApply();
 	if (!_wcsicmp(Cmd, L"ShadowAlpha")) return ShadowAlphaApply();
 	if (!_wcsicmp(Cmd, L"Capture")) return CaptureNext();
+	if (!_wcsnicmp(Cmd, L"MaxFps:", 7)) return SetMaxFps(_wtoi(Cmd + 7));
 	if (!_wcsicmp(Cmd, L"D3DZAlways")) { D3DZAlways = 1; Note(L"d3dtrace: projected draws now always pass the depth test"); return 1; }
 	if (!_wcsnicmp(Cmd, L"Pcss:", 5)) return SetPcss(Cmd[5] == L'1');
 	if (!_wcsnicmp(Cmd, L"Fits:", 5))
