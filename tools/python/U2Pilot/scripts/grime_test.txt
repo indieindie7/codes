@@ -2,7 +2,8 @@
 # worked out when the map loads. Needs U2Grime.u in System (EditPackages=U2Grime, UCC make);
 # the mutator comes in through the map URL, nothing else to install.
 # Results: "Grime:" lines in Unreal2.log (scan counts, spots placed, each view, wear steps)
-# and screenshots: each of the 6 dustiest spots with dust, then without (same view).
+# and screenshots: each of the 6 dustiest spots with dust, then without (same view); then
+# the clutter (props copied from the map's own small ones), with and without, and a kick.
 map M08A1?Mutator=U2Grime.GrimeMutator
 waitcontrol 180
 console god
@@ -64,4 +65,30 @@ move 0 -1 0.6
 move -1 0 0.7
 wait 0.3
 shot
+# clutter: which props the map offered, then pieces with and without
+dump GrimeClutter Phase Measured Unmeasured TooBig Floating
+console set GrimeClutter ViewProp 0
+wait 0.5
+shot
+console set GrimeClutter bShow False
+wait 0.3
+shot
+console set GrimeClutter bShow True
+console set GrimeClutter ViewProp 5
+wait 0.5
+shot
+console set GrimeClutter bShow False
+wait 0.3
+shot
+console set GrimeClutter bShow True
+console set GrimeClutter ViewProp 15
+wait 0.5
+shot
+# kick: walk into piece 0 (it should hop away and settle; "Kicks" counts it)
+console set GrimeClutter ViewProp 0
+wait 0.5
+move 1 0 1.2
+wait 1.5
+shot
+dump GrimeProp Kicks Physics
 quit

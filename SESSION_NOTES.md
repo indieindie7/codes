@@ -47,7 +47,8 @@ the cloud can (Wine, headless Blender). The real check is the user's QA of the g
 
 13. **Dust (U2Grime):** copy `games/unreal2_mods/U2Grime/Source/U2Grime` into the game folder,
     add `EditPackages=U2Grime`, `UCC make`, then `python u2pilot.py scripts/grime_test.txt
-    --background`. Send the `Grime:` lines and the shots (each spot with and without dust).
+    --background`. Send the `Grime:` lines (incl. the `kind` survey) and the shots (dust and
+    clutter, each with and without, and the kick).
 
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
@@ -143,8 +144,11 @@ are needed for Black-style destruction of map props.
 Dust patches (down-facing modulate projectors) placed live at map load: wall feet found by low
 rays from every navigation point, scored by corner/cover/narrow-gap traces (rough AO) and by
 distance from the AI path network (traffic). Walking over a patch wears it lighter, then away.
-Console: `set GrimeManager bShow False`, `ViewSpot N`, `bRebuild True`. Possible later:
-scattered props (clutter) the same way, and real SSAO in the post pass (INTZ depth works on
+Clutter (GrimeClutter): the map's own small StaticMeshActors are measured with TraceActors
+(collision switched on for a moment if needed), small ones on a floor become kinds, copies go
+against the wall at the dustiest spots (no collision; walking into one kicks it, scripted
+bounce like DestructDebris). Console: `set GrimeManager bShow False`, `ViewSpot N`,
+`bRebuild True`, `set GrimeClutter ViewProp N`. Possible later: real SSAO in the post pass (INTZ depth works on
 the PC, per the depth probe).
 
 ### U2Pilot scripts
