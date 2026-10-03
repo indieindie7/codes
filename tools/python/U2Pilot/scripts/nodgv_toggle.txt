@@ -1,0 +1,17 @@
+# no dgVoodoo: start fullscreen (borderless via the fork), toggle to windowed and back, screenshots after post
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+shotp
+wait 1
+console togglefullscreen
+wait 4
+shotp
+wait 1
+console togglefullscreen
+wait 4
+shotp
+wait 1
+quit

@@ -206,7 +206,9 @@ def focus(hwnd):
     # Windows only lets the foreground process hand over focus; a stray Alt
     # press makes this process count as having had input.
     key_event("alt", False); key_event("alt", True)
-    user32.ShowWindow(hwnd, 9)          # SW_RESTORE
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)      # SW_RESTORE, only when minimised: restoring a fullscreen
+                                        # window resizes it, and the game then re-sets its resolution
     user32.SetForegroundWindow(hwnd)
     time.sleep(0.3)
 
@@ -584,6 +586,8 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
         # keep the window out of the way and check it never grabs the user's focus or mouse
         hwnd, _ = find_window(game.pid)
         fg = user32.GetForegroundWindow()
+        if hwnd and FULLSCREEN and fg != hwnd:
+            focus(hwnd)          # the game refuses fullscreen while another window is in front
         if hwnd and not FULLSCREEN:
             if not os.environ.get("U2PILOT_VISIBLE"):   # set to keep the window on the desktop
                 hide_offscreen(hwnd)

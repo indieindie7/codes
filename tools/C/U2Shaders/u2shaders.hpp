@@ -3335,6 +3335,17 @@ public:
 			if (R->PS != nullptr) { R->PS->Release(); R->PS = nullptr; R->Tried = false; }
 		SmaaReleaseAll();
 		SmaaBroken = false;
+		// managed textures survive a reset but belong to this device: the game makes a new device
+		// on every fullscreen/windowed switch, and a texture from the old one bound to the new one
+		// broke it (black screen, then a crash in the game's resource cleanup)
+		if (LutTex) { LutTex->Release(); LutTex = nullptr; }
+		LutTried = false;
+		for (auto &It : Replacements)
+		{
+			if (It.second.Tex) { It.second.Tex->Release(); It.second.Tex = nullptr; }
+			It.second.Tried = false;
+		}
+		if (PostQuadVB) { PostQuadVB->Release(); PostQuadVB = nullptr; }
 		LastDev = nullptr;
 	}
 
