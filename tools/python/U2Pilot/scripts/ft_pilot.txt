@@ -1,0 +1,14 @@
+# flamethrower pilot attachments: hold the flamethrower a moment, then the bio and alt-fire (logs them)
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+give U2Weapons.weaponInvFlamethrower
+wait 2
+shotp
+give U2UTFlak.WeaponInvUTBio
+wait 2
+altfire 0.5
+wait 1
+quit

@@ -16,7 +16,14 @@ class WeaponInvUTBio extends weaponInvDispersion;
 #exec AUDIO IMPORT FILE=Sounds\BioGelLoad.wav   NAME=BioGelLoad   GROUP=Bio
 #exec AUDIO IMPORT FILE=Sounds\BioGelSelect.wav NAME=BioGelSelect GROUP=Bio
 
-var StaticMesh ViewFrames[91];     // UT's BRifle2 animation, one static mesh per frame
+var StaticMesh ViewFrames[91];
+// fire modes (user's design, 2026-10-03): primary = the charged glob (hold, release),
+// secondary = the flamethrower's flame stream, burning the player's flamethrower fuel;
+// a small pilot flame burns at the muzzle while the gun is held (the flamethrower's igniter)
+var bool bPrimaryCharge;
+var ParticleGenerator Flame, Pilot;
+var float FuelClock;
+var() vector FlameOffset, PilotOffset;     // UT's BRifle2 animation, one static mesh per frame
 var int AnimFirst, AnimCount;
 var float AnimFPS, AnimTime;
 var bool bAnimLoop;
@@ -133,15 +140,199 @@ simulated event Tick(float DeltaTime)
 	Super.Tick(DeltaTime);
 	TickBioAnim(DeltaTime);
 	LinkAmmo();
+	UpdatePilot();
+}
+
+// the flamethrower's fuel, if the player carries it
+simulated function Ammunition Fuel()
+{
+	if (Pawn(Owner) == None)
+		return None;
+	return Ammunition(Pawn(Owner).FindInventoryType(class'ammoInvFlamethrower'));
+}
+
+// where the gun points: the eye and the view rotation, offset to the muzzle
+simulated function GetMuzzle(vector Offset, out vector L, out rotator R)
+{
+	local Pawn P;
+	P = Pawn(Owner);
+	R = P.GetViewRotation();
+	L = P.Location + P.EyePosition() + (Offset >> R);
+}
+
+simulated function ParticleGenerator MakeFx(string Name)
+{
+	local ParticleGenerator G;
+	local ParticleGenerator Template;
+	Template = ParticleGenerator(DynamicLoadObject(Name, class'ParticleGenerator', true));
+	if (Template == None)
+		return None;
+	G = class'ParticleGenerator'.static.CreateNew(Self, Template, Location);
+	if (G != None)
+		G.bOn = false;
+	return G;
+}
+
+// the flamethrower's own pilot light: a small particle flame its mesh mounts at "Pilot";
+// copied from a flamethrower the player carries (its attachments exist once it was held)
+simulated function ParticleGenerator FindFlamePilot()
+{
+	local Inventory I;
+	local array<Actor> A;
+	for (I = Pawn(Owner).Inventory; I != None; I = I.Inventory)
+		if (I.IsA('weaponInvFlamethrower'))
+		{
+			I.MeshGetAttachments("Pilot", A);
+			if (A.Length > 0 && ParticleGenerator(A[0]) != None)
+				return ParticleGenerator(A[0]);
+		}
+	return None;
+}
+
+// the pilot flame burns while the gun is out
+simulated function UpdatePilot()
+{
+	local vector L;
+	local rotator R;
+	local bool bHeld;
+	bHeld = Pawn(Owner) != None && Pawn(Owner).Weapon == Self && Pawn(Owner).Health > 0 && !PhysicsVolume.bWaterVolume;
+	if (bHeld && Pilot == None && FindFlamePilot() != None)
+	{
+		Pilot = class'ParticleGenerator'.static.CreateNew(Self, FindFlamePilot(), Location);
+		if (Pilot != None)
+			Pilot.SetDrawScale(0.25);
+	}
+	if (Pilot == None)
+		return;
+	Pilot.bOn = bHeld;
+	if (bHeld)
+	{
+		GetMuzzle(PilotOffset, L, R);
+		Pilot.SetLocation(L);
+		Pilot.SetRotation(R);
+	}
+}
+
+// primary: start charging a glob (the pistol's alt fire), released with the primary button
+simulated function Fire()
+{
+	if (Pawn(Owner) == None || !Pawn(Owner).PressingFire() || bDisableFiring)
+		return;
+	bFiring = false;
+	bAltFiring = true;
+	if (U2Ammo(AmmoType) != None && !U2Ammo(AmmoType).ReloadRequired(1))
+	{
+		if (PreSetAimingParameters(true, bAltInstantHit, TraceSpreadAltFire, AltProjectileClass, bAltWarnTarget, bRecommendAltSplashDamage))
+		{
+			bPrimaryCharge = true;
+			EverywhereAltFire();
+		}
+	}
+	else if (HasAmmo())
+		Reload();
+}
+
+// secondary: the flame stream, while the button is held and there is fuel
+simulated function AltFire()
+{
+	local Ammunition A;
+	if (Pawn(Owner) == None || !Pawn(Owner).PressingAltFire() || bDisableFiring)
+		return;
+	A = Fuel();
+	if (A == None || A.AmmoAmount <= 0 || PhysicsVolume.bWaterVolume)
+		return;
+	GotoState('Flaming');
+}
+
+simulated state Flaming
+{
+	ignores Fire, AltFire;
+
+	simulated event BeginState()
+	{
+		if (Flame == None)
+			Flame = MakeFx("Flamethrower_Effects.ParticleSalamander1");
+		if (Flame != None)
+			Flame.bOn = true;
+		AmbientSound = Sound'U2WeaponsA.FlameThrower.FT_FireLoop';
+		PlaySound(Sound'U2WeaponsA.FlameThrower.FT_Select', SLOT_None, 1.0);
+		FuelClock = 0;
+		Enable('Tick');
+	}
+
+	simulated event EndState()
+	{
+		if (Flame != None)
+			Flame.bOn = false;
+		AmbientSound = None;
+		PlaySound(Sound'U2WeaponsA.FlameThrower.FT_FireEnd', SLOT_None, 1.0);
+	}
+
+	simulated event Tick(float DeltaTime)
+	{
+		local vector L;
+		local rotator R;
+		local Ammunition A;
+
+		TickBioAnim(DeltaTime);
+		UpdatePilot();
+		A = Fuel();
+		if (Pawn(Owner) == None || !Pawn(Owner).PressingAltFire() || A == None || A.AmmoAmount <= 0 || PhysicsVolume.bWaterVolume)
+		{
+			GotoState('Idle');
+			return;
+		}
+		GetMuzzle(FlameOffset, L, R);
+		if (Flame != None)
+		{
+			Flame.SetLocation(L);
+			Flame.SetRotation(R);
+		}
+		FuelClock += DeltaTime;
+		while (FuelClock >= 0.1)          // 10 fuel a second: a full 400 tank burns 40 s
+		{
+			FuelClock -= 0.1;
+			A.UseAmmo(1);
+		}
+	}
+}
+
+simulated event Destroyed()
+{
+	if (Flame != None)
+		Flame.Destroy();
+	if (Pilot != None)
+		Pilot.Destroy();
+	Super.Destroyed();
 }
 
 // the pistol's charge state replaces Tick while charging - keep animating
 simulated state AltCharging
 {
+	// released with whichever button started it (primary now, see Fire)
 	simulated event Tick(float DeltaTime)
 	{
-		Super.Tick(DeltaTime);
+		local bool bHeld;
 		TickBioAnim(DeltaTime);
+		UpdatePilot();
+		if (bPrimaryCharge)
+			bHeld = Pawn(Owner).PressingFire();
+		else
+			bHeld = Pawn(Owner).PressingAltFire();
+		if (!bHeld)
+		{
+			bPrimaryCharge = false;
+			if (Role == ROLE_Authority)
+				Super(U2Weapon).AuthorityAltFire();
+			Super(U2Weapon).EverywhereAltFire();
+			FireMode = FM_AltFire;
+		}
+		AltEnergyTimer -= DeltaTime;
+		while (AltEnergyTimer <= 0)
+		{
+			AltEnergyTimer += default.AltEnergyTimer;
+			IncAltEnergy();
+		}
 	}
 	simulated event EndState()
 	{
@@ -181,6 +372,8 @@ defaultproperties
 	PlayerViewOffset=(X=17.000000,Y=8.500000,Z=-9.500000)
 	FirstPersonOffset=(X=0.000000,Y=0.000000,Z=0.000000)
 	FireOffset=(X=25.000000,Y=9.000000,Z=-6.000000)
+	FlameOffset=(X=40.000000,Y=9.000000,Z=-8.000000)
+	PilotOffset=(X=30.000000,Y=10.000000,Z=-9.000000)
 	ProjectileClass=Class'UTBioGel'
 	AltProjectileClass=Class'UTBioGlob'
 	FireSound=Sound'BioGelShot'

@@ -1,0 +1,27 @@
+# Bio Rifle redesign: primary = charged glob, secondary = flame stream (flamethrower fuel), pilot flame at the muzzle
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+give U2Weapons.weaponInvFlamethrower
+wait 1.5
+wait 1
+give U2UTFlak.WeaponInvUTBio
+wait 2
+turn 30 -6 0.3
+wait 1
+mark pilot
+shotp
+mark charge
+shots 0.4
+fire 1.6
+wait 1.2
+shots 0
+mark flame
+shots 0.3
+altfire 2.0
+shots 0
+wait 1
+dump ammoInvFlamethrower AmmoAmount
+quit
