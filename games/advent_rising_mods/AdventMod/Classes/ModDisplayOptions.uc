@@ -1,11 +1,14 @@
 //=============================================================================
 // ModDisplayOptions - "Display Options", opened from the Video Options page:
-// the launcher settings the game's own menus never had, and a row that opens
-// the Graphics page (ModGraphicsOptions).
+// the launcher settings the game's own menus never had, a row that opens the
+// Graphics page (ModGraphicsOptions), and colourblind mode (a correction filter
+// in the U2Shaders layer's last pass, with its strength).
 //=============================================================================
 class ModDisplayOptions extends MenuPauseOptionsBase;
 
 var localized string LstrWidescreen, LstrTrilinear, LstrFOV, LstrMinFrameRate, LstrGraphics, LstrOpen;
+var localized string LstrColorblind, LstrColorblindStrength;
+var localized string ColorblindNames[4];
 var bool bOpenGraphics;
 
 function PlayerController GetPC()
@@ -15,19 +18,23 @@ function PlayerController GetPC()
 
 function PreSetInitalPositions()
 {
-	NumBools = 3;
-	NumSliders = 2;
+	NumBools = 4;
+	NumSliders = 3;
 	Labels[0].Caption = LstrWidescreen;
 	Labels[1].Caption = LstrTrilinear;
 	Labels[2].Caption = LstrGraphics;
-	Labels[3].Caption = LstrFOV;
-	Labels[4].Caption = LstrMinFrameRate;
+	Labels[3].Caption = LstrColorblind;
+	Labels[4].Caption = LstrFOV;
+	Labels[5].Caption = LstrMinFrameRate;
+	Labels[6].Caption = LstrColorblindStrength;
 	Button0.bActNormal = true;
 	Button0.OnClick = WidescreenClick;
 	Button1.bActNormal = true;
 	Button1.OnClick = TrilinearClick;
 	Button2.bActNormal = true;
 	Button2.OnClick = GraphicsClick;
+	Button3.bActNormal = true;
+	Button3.OnClick = ColorblindClick;
 	Slider0.MinValue = 60;
 	Slider0.MaxValue = 120;
 	Slider0.bIntSlider = true;
@@ -36,13 +43,18 @@ function PreSetInitalPositions()
 	Slider1.MaxValue = 60;
 	Slider1.bIntSlider = true;
 	Slider1.OnChange = FrameRateChange;
+	Slider2.MinValue = 0;
+	Slider2.MaxValue = 100;
+	Slider2.bIntSlider = true;
+	Slider2.OnChange = ColorblindStrengthChange;
 }
 
 function SetupInitalPositions()
 {
 	Super.SetupInitalPositions();
-	Slider0.SetAssociatedLabel(Labels[3]);
-	Slider1.SetAssociatedLabel(Labels[4]);
+	Slider0.SetAssociatedLabel(Labels[4]);
+	Slider1.SetAssociatedLabel(Labels[5]);
+	Slider2.SetAssociatedLabel(Labels[6]);
 	Button2.Caption = LstrOpen;
 	class'ModPanel'.static.AddTo(self);
 }
@@ -57,6 +69,7 @@ function SetLocalGuiOptions(bool Reset)
 		FOVChange(self);
 		Slider1.SetValue(30);
 		FrameRateChange(self);
+		class'ModSettings'.static.ApplyColorblind(0, 1.0);
 	}
 	else
 	{
@@ -65,13 +78,30 @@ function SetLocalGuiOptions(bool Reset)
 	}
 	Button0.SetValueB(class'ModSettings'.default.bWidescreen);
 	Button1.SetValueB(class'ModSettings'.default.bTrilinear);
+	Slider2.SetValue(int(class'ModSettings'.default.ColorblindStrength * 100.0 + 0.5));
 	ShowValues();
 }
 
 function ShowValues()
 {
-	Labels[3].Caption = LstrFOV $ ": " $ int(Slider0.Value);
-	Labels[4].Caption = LstrMinFrameRate $ ": " $ int(Slider1.Value);
+	Labels[4].Caption = LstrFOV $ ": " $ int(Slider0.Value);
+	Labels[5].Caption = LstrMinFrameRate $ ": " $ int(Slider1.Value);
+	Labels[6].Caption = LstrColorblindStrength $ ": " $ int(Slider2.Value) $ "%";
+	Button3.Caption = ColorblindNames[Clamp(class'ModSettings'.default.Colorblind, 0, 3)];
+}
+
+// off, protanopia, deuteranopia, tritanopia
+function bool ColorblindClick(GUIComponent Sender)
+{
+	class'ModSettings'.static.ApplyColorblind((class'ModSettings'.default.Colorblind + 1) % 4, class'ModSettings'.default.ColorblindStrength);
+	ShowValues();
+	return false;
+}
+
+function ColorblindStrengthChange(GUIComponent Sender)
+{
+	class'ModSettings'.static.ApplyColorblind(class'ModSettings'.default.Colorblind, Slider2.Value / 100.0);
+	ShowValues();
 }
 
 // applies at once (the game is paused here, so ModMutator's timer isn't running)
@@ -155,4 +185,10 @@ defaultproperties
      LstrMinFrameRate="Minimum Frame Rate"
      LstrGraphics="Graphics (shadows, post effects)"
      LstrOpen="Open"
+     LstrColorblind="Colorblind Mode"
+     LstrColorblindStrength="Colorblind Correction"
+     ColorblindNames(0)="Off"
+     ColorblindNames(1)="Protanopia"
+     ColorblindNames(2)="Deuteranopia"
+     ColorblindNames(3)="Tritanopia"
 }

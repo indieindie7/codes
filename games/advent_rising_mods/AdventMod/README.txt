@@ -28,10 +28,11 @@ What it does:
 
   In-game options (the launcher's settings, in the game's own menus)
       Options > Video
-          Fullscreen, Borderless Window, VSync, More Display Options
+          Borderless Fullscreen, Exclusive Fullscreen, VSync, More Display Options
       Display Options (new page)
-          Widescreen, Trilinear Filtering, Field of View (60 - 120),
-          Minimum Frame Rate, Graphics
+          Widescreen, Trilinear Filtering, Graphics, Colorblind Mode
+          (Protanopia, Deuteranopia, Tritanopia), Field of View (60 - 120),
+          Minimum Frame Rate, Colorblind Correction (strength)
       Graphics (new page)
           Post Effects preset, Soft Shadows, Shadows for Others,
           Anti-Aliasing (SMAA), Frame Cap (monitor / 30 / 60 / 120 / 144 /
@@ -112,7 +113,7 @@ GOOD TO KNOW
   axis as full deflection. The mod ignores a pad axis until it has been near
   the centre, and again whenever it holds one exact value for 1.5 seconds.
   Off: bPadDriftFix=False under [AdventMod.ModSettings] in AdventMod.ini.
-- Fullscreen and Borderless Window exclude each other: turning one on turns
+- Borderless Fullscreen and Exclusive Fullscreen exclude each other: turning one on turns
   the other off.
 - Less shadow work for a slower PC: Graphics > Shadows for Others off, or
   fewer of them in System\AdventMod.ini:

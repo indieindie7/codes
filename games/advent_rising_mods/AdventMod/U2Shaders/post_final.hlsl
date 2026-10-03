@@ -9,7 +9,11 @@
 //      detail, gentle on edges that are already crisp, so no halos (sharpen= is its strength);
 //   4. lens: a little chromatic aberration toward the screen's edges, and the vignette;
 //   5. colour grading through a 3D LUT (lut= in U2Shaders.ini; see make_luts.py);
-//   6. film grain (animated, stronger in the darks) and a triangular dither, last, so dark
+//   6. colourblind mode (colorblind=type strength; type 1 protanopia, 2 deuteranopia,
+//      3 tritanopia, 0 off): daltonization. The colour as that eye sees it (Machado,
+//      Oliveira & Fernandes 2009, severity 1, linear RGB), and what that loses moved to
+//      channels it can still tell apart (Fidaner et al.'s error shift);
+//   7. film grain (animated, stronger in the darks) and a triangular dither, last, so dark
 //      gradients don't band.
 // postfx=aberration grain dither shoulder (c4): 0 = that one off (shoulder 0 = 0.76).
 // postsplit=1 leaves the right half untouched to compare.
@@ -17,7 +21,7 @@
 sampler2D Scene    : register(s0);   // the finished 3D frame
 sampler2D BloomMap : register(s1);   // the blurred bright parts (quarter size)
 float4    Texel    : register(c0);   // 1/width, 1/height, 1 = compare split
-float4    Bloom    : register(c1);   // threshold, intensity
+float4    Bloom    : register(c1);   // threshold, intensity, colourblind type, its strength
 float4    Grade    : register(c2);   // saturation, contrast, exposure, vignette
 float4    Balance  : register(c3);   // colour balance r g b, sharpen (CAS strength 0..1)
 float4    Fx       : register(c4);   // postfx=: aberration (screen widths), grain, dither (8-bit steps), shoulder
@@ -78,6 +82,32 @@ float3 Graded(float3 c)
 	return lerp(lo, hi, b - slice);
 }
 
+// 6: daltonization for one type of colour blindness (gamma in, gamma out)
+float3 Daltonize(float3 c, float type, float strength)
+{
+	float3x3 sim;
+	if (type < 1.5)        // protanopia (no red cones)
+		sim = float3x3( 0.152286,  1.052583, -0.204868,
+		                0.114503,  0.786281,  0.099216,
+		               -0.003882, -0.048116,  1.051998);
+	else if (type < 2.5)   // deuteranopia (no green cones)
+		sim = float3x3( 0.367322,  0.860646, -0.227968,
+		                0.280085,  0.672501,  0.047413,
+		               -0.011820,  0.042940,  0.968881);
+	else                   // tritanopia (no blue cones)
+		sim = float3x3( 1.255528, -0.076749, -0.178779,
+		               -0.078411,  0.930809,  0.147602,
+		                0.004733,  0.691367,  0.303900);
+	float3 lin = ToLinear(c);
+	float3 err = lin - mul(sim, lin);
+	float3 shift;
+	if (type < 2.5)        // red-green: what is lost goes to green and blue
+		shift = float3(0, 0.7 * err.r + err.g, 0.7 * err.r + err.b);
+	else                   // blue-yellow: what is lost goes to red and green
+		shift = float3(err.r + 0.7 * err.b, err.g + 0.7 * err.b, 0);
+	return ToGamma(saturate(lin + shift * strength));
+}
+
 // a value in -1..1 per pixel, triangular (two hashes), for the dither
 float Tri(float2 p)
 {
@@ -115,7 +145,11 @@ float4 main(float2 uv : TEXCOORD0) : COLOR
 	// 4: vignette
 	c *= 1 - Grade.w * edge;
 
-	// 6: grain (moves every frame, mostly in the darks), then the dither
+	// 6: colourblind mode
+	if (Bloom.z > 0.5)
+		c = Daltonize(saturate(c), Bloom.z, Bloom.w);
+
+	// 7: grain (moves every frame, mostly in the darks), then the dither
 	float2 px = uv / Texel.xy;
 	luma = dot(c, float3(0.299, 0.587, 0.114));
 	c += Tri(px + frac(Texel.w * 7.13) * float2(1013, 719)) * Fx.y * (1 - 0.6 * luma);

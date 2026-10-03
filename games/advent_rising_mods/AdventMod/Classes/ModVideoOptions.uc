@@ -1,7 +1,9 @@
 //=============================================================================
 // ModVideoOptions - the Video Options page with the launcher's display
-// switches above Brightness / Contrast / Gamma: Fullscreen, Borderless
-// Window, VSync, and a row that opens the Display Options page.
+// switches above Brightness / Contrast / Gamma: Borderless Fullscreen (a
+// window covering the screen: the default, Alt+Tab and other monitors just
+// work), Exclusive Fullscreen (the engine's own), VSync, and a row that opens
+// the Display Options page. Both off is a normal window.
 //=============================================================================
 class ModVideoOptions extends MenuPauseOptionsVideo;
 
@@ -21,14 +23,14 @@ function PreSetInitalPositions()
 	Labels[6].Caption = Labels[2].Caption;
 	Labels[5].Caption = Labels[1].Caption;
 	Labels[4].Caption = Labels[0].Caption;
-	Labels[0].Caption = LstrFullscreen;
-	Labels[1].Caption = LstrBorderless;
+	Labels[0].Caption = LstrBorderless;
+	Labels[1].Caption = LstrFullscreen;
 	Labels[2].Caption = LstrVSync;
 	Labels[3].Caption = LstrMore;
 	Button0.bActNormal = true;
-	Button0.OnClick = FullscreenClick;
+	Button0.OnClick = BorderlessClick;
 	Button1.bActNormal = true;
-	Button1.OnClick = BorderlessClick;
+	Button1.OnClick = FullscreenClick;
 	Button2.bActNormal = true;
 	Button2.OnClick = VSyncClick;
 	Button3.bActNormal = true;
@@ -55,8 +57,8 @@ function SetLocalGuiOptions(bool Reset)
 
 function Refresh()
 {
-	Button0.SetValueB(class'ModSettings'.static.IsFullscreen(GetPC()));
-	Button1.SetValueB(class'ModSettings'.static.NativeCall("IsBorderless"));
+	Button0.SetValueB(class'ModSettings'.static.NativeCall("IsBorderless"));
+	Button1.SetValueB(class'ModSettings'.static.IsFullscreen(GetPC()));
 	Button2.SetValueB(class'ModSettings'.default.bVSync);
 }
 
@@ -124,8 +126,8 @@ simulated function Timer()
 
 defaultproperties
 {
-     LstrFullscreen="Fullscreen"
-     LstrBorderless="Borderless Window"
+     LstrFullscreen="Exclusive Fullscreen"
+     LstrBorderless="Borderless Fullscreen"
      LstrVSync="VSync"
      LstrMore="More Display Options"
      LstrOpen="Open"

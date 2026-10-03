@@ -15,8 +15,8 @@ game's own options menus, reachable from the title menu and from the pause menu.
 
 | Page | Added |
 |---|---|
-| Options > Video | **Fullscreen**, **Borderless Window**, **VSync**, and a row that opens Display Options |
-| Display Options (new page) | **Widescreen**, **Trilinear Filtering**, **Field of View** (60-120), **Minimum Frame Rate** |
+| Options > Video | **Borderless Fullscreen** (the default: a window covering the screen), **Exclusive Fullscreen**, **VSync**, and a row that opens Display Options |
+| Display Options (new page) | **Widescreen**, **Trilinear Filtering**, **Colorblind Mode** (Protanopia, Deuteranopia, Tritanopia: daltonization in the U2Shaders final pass, Machado et al. 2009 simulation + error shift) with a **Colorblind Correction** strength slider, **Field of View** (60-120), **Minimum Frame Rate** |
 | Graphics (new page, from Display Options) | **Post Effects** preset (Off, Natural, Cinematic, Gritty, Clean), **Soft Shadows**, **Shadows for Others** (the 20 nearest characters on screen), **Anti-Aliasing (SMAA)**, **Frame Cap** (monitor, 30, 60, 120, 144, none), **Shadow Darkness**, **Sharpening**. The post-processing rows need the U2Shaders `d3d8.dll`: AdventNative writes `System\U2Shaders.ini`, which the layer re-reads while the game runs |
 | Options > Graphics | **Resolution** lists the five largest common sizes that fit the screen (stock: 640x480 to 1600x1200, 4:3 only) |
 | Options > Audio | **Dialogue Volume** (the game saves one and has a caption for it, but never showed the slider) |

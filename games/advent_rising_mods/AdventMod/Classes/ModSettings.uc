@@ -8,6 +8,7 @@ class ModSettings extends Object
 	config(AdventMod);
 
 var config bool bBorderless;
+var config bool bScreenModeSet;       // 2.1: borderless fullscreen became the default once (an older ini says bBorderless=False)
 // the render device never saves these itself, so we keep them and re-apply at start
 var config bool bSaved;
 var config bool bVSync, bTrilinear, bWidescreen;
@@ -34,6 +35,8 @@ var config bool bMouseLog;            // testing: log how much of the mouse move
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
 var config float Sharpen;             // CAS sharpening 0..1 (the preset sets it; the Graphics page slider changes it)
 var config bool bSMAA;                // the layer's SMAA anti-aliasing
+var config int Colorblind;            // colourblind correction in the U2Shaders layer: 0 off, 1 protanopia, 2 deuteranopia, 3 tritanopia
+var config float ColorblindStrength;  // 0..1
 var config int MaxFps;                // frame cap: -1 = the monitor's refresh rate, 0 = none (uncapped the GPU draws ~300 fps nobody sees)
 var config bool bD3DTrace;            // testing: trace Direct3D calls (AdventNative d3dtrace.c) into AdventNative.log
 var config string DebugLevelMenu;     // testing: a menu class ModMutator opens DebugMenuDelay seconds into a level,
@@ -219,9 +222,15 @@ static function ApplyPostPreset(int N)
 	switch (N)
 	{
 	case 0:
-		NativeCall("U2Set:post=0");
-		StaticSaveConfig();
-		return;
+		if (default.Colorblind == 0)
+		{
+			NativeCall("U2Set:post=0");
+			StaticSaveConfig();
+			return;
+		}
+		// colourblind mode lives in the post pass: keep the pass, with every effect off
+		Bloom = "0.75 0"; Grade = "1.0 1.0 1.0 0.0"; Colour = "1 1 1"; Fx = "0 0 0 1"; Lut = "lut_neutral.bmp"; Sharp = 0;
+		break;
 	case 2:   // Cinematic: more bloom and vignette, warmer, more grain
 		Bloom = "0.55 0.8"; Grade = "1.05 1.08 1.0 0.45"; Colour = "1.02 1 0.97"; Fx = "0.0025 0.035 1 0.7"; Lut = "lut_advent.bmp"; Sharp = 0.3;
 		break;
@@ -245,6 +254,21 @@ static function ApplyPostPreset(int N)
 	NativeCall("U2Set:sharpen=" $ Num(default.Sharpen));
 	NativeCall("U2Set:postfx=" $ Fx);
 	NativeCall("U2Set:lut=" $ Lut);
+	StaticSaveConfig();
+}
+
+// colourblind mode: the type (0 off) and the correction's strength (0..1)
+static function ApplyColorblind(int Type, float Strength)
+{
+	local bool bWasOn;
+
+	bWasOn = default.Colorblind != 0;
+	default.Colorblind = Clamp(Type, 0, 3);
+	default.ColorblindStrength = FClamp(Strength, 0, 1);
+	NativeCall("U2Set:colorblind=" $ default.Colorblind $ " " $ Num(default.ColorblindStrength));
+	// with post effects off, the pass has to run (or stop) for it
+	if (default.PostPreset == 0 && bWasOn != (default.Colorblind != 0))
+		ApplyPostPreset(0);
 	StaticSaveConfig();
 }
 
@@ -294,8 +318,19 @@ static function Startup(PlayerController PC)
 		if (bReset)
 			ResetDevice(PC);
 	}
-	if (default.bBorderless && !IsFullscreen(PC))
+	if (!default.bScreenModeSet)
+	{
+		default.bScreenModeSet = true;
+		default.bBorderless = true;
+		StaticSaveConfig();
+	}
+	if (default.bBorderless)
+	{
+		// borderless fullscreen instead of the engine's exclusive mode (the launcher's "fullscreen")
+		if (IsFullscreen(PC))
+			PC.ConsoleCommand("ENDFULLSCREEN");
 		NativeCall("BorderlessOn");
+	}
 }
 
 defaultproperties
@@ -306,6 +341,7 @@ defaultproperties
      bTrilinear=True
      FOV=75
      MaxFps=-1
+     ColorblindStrength=1.000000
      bPadDriftFix=True
      PadCentre=0.100000
      StuckTime=1.500000
