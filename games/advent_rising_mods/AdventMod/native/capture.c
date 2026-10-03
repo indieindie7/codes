@@ -3,9 +3,8 @@
    layer draws over it (post-processing), so for testing those this copies the back
    buffer when the frame is presented and writes System\ShotP00000.bmp, ShotP00001.bmp ...
    (32-bit back buffers only).
-   The same Present hook caps the frame rate (NativeCall "MaxFps:N"): uncapped, the game
-   runs at hundreds of frames a second and its per-frame time steps get so small that
-   gameplay runs in slow motion. */
+   The same Present hook caps the frame rate (NativeCall "MaxFps:N", by default the
+   monitor's refresh rate): uncapped, the GPU draws ~300 frames a second nobody sees. */
 #include <windows.h>
 #include <stdio.h>
 #pragma comment(lib, "winmm.lib")
@@ -120,10 +119,20 @@ static int HookDevice(void)
 	return 1;
 }
 
-/* NativeCall("MaxFps:N"): at most N frames a second (0 = no cap) */
+/* NativeCall("MaxFps:N"): at most N frames a second (0 = no cap, -1 = the monitor's refresh rate) */
 int SetMaxFps(int Fps)
 {
+	DEVMODEW Mode;
 	if (!HookDevice()) return 0;
+	if (Fps < 0)
+	{
+		ZeroMemory(&Mode, sizeof(Mode));
+		Mode.dmSize = sizeof(Mode);
+		Fps = EnumDisplaySettingsW(NULL, ENUM_CURRENT_SETTINGS, &Mode) && Mode.dmDisplayFrequency > 1 ? (int)Mode.dmDisplayFrequency : 60;
+		/* Windows reports 59.94 Hz (and 119.88, 143.86...) rounded down: a cap a frame under
+		   the screen's rate would drop a frame every few seconds */
+		if (Fps % 10 == 9 || Fps % 12 == 11) Fps++;
+	}
 	if (Fps > 0 && MinFrame <= 0)
 	{
 		timeBeginPeriod(1);
