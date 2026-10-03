@@ -12,9 +12,9 @@
 // and only characters (not vehicles or turrets) bleed, in the colour the game's own
 // hit particles give them (its surface table: humans red, Seekers purple, holograms
 // and ShockTroopers nothing).
-// Bodies near the player stay: the game fades corpses out (AlphaFadeKill, and the
-// Dying state's timer for those out of sight); within HoldRange that is put off
-// until the player has walked away.
+// When the game takes a body away (it fades the oldest when someone else dies, and
+// recycles the pawn for its spawners), what's left stays on the floor: a flat mark of
+// chunks and bone in the body's blood colour, clutter that costs nothing.
 //=============================================================================
 class ModGore extends Info
 	config(AdventMod);
@@ -31,15 +31,17 @@ var config bool bCorpseShots;      // corpses bleed and move when shot (a body s
 var config float CorpseKick;       // the push a shot gives a ragdoll
 var KarmaParamsSkel CorpseParams;  // ragdoll settings for corpses the level gave none (a subobject below, so saves can refer to it)
 var array<Pawn> Corpses;
-var float CorpseScan, LastCorpseLog;
+var float CorpseScan;
 
-var config bool bHoldCorpses;      // bodies near the player don't fade until the player moves away
-var config float HoldRange;
-var config int MaxHeld;
-var array<Pawn> Held;              // corpses whose fade was put off, oldest first
+var config bool bRemains;          // a body the game takes away leaves remains on the floor
+var config int MaxRemains;
+var array<vector> CorpseLoc;       // where each corpse lies, and its blood (BloodKind),
+var array<int> CorpseKind;         // kept for when the body is gone
+var array<ModBloodDecal> Remains;
 
 var Material Splats[4], Sprays[2], Pool, Scorches[3], CasingTex;   // the textures, referenced so the package keeps them
-var Material AlienSplats[4], AlienSprays[2], AlienPool;             // the same in the Seekers' purple
+var Material RemainsTex[2];
+var Material AlienSplats[4], AlienSprays[2], AlienPool, AlienRemains[2];   // the same in the Seekers' purple
 var array<ModBloodDecal> Decals, Holes, Clutter;
 var StaticMesh ShellMesh;          // the game's own shell, taken from its shell particles
 var float ShellScale;              // ...and the size those particles draw it at
@@ -72,6 +74,11 @@ event PostBeginPlay()
 	}
 	ClampTex(Pool);
 	ClampTex(AlienPool);
+	for (i = 0; i < 2; i++)
+	{
+		ClampTex(RemainsTex[i]);
+		ClampTex(AlienRemains[i]);
+	}
 	ClampTex(CasingTex);
 	for (i = 0; i < 3; i++)
 		ClampTex(Scorches[i]);
@@ -320,7 +327,9 @@ function AddClutter(vector Spot, int Yaw)
 		class'ModSettings'.static.Note("gore: casing settled at " $ HitL $ " (" $ Clutter.Length $ " on the floor)");
 }
 
-// the dead lying around (refreshed twice a second): Health gone, in the Dying state
+// the dead lying around (refreshed twice a second): Health gone, in the Dying state.
+// A body leaving the list (the game fades it, recycles the pawn for a spawner, or
+// destroys it) leaves its remains where it last lay.
 function ScanCorpses()
 {
 	local Pawn P;
@@ -328,19 +337,26 @@ function ScanCorpses()
 	local bool bKnown;
 
 	for (i = Corpses.Length - 1; i >= 0; i--)
-		if (Corpses[i] == None || Corpses[i].bDeleteMe)
+	{
+		P = Corpses[i];
+		if (P == None || P.bDeleteMe || P.Health > 0 || !P.IsInState('Dying') || (P.bAllowAlphaFading && !P.default.bAllowAlphaFading))
 		{
 			if (class'ModSettings'.default.bGoreLog)
-				class'ModSettings'.static.Note("gore: a corpse is gone (" $ Corpses.Length - 1 $ " left)");
+				class'ModSettings'.static.Note("gore: a body is taken (" $ P $ "), remains at " $ CorpseLoc[i] $ " kind " $ CorpseKind[i]);
+			if (bRemains && CorpseKind[i] != 0)
+				AddRemains(CorpseLoc[i], CorpseKind[i]);
 			Corpses.Remove(i, 1);
+			CorpseLoc.Remove(i, 1);
+			CorpseKind.Remove(i, 1);
 		}
-		else if (class'ModSettings'.default.bGoreLog && Level.TimeSeconds - LastCorpseLog > 5)
-			LogCorpse(Corpses[i]);
-	if (Level.TimeSeconds - LastCorpseLog > 5)
-		LastCorpseLog = Level.TimeSeconds;
+		else
+			CorpseLoc[i] = P.Location;
+	}
 	ForEach DynamicActors(class'Pawn', P)
 	{
 		if (P.Health > 0 || P.IsHumanControlled() || P.bDeleteMe || !P.IsInState('Dying'))
+			continue;
+		if (P.bAllowAlphaFading && !P.default.bAllowAlphaFading)
 			continue;
 		bKnown = false;
 		for (i = 0; i < Corpses.Length; i++)
@@ -350,8 +366,41 @@ function ScanCorpses()
 				break;
 			}
 		if (!bKnown)
+		{
 			Corpses[Corpses.Length] = P;
+			CorpseLoc[CorpseLoc.Length] = P.Location;
+			CorpseKind[CorpseKind.Length] = BloodKind(P);
+		}
 	}
+}
+
+// remains, flat on the floor under where the body lay, turned any way
+function AddRemains(vector Spot, int Kind)
+{
+	local vector HitL, HitN;
+	local ModBloodDecal D;
+	local rotator R;
+	local Material T;
+
+	if (Trace(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,20), false) == None || HitN.Z < 0.6)
+		return;
+	while (Remains.Length > 0 && (Remains.Length >= MaxRemains || Remains[0] == None || Remains[0].bDeleteMe))
+	{
+		if (Remains[0] != None && !Remains[0].bDeleteMe)
+			Remains[0].Destroy();
+		Remains.Remove(0, 1);
+	}
+	if (Kind == 2)
+		T = AlienRemains[Rand(2)];
+	else
+		T = RemainsTex[Rand(2)];
+	D = Spawn(class'ModBloodDecal',,, HitL + HitN * 16);
+	if (D == None)
+		return;
+	R.Yaw = Rand(65536);
+	D.Place(T, HitL, HitN, vector(R), DecalScale * (1.1 + 0.25 * FRand()));
+	D.LifeSpan = 600;
+	Remains[Remains.Length] = D;
 }
 
 // a shot's path from A to B through a body: closest approach to the body's axis, within its width
@@ -439,93 +488,6 @@ function Limp(Pawn P, vector Dir, vector Spot)
 		class'ModSettings'.static.Note("gore: " $ A $ " went limp (" $ A.RagdollOverride $ "), physics " $ A.Physics);
 }
 
-// corpses near the player stay until the player walks away: the game's fade (AlphaFadeKill
-// sets bAllowAlphaFading, fAlphaFade then runs out) is undone and remembered, and let go
-// once the player is farther than HoldRange; the Dying state's out-of-sight timer is put
-// off the same way. Only bodies lying on a floor: the game also fades bodies left hanging
-// on a ledge or a slope (CheckForQuickDeadFade), and those still go.
-function HoldCorpses()
-{
-	local Pawn Me;
-	local AdventPawn A;
-	local int i;
-
-	if (Level.GetLocalPlayerController() == None)
-		return;
-	Me = Level.GetLocalPlayerController().Pawn;
-	if (Me == None)
-		return;
-	for (i = Held.Length - 1; i >= 0; i--)
-	{
-		A = AdventPawn(Held[i]);
-		if (A == None || A.bDeleteMe)
-		{
-			Held.Remove(i, 1);
-			continue;
-		}
-		if (VSize(A.Location - Me.Location) > HoldRange || Held.Length > MaxHeld)
-		{
-			if (class'ModSettings'.default.bGoreLog)
-				class'ModSettings'.static.Note("gore: letting " $ A $ " fade, " $ int(VSize(A.Location - Me.Location)) $ " away (" $ Held.Length - 1 $ " held)");
-			A.bAllowAlphaFading = true;
-			Held.Remove(i, 1);
-		}
-	}
-	for (i = 0; i < Corpses.Length; i++)
-	{
-		A = AdventPawn(Corpses[i]);
-		if (A == None || A.bDeleteMe || A.default.bAllowAlphaFading)    // holograms and the like always fade
-			continue;
-		if (VSize(A.Location - Me.Location) >= HoldRange)
-			continue;
-		// out of sight for a while, the Dying state's Timer destroys it: keep that off
-		if (A.TimerRate > 0 && A.TimerRate - A.TimerCounter < 1.0)
-			A.SetTimer(2.0, false);
-		if (A.LifeSpan > 0 && A.LifeSpan < 2.0)
-			A.LifeSpan = 2.0;
-		if (A.bAllowAlphaFading && !IsHeld(A) && OnFloor(A))
-		{
-			if (class'ModSettings'.default.bGoreLog)
-				class'ModSettings'.static.Note("gore: holding " $ A $ " (fade " $ A.fAlphaFade $ "), " $ int(VSize(A.Location - Me.Location)) $ " away");
-			Held[Held.Length] = A;
-		}
-		if (IsHeld(A))
-		{
-			A.bAllowAlphaFading = false;
-			A.fAlphaFade = 1;
-			A.SetColorOverride(1, 1, 1, 1);
-		}
-	}
-}
-
-function LogCorpse(Pawn P)
-{
-	local float D;
-
-	if (Level.GetLocalPlayerController().Pawn != None)
-		D = VSize(P.Location - Level.GetLocalPlayerController().Pawn.Location);
-	class'ModSettings'.static.Note("gore: corpse " $ P $ " " $ int(D) $ " away, fading " $ P.bAllowAlphaFading $ " " $ (AdventPawn(P) != None ? string(AdventPawn(P).fAlphaFade) : "") $ " timer " $ P.TimerCounter $ "/" $ P.TimerRate $ " life " $ P.LifeSpan $ " unseen " $ (Level.TimeSeconds - P.LastRenderTime) $ " held " $ IsHeld(P) $ " floor " $ OnFloor(P) $ " state " $ P.GetStateName() $ " physics " $ P.Physics);
-}
-
-function bool IsHeld(Pawn P)
-{
-	local int i;
-
-	for (i = 0; i < Held.Length; i++)
-		if (Held[i] == P)
-			return true;
-	return false;
-}
-
-function bool OnFloor(Pawn P)
-{
-	local vector HitL, HitN;
-	local Actor A;
-
-	A = Trace(HitL, HitN, P.Location - vect(0,0,1) * (P.CollisionHeight + 60), P.Location, false);
-	return A != None && HitN.Z > 0.9 && (A == Level || A.bWorldGeometry);
-}
-
 // testing: actors the player's gun or pawn just made (what marks a shot)
 function LogNewActors(Pawn P)
 {
@@ -580,8 +542,6 @@ event Tick(float DeltaTime)
 		CorpseScan = 0.5;
 		ScanCorpses();
 	}
-	if (bHoldCorpses)
-		HoldCorpses();
 	TrackShots();
 	for (i = Dying.Length - 1; i >= 0; i--)
 	{
@@ -672,6 +632,9 @@ event Destroyed()
 	for (i = 0; i < Clutter.Length; i++)
 		if (Clutter[i] != None)
 			Clutter[i].Destroy();
+	for (i = 0; i < Remains.Length; i++)
+		if (Remains[i] != None)
+			Remains[i].Destroy();
 	Super.Destroyed();
 }
 
@@ -691,9 +654,12 @@ defaultproperties
      AlienSprays(0)=Texture'AdventMod.Blood.AlienSpray0'
      AlienSprays(1)=Texture'AdventMod.Blood.AlienSpray1'
      AlienPool=Texture'AdventMod.Blood.AlienPool0'
-     bHoldCorpses=True
-     HoldRange=2500.000000
-     MaxHeld=16
+     RemainsTex(0)=Texture'AdventMod.Blood.BloodRemains0'
+     RemainsTex(1)=Texture'AdventMod.Blood.BloodRemains1'
+     AlienRemains(0)=Texture'AdventMod.Blood.AlienRemains0'
+     AlienRemains(1)=Texture'AdventMod.Blood.AlienRemains1'
+     bRemains=True
+     MaxRemains=40
      Scorches(0)=Texture'AdventMod.Blood.Scorch0'
      Scorches(1)=Texture'AdventMod.Blood.Scorch1'
      Scorches(2)=Texture'AdventMod.Blood.Scorch2'

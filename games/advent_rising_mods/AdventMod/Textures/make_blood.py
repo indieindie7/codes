@@ -6,6 +6,7 @@ surface as it is), imported into AdventMod.u by Classes/ModBloodTextures.uc.
   blood_spray0..1   a wall spray: the same pieces thrown one way (+X), for shots that hit
                     a wall behind the victim (the projector's roll lines it up with the shot)
   blood_pool0       a pool under a body (round, thick, a soft rim)
+  blood_remains0..1 what's left on the floor when the game takes a body away (chunks, bone)
   alien_*           the same in the Seekers' purple
   scorch0..2        where an energy bolt hit a wall: a burnt pit and soot rays
   casing0           a spent shell lying on the floor, from above (ModCasing's flattened self)
@@ -179,6 +180,79 @@ def casing(name, rng, size=32):
         fh.write(px)
     print(path)
 
+def remains(name, rng, palette=RED, size=128):
+    """what's left where a body was taken away (the game recycles its dead): a wide smeared
+    pool, flesh chunks a shade darker and glossy, pale bone shards, drag smears. Flat, so
+    it costs nothing once it's down (the Project Zomboid way)"""
+    thin, thick_ = palette
+    noise = fbm(size, rng)
+    pool_b = [(0.5 + rng.gauss(0, 0.08), 0.5 + rng.gauss(0, 0.05), rng.uniform(0.06, 0.10), rng.uniform(1.0, 1.8), 1) for _ in range(7)]
+    pool_b += [(0.5 + rng.gauss(0, 0.2), 0.5 + rng.gauss(0, 0.14), rng.uniform(0.01, 0.025), 1, 1) for _ in range(14)]
+    # chunks: lumpy pieces, a few big, more small
+    chunks = []
+    for _ in range(rng.randint(9, 14)):
+        cx, cy = 0.5 + rng.gauss(0, 0.13), 0.5 + rng.gauss(0, 0.09)
+        r = 0.02 + 0.04 * rng.random() ** 1.5
+        for _ in range(rng.randint(2, 4)):
+            chunks.append((cx + rng.gauss(0, r * 0.6), cy + rng.gauss(0, r * 0.6), r * rng.uniform(0.6, 1.0)))
+    # bone shards: thin bright slivers
+    shards = []
+    for _ in range(rng.randint(4, 7)):
+        shards.append((0.5 + rng.gauss(0, 0.12), 0.5 + rng.gauss(0, 0.08), rng.uniform(0, math.pi), rng.uniform(0.02, 0.05), rng.uniform(0.005, 0.009)))
+    px = bytearray()
+    for y in range(size - 1, -1, -1):
+        for x in range(size):
+            u, v = (x + 0.5) / size, (y + 0.5) / size
+            n = noise[y][x]
+            f = 0.0
+            for bx, by, r, sx, sy in pool_b:
+                dx, dy = (u - bx) / sx, (v - by) / sy
+                f += r * r / max(dx * dx + dy * dy, 1e-6)
+            a = smoothstep(0.85, 1.15, f * (1.0 + 0.6 * (n - 0.5)))
+            thick = smoothstep(1.0, 4.0, f) * (0.65 + 0.7 * (n - 0.5))
+            col = [t + (k - t) * thick + 0.06 * (n - 0.5) for t, k in zip(thin, thick_)]
+            # flesh chunks: darker, a highlight on the upper-left of each (wet)
+            ch = 0.0
+            hl = 0.0
+            for cx, cy, r in chunks:
+                d = math.hypot(u - cx, v - cy) / r
+                if d < 1.3:
+                    ch = max(ch, 1 - smoothstep(0.75, 1.05, d + 0.25 * (n - 0.5)))
+                    hl = max(hl, math.exp(-((u - cx + r * 0.35) ** 2 + (v - cy - r * 0.35) ** 2) / (r * 0.25) ** 2))
+            if ch > 0:
+                # meat: the thin colour, lighter, mottled; a dark rim where it meets the pool
+                rim = ch * (1 - ch) * 4
+                flesh = [min(1.0, t * 1.15 + 0.08) * (0.8 + 0.4 * n) for t in thin]
+                col = [c * (1 - ch) + fl * ch for c, fl in zip(col, flesh)]
+                col = [c * (1 - 0.6 * rim) + 0.3 * hl * ch for c in col]
+                a = max(a, ch)
+            # bone shards
+            for sx_, sy_, ang, ln, wd in shards:
+                du, dv = u - sx_, v - sy_
+                along = du * math.cos(ang) + dv * math.sin(ang)
+                across = -du * math.sin(ang) + dv * math.cos(ang)
+                d = max(abs(along) / ln, abs(across) / (wd * (1 - 0.6 * abs(along) / ln)))
+                if d < 1.0:
+                    b = 1 - smoothstep(0.7, 1.0, d)
+                    col = [c * (1 - b) + bone * b for c, bone in zip(col, (0.95, 0.9, 0.78))]
+                    a = max(a, b)
+            border = min(u, v, 1 - u, 1 - v)
+            a *= smoothstep(0.0, 0.06, border)
+            a = min(max(a, 0), 1)
+            # 2x modulate, as in render(); bone may brighten the floor a little (up to 0.68)
+            r_, g_, b_ = col
+            px_c = []
+            for c in (b_, g_, r_):
+                c = min(max(c, 0), 1)
+                m = 0.5 * (1 - a * (1 - c)) if c <= 0.5 else 0.5 + a * (c - 0.5) * 0.36
+                px_c.append(m)
+            px += bytes([int(255 * q + 0.5) for q in px_c] + [int(255 * a + 0.5)])
+    path = os.path.join(HERE, name + ".tga")
+    with open(path, "wb") as fh:
+        fh.write(struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, size, size, 32, 8))
+        fh.write(px)
+    print(path)
+
 
 if __name__ == "__main__":
     casing("casing0", random.Random(5000))
@@ -195,3 +269,5 @@ if __name__ == "__main__":
             render(128, splat(rng, directional=True), rng, edge_noise=0.8, name="%s_spray%d" % (prefix, i), palette=pal)
         rng = random.Random(3000)
         render(128, pool(rng), rng, edge_noise=0.35, name="%s_pool0" % prefix, palette=pal)
+        for i in range(2):
+            remains("%s_remains%d" % (prefix, i), random.Random(6000 + i), palette=pal)
