@@ -398,6 +398,73 @@ function Where()
 		Note("where: camera " $ E.Camera.MoveController.Name $ " desired " $ E.Camera.MoveController.DesiredXAxisRotation $ " current " $ E.Camera.MoveController.CurrentXAxisRotation $ " camera rot " $ E.Camera.Rotation);
 }
 
+function BloodFx()
+{
+	local SurfaceProperties S;
+
+	S = Level.GetSurfaceProperties();
+	if (S == None)
+	{
+		Note("bloodfx: no surface table");
+		return;
+	}
+	BloodFxEvent("HumanBlaster", S.SurfaceEvent_HumanBlaster);
+	BloodFxEvent("HumanPistol", S.SurfaceEvent_HumanPistol);
+	BloodFxEvent("HumanXJ9", S.SurfaceEvent_HumanXJ9);
+	BloodFxEvent("SeekerPulse", S.SurfaceEvent_SeekerPulse);
+	BloodFxEvent("Default", S.SurfaceEvent_DefaultWeaponEffect);
+}
+
+function BloodFxEvent(string Ev, SurfaceTypes T)
+{
+	if (T == None)
+	{
+		Note("bloodfx: " $ Ev $ " none");
+		return;
+	}
+	BloodFxList(Ev $ " Human", T.SurfaceType_Human);
+	BloodFxList(Ev $ " Seeker", T.SurfaceType_Seeker);
+	BloodFxList(Ev $ " Aurelian", T.SurfaceType_Aurelian);
+	BloodFxList(Ev $ " ShockTrooper", T.SurfaceType_ShockTrooper);
+	BloodFxList(Ev $ " PawnDefault", T.SurfaceType_PawnDefault);
+	BloodFxList(Ev $ " HoloA", T.SurfaceType_HologramGuyA);
+}
+
+function BloodFxList(string What, array<SurfaceEventArray> L)
+{
+	local int i, j, k, m;
+	local class<Emitter> E;
+	local ParticleEmitter P;
+	local string S;
+
+	for (i = 0; i < L.Length; i++)
+	{
+		if (L[i] == None)
+			continue;
+		Note("bloodfx: " $ What $ " [" $ i $ "] use " $ L[i].UseSurfaceType $ " ref " $ L[i].ReferenceArrayEntry $ " events " $ L[i].EventsToPlayArray.Length);
+		for (j = 0; j < L[i].EventsToPlayArray.Length; j++)
+		{
+			if (L[i].EventsToPlayArray[j] == None)
+				continue;
+			E = L[i].EventsToPlayArray[j].Emitter;
+			Note("bloodfx:   " $ E $ " projector " $ L[i].EventsToPlayArray[j].Projector $ " tex " $ L[i].EventsToPlayArray[j].ProjectorTexture);
+			if (E == None)
+				continue;
+			for (k = 0; k < E.default.Emitters.Length; k++)
+			{
+				P = E.default.Emitters[k];
+				if (P == None)
+					continue;
+				S = "";
+				if (P.UseColorScale)
+					for (m = 0; m < P.ColorScale.Length; m++)
+						S = S $ " " $ P.ColorScale[m].Color.R $ "/" $ P.ColorScale[m].Color.G $ "/" $ P.ColorScale[m].Color.B;
+				Note("bloodfx:     " $ P.Name $ " tex " $ P.Texture $ " style " $ P.DrawStyle $ " mult " $ P.ColorMultiplierRange.X.Min $ "-" $ P.ColorMultiplierRange.X.Max $ "," $ P.ColorMultiplierRange.Y.Min $ "-" $ P.ColorMultiplierRange.Y.Max $ "," $ P.ColorMultiplierRange.Z.Min $ "-" $ P.ColorMultiplierRange.Z.Max $ " scale" $ S);
+			}
+		}
+	}
+}
+
 function bool SkipCutscene()
 {
 	if (CinematicEvent(Level.CinematicToSkip) == None)
@@ -539,6 +606,10 @@ function StartStep()
 		break;
 	case "WHERE":
 		Where();
+		break;
+	case "BLOODFX":
+		// the level's hit effects per species (the surface table), with their particle colours
+		BloodFx();
 		break;
 	case "FXLIST":
 		FxList();

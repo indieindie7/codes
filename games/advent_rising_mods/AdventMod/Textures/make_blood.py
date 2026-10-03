@@ -6,6 +6,7 @@ surface as it is), imported into AdventMod.u by Classes/ModBloodTextures.uc.
   blood_spray0..1   a wall spray: the same pieces thrown one way (+X), for shots that hit
                     a wall behind the victim (the projector's roll lines it up with the shot)
   blood_pool0       a pool under a body (round, thick, a soft rim)
+  alien_*           the same in the Seekers' purple
   scorch0..2        where an energy bolt hit a wall: a burnt pit and soot rays
   casing0           a spent shell lying on the floor, from above (ModCasing's flattened self)
 
@@ -45,8 +46,15 @@ def smoothstep(a, b, v):
     return t * t * (3 - 2 * t)
 
 
-def render(size, balls, rng, edge_noise=0.55, name="x"):
+# blood colours, thin and thick (RGB 0..1, before the 2x-multiply mix), matched to the game's
+# own hit particles: humans 136/0/0 (fx_person_Bullet_Blood), Seekers 128/0/255 (fx_person_bulletS)
+RED = ((0.62, 0.08, 0.05), (0.37, 0.05, 0.05))
+PURPLE = ((0.46, 0.07, 0.82), (0.26, 0.03, 0.52))
+
+
+def render(size, balls, rng, edge_noise=0.55, name="x", palette=RED):
     """balls: (x, y, r, sx, sy) in 0..1 units; sx/sy stretch a ball into a streak"""
+    thin, thick_ = palette
     noise = fbm(size, rng)
     px = bytearray()
     for y in range(size - 1, -1, -1):          # TGA rows bottom-up
@@ -66,9 +74,7 @@ def render(size, balls, rng, edge_noise=0.55, name="x"):
             a *= smoothstep(0.0, 0.06, border)
             # thicker towards the middle of a body of blood, with a mottled sheen
             thick = smoothstep(1.0, 4.0, f) * (0.65 + 0.7 * (n - 0.5))
-            r_ = 0.62 - 0.25 * thick + 0.06 * (n - 0.5)
-            g_ = 0.05 + 0.03 * (1 - thick)
-            b_ = 0.05
+            r_, g_, b_ = [t + (k - t) * thick + 0.06 * (n - 0.5) for t, k in zip(thin, thick_)]
             a = min(max(a * (0.88 + 0.12 * thick), 0), 1)
             # drawn with the projector's modulate, which is a 2x multiply (UE2's alpha-blend
             # projector path falls through into it): 50% grey leaves the surface as it is,
@@ -179,11 +185,13 @@ if __name__ == "__main__":
     for i in range(3):
         rng = random.Random(4000 + i)
         scorch("scorch%d" % i, rng)
-    for i in range(4):
-        rng = random.Random(1000 + i)
-        render(128, splat(rng), rng, edge_noise=0.8, name="blood_splat%d" % i)
-    for i in range(2):
-        rng = random.Random(2000 + i)
-        render(128, splat(rng, directional=True), rng, edge_noise=0.8, name="blood_spray%d" % i)
-    rng = random.Random(3000)
-    render(128, pool(rng), rng, edge_noise=0.35, name="blood_pool0")
+    # the same shapes in each colour: blood_* red, alien_* purple
+    for prefix, pal in (("blood", RED), ("alien", PURPLE)):
+        for i in range(4):
+            rng = random.Random(1000 + i)
+            render(128, splat(rng), rng, edge_noise=0.8, name="%s_splat%d" % (prefix, i), palette=pal)
+        for i in range(2):
+            rng = random.Random(2000 + i)
+            render(128, splat(rng, directional=True), rng, edge_noise=0.8, name="%s_spray%d" % (prefix, i), palette=pal)
+        rng = random.Random(3000)
+        render(128, pool(rng), rng, edge_noise=0.35, name="%s_pool0" % prefix, palette=pal)

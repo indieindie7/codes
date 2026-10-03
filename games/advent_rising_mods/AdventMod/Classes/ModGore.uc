@@ -9,7 +9,12 @@
 // The marks are ModBloodDecal projectors with procedural textures (Textures\
 // make_blood.py, imported by ModBloodTextures). At most MaxDecals at once: the
 // oldest goes first. Only damage types that cause blood (DamageType.bCausesBlood)
-// and only characters (not vehicles or turrets) bleed.
+// and only characters (not vehicles or turrets) bleed, in the colour the game's own
+// hit particles give them (its surface table: humans red, Seekers purple, holograms
+// and ShockTroopers nothing).
+// Bodies near the player stay: the game fades corpses out (AlphaFadeKill, and the
+// Dying state's timer for those out of sight); within HoldRange that is put off
+// until the player has walked away.
 //=============================================================================
 class ModGore extends Info
 	config(AdventMod);
@@ -26,9 +31,15 @@ var config bool bCorpseShots;      // corpses bleed and move when shot (a body s
 var config float CorpseKick;       // the push a shot gives a ragdoll
 var KarmaParamsSkel CorpseParams;  // ragdoll settings for corpses the level gave none (a subobject below, so saves can refer to it)
 var array<Pawn> Corpses;
-var float CorpseScan;
+var float CorpseScan, LastCorpseLog;
+
+var config bool bHoldCorpses;      // bodies near the player don't fade until the player moves away
+var config float HoldRange;
+var config int MaxHeld;
+var array<Pawn> Held;              // corpses whose fade was put off, oldest first
 
 var Material Splats[4], Sprays[2], Pool, Scorches[3], CasingTex;   // the textures, referenced so the package keeps them
+var Material AlienSplats[4], AlienSprays[2], AlienPool;             // the same in the Seekers' purple
 var array<ModBloodDecal> Decals, Holes, Clutter;
 var StaticMesh ShellMesh;          // the game's own shell, taken from its shell particles
 var float ShellScale;              // ...and the size those particles draw it at
@@ -50,10 +61,17 @@ event PostBeginPlay()
 		return;
 	// clamped, not tiled: a projector wider than its picture would repeat it
 	for (i = 0; i < 4; i++)
+	{
 		ClampTex(Splats[i]);
-	ClampTex(Sprays[0]);
-	ClampTex(Sprays[1]);
+		ClampTex(AlienSplats[i]);
+	}
+	for (i = 0; i < 2; i++)
+	{
+		ClampTex(Sprays[i]);
+		ClampTex(AlienSprays[i]);
+	}
 	ClampTex(Pool);
+	ClampTex(AlienPool);
 	ClampTex(CasingTex);
 	for (i = 0; i < 3; i++)
 		ClampTex(Scorches[i]);
@@ -82,7 +100,50 @@ function bool Bleeds(Pawn P, class<DamageType> DamageType)
 		return false;
 	if (P.IsA('Vehicle') || P.IsA('Turret'))
 		return false;
-	return true;
+	return BloodKind(P) != 0;
+}
+
+// the colour of a character's blood, as the game's hit particles have it (the level's
+// SurfaceProperties table, read with ModPilot BLOODFX): 1 red (humans, Aurelians and
+// anything unlisted), 2 purple (Seekers), 0 none (holograms spark blue, ShockTroopers
+// are armour)
+static function int BloodKind(Pawn P)
+{
+	switch (P.GetSurfaceType())
+	{
+	case EST_Seeker:
+	case EST_SeekerBlocking:
+		return 2;
+	case EST_ShockTrooper:
+	case EST_HologramGuyA:
+	case EST_HologramGuyB:
+	case EST_HologramGuyC:
+	case EST_VehicleDefault:
+	case EST_Metal:
+		return 0;
+	}
+	return 1;
+}
+
+function Material SplatTex(Pawn P)
+{
+	if (BloodKind(P) == 2)
+		return AlienSplats[Rand(4)];
+	return Splats[Rand(4)];
+}
+
+function Material SprayTex(Pawn P)
+{
+	if (BloodKind(P) == 2)
+		return AlienSprays[Rand(2)];
+	return Sprays[Rand(2)];
+}
+
+function Material PoolTex(Pawn P)
+{
+	if (BloodKind(P) == 2)
+		return AlienPool;
+	return Pool;
 }
 
 // a hit: Damage after the game's scaling, the victim still standing or not
@@ -112,10 +173,10 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	// the spray behind the victim, along the shot (a little downward: blood falls)
 	Dir = Normal(Dir + vect(0,0,-0.25));
 	if (Trace(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius, false) != None)
-		Mark(Sprays[Rand(2)], HitL, HitN, Dir, Size * (0.8 + 0.6 * VSize(HitL - HitLocation) / SprayReach));
+		Mark(SprayTex(Victim), HitL, HitN, Dir, Size * (0.8 + 0.6 * VSize(HitL - HitLocation) / SprayReach));
 	// drips under the hit
 	if (FRand() < 0.85 && Trace(HitL, HitN, HitLocation - vect(0,0,400), HitLocation, false) != None)
-		Mark(Splats[Rand(4)], HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
+		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
 	// a pool under a fresh body
 	if (Victim.Health <= 0 || Damage >= Victim.Health)
 		AddDying(Victim);
@@ -268,7 +329,15 @@ function ScanCorpses()
 
 	for (i = Corpses.Length - 1; i >= 0; i--)
 		if (Corpses[i] == None || Corpses[i].bDeleteMe)
+		{
+			if (class'ModSettings'.default.bGoreLog)
+				class'ModSettings'.static.Note("gore: a corpse is gone (" $ Corpses.Length - 1 $ " left)");
 			Corpses.Remove(i, 1);
+		}
+		else if (class'ModSettings'.default.bGoreLog && Level.TimeSeconds - LastCorpseLog > 5)
+			LogCorpse(Corpses[i]);
+	if (Level.TimeSeconds - LastCorpseLog > 5)
+		LastCorpseLog = Level.TimeSeconds;
 	ForEach DynamicActors(class'Pawn', P)
 	{
 		if (P.Health > 0 || P.IsHumanControlled() || P.bDeleteMe || !P.IsInState('Dying'))
@@ -324,12 +393,12 @@ function CorpseHit(Pawn P, vector Spot, vector Dir)
 		class'ModSettings'.static.Note("gore: corpse hit " $ P $ " physics " $ P.Physics $ " at " $ Spot);
 	// it bleeds like the living do (they don't reach NetDamage any more: Dying.TakeDamage
 	// doesn't pass hits on)
-	if (bBlood)
+	if (bBlood && BloodKind(P) != 0)
 	{
 		if (Trace(HitL, HitN, Spot + Normal(Dir + vect(0,0,-0.4)) * SprayReach, Spot, false) != None)
-			Mark(Sprays[Rand(2)], HitL, HitN, Dir, DecalScale * 0.6);
+			Mark(SprayTex(P), HitL, HitN, Dir, DecalScale * 0.6);
 		if (Trace(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,10), false) != None)
-			Mark(Splats[Rand(4)], HitL + VRand() * vect(1,1,0) * 20, HitN, vect(0,0,0), DecalScale * 0.45);
+			Mark(SplatTex(P), HitL + VRand() * vect(1,1,0) * 20, HitN, vect(0,0,0), DecalScale * 0.45);
 	}
 	if (P.LifeSpan > 0)
 		P.LifeSpan += 0.2;
@@ -368,6 +437,93 @@ function Limp(Pawn P, vector Dir, vector Spot)
 	A.StopAnimating(true);
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: " $ A $ " went limp (" $ A.RagdollOverride $ "), physics " $ A.Physics);
+}
+
+// corpses near the player stay until the player walks away: the game's fade (AlphaFadeKill
+// sets bAllowAlphaFading, fAlphaFade then runs out) is undone and remembered, and let go
+// once the player is farther than HoldRange; the Dying state's out-of-sight timer is put
+// off the same way. Only bodies lying on a floor: the game also fades bodies left hanging
+// on a ledge or a slope (CheckForQuickDeadFade), and those still go.
+function HoldCorpses()
+{
+	local Pawn Me;
+	local AdventPawn A;
+	local int i;
+
+	if (Level.GetLocalPlayerController() == None)
+		return;
+	Me = Level.GetLocalPlayerController().Pawn;
+	if (Me == None)
+		return;
+	for (i = Held.Length - 1; i >= 0; i--)
+	{
+		A = AdventPawn(Held[i]);
+		if (A == None || A.bDeleteMe)
+		{
+			Held.Remove(i, 1);
+			continue;
+		}
+		if (VSize(A.Location - Me.Location) > HoldRange || Held.Length > MaxHeld)
+		{
+			if (class'ModSettings'.default.bGoreLog)
+				class'ModSettings'.static.Note("gore: letting " $ A $ " fade, " $ int(VSize(A.Location - Me.Location)) $ " away (" $ Held.Length - 1 $ " held)");
+			A.bAllowAlphaFading = true;
+			Held.Remove(i, 1);
+		}
+	}
+	for (i = 0; i < Corpses.Length; i++)
+	{
+		A = AdventPawn(Corpses[i]);
+		if (A == None || A.bDeleteMe || A.default.bAllowAlphaFading)    // holograms and the like always fade
+			continue;
+		if (VSize(A.Location - Me.Location) >= HoldRange)
+			continue;
+		// out of sight for a while, the Dying state's Timer destroys it: keep that off
+		if (A.TimerRate > 0 && A.TimerRate - A.TimerCounter < 1.0)
+			A.SetTimer(2.0, false);
+		if (A.LifeSpan > 0 && A.LifeSpan < 2.0)
+			A.LifeSpan = 2.0;
+		if (A.bAllowAlphaFading && !IsHeld(A) && OnFloor(A))
+		{
+			if (class'ModSettings'.default.bGoreLog)
+				class'ModSettings'.static.Note("gore: holding " $ A $ " (fade " $ A.fAlphaFade $ "), " $ int(VSize(A.Location - Me.Location)) $ " away");
+			Held[Held.Length] = A;
+		}
+		if (IsHeld(A))
+		{
+			A.bAllowAlphaFading = false;
+			A.fAlphaFade = 1;
+			A.SetColorOverride(1, 1, 1, 1);
+		}
+	}
+}
+
+function LogCorpse(Pawn P)
+{
+	local float D;
+
+	if (Level.GetLocalPlayerController().Pawn != None)
+		D = VSize(P.Location - Level.GetLocalPlayerController().Pawn.Location);
+	class'ModSettings'.static.Note("gore: corpse " $ P $ " " $ int(D) $ " away, fading " $ P.bAllowAlphaFading $ " " $ (AdventPawn(P) != None ? string(AdventPawn(P).fAlphaFade) : "") $ " timer " $ P.TimerCounter $ "/" $ P.TimerRate $ " life " $ P.LifeSpan $ " unseen " $ (Level.TimeSeconds - P.LastRenderTime) $ " held " $ IsHeld(P) $ " floor " $ OnFloor(P) $ " state " $ P.GetStateName() $ " physics " $ P.Physics);
+}
+
+function bool IsHeld(Pawn P)
+{
+	local int i;
+
+	for (i = 0; i < Held.Length; i++)
+		if (Held[i] == P)
+			return true;
+	return false;
+}
+
+function bool OnFloor(Pawn P)
+{
+	local vector HitL, HitN;
+	local Actor A;
+
+	A = Trace(HitL, HitN, P.Location - vect(0,0,1) * (P.CollisionHeight + 60), P.Location, false);
+	return A != None && HitN.Z > 0.9 && (A == Level || A.bWorldGeometry);
 }
 
 // testing: actors the player's gun or pawn just made (what marks a shot)
@@ -424,6 +580,8 @@ event Tick(float DeltaTime)
 		CorpseScan = 0.5;
 		ScanCorpses();
 	}
+	if (bHoldCorpses)
+		HoldCorpses();
 	TrackShots();
 	for (i = Dying.Length - 1; i >= 0; i--)
 	{
@@ -436,7 +594,7 @@ event Tick(float DeltaTime)
 			Spot = Dying[i].Location;
 			if (Trace(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,20), false) != None && HitN.Z > 0.6)
 			{
-				D = Mark(Pool, HitL, HitN, vect(0,0,0), DecalScale * 0.6);
+				D = Mark(PoolTex(Dying[i]), HitL, HitN, vect(0,0,0), DecalScale * 0.6);
 				if (D != None)
 				{
 					D.Grow(DecalScale * 0.2, DecalScale * (0.9 + FRand() * 0.4), 5 + FRand() * 3);
@@ -526,6 +684,16 @@ defaultproperties
      Sprays(0)=Texture'AdventMod.Blood.BloodSpray0'
      Sprays(1)=Texture'AdventMod.Blood.BloodSpray1'
      Pool=Texture'AdventMod.Blood.BloodPool0'
+     AlienSplats(0)=Texture'AdventMod.Blood.AlienSplat0'
+     AlienSplats(1)=Texture'AdventMod.Blood.AlienSplat1'
+     AlienSplats(2)=Texture'AdventMod.Blood.AlienSplat2'
+     AlienSplats(3)=Texture'AdventMod.Blood.AlienSplat3'
+     AlienSprays(0)=Texture'AdventMod.Blood.AlienSpray0'
+     AlienSprays(1)=Texture'AdventMod.Blood.AlienSpray1'
+     AlienPool=Texture'AdventMod.Blood.AlienPool0'
+     bHoldCorpses=True
+     HoldRange=2500.000000
+     MaxHeld=16
      Scorches(0)=Texture'AdventMod.Blood.Scorch0'
      Scorches(1)=Texture'AdventMod.Blood.Scorch1'
      Scorches(2)=Texture'AdventMod.Blood.Scorch2'
