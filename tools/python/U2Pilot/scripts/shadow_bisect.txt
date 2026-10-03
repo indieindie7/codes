@@ -1,0 +1,14 @@
+# shadow bisect: one game screenshot (pre-post) of the player under a lamp, third person
+background
+map M08A1
+waitcontrol 180
+wait 3
+console hub kill 30000
+console BeMyMonkey
+console hub view on
+console togglehud
+console hub lamp 230 40 160
+turn 0 -30 0.3
+wait 3
+shot
+quit

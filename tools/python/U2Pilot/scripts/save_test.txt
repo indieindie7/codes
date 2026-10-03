@@ -1,0 +1,11 @@
+# save with the first-person body shown (the head's invisible material must not be transient)
+background
+map M08A1
+waitcontrol 180
+wait 3
+dump FirstPersonBody Invisible bHeadHidden
+console savegame 9
+wait 4
+mark saved
+wait 1
+quit

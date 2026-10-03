@@ -272,13 +272,11 @@ function HideHead(Pawn P)
 
 	if (bHeadHidden)
 		return;
+	// Invisible is defined in defaultproperties (a material in this package): one made at
+	// run time with new(None) is transient, and a save that met it on the pawn's skins
+	// aborted ("Transient object imported: FinalBlend")
 	if (Invisible == None)
-	{
-		Invisible = new(None) class'FinalBlend';
-		Invisible.Material = Texture'Black';
-		Invisible.FrameBufferBlending = FB_Brighten;
-		Invisible.ZWrite = false;
-	}
+		return;
 	SavedSkins.Length = P.Skins.Length;
 	for (i = 0; i < P.Skins.Length; i++)
 		SavedSkins[i] = P.Skins[i];
@@ -489,6 +487,12 @@ event Destroyed()
 
 defaultproperties
 {
+	Begin Object Class=FinalBlend Name=InvisibleHead
+		Material=Texture'Black'
+		FrameBufferBlending=FB_Brighten
+		ZWrite=False
+	End Object
+	Invisible=FinalBlend'InvisibleHead'
 	ForwardOffset=4.000000
 	UpOffset=6.000000
 	Smoothing=12.000000

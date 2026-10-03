@@ -1,0 +1,24 @@
+# shadows missing in the pack screenshots: mod vs stock vs off at one spot, third person under a lamp
+background
+map M08A1
+waitcontrol 180
+wait 3
+console hub kill 30000
+console BeMyMonkey
+console hub view on
+console togglehud
+console hub lamp 230 40 320
+turn 0 -30 0.3
+wait 3
+console hub info
+shotp
+wait 1
+console hub shadows stock
+wait 3
+shotp
+wait 1
+console hub shadows off
+wait 2
+shotp
+wait 1
+quit
