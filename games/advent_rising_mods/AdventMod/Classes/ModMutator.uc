@@ -61,6 +61,14 @@ function Every()
 		// testing: console commands on the title screen (e.g. open a level)
 		RunCommands(PC, class'ModSettings'.default.DebugCommands);
 	}
+	// the player's controller in a level (a loaded save brings its own input class with it):
+	// ModInput, for the stuck-pad and mouse fixes
+	if (PC != None && (PC.PlayerInput == None || PC.PlayerInput.Class != class'ModInput'))
+	{
+		PC.InputClass = class'ModInput';
+		PC.InitInputSystem();
+		class'ModSettings'.static.Note("input: ModInput given to " $ PC);
+	}
 	class'ModSettings'.static.ApplyFOV(PC);
 	if (class'ModSettings'.default.bShadowFix)
 		class'ModSettings'.static.NativeCall("ShadowAlpha");  // follows the game to a new device
