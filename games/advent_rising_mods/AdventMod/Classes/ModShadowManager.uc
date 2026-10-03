@@ -293,6 +293,7 @@ function Adopt(Actor A)
 {
 	local ModShadowController C;
 	local Pawn P;
+	local byte StockDark;
 
 	P = Pawn(A);
 
@@ -306,12 +307,16 @@ function Adopt(Actor A)
 		// kept but never drawn: with no shadow of its own, the engine stops updating the
 		// pawn's other shadow projectors too (measured)
 		if (P.Shadow.ShadowTexture != None)
+		{
+			StockDark = P.Shadow.ShadowTexture.ShadowDarkness;
 			P.Shadow.ShadowTexture.ShadowDarkness = 0;
+		}
 	}
 	C = Spawn(class'ModShadowController', A, '', A.Location, A.Rotation);
 	if (C == None)
 		return;
 	C.Manager = Self;
+	C.StockDark = StockDark;
 	C.Initialize();
 	// testing: does the engine only draw the shadow it knows as the pawn's own?
 	if (P != None && class'ModShadowController'.default.bDebugOwnShadow && C.Shadows.Length > 0)

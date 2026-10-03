@@ -59,6 +59,7 @@ var int PickVersion;
 var float LastTotalLight;
 var float LastAmbient;
 var bool bOutdoors;               // the sun reached this character at the last pick
+var byte StockDark;               // the darkness of the game's own shadow, put back when this controller goes
 var float OutOfPool;              // seconds this character has been outside the manager's shadow pool
 
 function bool IsPlayer()
@@ -421,6 +422,10 @@ function string Describe()
 event Destroyed()
 {
 	local int i;
+
+	// soft shadows switched off (Graphics page): the game's own shadow comes back
+	if (StockDark > 0 && Pawn(Owner) != None && Pawn(Owner).Shadow != None && Pawn(Owner).Shadow.ShadowTexture != None)
+		Pawn(Owner).Shadow.ShadowTexture.ShadowDarkness = StockDark;
 
 	for (i = 0; i < Shadows.Length; i++)
 		if (Shadows[i] != None)

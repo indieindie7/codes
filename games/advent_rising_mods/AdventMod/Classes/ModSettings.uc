@@ -19,6 +19,9 @@ var config bool bShadowFix;           // character shadows: Engine.dll's sky pas
 var config bool bNoGamePostFx;        // remove the game's own camera effects (blurs, distortion, DOF) every frame: the Direct3D layer's post effects replace them
 var config bool bSoftShadows;         // multi-light character shadows (ModShadowManager, ported from U2SoftShadows)
 var bool bStartedUp;                  // Startup has run (once per run of the game)
+var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
+var config float Sharpen;             // CAS sharpening 0..1 (the preset sets it; the Graphics page slider changes it)
+var config bool bSMAA;                // the layer's SMAA anti-aliasing
 var config int MaxFps;                // frame cap: -1 = the monitor's refresh rate, 0 = none (uncapped the GPU draws ~300 fps nobody sees)
 var config bool bD3DTrace;            // testing: trace Direct3D calls (AdventNative d3dtrace.c) into AdventNative.log
 var config string DebugLevelMenu;     // testing: a menu class ModMutator opens DebugMenuDelay seconds into a level,
@@ -178,6 +181,61 @@ static function RemoveLauncherFOV(PlayerController PC)
 	}
 }
 
+// a float as U2Shaders.ini wants it ("0.4", not "0.40")
+static function string Num(float F)
+{
+	local string S;
+
+	S = string(F);
+	if (InStr(S, ".") >= 0)
+		while (Right(S, 1) == "0")
+			S = Left(S, Len(S) - 1);
+	if (Right(S, 1) == ".")
+		S = Left(S, Len(S) - 1);
+	return S;
+}
+
+// the post-processing presets of the Graphics page, written to System\U2Shaders.ini (the
+// Direct3D layer picks them up at once). grade = saturation contrast exposure vignette,
+// postfx = chromatic aberration, film grain, dither, highlight shoulder
+static function ApplyPostPreset(int N)
+{
+	local string Bloom, Grade, Colour, Fx, Lut;
+	local float Sharp;
+
+	default.PostPreset = N;
+	switch (N)
+	{
+	case 0:
+		NativeCall("U2Set:post=0");
+		StaticSaveConfig();
+		return;
+	case 2:   // Cinematic: more bloom and vignette, warmer, more grain
+		Bloom = "0.55 0.8"; Grade = "1.05 1.08 1.0 0.45"; Colour = "1.02 1 0.97"; Fx = "0.0025 0.035 1 0.7"; Lut = "lut_advent.bmp"; Sharp = 0.3;
+		break;
+	case 3:   // Gritty: desaturated, harder contrast, heavy grain
+		Bloom = "0.7 0.35"; Grade = "0.75 1.15 0.95 0.5"; Colour = "1.03 1 0.94"; Fx = "0.001 0.05 1 0.72"; Lut = "lut_neutral.bmp"; Sharp = 0.5;
+		break;
+	case 4:   // Clean: no film effects, neutral colour
+		Bloom = "0.75 0.3"; Grade = "1.0 1.0 1.0 0.0"; Colour = "1 1 1"; Fx = "0 0 1 0.8"; Lut = "lut_neutral.bmp"; Sharp = 0.35;
+		break;
+	default:  // 1 Natural: the tested look
+		N = 1;
+		Bloom = "0.6 0.5"; Grade = "1.0 1.0 1.0 0.25"; Colour = "1 1 1"; Fx = "0.0015 0.02 1 0.76"; Lut = "lut_advent.bmp"; Sharp = 0.4;
+	}
+	// (assigned after the switch: inside it, "default." starting a statement reads as the default: label)
+	default.PostPreset = N;
+	default.Sharpen = Sharp;
+	NativeCall("U2Set:post=1");
+	NativeCall("U2Set:bloom=" $ Bloom);
+	NativeCall("U2Set:grade=" $ Grade);
+	NativeCall("U2Set:colour=" $ Colour);
+	NativeCall("U2Set:sharpen=" $ Num(default.Sharpen));
+	NativeCall("U2Set:postfx=" $ Fx);
+	NativeCall("U2Set:lut=" $ Lut);
+	StaticSaveConfig();
+}
+
 // called once per run of the game, by ModMutator in the first level (the title): the
 // window and the render device exist
 static function Startup(PlayerController PC)
@@ -230,6 +288,9 @@ defaultproperties
      bTrilinear=True
      FOV=75
      MaxFps=-1
+     PostPreset=1
+     Sharpen=0.400000
+     bSMAA=True
      DebugMovers=-1
      bWidescreen=True
 }

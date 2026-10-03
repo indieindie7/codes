@@ -65,6 +65,12 @@ function Every()
 		class'ModSettings'.static.NativeCall("ShadowAlpha");  // follows the game to a new device
 	if (class'ModSettings'.default.bSoftShadows && Shadows == None)
 		Shadows = Spawn(class'ModShadowManager');
+	else if (!class'ModSettings'.default.bSoftShadows && Shadows != None)
+	{
+		// switched off on the Graphics page: the game's own shadows come back
+		Shadows.Destroy();
+		Shadows = None;
+	}
 	if (class'ModSettings'.default.bD3DTrace)
 		class'ModSettings'.static.NativeCall("D3DTrace");     // testing: follows the game to a new device
 	class'ModSettings'.static.NativeCall("MaxFps:" $ class'ModSettings'.default.MaxFps);  // follows the game to a new device

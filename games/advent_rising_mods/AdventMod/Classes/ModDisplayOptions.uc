@@ -1,10 +1,12 @@
 //=============================================================================
 // ModDisplayOptions - "Display Options", opened from the Video Options page:
-// the launcher settings the game's own menus never had.
+// the launcher settings the game's own menus never had, and a row that opens
+// the Graphics page (ModGraphicsOptions).
 //=============================================================================
 class ModDisplayOptions extends MenuPauseOptionsBase;
 
-var localized string LstrWidescreen, LstrTrilinear, LstrFOV, LstrMinFrameRate;
+var localized string LstrWidescreen, LstrTrilinear, LstrFOV, LstrMinFrameRate, LstrGraphics, LstrOpen;
+var bool bOpenGraphics;
 
 function PlayerController GetPC()
 {
@@ -13,16 +15,19 @@ function PlayerController GetPC()
 
 function PreSetInitalPositions()
 {
-	NumBools = 2;
+	NumBools = 3;
 	NumSliders = 2;
 	Labels[0].Caption = LstrWidescreen;
 	Labels[1].Caption = LstrTrilinear;
-	Labels[2].Caption = LstrFOV;
-	Labels[3].Caption = LstrMinFrameRate;
+	Labels[2].Caption = LstrGraphics;
+	Labels[3].Caption = LstrFOV;
+	Labels[4].Caption = LstrMinFrameRate;
 	Button0.bActNormal = true;
 	Button0.OnClick = WidescreenClick;
 	Button1.bActNormal = true;
 	Button1.OnClick = TrilinearClick;
+	Button2.bActNormal = true;
+	Button2.OnClick = GraphicsClick;
 	Slider0.MinValue = 60;
 	Slider0.MaxValue = 120;
 	Slider0.bIntSlider = true;
@@ -36,8 +41,9 @@ function PreSetInitalPositions()
 function SetupInitalPositions()
 {
 	Super.SetupInitalPositions();
-	Slider0.SetAssociatedLabel(Labels[2]);
-	Slider1.SetAssociatedLabel(Labels[3]);
+	Slider0.SetAssociatedLabel(Labels[3]);
+	Slider1.SetAssociatedLabel(Labels[4]);
+	Button2.Caption = LstrOpen;
 	class'ModPanel'.static.AddTo(self);
 }
 
@@ -64,8 +70,8 @@ function SetLocalGuiOptions(bool Reset)
 
 function ShowValues()
 {
-	Labels[2].Caption = LstrFOV $ ": " $ int(Slider0.Value);
-	Labels[3].Caption = LstrMinFrameRate $ ": " $ int(Slider1.Value);
+	Labels[3].Caption = LstrFOV $ ": " $ int(Slider0.Value);
+	Labels[4].Caption = LstrMinFrameRate $ ": " $ int(Slider1.Value);
 }
 
 // applies at once (the game is paused here, so ModMutator's timer isn't running)
@@ -111,6 +117,28 @@ function bool TrilinearClick(GUIComponent Sender)
 	return false;
 }
 
+function bool GraphicsClick(GUIComponent Sender)
+{
+	bOpenGraphics = true;
+	bFadedOut = true;
+	curState = MENU_STATE_EXIT;
+	return false;
+}
+
+simulated function Timer()
+{
+	if (bLoadNextMenu && bOpenGraphics)
+	{
+		// the page has faded out: show the next one (the base class would open its reset prompt)
+		bLoadNextMenu = false;
+		bOpenGraphics = false;
+		// by class, not by string: see ModGUIController.OpenMenu
+		Controller.OpenMenu(string(class'ModGraphicsOptions'));
+		curState = MENU_STATE_IDLE;
+	}
+	Super.Timer();
+}
+
 // the game saves this one itself (WinDrv.WindowsClient, in Mydefault.ini)
 function FrameRateChange(GUIComponent Sender)
 {
@@ -125,4 +153,6 @@ defaultproperties
      LstrTrilinear="Trilinear Filtering"
      LstrFOV="Field of View"
      LstrMinFrameRate="Minimum Frame Rate"
+     LstrGraphics="Graphics (shadows, post effects)"
+     LstrOpen="Open"
 }

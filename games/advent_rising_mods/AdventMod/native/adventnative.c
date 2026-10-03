@@ -49,20 +49,18 @@ void Note(const wchar_t* Fmt, ...)
 /* ------------------------------------------------------------ borderless */
 
 static HWND GameWindow;
-/* The contact-hardening shadow layer (the U2Shaders d3d8.dll, when installed) reads
-   "pcss=" from System\U2Shaders.ini. Rewrites that line only when the value changes;
-   the layer picks the file up again while the game runs. 0 when the layer isn't there. */
-static int SetPcss(int On)
+/* Sets "Key=Value" in System\U2Shaders.ini (the U2Shaders d3d8.dll layer's settings; it
+   picks the file up again while the game runs), replacing the key's line or adding one.
+   Value NULL removes the line. 0 when the file isn't there. */
+static int SetU2(const char* Key, const char* Value)
 {
-	static int Last = -1;
 	wchar_t Path[MAX_PATH], *Slash;
 	char Buf[8192], Out[8400];
 	FILE* F;
-	size_t Len, o = 0;
+	size_t Len, o = 0, K = strlen(Key);
 	char* Line;
 	int Found = 0;
 
-	if (On == Last) return 1;
 	GetModuleFileNameW(NULL, Path, MAX_PATH);
 	Slash = wcsrchr(Path, L'\\');
 	if (!Slash) return 0;
@@ -74,18 +72,42 @@ static int SetPcss(int On)
 	Buf[Len] = 0;
 	for (Line = strtok(Buf, "\r\n"); Line; Line = strtok(NULL, "\r\n"))
 	{
-		if (!_strnicmp(Line, "pcss=", 5)) { o += sprintf(Out + o, "pcss=%d\r\n", On); Found = 1; }
+		if (!_strnicmp(Line, Key, K) && Line[K] == '=')
+		{
+			if (Value && !Found) o += sprintf(Out + o, "%s=%s\r\n", Key, Value);
+			Found = 1;
+		}
 		else o += sprintf(Out + o, "%s\r\n", Line);
 		if (o > sizeof(Out) - 600) break;
 	}
-	if (!Found) o += sprintf(Out + o, "pcss=%d\r\n", On);
+	if (!Found && Value) o += sprintf(Out + o, "%s=%s\r\n", Key, Value);
 	F = _wfopen(Path, L"wb");
 	if (!F) return 0;
 	fwrite(Out, 1, o, F);
 	fclose(F);
+	return 1;
+}
+
+static int SetPcss(int On)
+{
+	static int Last = -1;
+	if (On == Last) return 1;
+	if (!SetU2("pcss", On ? "1" : "0")) return 0;
 	Last = On;
 	Note(L"contact-hardening shadows %ls", On ? L"on (indoors)" : L"off (outdoors: the plain sun shadow)");
 	return 1;
+}
+
+/* NativeCall("U2Set:key=value"): one U2Shaders.ini setting ("U2Set:key=" removes the line) */
+static int U2SetCommand(const wchar_t* Arg)
+{
+	char A[512], *Eq;
+	WideCharToMultiByte(CP_ACP, 0, Arg, -1, A, sizeof(A), NULL, NULL);
+	Eq = strchr(A, '=');
+	if (!Eq || Eq == A) return 0;
+	*Eq = 0;
+	Note(L"U2Shaders.ini: %ls", Arg);
+	return SetU2(A, Eq[1] ? Eq + 1 : NULL);
 }
 
 static int Borderless;
@@ -167,6 +189,7 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsnicmp(Cmd, L"MaxFps:", 7)) return SetMaxFps(_wtoi(Cmd + 7));
 	if (!_wcsicmp(Cmd, L"D3DZAlways")) { D3DZAlways = 1; Note(L"d3dtrace: projected draws now always pass the depth test"); return 1; }
 	if (!_wcsnicmp(Cmd, L"Pcss:", 5)) return SetPcss(Cmd[5] == L'1');
+	if (!_wcsnicmp(Cmd, L"U2Set:", 6)) return U2SetCommand(Cmd + 6);
 	if (!_wcsnicmp(Cmd, L"Fits:", 5))
 	{
 		/* does WxH fit on the screen the game is on? */
