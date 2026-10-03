@@ -236,6 +236,32 @@ function Aim(float YawDeg, float PitchDeg)
 	Note("aim: view set to " $ R);
 }
 
+function Hurt(int Damage, string TypeName)
+{
+	local Pawn P, Best;
+	local PlayerController C;
+	local class<DamageType> T;
+	local vector Spot, Dir;
+
+	C = PC();
+	if (C == None || C.Pawn == None)
+		return;
+	T = class<DamageType>(DynamicLoadObject(TypeName, class'Class'));
+	ForEach DynamicActors(class'Pawn', P)
+		if (P != C.Pawn && P.Health > 0 && !P.IsA('Vehicle') && (Best == None || VSize(P.Location - C.Pawn.Location) < VSize(Best.Location - C.Pawn.Location)))
+			Best = P;
+	if (Best == None || T == None)
+	{
+		Note("hurt: no character near, or no damage type " $ TypeName);
+		return;
+	}
+	Dir = Normal(Best.Location - C.Pawn.Location);
+	Spot = Best.Location + vect(0,0,1) * Best.CollisionHeight * 0.4 - Dir * Best.CollisionRadius * 0.5;
+	Note("hurt: " $ Best $ " (health " $ Best.Health $ ") " $ Damage $ " " $ T $ ", " $ int(VSize(Best.Location - C.Pawn.Location)) $ " away");
+	Best.TakeDamage(Damage, C.Pawn, Spot, Dir * 20000, T);
+	Aim(ViewDeg(rotator(Best.Location - C.Pawn.Location).Yaw), -12);
+}
+
 function NearEnemy(float Dist)
 {
 	local Pawn P, Best;
@@ -398,6 +424,10 @@ function StartStep()
 	case "NEARENEMY":
 		// NEARENEMY [distance]: the player moved to that far from the level's nearest hostile, facing it
 		NearEnemy(ArgF(1, 900));
+		break;
+	case "HURT":
+		// HURT damage [Package.DamageType]: the nearest other character takes a shot from the player
+		Hurt(int(ArgF(1, 30)), Args.Length > 2 ? Args[2] : "EonWeapons.dmgType_HumanPistolFire");
 		break;
 	case "SPEEDTEST":
 		// SPEEDTEST [seconds] [walk]: run forward and log the top speed and what decides it

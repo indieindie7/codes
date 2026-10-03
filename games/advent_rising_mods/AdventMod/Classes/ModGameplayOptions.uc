@@ -6,7 +6,7 @@
 //=============================================================================
 class ModGameplayOptions extends MenuPauseOptionsBase;
 
-var localized string LstrBossDealt, LstrBossTaken, LstrExplore, LstrDealt, LstrTaken;
+var localized string LstrBossDealt, LstrBossTaken, LstrExplore, LstrBlood, LstrDealt, LstrTaken;
 var float BossSteps[6], ExploreSteps[4];
 
 function PlayerController GetPC()
@@ -16,19 +16,22 @@ function PlayerController GetPC()
 
 function PreSetInitalPositions()
 {
-	NumBools = 3;
+	NumBools = 4;
 	NumSliders = 2;
 	Labels[0].Caption = LstrBossDealt;
 	Labels[1].Caption = LstrBossTaken;
 	Labels[2].Caption = LstrExplore;
-	Labels[3].Caption = LstrDealt;
-	Labels[4].Caption = LstrTaken;
+	Labels[3].Caption = LstrBlood;
+	Labels[4].Caption = LstrDealt;
+	Labels[5].Caption = LstrTaken;
 	Button0.bActNormal = true;
 	Button0.OnClick = BossDealtClick;
 	Button1.bActNormal = true;
 	Button1.OnClick = BossTakenClick;
 	Button2.bActNormal = true;
 	Button2.OnClick = ExploreClick;
+	Button3.bActNormal = true;
+	Button3.OnClick = BloodClick;
 	Slider0.MinValue = 25;
 	Slider0.MaxValue = 300;
 	Slider0.bIntSlider = true;
@@ -42,8 +45,8 @@ function PreSetInitalPositions()
 function SetupInitalPositions()
 {
 	Super.SetupInitalPositions();
-	Slider0.SetAssociatedLabel(Labels[3]);
-	Slider1.SetAssociatedLabel(Labels[4]);
+	Slider0.SetAssociatedLabel(Labels[4]);
+	Slider1.SetAssociatedLabel(Labels[5]);
 	class'ModPanel'.static.AddTo(self);
 }
 
@@ -57,6 +60,8 @@ function SetLocalGuiOptions(bool Reset)
 		class'ModSettings'.default.BossDamageTaken = 1;
 		class'ModSettings'.default.ExploreSpeed = 1.25;
 		class'ModSettings'.static.StaticSaveConfig();
+		class'ModGore'.default.bBlood = true;
+		class'ModGore'.static.StaticSaveConfig();
 	}
 	Slider0.SetValue(int(class'ModSettings'.default.DamageDealt * 100 + 0.5));
 	Slider1.SetValue(int(class'ModSettings'.default.DamageTaken * 100 + 0.5));
@@ -74,8 +79,9 @@ function Refresh()
 	Button0.Caption = Pct(class'ModSettings'.default.BossDamageDealt);
 	Button1.Caption = Pct(class'ModSettings'.default.BossDamageTaken);
 	Button2.Caption = Pct(class'ModSettings'.default.ExploreSpeed);
-	Labels[3].Caption = LstrDealt $ ": " $ int(Slider0.Value) $ "%";
-	Labels[4].Caption = LstrTaken $ ": " $ int(Slider1.Value) $ "%";
+	Button3.SetValueB(class'ModGore'.default.bBlood);
+	Labels[4].Caption = LstrDealt $ ": " $ int(Slider0.Value) $ "%";
+	Labels[5].Caption = LstrTaken $ ": " $ int(Slider1.Value) $ "%";
 }
 
 // the next value of a cycle after Cur (the first one if Cur isn't in it)
@@ -115,6 +121,19 @@ function bool ExploreClick(GUIComponent Sender)
 	return false;
 }
 
+// blood decals on walls and floors (ModGore); marks already made stay until they fade
+function bool BloodClick(GUIComponent Sender)
+{
+	local ModGore G;
+
+	class'ModGore'.default.bBlood = !class'ModGore'.default.bBlood;
+	class'ModGore'.static.StaticSaveConfig();
+	foreach GetPC().DynamicActors(class'ModGore', G)
+		G.bBlood = class'ModGore'.default.bBlood;
+	Refresh();
+	return false;
+}
+
 function DealtChange(GUIComponent Sender)
 {
 	class'ModSettings'.default.DamageDealt = Slider0.Value / 100.0;
@@ -135,6 +154,7 @@ defaultproperties
      LstrBossDealt="Damage You Deal to Bosses"
      LstrBossTaken="Damage Bosses Deal to You"
      LstrExplore="Running Speed (no enemies near)"
+     LstrBlood="Blood"
      LstrDealt="Damage You Deal"
      LstrTaken="Damage You Take"
      BossSteps(0)=0.5

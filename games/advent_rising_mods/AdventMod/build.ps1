@@ -9,6 +9,9 @@ $Ucc = Join-Path (Split-Path -Parent $Here) 'AdventUCC'
 New-Item -ItemType Directory -Force "$Game\AdventMod\Classes" | Out-Null
 Remove-Item "$Game\AdventMod\Classes\*.uc" -Confirm:$false -ErrorAction SilentlyContinue
 Copy-Item "$Here\Classes\*.uc" "$Game\AdventMod\Classes"
+# textures the classes import with #exec (paths relative to <game>\AdventMod)
+New-Item -ItemType Directory -Force "$Game\AdventMod\Textures" | Out-Null
+Copy-Item "$Here\Textures\*.tga" "$Game\AdventMod\Textures" -Force
 $ini = "$Ucc\work\AdventUCC.ini"
 if (-not (Test-Path $ini)) { New-Item -ItemType Directory -Force "$Ucc\work" | Out-Null; Copy-Item "$Game\System\default.ini" $ini }
 $lines = Get-Content $ini | Where-Object { $_ -ne 'EditPackages=UnrealEd' }
