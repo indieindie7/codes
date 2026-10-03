@@ -103,6 +103,7 @@ exec function Hub(optional string Args)
 	else if (Cmd == "PROBE")                Probe();
 	else if (Cmd == "BONES")                Bones();
 	else if (Cmd == "BEND")                 Bend(Args);
+	else if (Cmd == "LEGS")                 Legs(Args);
 	else if (Cmd == "AGENT")                Agent(Word(Args));
 	else if (Cmd == "AGENTSET")             AgentSet(Word(Args), Word(Args), Caps(Word(Args)) == "LOCK");
 	else if (Cmd == "AGENTDO")              AgentDo(Args);
@@ -415,6 +416,28 @@ function Bones()
 		Say(L);
 	}
 	Say("pawn at ("$int(PC.Pawn.Location.X)$","$int(PC.Pawn.Location.Y)$","$int(PC.Pawn.Location.Z)$") height "$PC.Pawn.CollisionHeight);
+}
+
+// hub legs [rate R | animrate R | drive R] / hub legs off: foot-slide probe (HubLegs), optionally replaying the leg clip at rate R.
+function Legs(string Args)
+{
+	local HubLegs L;
+	local string W;
+
+	foreach PC.AllActors(class'HubLegs', L)
+		L.Destroy();
+	W = Caps(Word(Args));
+	if (W == "OFF" || PC.Pawn == None)
+	{
+		Say("legs: off");
+		return;
+	}
+	L = PC.Spawn(class'HubLegs');
+	if (W == "RATE")          L.Setup(PC.Pawn, NumOr(Word(Args), 1), 1);
+	else if (W == "ANIMRATE") L.Setup(PC.Pawn, NumOr(Word(Args), 1), 2);
+	else if (W == "DRIVE")    L.Setup(PC.Pawn, NumOr(Word(Args), 1), 3);
+	else                      L.Setup(PC.Pawn, 0, 0);
+	Say("legs: probing (see the log)");
 }
 
 // hub bend NODE pitch yaw roll [space] / hub bend off: rotate one bone every tick (HubBend).

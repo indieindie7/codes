@@ -1,0 +1,31 @@
+# first-person legs with leg sync on (FirstPersonBody bLegSync): the probe should now read ideal ~x1.0
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console god
+console set FirstPersonBody bLegLog True
+console hub legs
+move 1 0 3
+move -1 0 3
+move 0 1 3
+move 0 -1 3
+run 0
+move 1 0 3
+move -1 0 3
+run 1
+crouch 1
+move 1 0 3
+move -1 0 3
+crouch 0
+turn 0 -60 0.3
+wait 0.5
+shots 0.1
+move 1 0 1.5
+shots 0
+shots 0.1
+move -1 0 1.5
+shots 0
+console hub legs off
+wait 1
+quit

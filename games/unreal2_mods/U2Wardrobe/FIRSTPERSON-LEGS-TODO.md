@@ -27,6 +27,14 @@ State: head-locked camera, the body slides back when looking down (DownPush), st
    mesh-offset tricks are left.
 2. **Speed-matched legs:** choose walk/run/idle from horizontal speed, set the rate from
    speed / the cycle's stride, idle when nearly still (no slow-motion walk).
+   **Done 2026-10-03 (bLegSync):** the agent still picks the clip; every tick FirstPersonBody sets
+   `Pawn.AnimRate` (= the AnimAll channel's rate; the agent doesn't overwrite it until the next
+   clip) to speed / stride. Strides per clip (planted-foot speed per unit rate, DrawScale 1) were
+   measured with `hub legs` (U2TestHub HubLegs, scripts legs_probe/legs_rate/legs_calib/legs_sync).
+   Stock was off by 30% (run), 95% (backpedal), 2.3x (crouch walk); now within ~10%. A one-off
+   `MeshAgentImmediateAction` set doesn't change the rate; `MeshAgentEnableChannel(0,false)` +
+   `LoopAnim` also works (drive mode). Left: the upper-body channel keeps the stock rate (its
+   arm swing can drift from the legs); diagonals play a straight clip (sideways slide remains).
 3. **Feet on steps** (only if step 1 works): trace down under each foot bone; lower the pelvis
    by the lower foot's offset (capped at about 20); two-bone IK on the higher leg (law of
    cosines); ankle along the floor normal. Skip it while running.

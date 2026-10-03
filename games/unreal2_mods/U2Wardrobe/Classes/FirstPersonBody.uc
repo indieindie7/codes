@@ -57,6 +57,24 @@ var config bool bLowerArms;               // in first person the body's arms hol
                                           // pose's forearms never cross the view; the first-person gun is shown
 var bool bArmsLowered;
 var config bool bGunEyeHeight;            // holding a gun: the camera is the game's eye point (the gun stays in place)           // move the first-person gun along with the head camera (WeaponKickOffset)
+// leg sync: the leg clip (the agent's AnimAll channel) plays at the rate that keeps the planted foot
+// still for your actual speed. Stock clips play at one fixed rate (feet slid: running ~30% too slow,
+// backpedalling ~95%, crouch-walking 2.3x). Stride = the clip's planted-foot speed per unit of channel
+// rate at DrawScale 1, measured with "hub legs" (U2TestHub); clips not listed keep the stock rate.
+struct LegClip
+{
+	var string Clip;
+	var float Stride;
+};
+var config bool bLegSync;
+var config array<LegClip> LegClips;
+var config float LegMinScale, LegMaxScale;   // limits, as a multiple of the clip's stock rate
+var config bool bLegLog;
+var name LegSeq;                              // clip on the leg channel last tick
+var float LegStock;                           // the rate the agent gave it
+var float LegStride;                          // its stride (0: not listed)
+var float LegLogClock;
+
 var config bool bSightCamera;             // holding a gun: the camera behind and above the gun hand (cheek on
                                           // the stock), so the character's own aiming pose shows the gun in
                                           // its hands; the stock pose's forearms no longer cross the view
@@ -337,7 +355,66 @@ event Tick(float DeltaTime)
 	{
 		SetNodes(Shown, true);
 		ShrinkGun(Shown);
+		if (bLegSync)
+			LegSync(Shown, DeltaTime);
 	}
+}
+
+function float FindStride(name Seq)
+{
+	local string S;
+	local int i;
+	S = string(Seq);
+	if (Right(S, 5) ~= "_Hurt")
+		S = Left(S, Len(S) - 5);
+	for (i = 0; i < LegClips.Length; i++)
+		if (LegClips[i].Clip ~= S)
+			return LegClips[i].Stride;
+	return 0;
+}
+
+function LegSync(Pawn P, float DT)
+{
+	local name Seq;
+	local float Frame, Rate, Blend, Want, Speed;
+	local vector Flat;
+
+	P.GetAnimParams(0, Seq, Frame, Rate, Blend);
+	if (Seq != LegSeq)
+	{
+		LegSeq = Seq;              // the agent just started this clip: its rate is the stock one
+		LegStock = Rate;
+		LegStride = FindStride(Seq) * P.DrawScale;
+	}
+	if (LegStride <= 0 || LegStock <= 0 || P.Physics != PHYS_Walking)
+		return;
+	Flat = P.Velocity;
+	Flat.Z = 0;
+	Speed = VSize(Flat);
+	Want = FClamp(Speed / LegStride, LegStock * LegMinScale, LegStock * LegMaxScale);
+	P.AnimRate = Want;
+	if (bLegLog)
+	{
+		LegLogClock += DT;
+		if (LegLogClock >= 0.5)
+		{
+			LegLogClock = 0;
+			Log("FirstPersonBody: legs "$Seq$" speed "$int(Speed)$" stock "$LegStock$" -> "$Want);
+		}
+	}
+}
+
+// back to the agent's own rate for the clip playing
+function LegRestore(Pawn P)
+{
+	local name Seq;
+	local float Frame, Rate, Blend;
+	if (P == None || P.bDeleteMe || LegSeq == '')
+		return;
+	P.GetAnimParams(0, Seq, Frame, Rate, Blend);
+	if (Seq == LegSeq && LegStock > 0)
+		P.AnimRate = LegStock;
+	LegSeq = '';
 }
 
 // bHandsHoldGun: the character's hands hold the gun. Unreal II draws the held (third-person)
@@ -388,7 +465,10 @@ function LowerArms(Pawn P, bool bOn)
 function Hide()
 {
 	if (Shown != None && !Shown.bDeleteMe)
+	{
 		LowerArms(Shown, false);
+		LegRestore(Shown);
+	}
 	ShowHead(Shown);
 	RestoreGun();
 	if (Shown != None && !Shown.bDeleteMe)
@@ -422,6 +502,19 @@ defaultproperties
 	bGunWithCamera=True
 	bGunEyeHeight=True
 	bLowerArms=True
+	bLegSync=True
+	LegMinScale=0.400000
+	LegMaxScale=2.500000
+	LegClips(0)=(Clip="A_S_RunFrwd",Stride=164.9)
+	LegClips(1)=(Clip="A_S_RunBack",Stride=126.2)
+	LegClips(2)=(Clip="A_S_RunLeft",Stride=190.5)
+	LegClips(3)=(Clip="A_S_RunRght",Stride=213.7)
+	LegClips(4)=(Clip="A_S_WalkFrwd",Stride=87.4)
+	LegClips(5)=(Clip="A_S_WalkBack",Stride=90.0)
+	LegClips(6)=(Clip="A_S_WalkLeft",Stride=88.3)
+	LegClips(7)=(Clip="A_S_WalkRght",Stride=89.8)
+	LegClips(8)=(Clip="A_D_WalkFrwd",Stride=31.4)
+	LegClips(9)=(Clip="A_D_WalkBack",Stride=36.0)
 	SightNode="handpointR02"
 	SightBack=26.000000
 	SightUp=9.000000

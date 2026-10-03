@@ -1,0 +1,28 @@
+# first-person legs: can the leg clip's rate be changed live? baseline, Actor.AnimRate, then driving channel 0 ourselves
+background
+map M08A1
+waitcontrol 180
+wait 2
+console god
+console hub kill 30000
+console hub tp -1024 -2784 6330
+wait 1.5
+console hub legs
+mark baseline
+move 1 0 3
+move -1 0 3
+console hub legs animrate 1.6
+mark animrate 1.6
+move 1 0 3
+move -1 0 3
+console hub legs drive 1.6
+mark drive 1.6
+move 1 0 3
+move -1 0 3
+mark drive strafe
+move 0 1 2
+move 0 -1 2
+console hub legs off
+mark off
+move 1 0 2
+quit
