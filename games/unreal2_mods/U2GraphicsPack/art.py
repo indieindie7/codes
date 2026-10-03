@@ -4,7 +4,8 @@ import os
 R = r"C:\Users\john\Documents\github\codes\tools\python\U2Pilot\runs"
 D = os.path.join(os.path.expanduser("~"), "Downloads")
 def fr(run, n): return Image.open(os.path.join(R, run, "frames", "f%05d.bmp" % n)).convert("RGB")
-p1, p3, p2 = "20261003-091705_pack_shots", "20261003-091501_pack_shots3", "20261003-091806_pack_shots2"
+p1, p3, p2 = "20261003-091705_pack_shots", "20261003-134143_pack_shots3", "20261003-091806_pack_shots2"
+fp = "20261003-134250_shadow_fp"   # first person: a marine casting two soft shadows
 
 def font(size, name="Bold Condensed"):
     f = ImageFont.truetype(r"C:\Windows\Fonts\bahnschrift.ttf", size)
@@ -23,7 +24,7 @@ def centred(d, y, text, f, fill):
     d.text(((1280 - w) / 2, y), text, font=f, fill=fill)
 
 # thumbnail
-t = fr(p3, 3).resize((1280, 720), Image.LANCZOS)
+t = fr(fp, 0).resize((1280, 720), Image.LANCZOS)
 t = band(t, 30, 180); t = band(t, 640, 720, 170)
 d = ImageDraw.Draw(t)
 centred(d, 40, "UNREAL II GRAPHICS PACK", font(86), (255, 255, 255))
@@ -32,7 +33,7 @@ centred(d, 652, "SOFT SHADOWS  \u2022  BLOOM & COLOUR GRADE  \u2022  SMAA  \u202
 t.convert("RGB").save(os.path.join(D, "U2GraphicsPack-thumbnail.png"))
 
 # screenshots (960x540 like the earlier pages)
-fr(p3, 3).save(os.path.join(D, "U2GraphicsPack-screenshot1.png"))
+fr(fp, 0).save(os.path.join(D, "U2GraphicsPack-screenshot1.png"))
 a, b = fr(p1, 4), fr(p1, 5)
 s = a.copy(); s.paste(b.crop((480, 0, 960, 540)), (480, 0))
 s = band(s, 0, 44, 140); d = ImageDraw.Draw(s)
@@ -43,5 +44,5 @@ d.text((960 - 20 - d.textlength("POST-PROCESSING ON", font=f), 6), "POST-PROCESS
 s.convert("RGB").save(os.path.join(D, "U2GraphicsPack-screenshot2.png"))
 fr(p2, 3).save(os.path.join(D, "U2GraphicsPack-screenshot3.png"))
 fr(p1, 1).save(os.path.join(D, "U2GraphicsPack-screenshot4.png"))
-fr(p3, 1).save(os.path.join(D, "U2GraphicsPack-screenshot5.png"))
+fr(p3, 3).save(os.path.join(D, "U2GraphicsPack-screenshot5.png"))
 print("ok")

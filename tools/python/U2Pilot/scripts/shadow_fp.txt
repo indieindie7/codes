@@ -1,0 +1,23 @@
+# NPC shadows as the player sees them: first person, no HUD/weapon, two marines in front under a lamp
+background
+map M08A1
+waitcontrol 180
+wait 3
+console hub kill 30000
+console BeMyMonkey
+console hub dummy - 160 180
+turn 25 0 0.2
+console hub dummy - 200 260
+turn -25 0 0.2
+console hub lamp 230 50 250
+console hub clean
+turn 0 -15 0.3
+wait 3
+shotp
+console hub shadows stock
+wait 3
+shotp
+console hub shadows off
+wait 2
+shotp
+quit
