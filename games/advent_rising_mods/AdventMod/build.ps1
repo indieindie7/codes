@@ -17,9 +17,16 @@ if (-not (Test-Path $ini)) { New-Item -ItemType Directory -Force "$Ucc\work" | O
 $lines = Get-Content $ini | Where-Object { $_ -ne 'EditPackages=UnrealEd' }
 if ($lines -notcontains 'EditPackages=AdventMod') { $lines = $lines -replace '^EditPackages=Interface$', "EditPackages=Interface`r`nEditPackages=AdventMod" }
 $lines | Set-Content $ini -Encoding ascii
-Remove-Item "$Game\System\AdventMod.u" -Confirm:$false -ErrorAction SilentlyContinue
+# make only builds a package that isn't there: move the installed one aside, and put it
+# back if the compile fails (a game started without AdventMod.u crashes at its first menu)
+$prev = "$Game\System\AdventMod.u.build-previous"
+if (Test-Path "$Game\System\AdventMod.u") { Move-Item "$Game\System\AdventMod.u" $prev -Force }
 & "$Ucc\AdventUCC.exe" make | Select-Object -Last 8
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$Game\System\AdventMod.u")) { throw 'script compile failed' }
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$Game\System\AdventMod.u")) {
+  if (Test-Path $prev) { Move-Item $prev "$Game\System\AdventMod.u" -Force; 'compile failed: the previous AdventMod.u is back in place' }
+  throw 'script compile failed'
+}
+if (Test-Path $prev) { [IO.File]::Delete($prev) }
 
 # 2. native
 $bat = "$env:TEMP\adventnative_build.bat"
