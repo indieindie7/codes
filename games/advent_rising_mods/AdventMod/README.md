@@ -4,6 +4,15 @@ A mod framework for **Advent Rising** (Steam), built with [AdventUCC](../AdventU
 It brings the settings of the separate launcher ("Play Advent Rising") into the
 game's own options menus, reachable from the title menu and from the pause menu.
 
+> **Fixed 2026-10-03: slow motion and choppy gameplay.** AdventNative made a throwaway
+> Direct3D 8 device (to find the game's device methods) without `D3DCREATE_FPU_PRESERVE`.
+> Direct3D then drops the game thread's x87 FPU to single precision, and Unreal's frame
+> timing (CPU cycle counter, in doubles) breaks: every frame's time step comes out wrong.
+> At first it looked like the menu controller killed the frames, because the controller is
+> what loads AdventNative; it was this. Measured after the fix: a 10 s wait in game takes
+> 10.0 s of real time (before: 22-44 s). Any native code here that creates a device must
+> pass FPU_PRESERVE.
+
 | Page | Added |
 |---|---|
 | Options > Video | **Fullscreen**, **Borderless Window**, **VSync**, and a row that opens Display Options |

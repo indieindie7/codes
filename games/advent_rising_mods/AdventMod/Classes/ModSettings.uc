@@ -18,11 +18,12 @@ var config bool bShadowProbe;         // testing: run ShadowProbe on the player 
 var config bool bShadowFix;           // character shadows: Engine.dll's sky pass ate them, and the shadow bitmaps lost their alpha (shadowfix.c, shadowalpha.c)
 var config bool bNoGamePostFx;        // remove the game's own camera effects (blurs, distortion, DOF) every frame: the Direct3D layer's post effects replace them
 var config bool bSoftShadows;         // multi-light character shadows (ModShadowManager, ported from U2SoftShadows)
+var bool bStartedUp;                  // Startup has run (once per run of the game)
 var config int MaxFps;                // frame cap (0 = none): uncapped, gameplay runs in slow motion at hundreds of fps (AdventNative capture.c)
 var config bool bD3DTrace;            // testing: trace Direct3D calls (AdventNative d3dtrace.c) into AdventNative.log
 var config string DebugLevelMenu;     // testing: a menu class ModMutator opens DebugMenuDelay seconds into a level,
 var config float DebugMenuDelay;      // then takes a screenshot (console "shot") 4 seconds later
-var config string DebugCommands;      // testing: console commands (separated by |) run at the title menu, results in AdventNative.log
+var config string DebugCommands;      // testing: console commands (separated by |) run on the title screen, results in AdventNative.log
 var config string DebugOpenMenu;      // testing: a menu class to open right after the title menu
 var config string DebugActions;       // testing: steps run on that menu (see ModGUIController.RunDebug)
 
@@ -177,11 +178,15 @@ static function RemoveLauncherFOV(PlayerController PC)
 	}
 }
 
-// called once, when the first menu opens: the window and the render device exist
+// called once per run of the game, by ModMutator in the first level (the title): the
+// window and the render device exist
 static function Startup(PlayerController PC)
 {
 	local bool bReset;
 
+	if (default.bStartedUp || PC == None)
+		return;
+	default.bStartedUp = true;
 	NativeCall("Init");
 	if (default.bShadowFix)
 	{
@@ -224,7 +229,7 @@ defaultproperties
 {
      bTrilinear=True
      FOV=75
-     MaxFps=60
+     MaxFps=0
      DebugMovers=-1
      bWidescreen=True
 }

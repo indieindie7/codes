@@ -1,7 +1,7 @@
 //=============================================================================
-// ModMutator - AdventMod's presence inside each level. The menu controller
-// lives outside the levels and is never ticked, so anything that has to keep
-// happening during play runs from here.
+// ModMutator - AdventMod's presence inside each level, the title screen included.
+// It also runs the mod's one-time start-up (ModSettings.Startup) in the first level, in
+// case ModGUIController (which runs it at the first menu) isn't installed.
 // Loaded by Mutator=AdventMod.ModMutator in [DefaultPlayer] (MyDefUser.ini):
 // the game adds that section's keys to every level URL.
 //=============================================================================
@@ -54,6 +54,12 @@ function Every()
 	local int i;
 
 	PC = Level.GetLocalPlayerController();
+	if (PC != None && !class'ModSettings'.default.bStartedUp)
+	{
+		class'ModSettings'.static.Startup(PC);
+		// testing: console commands on the title screen (e.g. open a level)
+		RunCommands(PC, class'ModSettings'.default.DebugCommands);
+	}
 	class'ModSettings'.static.ApplyFOV(PC);
 	if (class'ModSettings'.default.bShadowFix)
 		class'ModSettings'.static.NativeCall("ShadowAlpha");  // follows the game to a new device
@@ -115,6 +121,29 @@ function Every()
 			DebugStage = 3;
 			class'ModSettings'.static.Note("shot taken" $ PC.ConsoleCommand("shot"));
 		}
+	}
+}
+
+// testing: console commands separated by |, results in AdventNative.log
+function RunCommands(PlayerController PC, string Rest)
+{
+	local string Cmd;
+	local int i;
+
+	while (Rest != "")
+	{
+		i = InStr(Rest, "|");
+		if (i < 0)
+		{
+			Cmd = Rest;
+			Rest = "";
+		}
+		else
+		{
+			Cmd = Left(Rest, i);
+			Rest = Mid(Rest, i + 1);
+		}
+		class'ModSettings'.static.Note(Cmd $ " => " $ PC.ConsoleCommand(Cmd));
 	}
 }
 

@@ -6,6 +6,7 @@
    texture stages set to projected texturing, draws made while such a stage is
    active, render-target textures (shadow bitmaps) and their formats. */
 #include <windows.h>
+#include <float.h>
 #include <stdio.h>
 #include <intrin.h>
 
@@ -584,6 +585,7 @@ void* D3DGameDevice(void)
 	DWORD Mode[4];                /* Width, Height, RefreshRate, Format */
 	HWND Win;
 	HR R;
+	unsigned int Fpu;
 
 	if (DevHolder && Readable(DevHolder, 4) && *DevHolder && Readable(*DevHolder, 4)) return *DevHolder;
 	if (!Lib) { Note(L"d3d: d3d8.dll not loaded"); return NULL; }
@@ -596,7 +598,14 @@ void* D3DGameDevice(void)
 	Win = CreateWindowExW(0, L"STATIC", L"d3dtrace", WS_POPUP, 0, 0, 8, 8, NULL, NULL, NULL, NULL);
 	ZeroMemory(Pp, sizeof(Pp));
 	Pp[0] = 8; Pp[1] = 8; Pp[2] = Mode[3]; Pp[3] = 1; Pp[5] = 1 /* discard */; Pp[6] = (DWORD)(ULONG_PTR)Win; Pp[7] = TRUE;
-	R = ((CreateDevice_t)VT(D3D)[D3D_CreateDevice])(D3D, 0, 1, Win, 0x20 /* software vertex processing */, Pp, &Ref);
+	/* FPU_PRESERVE: without it Direct3D drops the calling thread's x87 FPU to single
+	   precision, and this runs on the game's thread. Unreal times its frames from the CPU's
+	   cycle counter in doubles; in single precision those big counts lose their low digits,
+	   the per-frame time steps come out wrong and the game plays in slow motion, choppy.
+	   (That was AdventMod's "slow motion" bug.) The control word is put back as well. */
+	Fpu = _controlfp(0, 0);
+	R = ((CreateDevice_t)VT(D3D)[D3D_CreateDevice])(D3D, 0, 1, Win, 0x20 /* software vertex processing */ | 0x2 /* FPU preserve */, Pp, &Ref);
+	_controlfp(Fpu, _MCW_PC | _MCW_RC | _MCW_EM);
 	if (R != 0 || !Ref)
 	{
 		Note(L"d3d: CreateDevice failed %08lx", (unsigned long)R);

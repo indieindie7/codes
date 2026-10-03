@@ -12,15 +12,15 @@ event bool OpenMenu(string NewMenuName, optional string Param1, optional string 
 	{
 		// the first menu (the title): the window exists now
 		bStarted = true;
-		class'ModSettings'.static.Startup(ViewportOwner.Actor);
+		class'ModSettings'.static.Startup(ViewportOwner.Actor);   // runs once, whoever calls first
 	}
 	// The pages are named through their classes, not strings, on purpose: a level change
 	// collects every script class nothing refers to, and the engine then fails to load it
 	// again (the page would silently not open from the pause menu). These references keep
 	// the pages alive for as long as this controller is.
-	if (NewMenuName ~= "ini:Engine.GameEngine.InitialMenuClass" || NewMenuName ~= "Interface.MenuTitle_pc")
-		NewMenuName = string(class'ModTitle');
-	else if (NewMenuName ~= "Interface.MenuPauseOptionsVideo")
+	// (the title menu is the game's own again: ModTitle, which skipped the Alienware screen,
+	// is the first suspect for the slow motion; testing without it)
+	if (NewMenuName ~= "Interface.MenuPauseOptionsVideo")
 		NewMenuName = string(class'ModVideoOptions');
 	else if (NewMenuName ~= "Interface.MenuPCOptions")
 		NewMenuName = string(class'ModPCOptions');
