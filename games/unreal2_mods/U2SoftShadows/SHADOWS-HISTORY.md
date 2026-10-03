@@ -199,7 +199,7 @@ gradient; stock blob gone). Advent-specific findings:
 
 Next there: strength tuning, more scenes, NPCs, then PCSS.
 
-## Open bug: characters turn black when a shadow is cast from a real light (2026-10-02)
+## Fixed: characters turn black when a shadow is cast from a real light (2026-10-02)
 
 Found during the stairs check (Sanctuary M08A1, concrete stairs around (-1024, -2784)). A test lamp
 (`hub lamp 255 40 220`) behind the camera; with our shadows on, the character renders very dark
@@ -219,6 +219,14 @@ Found during the stairs check (Sanctuary M08A1, concrete stairs around (-1024, -
 - Fix to try (the Advent chat's idea): in the d3d8 fork, snapshot the lighting state (lights,
   material, ambient, material sources) when the render target switches into a shadow bitmap and
   restore what the engine didn't set again when it switches back.
+
+**Cause and fix (2026-10-02, evening):** a lightprobe taken with the shadow on showed the engine
+turning the lamp off (`LightEnable 0 0`) right before the character's draws, then lighting it with
+a weaker light further away (or none). It isn't leftover D3D state: the engine drops the shadow's
+source light on purpose. The d3d8 fork's `relight` (on by default, `relight=0` turns it off)
+remembers the lights on at each shadow silhouette by world matrix, and the actor's lit main-view
+draws get any missing one switched on in a free slot for that draw. Verified on the stairs scene
+with dgVoodoo, without dgVoodoo, and fullscreen (fork commit 76be012, patch 0009).
 
 Test notes: `hub view` (third person) clips the camera into walls in narrow places (big flat
 grey/black shapes); scripts `stairs_conc.txt`, `black_*.txt` in U2Pilot.

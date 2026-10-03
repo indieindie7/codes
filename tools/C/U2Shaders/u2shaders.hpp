@@ -53,6 +53,7 @@
 #pragma once
 
 #include <d3dcompiler.h>
+#include "fakefull.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdarg>
@@ -127,6 +128,8 @@ public:
 		Dir = Path;
 		Dir.erase(Dir.find_last_of("\\/") + 1);
 		DeleteFileA((Dir + "U2Shaders.log").c_str());
+		if (!U2FakeFull::Pending().empty())
+			Message("%s", U2FakeFull::Pending().substr(0, U2FakeFull::Pending().size() - 1).c_str());
 
 		FILE *F = nullptr;
 		if (fopen_s(&F, (Dir + "U2Shaders.ini").c_str(), "r") || F == nullptr)
@@ -148,6 +151,8 @@ public:
 				;
 			else if (sscanf_s(Line, " pcssdebug=%f", &PcssDebug) == 1)
 				;
+			else if (sscanf_s(Line, " relight=%u", &Hash) == 1)
+				Relight = Hash != 0;
 			else if (sscanf_s(Line, " pcssprobe=%u", &Hash) == 1)
 				PcssProbe = (int)Hash;
 			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
@@ -168,6 +173,8 @@ public:
 				PostBlur.File = "post_blur.hlsl";
 				PostFinal.File = "post_final.hlsl";
 			}
+			else if (_strnicmp(Line + strspn(Line, " \t"), "posthud=z0", 10) == 0)
+				PostHudZ0 = true;
 			else if (sscanf_s(Line, " posttrace=%u", &Hash) == 1)
 				PostTrace = (int)Hash;
 			else if (sscanf_s(Line, " postdebug=%u", &Hash) == 1)
@@ -182,6 +189,19 @@ public:
 				;
 			else if (sscanf_s(Line, " sharpen=%f", &PostBalance[3]) == 1)
 				;
+			else if (sscanf_s(Line, " postfx=%f %f %f %f", &PostFx[0], &PostFx[1], &PostFx[2], &PostFx[3]) >= 1)
+				;
+			else if (strncmp(Line + strspn(Line, " \t"), "lut=", 4) == 0)
+			{
+				char F[260] = "";
+				sscanf_s(Line + strspn(Line, " \t") + 4, "%259s", F, (unsigned)sizeof(F));
+				if (LutFile != F)
+				{
+					LutFile = F;
+					if (LutTex) { LutTex->Release(); LutTex = nullptr; }
+					LutTried = false;
+				}
+			}
 			else if (sscanf_s(Line, " tint=%x", &Hash) == 1)
 			{
 				U2Rule R;
@@ -895,6 +915,115 @@ public:
 				fprintf(LightProbeFile, " | L%u %.2f %.2f %.2f r%.0f", i, L.Diffuse.r, L.Diffuse.g, L.Diffuse.b, L.Range);
 		}
 		fprintf(LightProbeFile, "\n");
+	}
+
+	// relight (on unless relight=0): when an actor casts a shadow from a real light, Unreal II leaves that
+	// light out when it draws the actor (it lights it with the next lights instead, or none), so a character
+	// under one lamp turns black. Each shadow silhouette (drawn offscreen with the actor's own world matrix)
+	// remembers the lights that were on; a lit draw in the main view with the same world matrix gets any of
+	// them that is missing turned on in a free slot, for that draw only.
+	bool Relight = true;
+	struct RelightSeen { D3DMATRIX W; D3DLIGHT9 L[8]; DWORD Mask; unsigned Frame; };
+	std::vector<RelightSeen> RelightList;
+	DWORD RelightOn = 0;                  // lights turned on for the current draw (RelightEnd turns them off)
+	unsigned RelightCount = 0;
+	static bool SameWorld(const D3DMATRIX &A, const D3DMATRIX &B)
+	{
+		for (int r = 0; r < 4; r++)
+			for (int c = 0; c < 3; c++)
+				if (fabsf(A.m[r][c] - B.m[r][c]) > (r == 3 ? 0.5f : 0.01f))
+					return false;
+		return true;
+	}
+	void RelightBegin(IDirect3DDevice9 *Dev, bool HasTex, bool FixedFunction)
+	{
+		RelightOn = 0;
+		if (!Relight || !FixedFunction)
+			return;
+		DWORD lighting = 0;
+		Dev->GetRenderState(D3DRS_LIGHTING, &lighting);
+		if (!lighting)
+		{
+			DWORD op0 = 0, arg1 = 0, blend = 0;
+			if (HasTex)
+				return;
+			Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op0);
+			Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &arg1);
+			if (op0 != D3DTOP_SELECTARG1 || (arg1 & 0xF) != D3DTA_TFACTOR)
+				return;
+			Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
+			if (blend || !Offscreen(Dev))
+				return;
+			RelightSeen S = {};
+			Dev->GetTransform(D3DTS_WORLD, &S.W);
+			for (DWORD i = 0; i < 8; i++)
+			{
+				BOOL on = FALSE;
+				if (SUCCEEDED(Dev->GetLightEnable(i, &on)) && on && SUCCEEDED(Dev->GetLight(i, &S.L[i])))
+					S.Mask |= 1u << i;
+			}
+			if (!S.Mask)
+				return;
+			S.Frame = Frame;
+			for (auto &E : RelightList)
+				if (SameWorld(E.W, S.W)) { E = S; return; }
+			if (RelightList.size() < 64)
+				RelightList.push_back(S);
+			return;
+		}
+		if (RelightList.empty())
+			return;
+		D3DMATRIX W;
+		Dev->GetTransform(D3DTS_WORLD, &W);
+		for (auto &E : RelightList)
+		{
+			if (Frame - E.Frame > 1 || !SameWorld(E.W, W))
+				continue;
+			if (Offscreen(Dev))
+				return;
+			// which of the silhouette's lights is missing now (the engine may light it with others instead)
+			D3DLIGHT9 On[8] = {};
+			DWORD OnMask = 0;
+			for (DWORD i = 0; i < 8; i++)
+			{
+				BOOL on = FALSE;
+				if (SUCCEEDED(Dev->GetLightEnable(i, &on)) && on && SUCCEEDED(Dev->GetLight(i, &On[i])))
+					OnMask |= 1u << i;
+			}
+			for (DWORD k = 0; k < 8; k++)
+			{
+				if (!(E.Mask & (1u << k)))
+					continue;
+				bool have = false;
+				for (DWORD i = 0; i < 8 && !have; i++)
+					have = (OnMask & (1u << i)) && fabsf(On[i].Position.x - E.L[k].Position.x) + fabsf(On[i].Position.y - E.L[k].Position.y)
+						+ fabsf(On[i].Position.z - E.L[k].Position.z) < 1.0f && fabsf(On[i].Diffuse.r - E.L[k].Diffuse.r) < 0.01f;
+				if (have)
+					continue;
+				DWORD slot = 0;
+				while (slot < 8 && ((OnMask | RelightOn) & (1u << slot)))
+					slot++;
+				if (slot == 8)
+					break;
+				Dev->SetLight(slot, &E.L[k]);
+				Dev->LightEnable(slot, TRUE);
+				RelightOn |= 1u << slot;
+			}
+			if (RelightOn && RelightCount++ == 0)
+				Message("relight: gave an actor back the light its shadow is cast from");
+			return;
+		}
+	}
+	void RelightEnd(IDirect3DDevice9 *Dev)
+	{
+		for (DWORD i = 0; i < 8; i++)
+			if (RelightOn & (1u << i))
+				Dev->LightEnable(i, FALSE);
+		RelightOn = 0;
+	}
+	void RelightFrame()
+	{
+		RelightList.erase(std::remove_if(RelightList.begin(), RelightList.end(), [&](const RelightSeen &E) { return Frame - E.Frame > 2; }), RelightList.end());
 	}
 
 	void ClearBlurSources() { for (auto &It : BlurSource) if (It.second) It.second->Release(); BlurSource.clear(); }
@@ -1665,12 +1794,21 @@ public:
 	float PostBloom[4] = { 0.75f, 0.5f, 0, 0 };          // threshold, intensity
 	float PostGrade[4] = { 1.05f, 1.05f, 1.0f, 0.25f };  // saturation, contrast, exposure, vignette
 	float PostBalance[4] = { 1, 1, 1, 0.25f };           // colour balance r g b, sharpen
+	float PostFx[4] = { 0, 0, 0, 0 };                    // postfx=a b c d: free per-game knobs (c4 in post_final.hlsl)
+	// lut=FILE (in U2Shaders\, .dds 32-bit or uncompressed .bmp): a colour-grading LUT on s2 for
+	// post_final.hlsl, unwrapped 3D: N slices of NxN side by side (256x16 or 1024x32), slice = blue,
+	// x in a slice = red, y = green (row 0 = top = green 0). c5 = (N, 1/width, 1/height, 1 if loaded).
+	std::string LutFile;
+	IDirect3DTexture9 *LutTex = nullptr;
+	bool LutTried = false;
 	U2Rule PostBright, PostBlur, PostFinal;
 	IDirect3DTexture9 *BloomA = nullptr, *BloomB = nullptr;
 	UINT BloomW = 0, BloomH = 0;
 	IDirect3DVertexBuffer9 *PostQuadVB = nullptr;
 	IDirect3DDevice9 *LastDev = nullptr;
 	bool Saw3D = false, PostDone = false;
+	bool PostHudZ0 = false;    // posthud=z0: only orthographic draws without depth testing start the HUD (Advent:
+	                           // a fullscreen z-tested ortho draw comes right after the sky, before the level)
 	int PostTrace = 0;                                   // posttrace=N: log the draw order of N frames
 	std::string PostTraceLine;
 
@@ -1719,6 +1857,8 @@ public:
 		}
 		if (PostTrace > 0)
 			return;                           // tracing: just record the frame
+		if (PostHudZ0 && zenable)
+			return;                           // posthud=z0: z-tested 2D draws are still the scene
 		if (!Saw3D)
 			return;
 		static int told = 0;
@@ -1800,11 +1940,11 @@ public:
 		DWORD Fvf = 0;
 		IDirect3DVertexShader9 *VS = nullptr;
 		IDirect3DPixelShader9 *PS = nullptr;
-		IDirect3DBaseTexture9 *Tex[2] = {};
+		IDirect3DBaseTexture9 *Tex[3] = {};
 		DWORD RS[sizeof(PostRS) / sizeof(PostRS[0])] = {};
-		DWORD SS[2][sizeof(PostSS) / sizeof(PostSS[0])] = {};
-		DWORD TCI[2] = {}, TTF[2] = {};
-		float Const[4][4] = {};
+		DWORD SS[3][sizeof(PostSS) / sizeof(PostSS[0])] = {};
+		DWORD TCI[3] = {}, TTF[3] = {};
+		float Const[6][4] = {};
 
 		void Save(IDirect3DDevice9 *Dev)
 		{
@@ -1817,7 +1957,7 @@ public:
 			Dev->GetFVF(&Fvf);
 			Dev->GetVertexShader(&VS);
 			Dev->GetPixelShader(&PS);
-			for (DWORD s = 0; s < 2; s++)
+			for (DWORD s = 0; s < 3; s++)
 			{
 				Dev->GetTexture(s, &Tex[s]);
 				for (size_t i = 0; i < sizeof(PostSS) / sizeof(PostSS[0]); i++)
@@ -1827,7 +1967,7 @@ public:
 			}
 			for (size_t i = 0; i < sizeof(PostRS) / sizeof(PostRS[0]); i++)
 				Dev->GetRenderState(PostRS[i], &RS[i]);
-			Dev->GetPixelShaderConstantF(0, Const[0], 4);
+			Dev->GetPixelShaderConstantF(0, Const[0], 6);
 		}
 
 		void Restore(IDirect3DDevice9 *Dev)
@@ -1843,7 +1983,7 @@ public:
 				Dev->SetFVF(Fvf);
 			Dev->SetVertexShader(VS);
 			Dev->SetPixelShader(PS);
-			for (DWORD s = 0; s < 2; s++)
+			for (DWORD s = 0; s < 3; s++)
 			{
 				Dev->SetTexture(s, Tex[s]);
 				for (size_t i = 0; i < sizeof(PostSS) / sizeof(PostSS[0]); i++)
@@ -1853,12 +1993,12 @@ public:
 			}
 			for (size_t i = 0; i < sizeof(PostRS) / sizeof(PostRS[0]); i++)
 				Dev->SetRenderState(PostRS[i], RS[i]);
-			Dev->SetPixelShaderConstantF(0, Const[0], 4);
+			Dev->SetPixelShaderConstantF(0, Const[0], 6);
 		}
 
 		~PostSave()
 		{
-			IUnknown *All[] = { RT, DS, Stream, Indices, Decl, VS, PS, Tex[0], Tex[1] };
+			IUnknown *All[] = { RT, DS, Stream, Indices, Decl, VS, PS, Tex[0], Tex[1], Tex[2] };
 			for (IUnknown *U : All)
 				if (U != nullptr)
 					U->Release();
@@ -1952,8 +2092,10 @@ public:
 			Dev->SetTexture(1, nullptr);
 
 			// 1: the bright parts, quarter size
-			float c[4][4] = {};
+			float c[6][4] = {};
 			c[0][0] = 1.0f / SceneW; c[0][1] = 1.0f / SceneH; c[0][2] = PostSplit;
+			c[0][3] = (GetTickCount() % 100000) / 1000.0f;     // seconds, wrapping every 100 s (grain)
+			memcpy(c[4], PostFx, sizeof(PostFx));
 			memcpy(c[1], PostBloom, sizeof(PostBloom));
 			memcpy(c[2], PostGrade, sizeof(PostGrade));
 			memcpy(c[3], PostBalance, sizeof(PostBalance));
@@ -1984,8 +2126,22 @@ public:
 			Dev->SetRenderTarget(0, OldRT);
 			Dev->SetTexture(0, SceneTex);
 			Dev->SetTexture(1, BloomA);
+			IDirect3DTexture9 *Lut = PostLut(Dev);
+			if (Lut != nullptr)
+			{
+				D3DSURFACE_DESC LD = {};
+				Lut->GetLevelDesc(0, &LD);
+				c[5][0] = (float)LD.Height; c[5][1] = 1.0f / LD.Width; c[5][2] = 1.0f / LD.Height; c[5][3] = 1;
+				Dev->SetSamplerState(2, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+				Dev->SetSamplerState(2, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+				Dev->SetSamplerState(2, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+				Dev->SetSamplerState(2, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+				Dev->SetSamplerState(2, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+				Dev->SetSamplerState(2, D3DSAMP_SRGBTEXTURE, FALSE);
+			}
+			Dev->SetTexture(2, Lut);
 			Dev->SetPixelShader(Final);
-			Dev->SetPixelShaderConstantF(0, c[0], 4);
+			Dev->SetPixelShaderConstantF(0, c[0], 6);
 			if (Debug)
 				PostLog(Dev, "before the final pass (stage 0 the copy, stage 1 the bloom)");
 			Quad(Dev, SceneW, SceneH);
@@ -2005,6 +2161,80 @@ public:
 			if (VB) VB->Release();
 			if (D) D->Release();
 		}
+	}
+
+	// the lut= texture, loaded once (DDS through LoadDDS, or an uncompressed 24/32-bit BMP)
+	IDirect3DTexture9 *PostLut(IDirect3DDevice9 *Dev)
+	{
+		if (LutTex != nullptr || LutTried || LutFile.empty())
+			return LutTex;
+		LutTried = true;
+		std::string Ext = LutFile.size() > 4 ? LutFile.substr(LutFile.size() - 4) : "";
+		if (_stricmp(Ext.c_str(), ".dds") == 0)
+			LutTex = LoadDDS(Dev, LutFile);
+		else
+			LutTex = LoadBMP(Dev, LutFile);
+		if (LutTex != nullptr)
+		{
+			D3DSURFACE_DESC D = {};
+			LutTex->GetLevelDesc(0, &D);
+			Message("post: lut %s loaded, %ux%u (%s)", LutFile.c_str(), D.Width, D.Height,
+				D.Width == D.Height * D.Height ? "N slices of NxN" : "not N*N x N: check the layout");
+		}
+		return LutTex;
+	}
+
+	// an uncompressed 24- or 32-bit BMP from U2Shaders\ as a managed A8R8G8B8 texture
+	IDirect3DTexture9 *LoadBMP(IDirect3DDevice9 *Dev, const std::string &File)
+	{
+		FILE *F = nullptr;
+		if (fopen_s(&F, (Dir + "U2Shaders\\" + File).c_str(), "rb") || F == nullptr)
+		{
+			Message("post: %s not found", File.c_str());
+			return nullptr;
+		}
+		std::string Data;
+		char Buf[65536];
+		size_t n;
+		while ((n = fread(Buf, 1, sizeof(Buf), F)) > 0)
+			Data.append(Buf, n);
+		fclose(F);
+		const BYTE *B = (const BYTE *)Data.data();
+		if (Data.size() < 54 || B[0] != 'B' || B[1] != 'M')
+		{
+			Message("post: %s is not a BMP", File.c_str());
+			return nullptr;
+		}
+		const DWORD Off = *(const DWORD *)(B + 10);
+		const LONG W = *(const LONG *)(B + 18), H0 = *(const LONG *)(B + 22);
+		const WORD Bpp = *(const WORD *)(B + 28);
+		const DWORD Comp = *(const DWORD *)(B + 30);
+		const LONG H = H0 < 0 ? -H0 : H0;
+		const size_t Pitch = ((size_t)W * (Bpp / 8) + 3) & ~(size_t)3;
+		if ((Bpp != 24 && Bpp != 32) || (Comp != 0 && Comp != 3) || W <= 0 || H <= 0 || Off + Pitch * H > Data.size())
+		{
+			Message("post: %s: only uncompressed 24/32-bit BMPs", File.c_str());
+			return nullptr;
+		}
+		IDirect3DTexture9 *T = nullptr;
+		if (FAILED(Dev->CreateTexture(W, H, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &T, nullptr)) || T == nullptr)
+			return nullptr;
+		D3DLOCKED_RECT L;
+		if (SUCCEEDED(T->LockRect(0, &L, nullptr, 0)))
+		{
+			for (LONG y = 0; y < H; y++)
+			{
+				const BYTE *Src = B + Off + Pitch * (H0 > 0 ? H - 1 - y : y);   // positive height = bottom-up rows
+				DWORD *Dst = (DWORD *)((BYTE *)L.pBits + L.Pitch * y);
+				for (LONG x = 0; x < W; x++)
+				{
+					const BYTE *P = Src + x * (Bpp / 8);
+					Dst[x] = 0xFF000000u | (P[2] << 16) | (P[1] << 8) | P[0];
+				}
+			}
+			T->UnlockRect(0);
+		}
+		return T;
 	}
 
 	void PostRelease()
@@ -2437,6 +2667,19 @@ public:
 				;
 			else if (sscanf_s(Line, " sharpen=%f", &PostBalance[3]) == 1)
 				;
+			else if (sscanf_s(Line, " postfx=%f %f %f %f", &PostFx[0], &PostFx[1], &PostFx[2], &PostFx[3]) >= 1)
+				;
+			else if (strncmp(Line + strspn(Line, " \t"), "lut=", 4) == 0)
+			{
+				char F[260] = "";
+				sscanf_s(Line + strspn(Line, " \t") + 4, "%259s", F, (unsigned)sizeof(F));
+				if (LutFile != F)
+				{
+					LutFile = F;
+					if (LutTex) { LutTex->Release(); LutTex = nullptr; }
+					LutTried = false;
+				}
+			}
 			else if (sscanf_s(Line, " pcss=%u", &V) == 1 && (V != 0) != Pcss)
 			{
 				// live switch (Advent: contact hardening indoors only). Off: forget the maps
@@ -2486,6 +2729,7 @@ public:
 		if (LightProbeFile)
 			fprintf(LightProbeFile, "--- present, frame %u\n", Frame);
 		Frame++;
+		RelightFrame();
 		LightProbeCheck();
 		if (Capture && CaptureDirty && Frame % 300 == 0)
 			WriteCapture();

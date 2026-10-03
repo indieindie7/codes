@@ -41,6 +41,9 @@ import imageio_ffmpeg
 GAME_SYSTEM = os.environ.get("U2PILOT_SYSTEM",   # U2PILOT_SYSTEM: run from another System folder (a test copy)
                              r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening\System")
 GAME_EXE = os.path.join(GAME_SYSTEM, "Unreal2.exe")
+# U2PILOT_FULLSCREEN=1: start the game fullscreen and in front (it won't go fullscreen while in the
+# background); it covers the screen for the whole run, so only use it when the user is at the PC
+FULLSCREEN = os.environ.get("U2PILOT_FULLSCREEN") == "1"
 # U2PILOT_LOG=Name.log: the game logs there instead (LOG= on its command line), e.g.
 # when a crashed game stuck in the graphics driver still holds Unreal2.log open
 LOG_NAME = os.environ.get("U2PILOT_LOG", "Unreal2.log")
@@ -401,7 +404,7 @@ def make_pilot_inis():
     ini, user = os.path.join(GAME_SYSTEM, PILOT_INI), os.path.join(GAME_SYSTEM, PILOT_USER_INI)
     shutil.copy(os.path.join(GAME_SYSTEM, "Unreal2.ini"), ini)
     shutil.copy(os.path.join(GAME_SYSTEM, "User.ini"), user)
-    set_ini_keys(ini, "WinDrv.WindowsClient", {"CaptureMouse": "False", "StartupFullscreen": "false",
+    set_ini_keys(ini, "WinDrv.WindowsClient", {"CaptureMouse": "False", "StartupFullscreen": "true" if FULLSCREEN else "false",
                                                "WindowedViewportX": "960", "WindowedViewportY": "540"})
     return [f"-ini={PILOT_INI}", f"-userini={PILOT_USER_INI}"]
 
@@ -556,7 +559,7 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
         log(f"pilot {kind}: [{section}] {key.strip()}={value.strip()} ({target})")
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    si.wShowWindow = 4   # SW_SHOWNOACTIVATE: show the window without taking focus
+    si.wShowWindow = 1 if FULLSCREEN else 4   # SW_SHOWNOACTIVATE: show the window without taking focus
     log(f"background launch: Unreal2.exe {url}")
     extra = [] if sound else ["-nosound"]
     game = subprocess.Popen([GAME_EXE, url, "-forcelogflush", *extra, *ini_args, *LOG_ARGS], cwd=GAME_SYSTEM, startupinfo=si)
@@ -578,7 +581,7 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
         # keep the window out of the way and check it never grabs the user's focus or mouse
         hwnd, _ = find_window(game.pid)
         fg = user32.GetForegroundWindow()
-        if hwnd:
+        if hwnd and not FULLSCREEN:
             if not os.environ.get("U2PILOT_VISIBLE"):   # set to keep the window on the desktop
                 hide_offscreen(hwnd)
             if fg == hwnd:

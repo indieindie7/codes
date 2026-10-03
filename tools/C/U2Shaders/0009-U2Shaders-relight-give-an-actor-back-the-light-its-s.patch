@@ -1,0 +1,367 @@
+From 76be012c00fd78ddd75b2abb4340bf7993e40fb7 Mon Sep 17 00:00:00 2001
+From: indieindie7 <lonisquasar@gmail.com>
+Date: Fri, 2 Oct 2026 21:01:19 -0300
+Subject: [PATCH] U2Shaders: relight (give an actor back the light its shadow
+ is cast from) and borderless fullscreen
+
+relight (on unless relight=0): Unreal II leaves a shadow's source light out when it draws the
+actor (lighting it with weaker lights instead, or none), so a character under one lamp turned
+black. Each shadow silhouette remembers its lights by world matrix; the actor's lit main-view
+draws get any missing one turned on in a free slot for that draw.
+
+fakefull.hpp: a fullscreen request becomes a windowed device and the window a frameless popup over
+the monitor, restyled inside CreateDevice/Reset with the size messages kept from the game (the old
+watcher-thread resize aborted). fullscreen=exclusive in U2Shaders.ini keeps real fullscreen.
+Tested in Unreal II without dgVoodoo (system d3d9): 1920x1080 borderless, vsync, PCSS, post.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ source/d3d8to9_base.cpp   |   2 +
+ source/d3d8to9_device.cpp |   8 +++
+ source/fakefull.hpp       | 119 ++++++++++++++++++++++++++++++++++++++
+ source/u2shaders.hpp      | 115 ++++++++++++++++++++++++++++++++++++
+ 4 files changed, 244 insertions(+)
+ create mode 100644 source/fakefull.hpp
+
+diff --git a/source/d3d8to9_base.cpp b/source/d3d8to9_base.cpp
+index 997a523..72529dd 100644
+--- a/source/d3d8to9_base.cpp
++++ b/source/d3d8to9_base.cpp
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include "d3d8to9.hpp"
++#include "fakefull.hpp"
+ 
+ static const D3DFORMAT AdapterFormats[] = {
+ 	D3DFMT_A8R8G8B8,
+@@ -179,6 +180,7 @@ HRESULT STDMETHODCALLTYPE Direct3D8::CreateDevice(UINT Adapter, D3DDEVTYPE Devic
+ 
+ 	D3DPRESENT_PARAMETERS PresentParams;
+ 	ConvertPresentParameters(*pPresentationParameters, PresentParams);
++	U2FakeFull::Adjust(PresentParams, hFocusWindow);
+ 
+ 	IDirect3DDevice9 *DeviceInterface = nullptr;
+ 
+diff --git a/source/d3d8to9_device.cpp b/source/d3d8to9_device.cpp
+index 81a139e..f3f99d4 100644
+--- a/source/d3d8to9_device.cpp
++++ b/source/d3d8to9_device.cpp
+@@ -5,6 +5,7 @@
+ 
+ #include "d3dx9.hpp"
+ #include "d3d8to9.hpp"
++#include "fakefull.hpp"
+ #include <regex>
+ #include <assert.h>
+ #include "u2shaders.hpp"
+@@ -223,6 +224,11 @@ HRESULT STDMETHODCALLTYPE Direct3DDevice8::Reset(D3DPRESENT_PARAMETERS8 *pPresen
+ 
+ 	D3DPRESENT_PARAMETERS PresentParams;
+ 	ConvertPresentParameters(*pPresentationParameters, PresentParams);
++	{
++		D3DDEVICE_CREATION_PARAMETERS CP = {};
++		ProxyInterface->GetCreationParameters(&CP);
++		U2FakeFull::Adjust(PresentParams, CP.hFocusWindow);
++	}
+ 
+ 	const HRESULT hr = ProxyInterface->Reset(&PresentParams);
+ 
+@@ -1160,6 +1166,7 @@ bool Direct3DDevice8::U2Begin()
+ 				U2Swapped |= 1u << s;
+ 			}
+ 	U2.LogTargetDraw(ProxyInterface, FixedFunction, U2Stage0 != nullptr);
++	U2.RelightBegin(ProxyInterface, U2Stage0 != nullptr, FixedFunction);
+ 	U2.LightProbeDraw(ProxyInterface, U2Stage0 ? U2Stage0->U2Hash : 0, U2Stage0 != nullptr, FixedFunction);
+ 	if (U2.PcssBegin(ProxyInterface, U2Stage0 ? U2Stage0->GetProxyInterface() : nullptr, FixedFunction))
+ 		return true;
+@@ -1179,6 +1186,7 @@ void Direct3DDevice8::U2CaptureDraw(D3DPRIMITIVETYPE Type, UINT PrimCount, const
+ }
+ void Direct3DDevice8::U2After(bool Shaded)
+ {
++	U2.RelightEnd(ProxyInterface);
+ 	if (Shaded)
+ 		U2.End(ProxyInterface);
+ 	for (DWORD s = 0; s < 4; s++)
+diff --git a/source/fakefull.hpp b/source/fakefull.hpp
+new file mode 100644
+index 0000000..cc3cc35
+--- /dev/null
++++ b/source/fakefull.hpp
+@@ -0,0 +1,119 @@
++/**
++ * Borderless fullscreen without dgVoodoo (U2Shaders fork).
++ *
++ * When the game asks for a fullscreen device, it gets a windowed one instead and its window becomes a
++ * frameless popup covering the monitor: it looks like fullscreen, with no display-mode switch, so
++ * alt-tab is instant and other windows can sit on a second monitor. The game keeps its own resolution
++ * (the back buffer); Present stretches it to the monitor.
++ *
++ * The window is restyled right there, inside CreateDevice / Reset, on the game's own thread, before the
++ * device exists, and the size / move messages that causes are kept from the game (an earlier attempt
++ * resized the window later from another thread, and the game rebuilt its renderer mid-frame and
++ * aborted). "fullscreen=exclusive" in System\U2Shaders.ini keeps the game's real fullscreen.
++ */
++
++#pragma once
++
++#include <Windows.h>
++#include <string>
++
++namespace U2FakeFull
++{
++	// shared state (function statics: the project builds as C++14, no inline variables)
++	inline int &Mode() { static int M = -1; return M; }              // -1 not read, 0 exclusive, 1 borderless
++	inline WNDPROC &OldProc() { static WNDPROC P = nullptr; return P; }
++	inline HWND &Hooked() { static HWND W = nullptr; return W; }
++	inline bool &Quiet() { static bool Q = false; return Q; }
++
++	inline std::string Folder()
++	{
++		char Path[MAX_PATH] = {};
++		HMODULE Self = nullptr;
++		GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
++			reinterpret_cast<LPCSTR>(&Folder), &Self);
++		GetModuleFileNameA(Self, Path, MAX_PATH);
++		std::string S(Path);
++		return S.substr(0, S.find_last_of("\\/") + 1);
++	}
++
++	inline std::string &Pending() { static std::string S; return S; }   // for U2Shaders' log, which starts after us
++
++	inline void Note(const char *Text)
++	{
++		Pending() += Text;
++		Pending() += '\n';
++		FILE *F = nullptr;
++		if (!fopen_s(&F, (Folder() + "U2Shaders.log").c_str(), "a") && F)
++		{
++			fprintf(F, "%s\n", Text);
++			fclose(F);
++		}
++	}
++
++	inline bool Borderless()
++	{
++		if (Mode() >= 0)
++			return Mode() != 0;
++		Mode() = 1;
++		FILE *F = nullptr;
++		if (!fopen_s(&F, (Folder() + "U2Shaders.ini").c_str(), "r") && F)
++		{
++			char Line[256];
++			while (fgets(Line, sizeof(Line), F))
++				if (!_strnicmp(Line, "fullscreen=", 11))
++					Mode() = _strnicmp(Line + 11, "exclusive", 9) != 0;
++			fclose(F);
++		}
++		return Mode() != 0;
++	}
++
++	// while we restyle, the game doesn't see the window change size (it would rebuild its renderer)
++	inline LRESULT CALLBACK Proc(HWND W, UINT Msg, WPARAM WP, LPARAM LP)
++	{
++		if (Quiet() && (Msg == WM_SIZE || Msg == WM_MOVE || Msg == WM_WINDOWPOSCHANGED || Msg == WM_WINDOWPOSCHANGING
++			|| Msg == WM_STYLECHANGED || Msg == WM_STYLECHANGING || Msg == WM_NCCALCSIZE || Msg == WM_GETMINMAXINFO))
++			return DefWindowProcW(W, Msg, WP, LP);
++		return CallWindowProcW(OldProc(), W, Msg, WP, LP);
++	}
++
++	inline void Cover(HWND W)
++	{
++		if (W == nullptr || !IsWindow(W))
++			return;
++		if (Hooked() != W)
++		{
++			OldProc() = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(W, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&Proc)));
++			Hooked() = W;
++		}
++		MONITORINFO M = { sizeof(M) };
++		if (!GetMonitorInfo(MonitorFromWindow(W, MONITOR_DEFAULTTOPRIMARY), &M))
++			return;
++		const RECT &R = M.rcMonitor;
++		const LONG Style = (GetWindowLong(W, GWL_STYLE) & ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX
++			| WS_MAXIMIZEBOX | WS_BORDER | WS_DLGFRAME)) | WS_POPUP | WS_VISIBLE;
++		const LONG Ex = GetWindowLong(W, GWL_EXSTYLE) & ~(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME
++			| WS_EX_STATICEDGE | WS_EX_TOPMOST);
++		Quiet() = true;
++		SetWindowLong(W, GWL_STYLE, Style);
++		SetWindowLong(W, GWL_EXSTYLE, Ex);
++		SetWindowPos(W, HWND_TOP, R.left, R.top, R.right - R.left, R.bottom - R.top, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
++		Quiet() = false;
++	}
++
++	// CreateDevice / Reset: a fullscreen request becomes a borderless window over the monitor
++	inline void Adjust(D3DPRESENT_PARAMETERS &P, HWND Focus)
++	{
++		if (P.Windowed || !Borderless())
++			return;
++		const HWND W = P.hDeviceWindow ? P.hDeviceWindow : Focus;
++		P.Windowed = TRUE;
++		P.FullScreen_RefreshRateInHz = 0;
++		if (P.PresentationInterval == D3DPRESENT_INTERVAL_DEFAULT)
++			P.PresentationInterval = D3DPRESENT_INTERVAL_ONE;     // fullscreen default = vsync; keep it
++		Cover(W);
++		char Text[160];
++		sprintf_s(Text, "fullscreen: borderless window over the monitor (game resolution %ux%u, vsync %d)",
++			P.BackBufferWidth, P.BackBufferHeight, P.PresentationInterval != D3DPRESENT_INTERVAL_IMMEDIATE);
++		Note(Text);
++	}
++}
+diff --git a/source/u2shaders.hpp b/source/u2shaders.hpp
+index d2d5f54..ea6c74a 100644
+--- a/source/u2shaders.hpp
++++ b/source/u2shaders.hpp
+@@ -53,6 +53,7 @@
+ #pragma once
+ 
+ #include <d3dcompiler.h>
++#include "fakefull.hpp"
+ #include <algorithm>
+ #include <cmath>
+ #include <cstdarg>
+@@ -127,6 +128,8 @@ public:
+ 		Dir = Path;
+ 		Dir.erase(Dir.find_last_of("\\/") + 1);
+ 		DeleteFileA((Dir + "U2Shaders.log").c_str());
++		if (!U2FakeFull::Pending().empty())
++			Message("%s", U2FakeFull::Pending().substr(0, U2FakeFull::Pending().size() - 1).c_str());
+ 
+ 		FILE *F = nullptr;
+ 		if (fopen_s(&F, (Dir + "U2Shaders.ini").c_str(), "r") || F == nullptr)
+@@ -148,6 +151,8 @@ public:
+ 				;
+ 			else if (sscanf_s(Line, " pcssdebug=%f", &PcssDebug) == 1)
+ 				;
++			else if (sscanf_s(Line, " relight=%u", &Hash) == 1)
++				Relight = Hash != 0;
+ 			else if (sscanf_s(Line, " pcssprobe=%u", &Hash) == 1)
+ 				PcssProbe = (int)Hash;
+ 			else if (sscanf_s(Line, " shadowtint=%f %f %f", &ShadowTint[0], &ShadowTint[1], &ShadowTint[2]) == 3)
+@@ -912,6 +917,115 @@ public:
+ 		fprintf(LightProbeFile, "\n");
+ 	}
+ 
++	// relight (on unless relight=0): when an actor casts a shadow from a real light, Unreal II leaves that
++	// light out when it draws the actor (it lights it with the next lights instead, or none), so a character
++	// under one lamp turns black. Each shadow silhouette (drawn offscreen with the actor's own world matrix)
++	// remembers the lights that were on; a lit draw in the main view with the same world matrix gets any of
++	// them that is missing turned on in a free slot, for that draw only.
++	bool Relight = true;
++	struct RelightSeen { D3DMATRIX W; D3DLIGHT9 L[8]; DWORD Mask; unsigned Frame; };
++	std::vector<RelightSeen> RelightList;
++	DWORD RelightOn = 0;                  // lights turned on for the current draw (RelightEnd turns them off)
++	unsigned RelightCount = 0;
++	static bool SameWorld(const D3DMATRIX &A, const D3DMATRIX &B)
++	{
++		for (int r = 0; r < 4; r++)
++			for (int c = 0; c < 3; c++)
++				if (fabsf(A.m[r][c] - B.m[r][c]) > (r == 3 ? 0.5f : 0.01f))
++					return false;
++		return true;
++	}
++	void RelightBegin(IDirect3DDevice9 *Dev, bool HasTex, bool FixedFunction)
++	{
++		RelightOn = 0;
++		if (!Relight || !FixedFunction)
++			return;
++		DWORD lighting = 0;
++		Dev->GetRenderState(D3DRS_LIGHTING, &lighting);
++		if (!lighting)
++		{
++			DWORD op0 = 0, arg1 = 0, blend = 0;
++			if (HasTex)
++				return;
++			Dev->GetTextureStageState(0, D3DTSS_COLOROP, &op0);
++			Dev->GetTextureStageState(0, D3DTSS_COLORARG1, &arg1);
++			if (op0 != D3DTOP_SELECTARG1 || (arg1 & 0xF) != D3DTA_TFACTOR)
++				return;
++			Dev->GetRenderState(D3DRS_ALPHABLENDENABLE, &blend);
++			if (blend || !Offscreen(Dev))
++				return;
++			RelightSeen S = {};
++			Dev->GetTransform(D3DTS_WORLD, &S.W);
++			for (DWORD i = 0; i < 8; i++)
++			{
++				BOOL on = FALSE;
++				if (SUCCEEDED(Dev->GetLightEnable(i, &on)) && on && SUCCEEDED(Dev->GetLight(i, &S.L[i])))
++					S.Mask |= 1u << i;
++			}
++			if (!S.Mask)
++				return;
++			S.Frame = Frame;
++			for (auto &E : RelightList)
++				if (SameWorld(E.W, S.W)) { E = S; return; }
++			if (RelightList.size() < 64)
++				RelightList.push_back(S);
++			return;
++		}
++		if (RelightList.empty())
++			return;
++		D3DMATRIX W;
++		Dev->GetTransform(D3DTS_WORLD, &W);
++		for (auto &E : RelightList)
++		{
++			if (Frame - E.Frame > 1 || !SameWorld(E.W, W))
++				continue;
++			if (Offscreen(Dev))
++				return;
++			// which of the silhouette's lights is missing now (the engine may light it with others instead)
++			D3DLIGHT9 On[8] = {};
++			DWORD OnMask = 0;
++			for (DWORD i = 0; i < 8; i++)
++			{
++				BOOL on = FALSE;
++				if (SUCCEEDED(Dev->GetLightEnable(i, &on)) && on && SUCCEEDED(Dev->GetLight(i, &On[i])))
++					OnMask |= 1u << i;
++			}
++			for (DWORD k = 0; k < 8; k++)
++			{
++				if (!(E.Mask & (1u << k)))
++					continue;
++				bool have = false;
++				for (DWORD i = 0; i < 8 && !have; i++)
++					have = (OnMask & (1u << i)) && fabsf(On[i].Position.x - E.L[k].Position.x) + fabsf(On[i].Position.y - E.L[k].Position.y)
++						+ fabsf(On[i].Position.z - E.L[k].Position.z) < 1.0f && fabsf(On[i].Diffuse.r - E.L[k].Diffuse.r) < 0.01f;
++				if (have)
++					continue;
++				DWORD slot = 0;
++				while (slot < 8 && ((OnMask | RelightOn) & (1u << slot)))
++					slot++;
++				if (slot == 8)
++					break;
++				Dev->SetLight(slot, &E.L[k]);
++				Dev->LightEnable(slot, TRUE);
++				RelightOn |= 1u << slot;
++			}
++			if (RelightOn && RelightCount++ == 0)
++				Message("relight: gave an actor back the light its shadow is cast from");
++			return;
++		}
++	}
++	void RelightEnd(IDirect3DDevice9 *Dev)
++	{
++		for (DWORD i = 0; i < 8; i++)
++			if (RelightOn & (1u << i))
++				Dev->LightEnable(i, FALSE);
++		RelightOn = 0;
++	}
++	void RelightFrame()
++	{
++		RelightList.erase(std::remove_if(RelightList.begin(), RelightList.end(), [&](const RelightSeen &E) { return Frame - E.Frame > 2; }), RelightList.end());
++	}
++
+ 	void ClearBlurSources() { for (auto &It : BlurSource) if (It.second) It.second->Release(); BlurSource.clear(); }
+ 	DWORD OldTCI3 = 0, OldTTF3 = 0, OldSrc = 0, OldDst = 0;
+ 	bool RawDebug = false;
+@@ -2615,6 +2729,7 @@ public:
+ 		if (LightProbeFile)
+ 			fprintf(LightProbeFile, "--- present, frame %u\n", Frame);
+ 		Frame++;
++		RelightFrame();
+ 		LightProbeCheck();
+ 		if (Capture && CaptureDirty && Frame % 300 == 0)
+ 			WriteCapture();
+-- 
+2.54.0.windows.1
+
