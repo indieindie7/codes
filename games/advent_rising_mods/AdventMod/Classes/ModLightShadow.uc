@@ -218,7 +218,7 @@ function Step(float DeltaTime)
 
 	// darker when the light is close and bright, lighter far away, scaled by the fade
 	// the other lights (and the ambient light) fill the shadow in
-	LightShare += (TargetShare - LightShare) * FMin(1.0, DeltaTime * 2.0);
+	LightShare += (TargetShare - LightShare) * FMin(1.0, DeltaTime * 6.0);
 	if (IsSun(AssignedLight))
 		// one shadow under open sky, as strong as the sun is bright (a dim or setting sun casts a
 		// lighter one)
@@ -248,7 +248,7 @@ defaultproperties
 	MaxLightDistance=600.000000
 	MinStrength=0.200000
 	FullIntensity=128.000000
-	InterpolateRate=4.000000
+	InterpolateRate=12.000000
 	LightShare=1.000000
 	TargetShare=1.000000
 	SetDistance=-1000.000000

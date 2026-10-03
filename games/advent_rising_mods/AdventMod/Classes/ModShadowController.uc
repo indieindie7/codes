@@ -40,6 +40,7 @@ var config float RepickDistance;  // the light set is re-picked only after movin
 var config bool bRespectBaked;    // darkness follows the light's share of all light here
 var config float AmbientWeight;   // how much the zone's ambient brightness counts against the lamps
 var config float MinShare;        // darkness kept even when a light is a small share of the total
+var config float HoldBonus;        // a light a shadow already casts from counts this much stronger when re-picking (fewer swaps while walking)
 var config bool bSunOnlyOutdoors; // under open sky only the sun casts (lamps only indoors)
 var config bool bDebugStockDir;   // testing: every shadow's light sits behind the camera (shadow in plain view)
 var config bool bDebugOwnShadow;  // testing: register the first shadow as the pawn's own Shadow
@@ -237,6 +238,17 @@ function Offer(Actor L, float Priority, int Want)
 	}
 }
 
+// a light one of this character's shadows already casts from (or is fading to)
+function bool IsHeld(Actor L)
+{
+	local int i;
+
+	for (i = 0; i < Shadows.Length; i++)
+		if (Shadows[i] != None && Shadows[i].TargetLight() == L)
+			return true;
+	return false;
+}
+
 // the current set can stay: the character hasn't moved far, its distance tier is
 // the same and every light it casts from still shines
 function bool CanHold()
@@ -305,7 +317,7 @@ function SelectLights()
 		if (Score > 0 && LightReaches(A.Location))
 		{
 			Total += Score;
-			Offer(A, Score, Want);
+			Offer(A, Score * (IsHeld(A) ? HoldBonus : 1.0), Want);
 		}
 	}
 	Manager.RefreshDynamicLights();
@@ -318,7 +330,7 @@ function SelectLights()
 		if (Score > 0 && LightReaches(A.Location))
 		{
 			Total += Score;
-			Offer(A, Score, Want);
+			Offer(A, Score * (IsHeld(A) ? HoldBonus : 1.0), Want);
 		}
 	}
 	// under open sky the sun always casts, bumping the weakest local light if needed
@@ -424,7 +436,8 @@ defaultproperties
 	MaxLightDistance=1300.000000
 	UpdateFrequency=0.200000
 	ShadowStrength=175.000000
-	FadeRate=2.500000
+	FadeRate=5.000000
+	HoldBonus=1.300000
 	GradientLength=2048
 	GradientScale=3.000000
 	MaxSteepness=60.000000
