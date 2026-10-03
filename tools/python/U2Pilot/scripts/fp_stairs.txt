@@ -1,0 +1,24 @@
+# first-person body on Sanctuary's wide concrete stairs: climbing (frames every 0.1 s), then looking down while walking
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console god
+console hub tp -1024 -2784 6330
+wait 1.5
+turn 270 0 0.5
+wait 0.5
+turn 0 -15 0.2
+wait 0.5
+shots 0.1
+move 1 0 2.0
+shots 0
+wait 0.5
+turn 180 -30 0.5
+wait 0.3
+shots 0.15
+move 1 0 1.5
+shots 0
+dump FirstPersonBody Stair Back Pushed
+quit

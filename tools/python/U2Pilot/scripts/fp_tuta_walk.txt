@@ -1,0 +1,22 @@
+# Avalon tutorial: where the player starts, which way the stairs are (height log every tick)
+background
+map TutA
+waitcontrol 240
+wait 2
+console set FirstPersonBody bStairLog True
+dump U2PlayerSP Location Rotation
+shot
+turn 90 0 0.3
+wait 0.5
+shot
+turn 90 0 0.3
+wait 0.5
+shot
+turn 90 0 0.3
+wait 0.5
+shot
+turn 90 0 0.3
+move 1 0 3
+shot
+dump U2PlayerSP Location
+quit

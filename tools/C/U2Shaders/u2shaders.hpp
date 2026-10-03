@@ -1892,7 +1892,8 @@ public:
 	bool PostHudZ0 = false;    // posthud=z0: only orthographic draws without depth testing start the HUD (Advent:
 	                           // a fullscreen z-tested ortho draw comes right after the sky, before the level)
 	int PostTrace = 0;                                   // posttrace=N: log the draw order of N frames
-	std::string PostTraceLine;
+	std::string PostTraceLine, PostTraceLast;
+	int PostTraceRun = 0;
 
 	void PostCheck(IDirect3DDevice9 *Dev)
 	{
@@ -1930,7 +1931,15 @@ public:
 				Dev->GetViewport(&vp);
 				snprintf(item, sizeof(item), "%s(z%lu w%lu f%lu b%lu vp%lux%lu) ", rhw ? "R" : "O", zenable, zwrite, zfunc, blend, vp.Width, vp.Height);
 			}
-			if (PostTraceLine.size() < 3500) PostTraceLine += item;
+			// runs of the same item are written once with a count ("3x120"), so a whole frame fits
+			if (item == PostTraceLast) PostTraceRun++;
+			else
+			{
+				if (PostTraceRun > 1 && PostTraceLine.size() < 3500) { char n[16]; snprintf(n, sizeof(n), "x%d ", PostTraceRun); PostTraceLine += n; }
+				PostTraceRun = 1;
+				PostTraceLast = item;
+				if (PostTraceLine.size() < 3500) PostTraceLine += item;
+			}
 		}
 		if (!rhw && !ortho)
 		{
@@ -2796,6 +2805,14 @@ public:
 	{
 		if (Loaded && Frame % 60 == 0)
 			ReloadPost(IniTime.dwLowDateTime == 0 && IniTime.dwHighDateTime == 0);
+		if (PostTrace > 0)
+		{
+			char end[96];
+			snprintf(end, sizeof(end), "x%d | present: saw3d %d done %d offscreen %d", PostTraceRun, (int)Saw3D, (int)PostDone, LastDev ? (int)Offscreen(LastDev) : -1);
+			PostTraceLine += end;
+			PostTraceRun = 0;
+			PostTraceLast.clear();
+		}
 		if (Post && Saw3D && !PostDone && LastDev != nullptr && !Offscreen(LastDev))
 		{
 			// no 2D draw this frame (no HUD): post-process the 3D frame now, in a scene of our own
@@ -2806,7 +2823,7 @@ public:
 		if (PostTrace > 0 && !PostTraceLine.empty())
 		{
 			static int frame = 0;
-			if (++frame % 300 == 0)      // every 300th frame, so both views get sampled
+			if (++frame % 45 == 0)       // every 45th frame
 			{
 				Message("posttrace: %s", PostTraceLine.c_str());
 				PostTrace--;

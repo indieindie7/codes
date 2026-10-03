@@ -46,6 +46,11 @@ var array<Material> SavedSkins;          // the character's own skins while its 
 var bool bHeadHidden;
 var config bool bHandsHoldGun;           // only the gun in the character's hands, no separate first-person gun
 var Inventory ShrunkWeapon;               // the weapon whose first-person gun is hidden
+var config float StairEase;               // stairs: how fast body and camera catch up with a step (per second)
+var config float StairMax;                // the most a step snap is eased over (units)
+var float Stair;                          // the height still being eased over (drawn lower/higher than the pawn)
+var vector LastLoc;                       // the pawn's location last frame (step snaps)
+var config bool bStairLog;                // log each step snap (testing)
 
 function SetNodes(Pawn P, bool bHide)
 {
@@ -87,6 +92,8 @@ function vector Show(Pawn P, vector GameCamera)
 		BasePre = P.PrePivot;
 		Pushed = vect(0,0,0);
 		Back = 0;
+		Stair = 0;
+		LastLoc = P.Location;
 	}
 	if (HeadIsSeparate(P))
 		HideHead(P);
@@ -94,35 +101,79 @@ function vector Show(Pawn P, vector GameCamera)
 		ShowHead(P);
 	if (P.PrePivot != BasePre + Pushed)
 		BasePre = P.PrePivot - Pushed;      // someone else (outfit height fit) changed it
+	DT = FClamp(Level.TimeSeconds - LastTime, 0, 0.1);
+	EaseStairs(P, DT);
 	Cam = GameCamera;
 	SetLocation(Cam);
 	if (!bMoveCamera)
 	{
 		if (bPushBack)
 			PushBack(P, Cam);
+		else
+			ApplyPush(P);
 		return Cam;
 	}
+	Yaw.Yaw = P.Rotation.Yaw;
+	Fwd = vector(Yaw);
 	for (i = 0; i < HeadNodes.Length; i++)
 	{
 		N = P.MeshGetNodeNamed(HeadNodes[i]);
 		if (N != 0)
 		{
-			Head = P.MeshNodeGetTranslation(N, MESHNODEREL_World);
+			// where the head would be without our offsets (look-down push and stair easing, as
+			// drawn last frame); the camera then rides the stair easing with the body
+			Head = P.MeshNodeGetTranslation(N, MESHNODEREL_World) - Pushed;
 			Cam.X = Head.X;
 			Cam.Y = Head.Y;
 			Want = Head.Z + UpOffset - P.Location.Z;
-			DT = FClamp(Level.TimeSeconds - LastTime, 0, 0.1);
 			CamZ += (Want - CamZ) * FMin(1.0, DT * Smoothing);
-			Cam.Z = P.Location.Z + CamZ;
+			Cam.Z = P.Location.Z + CamZ + Stair;
 			break;
 		}
 	}
+	// looking down, the drawn body slides back from under the camera: the run cycle's knees
+	// came right up into the view (they looked like the back of a head)
+	Back += (DownExtra(P) - Back) * FMin(1.0, DT * Smoothing);
 	LastTime = Level.TimeSeconds;
-	Yaw.Yaw = P.Rotation.Yaw;
-	Fwd = vector(Yaw);
+	Pushed = -Fwd * Back;
+	ApplyPush(P);
 	Cam += Fwd * ForwardOffset;
 	SetLocation(Cam);
 	return Cam;
+}
+
+// stairs: walking up (or down) a step snaps the pawn's height at once, and the body and camera
+// jumped with it. The jump is taken back from the drawn body and eased out over a moment, so
+// body and camera glide over the step while collision stays exact. Slopes change height
+// steadily with forward movement and are left alone.
+function EaseStairs(Pawn P, float DT)
+{
+	local float DZ, Flat;
+	local vector Move;
+
+	Move = P.Location - LastLoc;
+	LastLoc = P.Location;
+	DZ = Move.Z;
+	Move.Z = 0;
+	Flat = VSize(Move);
+	if (bStairLog && Abs(DZ) > 0.5)
+		Log("FPBody: dz" @ DZ @ "flat" @ Flat @ "physics" @ GetEnum(enum'EPhysics', P.Physics) @ "at" @ P.Location);
+	if (P.Physics == PHYS_Walking && Flat > 0.3 && Abs(DZ) > 2 && Abs(DZ) > Flat * 1.2 && Abs(DZ) < 60)
+	{
+		Stair = FClamp(Stair - DZ, -StairMax, StairMax);
+		if (bStairLog)
+			Log("FPBody: step" @ DZ @ "flat" @ Flat @ "-> easing" @ Stair);
+	}
+	Stair -= Stair * FMin(1.0, DT * StairEase);
+	if (Abs(Stair) < 0.05)
+		Stair = 0;
+}
+
+// the drawn body's offset from the pawn: look-down push plus the stair easing
+function ApplyPush(Pawn P)
+{
+	Pushed.Z = Stair;
+	P.PrePivot = BasePre + Pushed;
 }
 
 // can this character's head be hidden by its material?
@@ -219,7 +270,7 @@ function PushBack(Pawn P, vector Cam)
 	}
 	LastTime = Level.TimeSeconds;
 	Pushed = -Fwd * Back;
-	P.PrePivot = BasePre + Pushed;
+	ApplyPush(P);
 }
 
 // bone scales don't stick when set while the frame is drawn: set them every tick
@@ -290,6 +341,8 @@ defaultproperties
 	DownPush=18.000000
 	bHideHead=True
 	bHandsHoldGun=False
+	StairEase=10.000000
+	StairMax=40.000000
 	HeadSkin=1
 	HeadlessMargin=0.000000
 	HeadlessDownPush=14.000000

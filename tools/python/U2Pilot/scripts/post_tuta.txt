@@ -1,0 +1,6 @@
+# post during the Avalon tutorial briefing (Hawkins), screen-captured from outside
+background
+map TutA
+wait 30
+shot
+quit

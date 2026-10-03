@@ -1,0 +1,10 @@
+# post-processing during a cutscene (Sanctuary intro): shots while it plays
+background
+map M08A1
+wait 6
+shot
+wait 4
+shot
+wait 4
+shot
+quit

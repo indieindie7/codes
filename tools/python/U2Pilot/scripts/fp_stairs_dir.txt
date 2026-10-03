@@ -1,0 +1,21 @@
+# which way do Sanctuary's concrete stairs climb? walk 4 directions, log height and step snaps
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console god
+console set FirstPersonBody bStairLog True
+console hub tp -1024 -2784 6330
+wait 1.5
+dump U2PlayerSP Location
+move 1 0 1.2
+dump U2PlayerSP Location
+move -1 0 2.4
+dump U2PlayerSP Location
+move 1 0 1.2
+move 0 1 1.2
+dump U2PlayerSP Location
+move 0 -1 2.4
+dump U2PlayerSP Location
+quit

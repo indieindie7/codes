@@ -1,0 +1,26 @@
+# first person body, looking down at 4 pitches, standing then walking (head and neck visibility)
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+wait 1
+turn 0 -30 0.3
+wait 0.7
+shot
+turn 0 -20 0.3
+wait 0.7
+shot
+turn 0 -20 0.3
+wait 0.7
+shot
+turn 0 -15 0.3
+wait 0.7
+shot
+move 1 0 0.5
+shot
+move 1 0 0.5
+shot
+dump U2PlayerSP Skins Mesh PrePivot
+dump FirstPersonBody bHeadHidden Back CamZ
+quit
