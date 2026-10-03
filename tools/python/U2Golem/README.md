@@ -47,3 +47,34 @@ about two minutes, on the leftmost monitor: don't touch the PC while it runs.
   tabs and list rows are clicked by position instead. Tree views and list boxes read fine.
 - Saving asks "Are you sure you want to save ...?"; Windows dialogs here are in Portuguese.
 - UnrealEd cannot show Golem meshes; check them in the game or in Golem Studio.
+
+## The other way: Unreal II characters out to Blender
+
+`gem.py` reads Unreal II's own Golem mesh files (`.gem`, "LGEM" v1; layout decoded from
+`Meshes\Characters\Player\PlayerGame.gem`, Dalton). Two front ends:
+
+```
+blender -b --python gem2blend.py -- <in.gem> <out.blend> [texture dir]
+py -3.13 gem2psk.py <in.gem> <out.psk>
+```
+
+- `gem2blend.py` builds a Blender scene: armature from the bone hierarchy, the mesh with its
+  bone weights as vertex groups, UVs, one material per Golem slot with the matching `.tga`
+  from the same folder (alpha off: Golem's alpha is a gloss mask). Converted to Z up.
+- `gem2psk.py` writes an ActorX `.psk` (Z up, child bone rotations conjugated as ActorX
+  expects), which can go straight back through `u2import.py` after editing.
+
+What the format holds: a header of (count, offset) tables, an object table (0x40-byte records:
+name, class, ..., data size, data offset), typed attributes (`VertexCount`, `WeightCount`...)
+and a string table. The mesh objects:
+
+| object | contents |
+|---|---|
+| `GemBoneHierarchy` | 88 bytes per bone: name, parent, local position, quaternion xyzw, scale |
+| `GemBonePoints` | bone-name map; per point a model-space rest position + (weight count, first weight); (bone, weight) pairs; normals |
+| `GemVertices` | render vertices: (point, normal, uv) indices |
+| `GemTexUVFrames` | u, v floats |
+| `GemTriangles` | 82-byte header, then (a, b, c, material) over render vertices; LOD data follows |
+
+Verified on Dalton: 72 bones, 2401 points, 4330 render vertices, 4562 triangles, 3 materials
+(Limbs, TORSO, Visor), posed in Blender with the weights following.
