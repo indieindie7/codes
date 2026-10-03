@@ -1,0 +1,24 @@
+# U2GraphicsPack Nexus screenshots, part 1: Sanctuary views without HUD, after post (shotp) and before (shot)
+background
+map M08A1
+waitcontrol 180
+wait 3
+console god
+console hub kill 30000
+console BeMyMonkey
+console hub clean
+wait 1
+shot
+shotp
+wait 1
+turn 120 5 0.6
+wait 1
+shot
+shotp
+wait 1
+turn 120 0 0.6
+wait 1
+shot
+shotp
+wait 1
+quit

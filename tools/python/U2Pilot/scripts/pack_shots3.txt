@@ -1,0 +1,33 @@
+# U2GraphicsPack Nexus screenshots, part 3: your character and two marines in third person, soft multi-light shadows
+background
+map M08A1
+waitcontrol 180
+wait 3
+console hub kill 30000
+console BeMyMonkey
+give U2Weapons.WeaponInvMagnum
+console getweapon U2Weapons.WeaponInvMagnum
+wait 1.5
+console hub view on
+console togglehud
+console hub dummy - 160 140
+turn 40 0 0.2
+console hub dummy - 220 200
+turn -40 0 0.2
+console hub lamp 230 40 220
+wait 3
+shotp
+wait 1
+turn 0 -20 0.3
+wait 1.5
+shotp
+wait 1
+turn 60 0 0.5
+wait 1.5
+shotp
+wait 1
+turn -120 0 0.8
+wait 1.5
+shotp
+wait 1
+quit

@@ -1,0 +1,16 @@
+# third-person mystery pole: what is next to the player? (weapon actors dumped)
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+console BeMyMonkey
+console hub view on
+console togglehud
+wait 1.5
+shotp
+dump Weapon Location DrawScale bHidden ThirdPersonActor
+dump InventoryAttachment Location DrawScale bHidden Mesh StaticMesh
+dump U2PlayerSP Location
+wait 1
+quit
