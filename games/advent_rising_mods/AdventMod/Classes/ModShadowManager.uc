@@ -333,10 +333,10 @@ event Destroyed()
 defaultproperties
 {
 	bPcssIndoorsOnly=True
-	NpcShadows=4
+	NpcShadows=20
 	NpcSwapTime=1.5
-	bCrowdShadows=False
-	bCrowdActorShadows=False
+	bCrowdShadows=True
+	bCrowdActorShadows=True
 	PcssState=-1
 	RemoteRole=ROLE_None
 }
