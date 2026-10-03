@@ -47,7 +47,7 @@ python u2ed.py exec MAP EXPORT FILE="C:\work\MyMap.t3d"
 python u2ed.py exec MAP IMPORT FILE="C:\work\MyMap_edit.t3d"
 python u2ed.py exec MAP REBUILD
 python u2ed.py exec LIGHT APPLY
-python u2ed.py exec PATHS BUILD
+python u2ed.py exec PATHS DEFINE
 python u2ed.py exec MAP SAVE FILE="..\Maps\MyMap_edit.un2"
 python u2ed.py stop
 ```
@@ -68,7 +68,7 @@ built too, or the map comes out unlit and without paths.
 - The rebuilt map was 70 KB instead of 705 KB, and loading it hung. No terrain was lost (the
   map has no TerrainInfo; its ground is 443 static meshes, all in the T3D). Most likely the
   difference is the baked lighting of those 443 meshes and the AI paths, which only
-  `MAP REBUILD` was run for. **Next test:** the same, with `LIGHT APPLY` and `PATHS BUILD`.
+  `MAP REBUILD` was run for. **Done 2026-10-03:** with `LIGHT APPLY` and `PATHS DEFINE` the rebuilt map is 703,531 bytes (original 704,791) and plays; `PATHS BUILD` hangs (it also auto-adds path nodes, endlessly), see `test-results/2026-10-03-pc`.
 
 ## Not known yet (needs a test on the PC)
 

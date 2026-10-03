@@ -1,0 +1,9 @@
+PilotDriver: step 5: spawn U2Destruct.DestructProbe 200
+DestructProbe: target M08A1.StaticMeshActor135 mesh CinemaM.Vehicles.CanopyBIGLoRes at -1007.000000,6186.000000,6680.000000 scale 1.000000 1.000000,1.000000,1.000000 bStatic True collide True block True/True worldgeo True hidden False skins ()
+DestructProbe: stage 1 original blocks a trace: of 9 rays: prop 4, world 0, other 4, nothing 1 (first hit: M08A1.StaticMeshActor135 at 264 units)
+PilotDriver: spawned M08A1.DestructProbe0 at -788.698914,5885.165527,6589.147461
+DestructProbe: stage 2 after hide+SetCollision(off): hidden True collide False block False trace hits: of 9 rays: prop 0, world 0, other 7, nothing 2 (first hit: M08A1.StaticMeshActor119 at 331 units)
+DestructProbe: stage 3 copy M08A1.DestructPiece0 mesh CinemaM.Vehicles.CanopyBIGLoRes at -1007.000000,6186.000000,6680.000000 collide True block True trace hits: of 9 rays: prop 4, world 0, other 4, nothing 1 (first hit: M08A1.DestructPiece0 at 264 units)
+DestructProbe: stage 4 debris M08A1.DestructDebris0 physics PHYS_Falling at -1007.000000,6186.000000,6840.000000
+DestructProbe: stage 4 result after 4 s: physics PHYS_None bounces 5 dropped 352 units (about 160 = landed on the floor, 0 = never moved, far more = fell through)
+DestructProbe: done

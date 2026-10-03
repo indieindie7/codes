@@ -1,0 +1,22 @@
+# PC test results, 2026-10-03 (the cloud session's QA list)
+
+Run by the "unreal modding" PC session on the real game, in the `SystemBuild` test copy set up
+like the user's game now: **no dgVoodoo** (the fork talks to Windows' own Direct3D 9), the
+fork's current `d3d8.dll` (d3d8to9 `pcss-probe` f0062a1), shaders from `d3d8to9/shaders`
+(identical to `tools/C/U2Shaders/shaders`), the user's `U2Shaders.ini` (post, mip-chain bloom,
+SMAA, LUT) plus the rules under test. Screenshots are `shotp` frames (after post).
+
+| # | Item | Result |
+|---|---|---|
+| 1 | Merge the post fix (0003) | Nothing left to merge: the cloud branch is fully in master, and the fork already has `PostSave`, `CopyScene` returning false plus the retry, and `postdebug`/`PostLog`, along with the later post work (mip-chain bloom, SMAA, LUT, `shotp`). |
+| 2a | charlight lines | `U2Shaders-all-rules.log`: 10 setups **taken**, 3 **not supported**: `st0 2 2 1 / st1 10 2 1 / st2 5`, `st0 4 2 0 / st1 3 1 1 / st2 16`, `st0 5 2 0 / st1 3 1 1 / st2 16` (all `vertex colours as material 0`). |
+| 2b | Marine skin hash | Armour **1f53feed** and **5b018e2e** (blue suit sheets), dark armour **8c608717**, face **4951b6c5** (`lit-draw-textures.png`: every texture on a lit draw, by hash). Their lines are in `chars-marine-lines.txt`: the armour is `lighting 1`, 2-3 lights, `st0 4 2 0 / st1 3 1 1 / st2 16 2 1`, i.e. the **not supported** stage-2 BLENDCURRENTALPHA setup. |
+| 2c | **charlight bug** | With `charlight=1` the floor, curved pipes, railings, grass and the marine render **black** (`qa-fixed-base-vs-all.png`, `qa-charlight-only-vs-decal-surface.png`: charlight alone does it; decal + surface alone don't). Likely cause: those are vertex-lit static meshes whose vertex layout has **no normal** (lightprobe on 10-02 logged `normal at -1` for world draws; fixed function then passes the vertex colour through). charlight takes every `lighting 1` draw and lights it from normals that aren't there. Suggested fix: refuse draws whose FVF/declaration has no normal (and log that as "no normals"). |
+| 2d | Decal blend log | `decal 20224f10: blend src 9 dst 3: multiply x2 (grey = no change)`. |
+| 3 | Bullet holes (`decal=20224f10`) | **Fixed**: round, clean holes, no more dark squares (`decal-zoom.png`, left stock, right rule). Depth not visible in this nearly head-on view; no regression. |
+| 4 | Wall parallax (`surface=bd9b21f2`, `832f2d14`) | Levels measured as before (0.47/0.32 and 0.50/0.35); no visible change in the tested view, possibly because those textures aren't on the walls in shot. Needs a view where those hashes are known to be on screen, at an angle, closer than 1500 units. |
+| 5 | U2Destruct | Compiles with UCC (0 errors, 0 warnings). Probe: the 9 rays confirm **blocking** (prop 4, other 4, nothing 1); hide + collision off frees them (prop 0); the copy blocks again (prop 4); **DestructDebris falls, bounces 5 times and settles** (`PHYS_None`). It dropped 352 units where ~160 means "landed on the floor": probably landed on a lower level, or sank partly: worth a look (`destruct-probe.log`, `destruct-probe.png`). |
+| 6 | U2Blender round trip (HoverTest) | UnrealEd MAP EXPORT -> Blender 5.2 (background) import 456 objects, 0 warnings -> export 456 -> **0 lines differ** from the export. Then MAP IMPORT, MAP REBUILD, LIGHT APPLY (`Illuminate: 0 rays`), PATHS DEFINE, MAP SAVE: **703,531 bytes vs the original's 704,791** (last time 70 KB). It loads in game and plays; same terrain, plants, sky and lighting (`blender-rt-ingame.png`, top original, bottom rebuild). One difference: a grey/orange structure at the right edge of the second view is missing in the rebuild, probably the U2Hover station that the mod spawns only on a map named exactly "HoverTest" (not checked). |
+| 6b | **`PATHS BUILD` hangs** | In UnrealEd 2, `PATHS BUILD` also auto-adds path nodes; on the rebuilt HoverTest it looped forever adding PathNodes at PathNode0's spot (192,000+ in 10 minutes). `PATHS DEFINE` is the command that wires up the existing nodes; README fixed. |
+| 7 | Remote Control script | For the user: it installs a Startup shortcut (run `claude remote-control` once by hand, then `start-remote-control.ps1 -Install`). |
+| 8 | RTX Remix test | Not run: needs the user at the PC and an OK to download RTX Remix. dgVoodoo is already gone from the user's System (moved to `System\_dgVoodoo_removed_20261002`), so the plan's "swap dgVoodoo for Remix" step is simpler now. |

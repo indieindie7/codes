@@ -1,0 +1,11 @@
+# Blender round trip: HoverTest_RT2 in game, same view
+background
+map HoverTest_RT2
+waitcontrol 180
+wait 2
+shotp
+turn 120 0 0.4
+wait 1
+shotp
+dump PathNode Location
+quit

@@ -1,0 +1,24 @@
+# cloud QA: marines (charlight), bullet holes (decal parallax), walls (surface parallax); shotp frames
+background
+map M08A1
+waitcontrol 180
+wait 2
+console BeMyMonkey
+console god
+spawn U2Pawns.U2MarineLight 250
+turn 30 0 0.2
+spawn U2Pawns.U2MarineLight 320
+turn -30 0 0.2
+wait 1.5
+shotp
+fire 1.2
+wait 0.5
+shotp
+turn 90 -5 0.4
+fire 1.2
+wait 0.5
+shotp
+console behindview 1
+wait 1
+shotp
+quit

@@ -1,0 +1,22 @@
+# cloud QA, fixed views: the same wall shot from the start spot (decal + surface parallax), then a
+# marine dummy at a set angle (charlight), then the player from behind; shotp frames
+background
+map M08A1
+waitcontrol 180
+wait 2
+console god
+console hub kill 30000
+turn 90 -5 0.4
+wait 0.5
+fire 1.2
+wait 1
+shotp
+turn -90 5 0.4
+wait 0.3
+console hub dummy - 160 170
+wait 1.5
+shotp
+console behindview 1
+wait 1.5
+shotp
+quit

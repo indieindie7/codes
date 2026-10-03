@@ -1,0 +1,27 @@
+   818     818     11299  1f53feed ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 2 | st0 4 2 0 | st1 3 1 1 | st2 16 2 1
+      ambient 00111111 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00 | L0 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 25582 att 0.000 0.00000 | L1 type 1 dif 0.16 0.12 0.08 amb 0.00 0.00 0.00 range 25599 att 0.001 0.00000
+   808     808     10999  1f53feed ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 3 | st0 4 2 0 | st1 3 1 1 | st2 16 2 1
+      ambient 00111111 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00 | L0 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 25581 att 0.000 0.00000 | L1 type 1 dif 0.16 0.12 0.08 amb 0.00 0.00 0.00 range 25599 att 0.001 0.00000 | L2 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 11464 att 0.022 0.00000
+--
+  2596     708      2552  4951b6c5 ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 0 | st0 5 2 0 | st1 1 2 1 | st2 1 2 1
+      ambient 00000000 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00
+     3       0         2  4951b6c5 ff fvf 142 lighting 0 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 0 | st0 4 2 0 | st1 1 1 2 | st2 1 0 1
+      ambient 00000000 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00
+--
+   409     409     11299  5b018e2e ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 2 | st0 4 2 0 | st1 3 1 1 | st2 16 2 1
+      ambient 00111111 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00 | L0 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 25582 att 0.000 0.00000 | L1 type 1 dif 0.16 0.12 0.08 amb 0.00 0.00 0.00 range 25599 att 0.001 0.00000
+   404     404     10999  5b018e2e ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 3 | st0 4 2 0 | st1 3 1 1 | st2 16 2 1
+      ambient 00111111 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00 | L0 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 25581 att 0.000 0.00000 | L1 type 1 dif 0.16 0.12 0.08 amb 0.00 0.00 0.00 range 25599 att 0.001 0.00000 | L2 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 11464 att 0.022 0.00000
+--
+   533     533     10716  8c608717 ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 2 | st0 5 2 0 | st1 1 2 1 | st2 1 2 1
+      ambient ff000000 tfactor ff000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00 | L0 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 22751 att 0.011 0.00000 | L1 type 1 dif 0.16 0.12 0.08 amb 0.00 0.00 0.00 range 5820 att 0.044 0.00000
+  2665    2665     10716  8c608717 ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 2 | st0 5 2 0 | st1 3 1 1 | st2 16 2 1
+      ambient 00000000 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00 | L0 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 25569 att 0.000 0.00000 | L1 type 1 dif 0.16 0.12 0.08 amb 0.00 0.00 0.00 range 25548 att 0.000 0.00000
+   370     370     11031  8c608717 ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 3 | st0 5 2 0 | st1 1 2 1 | st2 1 2 1
+      ambient ffffffff tfactor ff000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00 | L0 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 22751 att 0.011 0.00000 | L1 type 1 dif 0.16 0.12 0.08 amb 0.00 0.00 0.00 range 5820 att 0.044 0.00000 | L2 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 11464 att 0.022 0.00000
+  1850    1850     11031  8c608717 ff fvf 0 lighting 1 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 3 | st0 5 2 0 | st1 3 1 1 | st2 16 2 1
+      ambient 00000000 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00 | L0 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 25570 att 0.000 0.00000 | L1 type 1 dif 0.16 0.12 0.08 amb 0.00 0.00 0.00 range 25545 att 0.000 0.00000 | L2 type 1 dif 0.17 0.14 0.10 amb 0.00 0.00 0.00 range 11464 att 0.022 0.00000
+     3       0         2  8c608717 ff fvf 142 lighting 0 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 0 | st0 4 2 0 | st1 1 2 1 | st2 1 0 1
+      ambient 00000000 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00
+     3       0         2  8c608717 ff fvf 142 lighting 0 vblend 0/0 colorvertex 1 src dif 0 amb 0 spec 0 lights 0 | st0 4 2 0 | st1 3 1 1 | st2 16 2 1
+      ambient 00000000 tfactor 00000000 mat dif 0.50 0.50 0.50 amb 1.00 1.00 1.00 emi 0.00 0.00 0.00
