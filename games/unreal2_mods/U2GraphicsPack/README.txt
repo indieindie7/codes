@@ -136,7 +136,7 @@ SOURCE
 ------
 Everything is open source: https://github.com/indieindie7/codes
 (games/unreal2_mods) and the renderer fork at
-https://github.com/indieindie7/d3d8to9.
+https://github.com/indieindie7/d3d8to9/tree/pcss-probe
 
 
 CREDITS AND LICENCES
