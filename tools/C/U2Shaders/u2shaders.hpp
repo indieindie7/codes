@@ -183,6 +183,8 @@ public:
 				PostBright.File = "post_bright.hlsl";
 				PostBlur.File = "post_blur.hlsl";
 				PostFinal.File = "post_final.hlsl";
+				PostDown.File = "post_down.hlsl";
+				PostUp.File = "post_up.hlsl";
 			}
 			else if (_strnicmp(Line + strspn(Line, " \t"), "posthud=z0", 10) == 0)
 				PostHudZ0 = true;
@@ -1883,7 +1885,101 @@ public:
 	std::string LutFile;
 	IDirect3DTexture9 *LutTex = nullptr;
 	bool LutTried = false;
-	U2Rule PostBright, PostBlur, PostFinal;
+	U2Rule PostBright, PostBlur, PostFinal, PostDown, PostUp;
+	// bloomchain (on unless bloomchain=0): the bright parts at half size, shrunk level by level to
+	// about 1/64 with post_down.hlsl and built back up with post_up.hlsl (Jimenez, SIGGRAPH 2014),
+	// for tight glow and wide haze at once. bloomscatter= mixes in the wider levels (0..1).
+	// 16-bit float targets where the card has them. If its shaders or targets are missing, the
+	// old quarter-size blur runs instead.
+	bool BloomChain = true;
+	float BloomScatter = 0.7f;
+	static const int ChainMax = 7;
+	IDirect3DTexture9 *ChainDown[ChainMax] = {}, *ChainUp[ChainMax] = {};
+	UINT ChainW[ChainMax] = {}, ChainH[ChainMax] = {};
+	int ChainLevels = 0;
+
+	void ReleaseChain()
+	{
+		for (int k = 0; k < ChainMax; k++)
+		{
+			if (ChainDown[k]) { ChainDown[k]->Release(); ChainDown[k] = nullptr; }
+			if (ChainUp[k]) { ChainUp[k]->Release(); ChainUp[k] = nullptr; }
+		}
+		ChainLevels = 0;
+	}
+
+	// the chain's targets for this frame size (made once, again when the size changes)
+	bool MakeChain(IDirect3DDevice9 *Dev)
+	{
+		const UINT W = (std::max)(SceneW / 2, 1u), H = (std::max)(SceneH / 2, 1u);
+		if (ChainLevels > 0 && ChainW[0] == W && ChainH[0] == H)
+			return true;
+		ReleaseChain();
+		int Levels = 0;
+		while (Levels < ChainMax && (std::min)(W >> Levels, H >> Levels) >= 4)
+			Levels++;
+		if (Levels < 2)
+			return false;
+		static const D3DFORMAT Formats[2] = { D3DFMT_A16B16G16R16F, D3DFMT_A8R8G8B8 };
+		for (D3DFORMAT Fmt : Formats)
+		{
+			bool Ok = true;
+			for (int k = 0; k < Levels && Ok; k++)
+			{
+				ChainW[k] = W >> k;
+				ChainH[k] = H >> k;
+				Ok = SUCCEEDED(Dev->CreateTexture(ChainW[k], ChainH[k], 1, D3DUSAGE_RENDERTARGET, Fmt, D3DPOOL_DEFAULT, &ChainDown[k], nullptr));
+				if (Ok && k < Levels - 1)
+					Ok = SUCCEEDED(Dev->CreateTexture(ChainW[k], ChainH[k], 1, D3DUSAGE_RENDERTARGET, Fmt, D3DPOOL_DEFAULT, &ChainUp[k], nullptr));
+			}
+			if (Ok)
+			{
+				ChainLevels = Levels;
+				Message("post: bloom chain, %d levels from %ux%u down to %ux%u (%s)", Levels, W, H, ChainW[Levels - 1], ChainH[Levels - 1],
+					Fmt == D3DFMT_A16B16G16R16F ? "16-bit float" : "8-bit");
+				return true;
+			}
+			ReleaseChain();
+		}
+		Message("post: bloom chain targets couldn't be made, using the quarter-size blur");
+		return false;
+	}
+
+	// the chain: bright parts (post_bright) -> down levels -> back up; returns the half-size result
+	IDirect3DTexture9 *RunChain(IDirect3DDevice9 *Dev, IDirect3DPixelShader9 *Bright, const float c[6][4])
+	{
+		IDirect3DPixelShader9 *Down = Compile(Dev, PostDown), *Up = Compile(Dev, PostUp);
+		if (Down == nullptr || Up == nullptr || !MakeChain(Dev))
+			return nullptr;
+		const int L = ChainLevels;
+		Target(Dev, ChainDown[0]);
+		Dev->SetTexture(0, SceneTex);
+		Dev->SetTexture(1, nullptr);
+		Dev->SetPixelShader(Bright);
+		Dev->SetPixelShaderConstantF(0, c[0], 4);
+		Quad(Dev, ChainW[0], ChainH[0]);
+		Dev->SetPixelShader(Down);
+		for (int k = 1; k < L; k++)
+		{
+			const float t[4] = { 1.0f / ChainW[k - 1], 1.0f / ChainH[k - 1], 0, 0 };
+			Target(Dev, ChainDown[k]);
+			Dev->SetTexture(0, ChainDown[k - 1]);
+			Dev->SetPixelShaderConstantF(0, t, 1);
+			Quad(Dev, ChainW[k], ChainH[k]);
+		}
+		Dev->SetPixelShader(Up);
+		for (int k = L - 2; k >= 0; k--)
+		{
+			const float t[2][4] = { { 1.0f / ChainW[k + 1], 1.0f / ChainH[k + 1], 0, 0 }, { BloomScatter, 0, 0, 0 } };
+			Target(Dev, ChainUp[k]);
+			Dev->SetTexture(0, k == L - 2 ? ChainDown[L - 1] : ChainUp[k + 1]);
+			Dev->SetTexture(1, ChainDown[k]);
+			Dev->SetPixelShaderConstantF(0, t[0], 2);
+			Quad(Dev, ChainW[k], ChainH[k]);
+		}
+		Dev->SetTexture(1, nullptr);
+		return ChainUp[0];
+	}
 	IDirect3DTexture9 *BloomA = nullptr, *BloomB = nullptr;
 	UINT BloomW = 0, BloomH = 0;
 	IDirect3DVertexBuffer9 *PostQuadVB = nullptr;
@@ -2182,7 +2278,6 @@ public:
 			}
 			Dev->SetTexture(1, nullptr);
 
-			// 1: the bright parts, quarter size
 			float c[6][4] = {};
 			c[0][0] = 1.0f / SceneW; c[0][1] = 1.0f / SceneH; c[0][2] = PostSplit;
 			c[0][3] = (GetTickCount() % 100000) / 1000.0f;     // seconds, wrapping every 100 s (grain)
@@ -2190,6 +2285,10 @@ public:
 			memcpy(c[1], PostBloom, sizeof(PostBloom));
 			memcpy(c[2], PostGrade, sizeof(PostGrade));
 			memcpy(c[3], PostBalance, sizeof(PostBalance));
+			IDirect3DTexture9 *BloomTex = BloomChain ? RunChain(Dev, Bright, c) : nullptr;
+			if (BloomTex == nullptr)
+			{
+			// 1: the bright parts, quarter size
 			Target(Dev, BloomA);
 			Dev->SetTexture(0, SceneTex);
 			Dev->SetPixelShader(Bright);
@@ -2212,11 +2311,13 @@ public:
 				Dev->SetPixelShaderConstantF(0, down, 1);
 				Quad(Dev, W, H);
 			}
+			BloomTex = BloomA;
+			}
 
 			// 3: the finished frame back into the game's own target
 			Dev->SetRenderTarget(0, OldRT);
 			Dev->SetTexture(0, SceneTex);
-			Dev->SetTexture(1, BloomA);
+			Dev->SetTexture(1, BloomTex);
 			IDirect3DTexture9 *Lut = PostLut(Dev);
 			if (Lut != nullptr)
 			{
@@ -2332,6 +2433,7 @@ public:
 	{
 		if (BloomA) { BloomA->Release(); BloomA = nullptr; }
 		if (BloomB) { BloomB->Release(); BloomB = nullptr; }
+		ReleaseChain();
 		if (PostQuadVB) { PostQuadVB->Release(); PostQuadVB = nullptr; }
 	}
 
@@ -2830,7 +2932,13 @@ public:
 				PostBright.File = "post_bright.hlsl";
 				PostBlur.File = "post_blur.hlsl";
 				PostFinal.File = "post_final.hlsl";
+				PostDown.File = "post_down.hlsl";
+				PostUp.File = "post_up.hlsl";
 			}
+			else if (sscanf_s(Line, " bloomchain=%u", &V) == 1)
+				BloomChain = V != 0;
+			else if (sscanf_s(Line, " bloomscatter=%f", &BloomScatter) == 1)
+				BloomScatter = (std::min)((std::max)(BloomScatter, 0.0f), 1.0f);
 			else if (sscanf_s(Line, " postsplit=%u", &V) == 1)
 				PostSplit = V != 0 ? 1.0f : 0.0f;
 			else if (sscanf_s(Line, " bloom=%f %f", &PostBloom[0], &PostBloom[1]) == 2)
@@ -2984,7 +3092,7 @@ public:
 		OnLost();
 		for (U2Rule &R : Rules)
 			if (R.PS != nullptr) { R.PS->Release(); R.PS = nullptr; R.Tried = false; }
-		for (U2Rule *R : { &MapRule, &ProjRule, &PostBright, &PostBlur, &PostFinal })
+		for (U2Rule *R : { &MapRule, &ProjRule, &PostBright, &PostBlur, &PostFinal, &PostDown, &PostUp })
 			if (R->PS != nullptr) { R->PS->Release(); R->PS = nullptr; R->Tried = false; }
 		LastDev = nullptr;
 	}
