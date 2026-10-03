@@ -33,6 +33,14 @@ still return to the scaled value. Nothing is touched at 75. The launcher's own
 FOV option is a key-binding hack (`W=MoveForward | OnRelease FOV 75`) that would
 undo this on every key release, so the mod removes it from any key at start.
 
+**Camera spinning on its own.** The game turns the camera with
+`JoyR=AxisRaw aTurn` / `JoyU=AxisRaw aLookup`; an axis the pad doesn't have, a
+receiver without a pad, or a pad that switched off reads -1, which the 0.25 dead
+zone never catches. `ModInput` (always the player's input class) only counts a
+pad axis after it has been near the centre, and drops it again after 1.5 s frozen
+at one exact off-centre value. Mouse and keyboard are untouched (the mouse is
+added after the filter). `bPadDriftFix=False` turns it off.
+
 ## How it works
 
 No stock game file is replaced.

@@ -108,6 +108,10 @@ GOOD TO KNOW
 - The launcher's own FOV switch works by changing your "move forward" key so
   that it resets the view every time you release it. The mod removes that from
   the key when the game starts, so use the in-game slider instead.
+- Camera spinning on its own: the game reads a missing or switched-off gamepad
+  axis as full deflection. The mod ignores a pad axis until it has been near
+  the centre, and again whenever it holds one exact value for 1.5 seconds.
+  Off: bPadDriftFix=False under [AdventMod.ModSettings] in AdventMod.ini.
 - Fullscreen and Borderless Window exclude each other: turning one on turns
   the other off.
 - Less shadow work for a slower PC: Graphics > Shadows for Others off, or

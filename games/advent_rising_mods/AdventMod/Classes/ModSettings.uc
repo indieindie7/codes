@@ -19,6 +19,10 @@ var config bool bShadowFix;           // character shadows: Engine.dll's sky pas
 var config bool bNoGamePostFx;        // remove the game's own camera effects (blurs, distortion, DOF) every frame: the Direct3D layer's post effects replace them
 var config bool bSoftShadows;         // multi-light character shadows (ModShadowManager, ported from U2SoftShadows)
 var bool bStartedUp;                  // Startup has run (once per run of the game)
+var config bool bPadDriftFix;         // ignore stuck gamepad camera axes: the camera spinning on its own with a pad or receiver connected (ModInput)
+var config float PadCentre;           // an axis counts once it has been this close to the centre
+var config float StuckTime;           // an axis frozen off-centre this long (seconds) stops counting
+var config float DebugStuckTurn;      // testing: add a phantom axis value to the camera turn
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
 var config float Sharpen;             // CAS sharpening 0..1 (the preset sets it; the Graphics page slider changes it)
 var config bool bSMAA;                // the layer's SMAA anti-aliasing
@@ -253,15 +257,18 @@ static function Startup(PlayerController PC)
 	}
 	if (default.bD3DTrace)
 		NativeCall("D3DTrace");
-	// testing: a pilot script needs its input class on the player controllers of the levels to come
-	if (class'ModPilot'.default.Steps.Length > 0)
+	// ModInput (stuck gamepad axes ignored; the test pilot's keys) on the player controllers of
+	// the levels to come: a class reference (not a console "set", which can't resolve a class it
+	// hasn't loaded yet), on Advent's controller class too: it keeps its own copy of the default
+	class'PlayerController'.default.InputClass = class'ModInput';
+	class'EonPlayerController'.default.InputClass = class'ModInput';
+	if (PC.PlayerInput == None || PC.PlayerInput.Class != class'ModInput')
 	{
-		// a class reference (not a console "set", which can't resolve a class it hasn't loaded yet),
-		// on Advent's controller class too: it keeps its own copy of the default
-		class'PlayerController'.default.InputClass = class'ModInput';
-		class'EonPlayerController'.default.InputClass = class'ModInput';
-		Note("pilot: input class set to " $ class'EonPlayerController'.default.InputClass);
-	}	RemoveLauncherFOV(PC);
+		PC.InputClass = class'ModInput';
+		PC.InitInputSystem();
+	}
+	Note("input class set to " $ class'EonPlayerController'.default.InputClass);
+	RemoveLauncherFOV(PC);
 	if (!default.bSaved)
 	{
 		default.bVSync = RenderBool(PC, "UseVSync");
@@ -291,6 +298,9 @@ defaultproperties
      bTrilinear=True
      FOV=75
      MaxFps=-1
+     bPadDriftFix=True
+     PadCentre=0.100000
+     StuckTime=1.500000
      PostPreset=1
      Sharpen=0.400000
      bSMAA=True
