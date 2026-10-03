@@ -23,6 +23,10 @@ var int Reports;
 var config bool bPcssIndoorsOnly;  // contact hardening only while the player is indoors (outdoors it loses the sun shadow)
 var float OutdoorTime;             // how long the player has been on the other side of the last switch
 var int PcssState;                 // -1 unknown, 0 off, 1 on
+var float LastFrameTime;           // newest LastRenderTime seen: what "on screen now" means
+var config int NpcShadows;         // how many other characters cast shadows at once: the nearest ones in view
+var config float NpcSwapTime;      // a character out of that set this long gives its shadows up
+var array<Actor> TurnedOn;          // characters whose bActorShadows we switched on (put back when they leave the pool)
 
 function Note(string S)
 {
@@ -80,9 +84,7 @@ function RefreshDynamicLights()
 
 event Timer()
 {
-	local Pawn P;
 	local int i;
-	local bool bHas;
 	local Controller C;
 
 	if (Viewer == None || Viewer.bDeleteMe)
@@ -105,6 +107,9 @@ event Timer()
 			Controllers[i].Destroy();
 		Controllers.Remove(i, 1);
 	}
+	for (i = TurnedOn.Length - 1; i >= 0; i--)
+		if (TurnedOn[i] == None || TurnedOn[i].bDeleteMe)
+			TurnedOn.Remove(i, 1);
 
 	// a few reports for testing: what each adopted character casts from
 	ReportTime += 0.5;
@@ -120,23 +125,142 @@ event Timer()
 		UpdatePcss();
 	if (bSuspended)
 		return;
-	foreach DynamicActors(class'Pawn', P)
+	UpdatePool();
+}
+
+// the player always; of the others (characters, and the animated crowd actors Advent fills
+// rooms with), the NpcShadows nearest on screen. One that drops out of that set keeps its
+// shadows for NpcSwapTime (no flicker at the edge)
+function UpdatePool()
+{
+	local Actor A;
+	local Pawn P;
+	local array<Actor> Near;
+	local array<Actor> Want;
+	local array<float> WantDist;
+	local float Dist, Newest;
+	local int i, k, Npcs;
+	local bool bHas;
+
+	foreach DynamicActors(class'Actor', A)
 	{
-		// the level's temporary precache pawns (no controller, gone within moments) are skipped
-		if (P.bDeleteMe || !P.bActorShadows || P.Mesh == None || (P.Controller == None && Level.TimeSeconds < 2.0))
+		if (A.bDeleteMe || A.bHidden || A.DrawType != DT_Mesh || A.Mesh == None)
 			continue;
-		if (class'ModShadowController'.default.bPlayerOnly && (Viewer == None || P.Controller != Viewer))
+		Newest = FMax(Newest, A.LastRenderTime);
+		P = Pawn(A);
+		if (P != None)
+		{
+			// the level's temporary precache pawns (no controller, gone within moments) are skipped
+			if (P.Controller == None && Level.TimeSeconds < 2.0)
+				continue;
+			if (Viewer != None && P.Controller == Viewer)
+			{
+				if (P.bActorShadows && Find(P) < 0)
+					Adopt(P);
+				continue;
+			}
+			if (P.Health <= 0)
+				continue;
+		}
+		else if (!A.IsA('simpleAnim'))
+			continue;
+		if (class'ModShadowController'.default.bPlayerOnly || NpcShadows <= 0 || Viewer == None)
+			continue;
+		if (VSize(A.Location - ViewSpot()) <= class'ModShadowController'.default.CullDistance)
+			Near[Near.Length] = A;
+	}
+	// LastRenderTime runs on its own clock in this game: on screen = drawn in the newest frame
+	LastFrameTime = Newest;
+	for (i = 0; i < Near.Length; i++)
+	{
+		A = Near[i];
+		if (Newest - A.LastRenderTime > 0.3)
+			continue;
+		Dist = VSize(A.Location - ViewSpot());
+		for (k = 0; k < Want.Length; k++)
+			if (Dist < WantDist[k])
+				break;
+		if (k >= NpcShadows)
+			continue;
+		Want.Insert(k, 1);
+		WantDist.Insert(k, 1);
+		Want[k] = A;
+		WantDist[k] = Dist;
+		if (Want.Length > NpcShadows)
+		{
+			Want.Remove(NpcShadows, 1);
+			WantDist.Remove(NpcShadows, 1);
+		}
+	}
+
+	// characters that left the set: after a while their shadows go
+	for (i = Controllers.Length - 1; i >= 0; i--)
+	{
+		if (Controllers[i].IsPlayer())
 			continue;
 		bHas = false;
-		for (i = 0; i < Controllers.Length; i++)
-			if (Controllers[i].Owner == P)
-			{
+		for (k = 0; k < Want.Length; k++)
+			if (Want[k] == Controllers[i].Owner)
 				bHas = true;
-				break;
-			}
-		if (!bHas)
-			Adopt(P);
+		if (bHas)
+		{
+			Controllers[i].OutOfPool = 0;
+			Npcs++;
+			continue;
+		}
+		Controllers[i].OutOfPool += 0.5;
+		if (Controllers[i].OutOfPool < NpcSwapTime)
+		{
+			Npcs++;
+			continue;
+		}
+		Release(Controllers[i].Owner);
+		Controllers[i].Destroy();
+		Controllers.Remove(i, 1);
 	}
+	for (k = 0; k < Want.Length && Npcs < NpcShadows; k++)
+		if (Find(Want[k]) < 0)
+		{
+			// the engine only updates the shadows of actors that have bActorShadows
+			if (!Want[k].bActorShadows)
+			{
+				Want[k].bActorShadows = true;
+				TurnedOn[TurnedOn.Length] = Want[k];
+			}
+			Adopt(Want[k]);
+			Npcs++;
+		}
+}
+
+function vector ViewSpot()
+{
+	if (Viewer.Pawn != None)
+		return Viewer.Pawn.Location;
+	return Viewer.Location;
+}
+
+function int Find(Actor P)
+{
+	local int i;
+
+	for (i = 0; i < Controllers.Length; i++)
+		if (Controllers[i] != None && Controllers[i].Owner == P)
+			return i;
+	return -1;
+}
+
+function Release(Actor P)
+{
+	local int i;
+
+	for (i = 0; i < TurnedOn.Length; i++)
+		if (TurnedOn[i] == P)
+		{
+			if (P != None && !P.bDeleteMe)
+				P.bActorShadows = false;
+			TurnedOn.Remove(i, 1);
+			return;
+		}
 }
 
 // contact hardening indoors only: switched once the player has been outdoors (or back
@@ -162,13 +286,16 @@ function UpdatePcss()
 	class'ModSettings'.static.NativeCall("Pcss:" $ Want);
 }
 
-function Adopt(Pawn P)
+function Adopt(Actor A)
 {
 	local ModShadowController C;
+	local Pawn P;
+
+	P = Pawn(A);
 
 	// retire the game's single shadow (and stop it coming back)
 	// (bActorShadows stays on: the engine only updates shadows of characters that have it)
-	if (P.Shadow != None)
+	if (P != None && P.Shadow != None)
 	{
 		Note("stock shadow of " $ P.Name $ ": at " $ (P.Shadow.Location - P.Location) $ " rot " $ P.Shadow.Rotation $ " dir " $ P.Shadow.LightDirection $ " dist " $ P.Shadow.LightDistance
 			$ " fov " $ P.Shadow.FOV $ " scale " $ P.Shadow.DrawScale $ " trace " $ P.Shadow.MaxTraceDistance $ " active " $ P.Shadow.bShadowActive $ " blob " $ P.Shadow.bBlobShadow
@@ -178,16 +305,16 @@ function Adopt(Pawn P)
 		if (P.Shadow.ShadowTexture != None)
 			P.Shadow.ShadowTexture.ShadowDarkness = 0;
 	}
-	C = Spawn(class'ModShadowController', P, '', P.Location, P.Rotation);
+	C = Spawn(class'ModShadowController', A, '', A.Location, A.Rotation);
 	if (C == None)
 		return;
 	C.Manager = Self;
 	C.Initialize();
 	// testing: does the engine only draw the shadow it knows as the pawn's own?
-	if (class'ModShadowController'.default.bDebugOwnShadow && C.Shadows.Length > 0)
+	if (P != None && class'ModShadowController'.default.bDebugOwnShadow && C.Shadows.Length > 0)
 		P.Shadow = C.Shadows[0].Proj;
 	Controllers[Controllers.Length] = C;
-	Note("multi-light shadows for " $ P.Name $ " (" $ C.OwnMax() $ " max)");
+	Note("multi-light shadows for " $ A.Name $ " (" $ C.OwnMax() $ " max)");
 }
 
 event Destroyed()
@@ -203,6 +330,8 @@ event Destroyed()
 defaultproperties
 {
 	bPcssIndoorsOnly=True
+	NpcShadows=4
+	NpcSwapTime=1.5
 	PcssState=-1
 	RemoteRole=ROLE_None
 }

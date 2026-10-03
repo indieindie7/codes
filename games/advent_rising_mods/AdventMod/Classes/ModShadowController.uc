@@ -58,10 +58,11 @@ var int PickVersion;
 var float LastTotalLight;
 var float LastAmbient;
 var bool bOutdoors;               // the sun reached this character at the last pick
+var float OutOfPool;              // seconds this character has been outside the manager's shadow pool
 
 function bool IsPlayer()
 {
-	return Manager != None && Manager.Viewer != None && Pawn(Owner).Controller == Manager.Viewer;
+	return Manager != None && Manager.Viewer != None && Pawn(Owner) != None && Pawn(Owner).Controller == Manager.Viewer;
 }
 
 function int OwnMax()
@@ -76,7 +77,7 @@ function Initialize()
 	local ModLightShadow S;
 	local int i;
 
-	if (Pawn(Owner) == None || Manager == None)
+	if (Owner == None || Manager == None)
 	{
 		Destroy();
 		return;
@@ -143,7 +144,8 @@ function bool ShouldCull()
 		return false;
 	if (VSize(Owner.Location - ViewLocation()) > CullDistance)
 		return true;
-	return Level.TimeSeconds - Owner.LastRenderTime > UnseenTime;
+	// (LastRenderTime runs on its own clock here: compare with the newest frame's)
+	return Manager.LastFrameTime - Owner.LastRenderTime > UnseenTime;
 }
 
 function int TierAllowed()
@@ -417,11 +419,11 @@ event Destroyed()
 defaultproperties
 {
 	bPlayerOnly=False
-	MaxShadows=3
+	MaxShadows=1
 	PlayerMaxShadows=4
 	MaxLightDistance=1300.000000
 	UpdateFrequency=0.200000
-	ShadowStrength=255.000000
+	ShadowStrength=175.000000
 	FadeRate=2.500000
 	GradientLength=2048
 	GradientScale=3.000000
@@ -441,7 +443,7 @@ defaultproperties
 	bRespectBaked=True
 	bSunOnlyOutdoors=True
 	AmbientWeight=1.000000
-	MinShare=0.600000
+	MinShare=0.450000
 	bHidden=True
 	RemoteRole=ROLE_None
 }
