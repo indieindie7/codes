@@ -10,6 +10,8 @@ var localized string LstrWidescreen, LstrTrilinear, LstrFOV, LstrMinFrameRate, L
 var localized string LstrColorblind, LstrColorblindStrength;
 var localized string ColorblindNames[4];
 var bool bOpenGraphics;
+var array<GUIImage> Swatches;          // colourblind preview: the palette, and under it the palette as corrected
+var array<color> Palette;
 
 function PlayerController GetPC()
 {
@@ -57,6 +59,7 @@ function SetupInitalPositions()
 	Slider2.SetAssociatedLabel(Labels[6]);
 	Button2.Caption = LstrOpen;
 	class'ModPanel'.static.AddTo(self);
+	AddSwatches();
 }
 
 function SetLocalGuiOptions(bool Reset)
@@ -88,6 +91,95 @@ function ShowValues()
 	Labels[5].Caption = LstrMinFrameRate $ ": " $ int(Slider1.Value);
 	Labels[6].Caption = LstrColorblindStrength $ ": " $ int(Slider2.Value) $ "%";
 	Button3.Caption = ColorblindNames[Clamp(class'ModSettings'.default.Colorblind, 0, 3)];
+	UpdateSwatches();
+}
+
+// right of the Colorblind Mode row: a strip of colours as they are (top), and as the
+// selected correction will show them (bottom). Menus are drawn after the U2Shaders pass,
+// so the bottom row is computed here, with post_final.hlsl's Daltonize.
+function AddSwatches()
+{
+	local int i, Row;
+	local GUIImage S;
+
+	for (Row = 0; Row < 2; Row++)
+		for (i = 0; i < Palette.Length; i++)
+		{
+			S = new(None) class'GUIImage';
+			S.Image = Texture'Engine.WhiteSquareTexture';
+			S.ImageStyle = ISTY_Stretched;
+			S.ImageRenderStyle = MSTY_Normal;
+			S.WinLeft = 0.655 + i * 0.022;
+			S.WinWidth = 0.019;
+			S.WinTop = LinePositions[3] - 0.012 + Row * 0.03;
+			S.WinHeight = 0.026;
+			S.RenderWeight = 0.5;
+			AppendComponent(S);
+			Swatches[Swatches.Length] = S;
+		}
+	UpdateSwatches();
+}
+
+function UpdateSwatches()
+{
+	local int i, n;
+
+	n = Palette.Length;
+	if (Swatches.Length < 2 * n)
+		return;
+	for (i = 0; i < n; i++)
+	{
+		Swatches[i].ImageColor = Palette[i];
+		Swatches[n + i].ImageColor = Daltonized(Palette[i], class'ModSettings'.default.Colorblind, class'ModSettings'.default.ColorblindStrength);
+	}
+}
+
+// post_final.hlsl's Daltonize (Machado et al. 2009 simulation, severity 1, then the error shift)
+static function color Daltonized(color In, int Type, float Strength)
+{
+	local vector L, Sim, E, Sh;
+	local color C;
+
+	if (Type == 0)
+		return In;
+	L.X = Square(In.R / 255.0);
+	L.Y = Square(In.G / 255.0);
+	L.Z = Square(In.B / 255.0);
+	if (Type == 1)
+	{
+		Sim.X = 0.152286 * L.X + 1.052583 * L.Y - 0.204868 * L.Z;
+		Sim.Y = 0.114503 * L.X + 0.786281 * L.Y + 0.099216 * L.Z;
+		Sim.Z = -0.003882 * L.X - 0.048116 * L.Y + 1.051998 * L.Z;
+	}
+	else if (Type == 2)
+	{
+		Sim.X = 0.367322 * L.X + 0.860646 * L.Y - 0.227968 * L.Z;
+		Sim.Y = 0.280085 * L.X + 0.672501 * L.Y + 0.047413 * L.Z;
+		Sim.Z = -0.011820 * L.X + 0.042940 * L.Y + 0.968881 * L.Z;
+	}
+	else
+	{
+		Sim.X = 1.255528 * L.X - 0.076749 * L.Y - 0.178779 * L.Z;
+		Sim.Y = -0.078411 * L.X + 0.930809 * L.Y + 0.147602 * L.Z;
+		Sim.Z = 0.004733 * L.X + 0.691367 * L.Y + 0.303900 * L.Z;
+	}
+	E = L - Sim;
+	if (Type < 3)
+	{
+		Sh.Y = 0.7 * E.X + E.Y;
+		Sh.Z = 0.7 * E.X + E.Z;
+	}
+	else
+	{
+		Sh.X = E.X + 0.7 * E.Z;
+		Sh.Y = E.Y + 0.7 * E.Z;
+	}
+	L += Sh * Strength;
+	C.R = 255.0 * Sqrt(FClamp(L.X, 0, 1)) + 0.5;
+	C.G = 255.0 * Sqrt(FClamp(L.Y, 0, 1)) + 0.5;
+	C.B = 255.0 * Sqrt(FClamp(L.Z, 0, 1)) + 0.5;
+	C.A = 255;
+	return C;
 }
 
 // off, protanopia, deuteranopia, tritanopia
@@ -191,4 +283,12 @@ defaultproperties
      ColorblindNames(1)="Protanopia"
      ColorblindNames(2)="Deuteranopia"
      ColorblindNames(3)="Tritanopia"
+     Palette(0)=(R=220,G=40,B=40,A=255)
+     Palette(1)=(R=240,G=140,B=30,A=255)
+     Palette(2)=(R=240,G=220,B=40,A=255)
+     Palette(3)=(R=60,G=190,B=60,A=255)
+     Palette(4)=(R=40,G=200,B=210,A=255)
+     Palette(5)=(R=50,G=90,B=220,A=255)
+     Palette(6)=(R=150,G=60,B=200,A=255)
+     Palette(7)=(R=230,G=110,B=170,A=255)
 }
