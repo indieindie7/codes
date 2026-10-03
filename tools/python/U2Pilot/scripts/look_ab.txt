@@ -1,0 +1,9 @@
+# post look A/B: Avalon intro (bright sky) then Sanctuary-like interior is a separate run; shotp only
+background
+map TutA
+wait 12
+shotp
+wait 3
+shotp
+wait 1
+quit
