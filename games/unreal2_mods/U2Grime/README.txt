@@ -14,6 +14,14 @@ U2Grime works this out live when any map loads (no per-map work, stock maps incl
   3. Wear (the live part): a character walking over a patch makes it lighter, three
      steps and it's gone, so routes that actually get used clear up as you play.
 
+  4. Clutter: the dustiest spots also get a few small props set down against the wall.
+     They are copies of the map's OWN small props: every placed static mesh is measured
+     with traces when the map loads, and the ones that are small and stand on a floor
+     become the kinds to copy, so each map gets clutter in its own style. No collision
+     (nobody gets stuck, shots pass through); walking into one kicks it: it hops away,
+     bounces and settles (Unreal II has no rigid-body physics, so this is scripted).
+     The log lists each kind ("Grime: kind ..."): a survey of every map's small props.
+
 The best candidates (spaced apart, 160 at most) get a soft dust patch: a projector
 straight down that darkens the floor slightly, warm-grey (GrimeSpot). Doors and terrain
 are skipped. U2Shaders leaves these projectors alone (its PCSS pass logs "projector
@@ -32,7 +40,13 @@ Console (any time in a level):
   set GrimeManager ViewSpot 0       stand in front of spot 0 (the dustiest), 1, 2, ...
   set GrimeManager MaxSpots 300     then: set GrimeManager bRebuild True (re-runs it)
 Other numbers to tune the same way (GrimeManager.uc has them all): OnPathDust, MinScore,
-MinSize/MaxSize, CornerReach, CoverReach, PathNear/PathFar, ScuffPerSecond, bScuff.
+MinSize/MaxSize, CornerReach, CoverReach, PathNear/PathFar, ScuffPerSecond, bScuff,
+bClutter (False = dust only).
+  set GrimeClutter bShow False      hide the clutter
+  set GrimeClutter ViewProp 0       stand in front of piece 0, 1, 2, ...
+Clutter numbers (GrimeClutter.uc, applied on the next bRebuild): MaxPropRadius,
+MaxPropHeight, MinScore, Chance, MaxPerSpot, MaxPieces, bKick, ExtraMeshes (named
+meshes "Package.Group.Name" to add, e.g. ones the survey found on other maps).
 
 Textures: tools\make_textures.py (Python 3, numpy, Pillow) writes Textures\Dust*.tga.
 PB_Modulate doubles the texture, so 128 grey = no change; the border is exactly 128.
@@ -40,4 +54,7 @@ PB_Modulate doubles the texture, so 128 grey = no change; the border is exactly 
 Not tested in the game yet (written in the cloud, no UCC there). Things that may need a
 fix on the first run: the dust may also streak up the bottom of the wall (the projector
 looks straight down past it; could be fine, could look wrong), and projectors cost a
-little each, so watch the FPS with 160 of them.
+little each, so watch the FPS with 160 of them. Clutter: copied props are lit as moving
+actors, not with the map's baked light, so they may look a little brighter or darker
+than the originals; maps whose small props have no collision get them switched on for a
+moment to be measured (logged as "unmeasurable" if even that fails).

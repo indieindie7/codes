@@ -13,6 +13,7 @@
 // The best candidates (spaced apart, at most MaxSpots) get a GrimeSpot.
 // 3. Wear, the live part: a character walking over a spot steps it lighter, and
 //    after the faintest step it is gone, so routes people actually use clear up.
+// Then GrimeClutter sets small props down at the dustiest spots (bClutter).
 //
 // Console (also from U2Pilot scripts), e.g. "set GrimeManager bShow False":
 //   bShow       False hides every spot, True shows them again (A/B screenshots)
@@ -49,6 +50,7 @@ var() int NavsPerTick;       // spread the work so loading doesn't hitch
 var() bool bScuff;
 var() float ScuffRadius;     // share of the spot's width a foot must be within
 var() float ScuffPerSecond;  // wear per second of walking over a spot (1 = one step)
+var() bool bClutter;         // small props at the dustiest spots (GrimeClutter)
 
 // console switches
 var bool bShow, bShown;
@@ -62,6 +64,7 @@ var NavigationPoint Cur;
 var int Navs, Rays, Walls, Bin;
 var array<GrimeCand> Cands;
 var array<GrimeSpot> Spots;
+var GrimeClutter Clutter;
 
 event PostBeginPlay()
 {
@@ -73,6 +76,9 @@ function StartOver()
 {
 	local int i;
 
+	if (Clutter != None)
+		Clutter.Destroy();
+	Clutter = None;
 	for (i = 0; i < Spots.Length; i++)
 		if (Spots[i] != None)
 			Spots[i].Destroy();
@@ -140,7 +146,7 @@ function float PathDistance(NavigationPoint N, vector P)
 
 function ScanNav(NavigationPoint N)
 {
-	local vector Start, Dir, HitLoc, HitNorm, Out;
+	local vector Start, Dir, HitLoc, HitNorm, Away;
 	local Actor Hit;
 	local int i;
 	local float Ang;
@@ -162,14 +168,14 @@ function ScanNav(NavigationPoint N)
 		// a wall (not a door, which moves, nor terrain)
 		if (Hit == None || Mover(Hit) != None || TerrainInfo(Hit) != None || Abs(HitNorm.Z) > 0.35)
 			continue;
-		Out = HitNorm;
-		Out.Z = 0;
-		Out = Normal(Out);
-		TryFoot(N, HitLoc + Out * WallInset, Out);
+		Away = HitNorm;
+		Away.Z = 0;
+		Away = Normal(Away);
+		TryFoot(N, HitLoc + Away * WallInset, Away);
 	}
 }
 
-function TryFoot(NavigationPoint N, vector P, vector Out)
+function TryFoot(NavigationPoint N, vector P, vector Away)
 {
 	local vector HitLoc, HitNorm, Foot, Low, Side;
 	local Actor Hit;
@@ -186,12 +192,12 @@ function TryFoot(NavigationPoint N, vector P, vector Out)
 
 	// how enclosed (ambient occlusion, roughly)
 	Occ = 0.45;
-	Side = Out cross vect(0,0,1);
+	Side = Away cross vect(0,0,1);
 	if (Blocked(Low, Low + Side * CornerReach) || Blocked(Low, Low - Side * CornerReach))
 		Occ += 0.3;
 	if (Blocked(Low, Low + vect(0,0,1) * CoverReach))
 		Occ += 0.2;
-	if (Blocked(Low, Low + Out * CornerReach * 1.5))
+	if (Blocked(Low, Low + Away * CornerReach * 1.5))
 		Occ += 0.1;
 	Occ = FMin(Occ, 1.0);
 
@@ -201,7 +207,7 @@ function TryFoot(NavigationPoint N, vector P, vector Out)
 	if (Score < MinScore)
 		return;
 	C.Loc = Foot;
-	C.Wall = Out;
+	C.Wall = Away;
 	C.Score = Score;
 	Cands[Cands.Length] = C;
 }
@@ -369,6 +375,12 @@ event Tick(float DeltaTime)
 		{
 			Log("Grime: placed "$Spots.Length$" spots (max "$MaxSpots$") in "$Level.TimeSeconds - StartTime$" s");
 			Phase = 3;
+			if (bClutter)
+			{
+				Clutter = Spawn(class'GrimeClutter', self);
+				if (Clutter != None)
+					Clutter.StartClutter(self);
+			}
 		}
 		return;
 	}
@@ -387,6 +399,8 @@ event Destroyed()
 {
 	local int i;
 
+	if (Clutter != None)
+		Clutter.Destroy();
 	for (i = 0; i < Spots.Length; i++)
 		if (Spots[i] != None)
 			Spots[i].Destroy();
@@ -413,6 +427,7 @@ defaultproperties
 	bScuff=True
 	ScuffRadius=0.450000
 	ScuffPerSecond=0.500000
+	bClutter=True
 	bShow=True
 	bShown=True
 	ViewSpot=-1
