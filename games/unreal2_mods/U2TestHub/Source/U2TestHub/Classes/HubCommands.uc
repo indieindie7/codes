@@ -102,6 +102,7 @@ exec function Hub(optional string Args)
 	else if (Cmd == "INFO")                 Info();
 	else if (Cmd == "PROBE")                Probe();
 	else if (Cmd == "BONES")                Bones();
+	else if (Cmd == "BEND")                 Bend(Args);
 	else if (Cmd == "LIGHTS")               Lights();
 	else if (Cmd == "TRACER")               TracerTest();
 	else if (Cmd == "LINE")                 LineTest();
@@ -411,6 +412,36 @@ function Bones()
 		Say(L);
 	}
 	Say("pawn at ("$int(PC.Pawn.Location.X)$","$int(PC.Pawn.Location.Y)$","$int(PC.Pawn.Location.Z)$") height "$PC.Pawn.CollisionHeight);
+}
+
+// hub bend NODE pitch yaw roll [space] / hub bend off: rotate one bone every tick (HubBend).
+// Node names with spaces use underscores: Merc_L_Forearm
+function Bend(string Args)
+{
+	local HubBend B;
+	local string N;
+	local rotator R;
+	local int i;
+
+	foreach PC.AllActors(class'HubBend', B)
+		B.Destroy();
+	N = Word(Args);
+	if (N == "" || Caps(N) == "OFF" || PC.Pawn == None)
+	{
+		Say("bend: off");
+		return;
+	}
+	while (InStr(N, "_") >= 0)
+	{
+		i = InStr(N, "_");
+		N = Left(N, i)$" "$Mid(N, i + 1);
+	}
+	R.Pitch = NumOr(Word(Args), 0) * 65536.0 / 360.0;
+	R.Yaw = NumOr(Word(Args), 0) * 65536.0 / 360.0;
+	R.Roll = NumOr(Word(Args), 0) * 65536.0 / 360.0;
+	B = PC.Spawn(class'HubBend');
+	B.Setup(PC.Pawn, N, R, byte(NumOr(Word(Args), 2)));
+	Say("bend: "$N$" "$R);
 }
 
 // which lights each visible character's shadows are using

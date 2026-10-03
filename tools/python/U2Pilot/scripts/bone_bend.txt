@@ -1,0 +1,26 @@
+# bone test: can script rotate a bone of the player's mesh? third person, left forearm bent in each space
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console god
+console hub view on
+wait 1.5
+turn 150 0 0.4
+wait 1
+shotp
+console hub bend Merc_L_Forearm 0 0 90 2
+wait 1
+shotp
+console hub bend Merc_L_Forearm 0 0 90 3
+wait 1
+shotp
+console hub bend Merc_L_UpperArm 0 90 0 3
+wait 1
+shotp
+console hub bend Merc_L_Forearm 0 0 90 1
+wait 1
+shotp
+console hub bend off
+quit

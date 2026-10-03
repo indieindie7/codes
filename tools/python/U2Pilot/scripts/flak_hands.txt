@@ -1,0 +1,22 @@
+# held UT Flak Cannon in first person (Juggernaut outfit): ahead, firing, a little down, steeper down
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console god
+give U2UTFlak.WeaponInvUTFlak
+wait 2
+shotp
+fire 0.3
+shotp
+wait 1
+turn 0 -20 0.3
+wait 1
+shotp
+turn 0 -30 0.3
+wait 1
+shotp
+dump WeaponInvUTFlak DrawScale Mesh ThirdPersonMesh PlayerViewOffset bHidden
+dump FirstPersonBody ShrunkWeapon
+quit

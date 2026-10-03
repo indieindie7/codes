@@ -1,0 +1,24 @@
+# held gun check: stock Magnum in first person, then the UT Flak seen in third person
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console god
+give U2Weapons.WeaponInvMagnum
+wait 2
+fire 0.3
+shotp
+turn 0 -30 0.3
+wait 1
+shotp
+turn 0 30 0.3
+give U2UTFlak.WeaponInvUTFlak
+wait 2
+console hub view on
+wait 1
+fire 0.3
+shotp
+wait 0.5
+shotp
+quit

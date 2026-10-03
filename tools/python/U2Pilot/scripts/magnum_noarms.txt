@@ -1,0 +1,17 @@
+# held Magnum in first person, arm bones not shrunk (HideNodes = head only)
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console god
+give U2Weapons.WeaponInvMagnum
+wait 2
+fire 0.3
+shotp
+turn 0 -30 0.3
+wait 1
+shotp
+turn 0 30 0.3
+give U2UTFlak.WeaponInvUTFlak
+quit

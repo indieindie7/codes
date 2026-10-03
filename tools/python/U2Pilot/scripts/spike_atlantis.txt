@@ -1,0 +1,16 @@
+# grey spike in first person on Atlantis (no weapon): ahead, a little down, walking
+background
+map Atlantis
+waitcontrol 200
+wait 2
+shotp
+turn 0 -20 0.3
+wait 1
+shotp
+move 1 0 0.6
+shotp
+turn 0 -30 0.3
+wait 1
+shotp
+dump U2PlayerAtlantis Weapon Mesh
+quit

@@ -1,0 +1,22 @@
+# sight camera: camera behind the gun hand, so the body's own hands hold the gun in view (Magnum, then Flak)
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+console god
+give U2Weapons.WeaponInvMagnum
+wait 2
+shotp
+fire 0.3
+shotp
+turn 0 -20 0.3
+wait 1
+shotp
+turn 0 20 0.3
+give U2UTFlak.WeaponInvUTFlak
+wait 2
+shotp
+fire 0.3
+shotp
+quit

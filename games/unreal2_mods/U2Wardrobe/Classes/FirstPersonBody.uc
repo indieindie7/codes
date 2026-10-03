@@ -51,6 +51,15 @@ var config float StairMax;                // the most a step snap is eased over 
 var float Stair;                          // the height still being eased over (drawn lower/higher than the pawn)
 var vector LastLoc;                       // the pawn's location last frame (step snaps)
 var config bool bStairLog;                // log each step snap (testing)
+var config bool bSightCamera;             // holding a gun: the camera behind and above the gun hand (cheek on
+                                          // the stock), so the character's own aiming pose shows the gun in
+                                          // its hands; the stock pose's forearms no longer cross the view
+var config string SightNode;              // the weapon mount node (Unreal II skeletons: handpointR02)
+var config float SightBack, SightUp, SightSide; // camera offset from it along the view: back, up, right
+var config float SightSmoothing;          // how fast the camera follows the hand (per second; it bobs with the anims)
+var config bool bSightLog;                // log the hand and camera (tuning)
+var float SightMix;                       // 0 head camera .. 1 sight camera (eased on weapon changes)
+var vector SightRel;                      // eased sight camera, relative to the pawn
 
 function SetNodes(Pawn P, bool bHide)
 {
@@ -134,12 +143,44 @@ function vector Show(Pawn P, vector GameCamera)
 	// looking down, the drawn body slides back from under the camera: the run cycle's knees
 	// came right up into the view (they looked like the back of a head)
 	Back += (DownExtra(P) - Back) * FMin(1.0, DT * Smoothing);
+	Cam += Fwd * ForwardOffset;
+	Cam = SightCamera(P, Cam, DT);
 	LastTime = Level.TimeSeconds;
 	Pushed = -Fwd * Back;
 	ApplyPush(P);
-	Cam += Fwd * ForwardOffset;
 	SetLocation(Cam);
 	return Cam;
+}
+
+// bSightCamera: holding a gun, the camera moves from the head to just behind and above the gun
+// hand, along the view, and back to the head when the gun is put away
+function vector SightCamera(Pawn P, vector HeadCam, float DT)
+{
+	local int N;
+	local vector Hand, X, Y, Z, Want;
+	local bool bGun;
+
+	N = 0;
+	bGun = bSightCamera && P.Weapon != None && P.Controller != None;
+	if (bGun)
+		N = P.MeshGetNodeNamed(SightNode);
+	if (N != 0)
+	{
+		Hand = P.MeshNodeGetTranslation(N, MESHNODEREL_World) - Pushed;
+		GetAxes(P.Controller.Rotation, X, Y, Z);
+		Want = Hand - X * SightBack + Z * SightUp + Y * SightSide - P.Location;
+		if (SightMix <= 0)
+			SightRel = Want;
+		SightRel += (Want - SightRel) * FMin(1.0, DT * SightSmoothing);
+		SightMix = FMin(1, SightMix + DT * 4);
+		if (bSightLog)
+			Log("FPBody: hand" @ (Hand - P.Location) @ "camera" @ SightRel @ "head" @ (HeadCam - P.Location));
+	}
+	else
+		SightMix = FMax(0, SightMix - DT * 4);
+	if (SightMix <= 0)
+		return HeadCam;
+	return HeadCam + (P.Location + SightRel - HeadCam) * SightMix;
 }
 
 // stairs: walking up (or down) a step snaps the pawn's height at once, and the body and camera
@@ -342,6 +383,12 @@ defaultproperties
 	bHideHead=True
 	bHandsHoldGun=False
 	StairEase=10.000000
+	bSightCamera=False
+	SightNode="handpointR02"
+	SightBack=26.000000
+	SightUp=9.000000
+	SightSide=-3.000000
+	SightSmoothing=14.000000
 	StairMax=40.000000
 	HeadSkin=1
 	HeadlessMargin=0.000000
