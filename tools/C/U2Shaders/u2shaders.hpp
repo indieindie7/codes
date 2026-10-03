@@ -2132,6 +2132,7 @@ public:
 		DWORD SS[3][sizeof(PostSS) / sizeof(PostSS[0])] = {};
 		DWORD TCI[3] = {}, TTF[3] = {};
 		float Const[6][4] = {};
+		float VConst[4] = {};
 
 		void Save(IDirect3DDevice9 *Dev)
 		{
@@ -2155,6 +2156,7 @@ public:
 			for (size_t i = 0; i < sizeof(PostRS) / sizeof(PostRS[0]); i++)
 				Dev->GetRenderState(PostRS[i], &RS[i]);
 			Dev->GetPixelShaderConstantF(0, Const[0], 6);
+			Dev->GetVertexShaderConstantF(0, VConst, 1);
 		}
 
 		void Restore(IDirect3DDevice9 *Dev)
@@ -2181,6 +2183,7 @@ public:
 			for (size_t i = 0; i < sizeof(PostRS) / sizeof(PostRS[0]); i++)
 				Dev->SetRenderState(PostRS[i], RS[i]);
 			Dev->SetPixelShaderConstantF(0, Const[0], 6);
+			Dev->SetVertexShaderConstantF(0, VConst, 1);
 		}
 
 		~PostSave()
@@ -2277,6 +2280,7 @@ public:
 				Dev->SetTextureStageState(s, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
 			}
 			Dev->SetTexture(1, nullptr);
+			IDirect3DTexture9 *AAFrame = RunSmaa(Dev);
 
 			float c[6][4] = {};
 			c[0][0] = 1.0f / SceneW; c[0][1] = 1.0f / SceneH; c[0][2] = PostSplit;
@@ -2316,7 +2320,7 @@ public:
 
 			// 3: the finished frame back into the game's own target
 			Dev->SetRenderTarget(0, OldRT);
-			Dev->SetTexture(0, SceneTex);
+			Dev->SetTexture(0, AAFrame != nullptr ? AAFrame : SceneTex);
 			Dev->SetTexture(1, BloomTex);
 			IDirect3DTexture9 *Lut = PostLut(Dev);
 			if (Lut != nullptr)
@@ -2353,6 +2357,238 @@ public:
 			if (VB) VB->Release();
 			if (D) D->Release();
 		}
+	}
+
+	// ---- SMAA 1x (smaa=1 by default, smaa=0 off) -------------------------------------------
+	// The reference SMAA.hlsl (Jimenez et al., MIT, github.com/iryoku/smaa) with our
+	// smaa_passes.hlsl, on the game's frame copy before the final pass: edges from luma, blending
+	// weights from the precomputed AreaTexDX9.dds / SearchTex.dds, then the frame blended along
+	// the edges. All in U2Shaders\. Shader model 3 needs vertex shaders, so the passes draw their
+	// own clip-space quad. Anything missing: SMAA stays off and the post chain runs as before.
+	bool Smaa = true, SmaaBroken = false;
+	IDirect3DVertexShader9 *SmaaVS[3] = {};
+	IDirect3DPixelShader9 *SmaaPS[3] = {};
+	IDirect3DTexture9 *SmaaArea = nullptr, *SmaaSearch = nullptr;              // managed
+	IDirect3DTexture9 *SmaaEdges = nullptr, *SmaaBlend = nullptr, *SmaaOut = nullptr;   // targets
+	IDirect3DVertexBuffer9 *SmaaVB = nullptr;
+	UINT SmaaW = 0, SmaaH = 0;
+	struct SmaaVertex { float x, y, z, u, v; };
+
+	std::string ReadShaderFile(const char *Name)
+	{
+		std::string Data;
+		FILE *F = nullptr;
+		if (fopen_s(&F, (Dir + "U2Shaders\\" + Name).c_str(), "rb") || F == nullptr)
+			return Data;
+		char Buf[8192];
+		size_t n;
+		while ((n = fread(Buf, 1, sizeof(Buf), F)) > 0)
+			Data.append(Buf, n);
+		fclose(F);
+		return Data;
+	}
+
+	// SMAA's lookup tables: A8L8 (area) and L8 (search) DDS files, put into A8R8G8B8 textures
+	// (red = luminance, alpha = alpha), which SMAA's Direct3D 9 path reads as .ra and .r
+	IDirect3DTexture9 *SmaaLookup(IDirect3DDevice9 *Dev, const char *Name, UINT Bytes)
+	{
+		const std::string D = ReadShaderFile(Name);
+		if (D.size() < 128 + 4 || D.compare(0, 4, "DDS ") != 0)
+		{
+			Message("smaa: %s missing or not a DDS", Name);
+			return nullptr;
+		}
+		const UINT H = *(const UINT *)(D.data() + 12), W = *(const UINT *)(D.data() + 16);
+		if ((size_t)W * H * Bytes + 128 > D.size())
+		{
+			Message("smaa: %s is shorter than %ux%u", Name, W, H);
+			return nullptr;
+		}
+		IDirect3DTexture9 *T = nullptr;
+		D3DLOCKED_RECT L = {};
+		if (FAILED(Dev->CreateTexture(W, H, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &T, nullptr)) || T == nullptr)
+			return nullptr;
+		if (FAILED(T->LockRect(0, &L, nullptr, 0)))
+		{
+			T->Release();
+			return nullptr;
+		}
+		const BYTE *In = (const BYTE *)D.data() + 128;
+		for (UINT y = 0; y < H; y++)
+			for (UINT x = 0; x < W; x++)
+			{
+				const BYTE *px = In + ((size_t)y * W + x) * Bytes;
+				BYTE *o = (BYTE *)L.pBits + (size_t)y * L.Pitch + x * 4;
+				o[0] = 0; o[1] = 0; o[2] = px[0];               // B G R: red = luminance
+				o[3] = Bytes > 1 ? px[1] : 255;                 // alpha
+			}
+		T->UnlockRect(0);
+		return T;
+	}
+
+	bool SmaaBuild(IDirect3DDevice9 *Dev)
+	{
+		if (SmaaBroken)
+			return false;
+		if (SmaaPS[2] != nullptr && SmaaArea != nullptr)
+			return true;
+		const std::string Lib = ReadShaderFile("SMAA.hlsl"), Passes = ReadShaderFile("smaa_passes.hlsl");
+		if (Lib.empty() || Passes.empty())
+		{
+			Message("smaa: SMAA.hlsl or smaa_passes.hlsl missing in U2Shaders, SMAA off");
+			SmaaBroken = true;
+			return false;
+		}
+		static const char *VSName[3] = { "EdgeVS", "WeightVS", "BlendVS" }, *PSName[3] = { "EdgePS", "WeightPS", "BlendPS" };
+		for (int i = 0; i < 3; i++)
+		{
+			char Head[256];
+			sprintf_s(Head, "#define SMAA_HLSL_3 1\n#define SMAA_PRESET_HIGH 1\n#define SMAA_PASS %d\n"
+				"float4 SmaaMetrics : register(c0);\n#define SMAA_RT_METRICS SmaaMetrics\n#line 1 \"SMAA.hlsl\"\n", i + 1);
+			const std::string Src = std::string(Head) + Lib + "\n#line 1 \"smaa_passes.hlsl\"\n" + Passes;
+			for (int k = 0; k < 2; k++)
+			{
+				ID3DBlob *Code = nullptr, *Errors = nullptr;
+				const HRESULT hr = D3DCompile(Src.data(), Src.size(), "smaa", nullptr, nullptr, k ? PSName[i] : VSName[i],
+					k ? "ps_3_0" : "vs_3_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &Code, &Errors);
+				if (FAILED(hr) || Code == nullptr)
+				{
+					Message("smaa: %s failed: %s", k ? PSName[i] : VSName[i], Errors ? (const char *)Errors->GetBufferPointer() : "?");
+					if (Errors) Errors->Release();
+					if (Code) Code->Release();
+					SmaaBroken = true;
+					return false;
+				}
+				if (Errors) Errors->Release();
+				const HRESULT cr = k ? Dev->CreatePixelShader((const DWORD *)Code->GetBufferPointer(), &SmaaPS[i])
+					: Dev->CreateVertexShader((const DWORD *)Code->GetBufferPointer(), &SmaaVS[i]);
+				Code->Release();
+				if (FAILED(cr))
+				{
+					Message("smaa: the card refused %s (%08x)", k ? PSName[i] : VSName[i], (unsigned)cr);
+					SmaaBroken = true;
+					return false;
+				}
+			}
+		}
+		SmaaArea = SmaaLookup(Dev, "AreaTexDX9.dds", 2);
+		SmaaSearch = SmaaLookup(Dev, "SearchTex.dds", 1);
+		const SmaaVertex q[4] = { { -1, 1, 0, 0, 0 }, { 1, 1, 0, 1, 0 }, { -1, -1, 0, 0, 1 }, { 1, -1, 0, 1, 1 } };
+		void *Mem = nullptr;
+		if (SmaaArea == nullptr || SmaaSearch == nullptr
+			|| FAILED(Dev->CreateVertexBuffer(sizeof(q), D3DUSAGE_WRITEONLY, D3DFVF_XYZ | D3DFVF_TEX1, D3DPOOL_MANAGED, &SmaaVB, nullptr))
+			|| FAILED(SmaaVB->Lock(0, sizeof(q), &Mem, 0)))
+		{
+			Message("smaa: lookup textures or the quad couldn't be made, SMAA off");
+			SmaaBroken = true;
+			return false;
+		}
+		memcpy(Mem, q, sizeof(q));
+		SmaaVB->Unlock();
+		Message("smaa: ready (SMAA 1x, preset high)");
+		return true;
+	}
+
+	void SmaaReleaseTargets()
+	{
+		for (IDirect3DTexture9 **T : { &SmaaEdges, &SmaaBlend, &SmaaOut })
+			if (*T) { (*T)->Release(); *T = nullptr; }
+		SmaaW = SmaaH = 0;
+	}
+
+	void SmaaReleaseAll()
+	{
+		SmaaReleaseTargets();
+		for (int i = 0; i < 3; i++)
+		{
+			if (SmaaVS[i]) { SmaaVS[i]->Release(); SmaaVS[i] = nullptr; }
+			if (SmaaPS[i]) { SmaaPS[i]->Release(); SmaaPS[i] = nullptr; }
+		}
+		if (SmaaArea) { SmaaArea->Release(); SmaaArea = nullptr; }
+		if (SmaaSearch) { SmaaSearch->Release(); SmaaSearch = nullptr; }
+		if (SmaaVB) { SmaaVB->Release(); SmaaVB = nullptr; }
+	}
+
+	static void SmaaSampler(IDirect3DDevice9 *Dev, DWORD s, D3DTEXTUREFILTERTYPE F)
+	{
+		Dev->SetSamplerState(s, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+		Dev->SetSamplerState(s, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+		Dev->SetSamplerState(s, D3DSAMP_MAGFILTER, F);
+		Dev->SetSamplerState(s, D3DSAMP_MINFILTER, F);
+		Dev->SetSamplerState(s, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+		Dev->SetSamplerState(s, D3DSAMP_SRGBTEXTURE, FALSE);
+	}
+
+	// the three passes on the frame copy; returns the anti-aliased frame (or nullptr: use the copy).
+	// Leaves the post chain's own vertex setup (pre-transformed quad, no vertex shader) and
+	// linear samplers on 0-2 behind it.
+	IDirect3DTexture9 *RunSmaa(IDirect3DDevice9 *Dev)
+	{
+		if (!Smaa || SceneTex == nullptr || !SmaaBuild(Dev))
+			return nullptr;
+		if (SmaaOut == nullptr || SmaaW != SceneW || SmaaH != SceneH)
+		{
+			SmaaReleaseTargets();
+			if (FAILED(Dev->CreateTexture(SceneW, SceneH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &SmaaEdges, nullptr))
+				|| FAILED(Dev->CreateTexture(SceneW, SceneH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &SmaaBlend, nullptr))
+				|| FAILED(Dev->CreateTexture(SceneW, SceneH, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &SmaaOut, nullptr)))
+			{
+				Message("smaa: targets couldn't be made (%ux%u), SMAA off", SceneW, SceneH);
+				SmaaReleaseTargets();
+				SmaaBroken = true;
+				return nullptr;
+			}
+			SmaaW = SceneW;
+			SmaaH = SceneH;
+		}
+		const float m[4] = { 1.0f / SceneW, 1.0f / SceneH, (float)SceneW, (float)SceneH };
+		Dev->SetFVF(D3DFVF_XYZ | D3DFVF_TEX1);
+		Dev->SetStreamSource(0, SmaaVB, 0, sizeof(SmaaVertex));
+		Dev->SetVertexShaderConstantF(0, m, 1);
+		Dev->SetPixelShaderConstantF(0, m, 1);
+
+		// 1: edges
+		Target(Dev, SmaaEdges);
+		Dev->Clear(0, nullptr, D3DCLEAR_TARGET, 0, 1.0f, 0);
+		Dev->SetVertexShader(SmaaVS[0]);
+		Dev->SetPixelShader(SmaaPS[0]);
+		SmaaSampler(Dev, 0, D3DTEXF_POINT);
+		Dev->SetTexture(0, SceneTex);
+		Dev->SetTexture(1, nullptr);
+		Dev->SetTexture(2, nullptr);
+		Dev->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
+
+		// 2: blending weights
+		Target(Dev, SmaaBlend);
+		Dev->Clear(0, nullptr, D3DCLEAR_TARGET, 0, 1.0f, 0);
+		Dev->SetVertexShader(SmaaVS[1]);
+		Dev->SetPixelShader(SmaaPS[1]);
+		SmaaSampler(Dev, 0, D3DTEXF_LINEAR);
+		SmaaSampler(Dev, 1, D3DTEXF_LINEAR);
+		SmaaSampler(Dev, 2, D3DTEXF_POINT);
+		Dev->SetTexture(0, SmaaEdges);
+		Dev->SetTexture(1, SmaaArea);
+		Dev->SetTexture(2, SmaaSearch);
+		Dev->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
+
+		// 3: the frame blended along the edges
+		Target(Dev, SmaaOut);
+		Dev->SetVertexShader(SmaaVS[2]);
+		Dev->SetPixelShader(SmaaPS[2]);
+		SmaaSampler(Dev, 0, D3DTEXF_LINEAR);
+		SmaaSampler(Dev, 1, D3DTEXF_LINEAR);
+		SmaaSampler(Dev, 2, D3DTEXF_LINEAR);
+		Dev->SetTexture(0, SceneTex);
+		Dev->SetTexture(1, SmaaBlend);
+		Dev->SetTexture(2, nullptr);
+		Dev->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
+
+		// back to the post chain's setup
+		Dev->SetVertexShader(nullptr);
+		Dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_TEX1);
+		Dev->SetStreamSource(0, PostQuadVB, 0, sizeof(U2QuadVertex));
+		Dev->SetTexture(1, nullptr);
+		return SmaaOut;
 	}
 
 	// the lut= texture, loaded once (DDS through LoadDDS, or an uncompressed 24/32-bit BMP)
@@ -2434,6 +2670,7 @@ public:
 		if (BloomA) { BloomA->Release(); BloomA = nullptr; }
 		if (BloomB) { BloomB->Release(); BloomB = nullptr; }
 		ReleaseChain();
+		SmaaReleaseTargets();
 		if (PostQuadVB) { PostQuadVB->Release(); PostQuadVB = nullptr; }
 	}
 
@@ -2935,6 +3172,8 @@ public:
 				PostDown.File = "post_down.hlsl";
 				PostUp.File = "post_up.hlsl";
 			}
+			else if (sscanf_s(Line, " smaa=%u", &V) == 1)
+				Smaa = V != 0;
 			else if (sscanf_s(Line, " bloomchain=%u", &V) == 1)
 				BloomChain = V != 0;
 			else if (sscanf_s(Line, " bloomscatter=%f", &BloomScatter) == 1)
@@ -3094,6 +3333,8 @@ public:
 			if (R.PS != nullptr) { R.PS->Release(); R.PS = nullptr; R.Tried = false; }
 		for (U2Rule *R : { &MapRule, &ProjRule, &PostBright, &PostBlur, &PostFinal, &PostDown, &PostUp })
 			if (R->PS != nullptr) { R->PS->Release(); R->PS = nullptr; R->Tried = false; }
+		SmaaReleaseAll();
+		SmaaBroken = false;
 		LastDev = nullptr;
 	}
 
