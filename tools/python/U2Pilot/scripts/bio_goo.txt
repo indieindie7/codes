@@ -1,0 +1,20 @@
+# Bio Rifle goo: first-person view of the gun, then gel blobs flying and stuck on the ground
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+turn 30 -12 0.3
+wait 1
+shotp
+fire 0.15
+wait 0.25
+shotp
+fire 0.15
+wait 0.6
+shotp
+altfire 1.2
+wait 0.5
+shotp
+wait 1
+quit

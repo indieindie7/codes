@@ -1,0 +1,9 @@
+# first mission (Hell, m01a): the flamethrower should be handed over at the start, with a full tank
+background
+map m01a
+waitcontrol 240
+wait 3
+status
+dump weaponInvFlamethrower AmmoType
+dump ammoInvFlamethrower AmmoAmount MaxAmmo
+quit

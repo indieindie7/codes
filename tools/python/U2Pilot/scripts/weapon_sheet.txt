@@ -1,0 +1,79 @@
+# player weapons, one labelled frame each (status logs the weapon held at each shot)
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+turn 30 -3 0.3
+wait 1
+status
+shot
+give U2Weapons.weaponInvPistol
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvShotgun
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvAssaultRifle
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvGrenadeLauncher
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvFlamethrower
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvEnergyRifle
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvSniperRifle
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvRocketLauncher
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvLeechGun
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvTakkra
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvSingularityCannon
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvLaserRifle
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvSkaarjGlove
+wait 1.8
+status
+shot
+give U2Weapons.weaponInvMindClaw
+wait 1.8
+status
+shot
+give U2UTFlak.WeaponInvUTFlak
+wait 1.8
+status
+shot
+give U2UTFlak.WeaponInvUTRipper
+wait 1.8
+status
+shot
+give U2UTFlak.WeaponInvUTBio
+wait 1.8
+status
+shot
+quit
