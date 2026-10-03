@@ -26,6 +26,8 @@ event bool OpenMenu(string NewMenuName, optional string Param1, optional string 
 		NewMenuName = string(class'ModPCOptions');
 	else if (NewMenuName ~= "Interface.MenuPauseOptionsAudio")
 		NewMenuName = string(class'ModAudioOptions');
+	else if (NewMenuName ~= "Interface.MenuPauseOptionsGame")
+		NewMenuName = string(class'ModGameOptions');
 	if (!Super.OpenMenu(NewMenuName, Param1, Param2, Param3, bHide))
 		return false;
 	if (!bDebugOpened)

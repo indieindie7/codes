@@ -43,6 +43,8 @@ var float OnTargetTime;
 var string ReleaseCommand;             // console command that "lets go" of the held button
 var bool bWantPause;
 var float JumpStartZ, JumpTopZ;       // JUMPTEST
+var float TopSpeed;                    // SPEEDTEST
+var vector SpeedFrom;
 var float ControlTime;                   // the script itself paused the game (pause button, menu step)
 
 function Note(string S)
@@ -397,6 +399,13 @@ function StartStep()
 		// NEARENEMY [distance]: the player moved to that far from the level's nearest hostile, facing it
 		NearEnemy(ArgF(1, 900));
 		break;
+	case "SPEEDTEST":
+		// SPEEDTEST [seconds] [walk]: run forward and log the top speed and what decides it
+		class'ModPilot'.default.Forward = 1;
+		class'ModPilot'.default.bHoldWalk = ArgF(2, 0) != 0;
+		TopSpeed = 0;
+		StepLength = ArgF(1, 3);
+		break;
 	case "JUMPTEST":
 		// JUMPTEST: jump once and log how high the pawn rose (and the settings that decide it)
 		JumpStartZ = PC().Pawn.Location.Z;
@@ -515,6 +524,14 @@ event Tick(float DeltaTime)
 	{
 		SteerView(P, DeltaTime);
 		return;
+	}
+	if (Cmd == "SPEEDTEST" && P.Pawn != None)
+	{
+		TopSpeed = FMax(TopSpeed, VSize(P.Pawn.Velocity * vect(1,1,0)));
+		if (StepTime < 1)
+			SpeedFrom = P.Pawn.Location;
+		if (StepTime >= StepLength)
+			Note("speedtest: average after the first second " $ int(VSize((P.Pawn.Location - SpeedFrom) * vect(1,1,0)) / FMax(StepLength - 1, 0.1)) $ ", top " $ int(TopSpeed) $ ", GroundSpeed " $ P.Pawn.GroundSpeed $ ", GroundSpeedMax " $ EonPawn(P.Pawn).GroundSpeedMax $ ", default GroundSpeed " $ P.Pawn.default.GroundSpeed $ ", aForward " $ P.aForward);
 	}
 	if (Cmd == "JUMPTEST" && P.Pawn != None)
 	{

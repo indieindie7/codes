@@ -40,3 +40,15 @@ PresetNames[1]="Natural"
 PresetNames[2]="Cinematic"
 PresetNames[3]="Gritty"
 PresetNames[4]="Clean"
+
+[ModGameOptions]
+LstrMore="More Gameplay Options"
+LstrOpen="Open"
+
+[ModGameplayOptions]
+LstrLabelTitle="Gameplay"
+LstrBossDealt="Damage You Deal to Bosses"
+LstrBossTaken="Damage Bosses Deal to You"
+LstrExplore="Running Speed (no enemies near)"
+LstrDealt="Damage You Deal"
+LstrTaken="Damage You Take"

@@ -31,6 +31,12 @@ var config float CombatRange;         // a hostile this close (unreal units, 1 m
 var config float PickupReach;         // weapons this close stay targetable in a fight
 var config bool bTargetLog;           // testing: log the lock-on target as it changes
 var config bool bDebugCombat;         // testing: ModTargeting acts as if a hostile were near
+var config float DamageDealt;         // Gameplay page: damage you deal, on top of the difficulty (ModTargeting)
+var config float DamageTaken;         // damage you take
+var config float BossDamageDealt;     // ...and on top of those while a boss is alive near you
+var config float BossDamageTaken;
+var config float ExploreSpeed;        // running speed while no enemy is near (ModInput)
+var bool bInCombat;                   // a hostile within CombatRange (ModTargeting, twice a second)
 var config bool bJumpLog;             // testing: log every jump (ModInput)
 var config bool bMouseLog;            // testing: log how much of the mouse movement the engine's curve keeps
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
@@ -349,6 +355,11 @@ defaultproperties
      bRawMouse=True
      MouseTurnRate=80.000000
      bCombatPickupFilter=True
+     DamageDealt=1.000000
+     DamageTaken=1.000000
+     BossDamageDealt=1.000000
+     BossDamageTaken=1.000000
+     ExploreSpeed=1.250000
      CombatRange=2500.000000
      PickupReach=250.000000
      PostPreset=1

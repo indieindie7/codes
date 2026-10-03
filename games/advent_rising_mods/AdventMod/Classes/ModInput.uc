@@ -22,7 +22,12 @@
 //     the hand speed turns 8 times slower. The mouse's share of the turn is fed
 //     through a cube root first, so the camera turns MouseTurnRate degrees a
 //     second per unit of mouse speed, in a line.
-//  3. ModPilot's "held keys", so a test script can play the game from inside it,
+//  3. exploring speed (the Gameplay page): while no enemy is near, the run is
+//     ExploreSpeed times faster. The game sets the speed every frame from the move
+//     input (x4), capped by the pawn's GroundSpeedMax (650 running, 350 walking,
+//     measured): both are scaled here, just before PlayerMove reads them. Not while
+//     walking (the walk key): the larger input would make the game switch to the run.
+//  4. ModPilot's "held keys", so a test script can play the game from inside it,
 //     without Windows input or focus. The engine fills the input axes every
 //     frame and then calls PlayerInput(); adding our values here is exactly what
 //     a held key does.
@@ -37,6 +42,7 @@ var float LastTurn, LastLook;
 var float TurnStill, LookStill;         // seconds the axis has held one exact value
 var float LogTime, LogRaw, LogKept;     // bMouseLog: one second of mouse movement before / after the engine's curve
 var int LogFrames;
+var float BaseSpeedMax, LastSpeedMax;  // exploring speed: the pawn's own cap, and what we set it to
 var bool bInAir;                       // bJumpLog
 var float JumpBaseZ, JumpApexZ, JumpLaunchZ;
 var int LastDesiredYaw, LastCurrentYaw;
@@ -120,6 +126,7 @@ event PlayerInput(float DeltaTime)
 			bRun = 1;
 	}
 	Super.PlayerInput(DeltaTime);
+	ExploreSpeed();
 	if (class'ModSettings'.default.bRawMouse && aMouseX != 0)
 		aTurn += LinearTurn(aMouseX) - aMouseX;
 	if (class'ModSettings'.default.bRawMouse && aMouseY != 0 && (bAlwaysMouseLook || bLook != 0))
@@ -128,6 +135,31 @@ event PlayerInput(float DeltaTime)
 		LogMouse(Raw, DeltaTime);
 	if (class'ModSettings'.default.bJumpLog)
 		LogJump();
+}
+
+// a faster run while no enemy is near
+function ExploreSpeed()
+{
+	local EonPawn E;
+	local float F;
+
+	E = EonPawn(Pawn);
+	if (E == None)
+		return;
+	if (E.GroundSpeedMax != LastSpeedMax)
+		BaseSpeedMax = E.GroundSpeedMax;     // the game set it (a new move, walk/run, a dodge)
+	F = class'ModSettings'.default.ExploreSpeed;
+	if (F == 1 || bRun != 0 || class'ModSettings'.default.bInCombat || E.Physics != PHYS_Walking || BaseSpeedMax <= 0)
+	{
+		if (E.GroundSpeedMax == LastSpeedMax && BaseSpeedMax > 0)
+			E.GroundSpeedMax = BaseSpeedMax;
+		LastSpeedMax = -12345;
+		return;
+	}
+	aForward *= F;
+	aStrafe *= F;
+	E.GroundSpeedMax = BaseSpeedMax * F;
+	LastSpeedMax = E.GroundSpeedMax;
 }
 
 // testing: each jump's launch speed, how high it went, and the settings that decide it
