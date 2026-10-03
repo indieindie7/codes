@@ -30,6 +30,7 @@ PANEL = (0.07, 0.04, 0.44, 0.46)        # grey hazard panel
 GOO = (0.52, 0.03, 0.66, 0.15)          # goo window patch (bio_gun.hlsl mask a)
 CAP = (0.425, 0.935, 0.055)             # round fitting: centre u, v, radius
 HOSE = (0.30, 0.62, 0.42, 0.70)         # dark hose
+RED = (0.636, 0.706, 0.652, 0.722)      # solid red (the panel's warning triangle)
 
 
 class Mesh:
@@ -114,6 +115,31 @@ def box(m, lo, hi, r):
         m.quad(p[a], p[b], p[c], p[d], rect_uv(r, 0, 0), rect_uv(r, 1, 0), rect_uv(r, 1, 1), rect_uv(r, 0, 1))
 
 
+def disc(m, centre, radius, h, r, sides=10):
+    """a short vertical cylinder (axis Z) - valve wheels and caps"""
+    cx, cy, cz = centre
+    bot = [m.vert((cx + radius * math.cos(2 * math.pi * k / sides), cy + radius * math.sin(2 * math.pi * k / sides), cz)) for k in range(sides)]
+    top = [m.vert((cx + radius * math.cos(2 * math.pi * k / sides), cy + radius * math.sin(2 * math.pi * k / sides), cz + h)) for k in range(sides)]
+    ct, cb = m.vert((cx, cy, cz + h)), m.vert((cx, cy, cz))
+    uv = lambda s, q: rect_uv(r, s, q)
+    for k in range(sides):
+        k1 = (k + 1) % sides
+        m.quad(bot[k], bot[k1], top[k1], top[k], uv(0, 0), uv(1, 0), uv(1, 1), uv(0, 1))
+        m.tri(ct, top[k], top[k1], uv(0.5, 0.5), uv(0, 0), uv(1, 0))
+        m.tri(cb, bot[k1], bot[k], uv(0.5, 0.5), uv(0, 0), uv(1, 0))
+
+
+def snorkel(m):
+    """a little red-valved snorkel on the tank: pipe up, a red handwheel, bends back, red cap"""
+    x, y, z = CX1 - 14, CY + 2, CZ + RAD - 1
+    box(m, (x - 1.6, y - 1.6, z), (x + 1.6, y + 1.6, z + 14), HOSE)                 # riser
+    disc(m, (x, y, z + 6), 4.5, 1.4, RED)                                           # handwheel
+    box(m, (x - 0.6, y - 4.5, z + 6.2), (x + 0.6, y + 4.5, z + 7.2), RED)          # wheel spokes
+    box(m, (x - 4.5, y - 0.6, z + 6.2), (x + 4.5, y + 0.6, z + 7.2), RED)
+    box(m, (x - 1.6, y - 1.6, z + 12), (x + 9, y + 1.6, z + 15.2), HOSE)           # bend toward the player
+    disc(m, (x + 10.5, y, z + 11), 2.4, 5.5, RED)                                   # red snorkel cap, opening down
+
+
 def canister():
     m = Mesh()
     a, b = tube(m, CX0, CX1, RAD, windows=True)
@@ -126,6 +152,22 @@ def canister():
     # feed pipe from the front (muzzle-side) cap down into the gun
     box(m, (CX0 - 8, CY - 2.5, CZ - 2.5), (CX0 - 2, CY + 2.5, CZ + 2.5), HOSE)
     box(m, (CX0 - 8, CY - 2.5, CZ - 34), (CX0 - 3, CY + 2.5, CZ), HOSE)
+    snorkel(m)
+    return m
+
+
+# ---- the ammo gauge needle: its own mesh, drawn by the weapon on top of the gun ----------
+PIVOT = (CX1 + 4.8, CY, CZ)          # centre of the goo gauge, just proud of its dome
+
+
+def needle():
+    """a red pointer in the gauge plane (YZ), pivot at the origin, pointing up (+Z)"""
+    m = Mesh()
+    L, W = RAD * 0.8, 1.3
+    a, b, c = m.vert((0.3, -W, 0)), m.vert((0.3, W, 0)), m.vert((0.3, 0, L))
+    m.tri(a, b, c, rect_uv(RED, 0, 0), rect_uv(RED, 1, 0), rect_uv(RED, 0.5, 1))
+    m.tri(a, c, b, rect_uv(RED, 0, 0), rect_uv(RED, 0.5, 1), rect_uv(RED, 1, 0))  # both sides
+    box(m, (0, -2, -2), (0.8, 2, 2), HOSE)                                          # hub
     return m
 
 
@@ -176,6 +218,22 @@ def main():
         uv += can_uv
         write(os.path.join(OUT, f"BioV{i:03d}.ase"), f"BioV{i:03d}", v, f, uv)
     print(f"91 frames -> {OUT} (+{len(cv)} verts, +{len(can.f)} faces each)")
+    nd = needle()
+    write(os.path.join(OUT, "BioNeedle.ase"), "BioNeedle", nd.v, nd.f, [(u, 1.0 - t) for u, t in nd.uv])
+    # where the gauge's pivot is in every frame (the weapon script moves the needle with the gun)
+    lines = []
+    for i in range(91):
+        g = ase.read(os.path.join(SRC, f"BioV{i:03d}.ase"))
+        A = fit_affine(base, np.array(g["v"]))
+        p = np.array(list(PIVOT) + [1.0]) @ A
+        lines.append(f"\tGaugePivot({i})=(X={p[0]:.3f},Y={p[1]:.3f},Z={p[2]:.3f})")
+        U, S, Vt = np.linalg.svd(A[:3, :3].T)
+        R = U @ Vt                                    # the frame's rotation (squash dropped)
+        for k, axis in enumerate("XYZ"):
+            c = R[:, k]
+            lines.append(f"\tGauge{axis}({i})=(X={c[0]:.4f},Y={c[1]:.4f},Z={c[2]:.4f})")
+    open(os.path.join(OUT, "gauge_pivots.txt"), "w").write("\n".join(lines) + "\n")
+    print("needle + gauge pivots written")
 
 
 if __name__ == "__main__":

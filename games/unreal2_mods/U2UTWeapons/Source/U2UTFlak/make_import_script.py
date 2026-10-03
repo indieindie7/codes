@@ -33,6 +33,9 @@ lines.append(f'NEW StaticMeshFactory PACKAGE="{PKG}" GROUP="Ripper" NAME="RipBla
 for i in range(91):                                   # UT's GES Bio Rifle (BRifle2), 91 frames
     lines.append(f'NEW StaticMeshFactory PACKAGE="{PKG}" GROUP="Bio" NAME="BioV{i:03d}" '
                  f'FILE="{os.path.join(ASE + "_can" if CANISTER else ASE, "BioV%03d.ase" % i)}"')
+if CANISTER:                                          # the goo gauge's needle (drawn by the weapon)
+    lines.append(f'NEW StaticMeshFactory PACKAGE="{PKG}" GROUP="Bio" NAME="BioNeedle" '
+                 f'FILE="{os.path.join(ASE + "_can", "BioNeedle.ase")}"')
 for name, f in [("BioGelFly", "BioGelFly000.ase"), ("BioGelStuck", "BioGelStuck023.ase")]:
     lines.append(f'NEW StaticMeshFactory PACKAGE="{PKG}" GROUP="Bio" NAME="{name}" FILE="{os.path.join(ASE, f)}"')
 SAVE = os.path.join(GAME, "U2UTFlak", PKG + ".usx") if CANISTER else os.path.join(GAME, "StaticMeshes", PKG + ".usx")
