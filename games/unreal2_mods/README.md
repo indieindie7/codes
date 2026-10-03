@@ -20,6 +20,7 @@ without SOverhaul.
 | [U2FairFights](U2FairFights) | Fair Fights & Punch: enemy reaction delay, burst spread, attack tokens and visible tracers; hitstop, view kick and hit ticks for your own shots. |
 | [U2TestHub](U2TestHub) | Developer tool: `hub ...` console commands (test lamps, dummies, shadow A/B, teleports) that U2Pilot scripts also use. |
 | [U2Prairie](U2Prairie) | Work in progress: a generated open prairie map for U2Seven's chapter-1 slice (crash site, Manta drive, station). Scripts only. |
+| [U2Grime](U2Grime) | Work in progress: dust at wall feet, in corners and under things, away from the AI paths, worked out live on any map; walking over it wears it away. Source only. |
 | [U2Hover](U2Hover) | Work in progress: a drivable Manta-style hover bike and a generated hills test map built through U2EdBridge. Source only. |
 
 Each folder contains (the source-only ones are marked above):

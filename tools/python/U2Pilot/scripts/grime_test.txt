@@ -1,0 +1,67 @@
+# grime_test: U2Grime on Sanctuary. Dust at wall feet and corners away from the AI paths,
+# worked out when the map loads. Needs U2Grime.u in System (EditPackages=U2Grime, UCC make);
+# the mutator comes in through the map URL, nothing else to install.
+# Results: "Grime:" lines in Unreal2.log (scan counts, spots placed, each view, wear steps)
+# and screenshots: each of the 6 dustiest spots with dust, then without (same view).
+map M08A1?Mutator=U2Grime.GrimeMutator
+waitcontrol 180
+console god
+# the analysis waits 1 s, then spreads over a few seconds
+wait 8
+dump GrimeManager Phase Navs Rays Walls MaxSpots
+console set GrimeManager ViewSpot 0
+wait 0.5
+shot
+console set GrimeManager bShow False
+wait 0.3
+shot
+console set GrimeManager bShow True
+console set GrimeManager ViewSpot 1
+wait 0.5
+shot
+console set GrimeManager bShow False
+wait 0.3
+shot
+console set GrimeManager bShow True
+console set GrimeManager ViewSpot 2
+wait 0.5
+shot
+console set GrimeManager bShow False
+wait 0.3
+shot
+console set GrimeManager bShow True
+console set GrimeManager ViewSpot 3
+wait 0.5
+shot
+console set GrimeManager bShow False
+wait 0.3
+shot
+console set GrimeManager bShow True
+console set GrimeManager ViewSpot 10
+wait 0.5
+shot
+console set GrimeManager bShow False
+wait 0.3
+shot
+console set GrimeManager bShow True
+console set GrimeManager ViewSpot 40
+wait 0.5
+shot
+console set GrimeManager bShow False
+wait 0.3
+shot
+console set GrimeManager bShow True
+# wear: back in front of spot 0, walk onto it and stand-walk over it (strafe back and forth)
+console set GrimeManager ViewSpot 0
+wait 0.5
+move 1 0 0.7
+move 0 1 0.6
+move 0 -1 0.6
+move 0 1 0.6
+move 0 -1 0.6
+move 0 1 0.6
+move 0 -1 0.6
+move -1 0 0.7
+wait 0.3
+shot
+quit
