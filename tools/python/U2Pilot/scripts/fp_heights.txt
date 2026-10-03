@@ -1,0 +1,13 @@
+# heights: game eye vs head camera, and the gun offset
+background
+map M08A1
+waitcontrol 180
+wait 2
+console god
+give U2Weapons.WeaponInvMagnum
+wait 2
+dump U2PlayerSP Location EyeHeight BaseEyeHeight CollisionHeight PrePivot
+dump FirstPersonBody CamZ Back Pushed Location
+dump BodyController WeaponKickOffset
+dump WeaponInvMagnum Location PlayerViewOffset DrawScale
+quit

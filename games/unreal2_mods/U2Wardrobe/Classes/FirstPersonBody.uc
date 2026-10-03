@@ -51,6 +51,12 @@ var config float StairMax;                // the most a step snap is eased over 
 var float Stair;                          // the height still being eased over (drawn lower/higher than the pawn)
 var vector LastLoc;                       // the pawn's location last frame (step snaps)
 var config bool bStairLog;                // log each step snap (testing)
+var config bool bGunWithCamera;
+var config bool bLowerArms;               // in first person the body's arms hold the gun lowered (the animation
+                                          // agent's WeaponState locked to AmbientLowered), so the stock aiming
+                                          // pose's forearms never cross the view; the first-person gun is shown
+var bool bArmsLowered;
+var config bool bGunEyeHeight;            // holding a gun: the camera is the game's eye point (the gun stays in place)           // move the first-person gun along with the head camera (WeaponKickOffset)
 var config bool bSightCamera;             // holding a gun: the camera behind and above the gun hand (cheek on
                                           // the stock), so the character's own aiming pose shows the gun in
                                           // its hands; the stock pose's forearms no longer cross the view
@@ -108,6 +114,7 @@ function vector Show(Pawn P, vector GameCamera)
 		HideHead(P);
 	else
 		ShowHead(P);
+	LowerArms(P, bLowerArms && !bHandsHoldGun);
 	if (P.PrePivot != BasePre + Pushed)
 		BasePre = P.PrePivot - Pushed;      // someone else (outfit height fit) changed it
 	DT = FClamp(Level.TimeSeconds - LastTime, 0, 0.1);
@@ -145,6 +152,15 @@ function vector Show(Pawn P, vector GameCamera)
 	Back += (DownExtra(P) - Back) * FMin(1.0, DT * Smoothing);
 	Cam += Fwd * ForwardOffset;
 	Cam = SightCamera(P, Cam, DT);
+	// holding a gun: the camera is the game's own eye point, which the first-person gun is drawn
+	// from. Tested: the gun ignores WeaponKickOffset, so with the camera at the head bone (lower,
+	// and ahead of the eye as the aiming pose leans when looking down) the gun sat too high
+	// looking ahead and dropped and tilted looking down. The body is still drawn around it.
+	if (bGunEyeHeight && P.Weapon != None)
+	{
+		Cam = GameCamera;
+		Cam.Z += Stair;
+	}
 	LastTime = Level.TimeSeconds;
 	Pushed = -Fwd * Back;
 	ApplyPush(P);
@@ -352,8 +368,27 @@ function RestoreGun()
 	ShrunkWeapon = None;
 }
 
+// lock (or free) the animation agent's WeaponState input at AmbientLowered: the game's own
+// animation controller can't change it while it is locked
+function LowerArms(Pawn P, bool bOn)
+{
+	if (P == None || bOn == bArmsLowered)
+		return;
+	bArmsLowered = bOn;
+	P.MeshAgentSetInputLock('WeaponState', false);
+	if (bOn)
+	{
+		P.MeshAgentSetInputCurValue('WeaponState', 'AmbientLowered');
+		P.MeshAgentSetInputLock('WeaponState', true);
+	}
+	else
+		P.MeshAgentSetInputCurValue('WeaponState', 'Ambient');
+}
+
 function Hide()
 {
+	if (Shown != None && !Shown.bDeleteMe)
+		LowerArms(Shown, false);
 	ShowHead(Shown);
 	RestoreGun();
 	if (Shown != None && !Shown.bDeleteMe)
@@ -384,6 +419,9 @@ defaultproperties
 	bHandsHoldGun=False
 	StairEase=10.000000
 	bSightCamera=False
+	bGunWithCamera=True
+	bGunEyeHeight=True
+	bLowerArms=True
 	SightNode="handpointR02"
 	SightBack=26.000000
 	SightUp=9.000000

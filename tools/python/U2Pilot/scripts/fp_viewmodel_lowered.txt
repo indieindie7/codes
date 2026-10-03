@@ -1,0 +1,20 @@
+# first person, viewmodel gun + body arms lowered: ahead, firing, looking down
+background
+map M08A1
+waitcontrol 180
+wait 2
+console god
+console hub kill 30000
+give U2Weapons.WeaponInvMagnum
+wait 2
+console hub agentset WeaponState AmbientLowered lock
+wait 1.5
+shotp
+fire 0.4
+shotp
+turn 0 -25 0.3
+wait 1
+shotp
+fire 0.4
+shotp
+quit

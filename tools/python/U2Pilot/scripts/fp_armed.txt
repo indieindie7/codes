@@ -1,0 +1,23 @@
+# first person armed: game-eye camera + body (arms lowered): ahead, firing, down 25, down 55, walking down
+background
+map M08A1
+waitcontrol 180
+wait 2
+console god
+console hub kill 30000
+give U2Weapons.WeaponInvMagnum
+wait 2
+console hub agentset WeaponState AmbientLowered lock
+wait 1.5
+shotp
+fire 0.4
+shotp
+turn 0 -25 0.3
+wait 1
+shotp
+turn 0 -30 0.3
+wait 1
+shotp
+move 1 0 0.6
+shotp
+quit

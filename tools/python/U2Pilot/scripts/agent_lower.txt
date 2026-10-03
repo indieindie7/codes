@@ -1,0 +1,25 @@
+# animation agent test: normal pose, WeaponState locked AmbientLowered, AimBody off; third person then first
+background
+map M08A1
+waitcontrol 180
+wait 2
+console god
+console hub kill 30000
+give U2Weapons.WeaponInvMagnum
+wait 2
+console hub view on
+wait 1.5
+shotp
+console hub agentset WeaponState AmbientLowered lock
+wait 1.5
+shotp
+console hub agentdo set AimBody { }
+wait 1.5
+shotp
+console hub view off
+wait 1.5
+shotp
+console hub agentset WeaponState unlock
+wait 1.5
+shotp
+quit

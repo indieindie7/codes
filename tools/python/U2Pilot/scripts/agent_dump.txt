@@ -1,0 +1,16 @@
+# Golem animation agent map: the player's character (with a gun) and a marine's
+background
+map M08A1
+waitcontrol 180
+wait 2
+console god
+console hub kill 30000
+give U2Weapons.WeaponInvMagnum
+wait 2
+console hub agent me
+wait 1
+console hub dummy - 160 300
+wait 1
+console hub agent near
+wait 1
+quit

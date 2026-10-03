@@ -103,6 +103,9 @@ exec function Hub(optional string Args)
 	else if (Cmd == "PROBE")                Probe();
 	else if (Cmd == "BONES")                Bones();
 	else if (Cmd == "BEND")                 Bend(Args);
+	else if (Cmd == "AGENT")                Agent(Word(Args));
+	else if (Cmd == "AGENTSET")             AgentSet(Word(Args), Word(Args), Caps(Word(Args)) == "LOCK");
+	else if (Cmd == "AGENTDO")              AgentDo(Args);
 	else if (Cmd == "LIGHTS")               Lights();
 	else if (Cmd == "TRACER")               TracerTest();
 	else if (Cmd == "LINE")                 LineTest();
@@ -442,6 +445,113 @@ function Bend(string Args)
 	B = PC.Spawn(class'HubBend');
 	B.Setup(PC.Pawn, N, R, byte(NumOr(Word(Args), 2)));
 	Say("bend: "$N$" "$R);
+}
+
+// hub agent [me|near]: everything a mesh's Golem animation agent offers (its inputs with all their
+// values and current value, its actions, its channels with what is bound on each) - the map
+// for driving animation from script
+function Agent(string Who)
+{
+	local Pawn P, Best;
+	local float D, BestD;
+	local int i, j, N;
+	local string L;
+	local name In;
+
+	P = PC.Pawn;
+	if (Caps(Who) == "NEAR")
+	{
+		BestD = 1000000;
+		foreach PC.AllActors(class'Pawn', P)
+			if (P != PC.Pawn && P.Mesh != None)
+			{
+				D = VSize(P.Location - PC.Pawn.Location);
+				if (D < BestD) { BestD = D; Best = P; }
+			}
+		P = Best;
+	}
+	if (P == None)
+	{
+		Say("agent: no pawn");
+		return;
+	}
+	Say("agent: "$P$" mesh "$P.Mesh$" inputs "$P.MeshAgentGetInputCount()$" actions "$P.MeshAgentGetActionCount()$" channels "$P.MeshAgentGetChannelCount());
+	for (i = 0; i < P.MeshAgentGetInputCount(); i++)
+	{
+		In = P.MeshAgentGetInputName(i);
+		N = P.MeshAgentGetInputValueCount(i);
+		L = "agent input "$In$" = "$P.MeshAgentGetInputCurValue(In)$" of "$N$":";
+		for (j = 0; j < N; j++)
+			L = L$" "$P.MeshAgentGetInputValueName(i, j);
+		Say(L);
+	}
+	L = "agent actions:";
+	for (i = 0; i < P.MeshAgentGetActionCount(); i++)
+	{
+		L = L$" "$P.MeshAgentGetActionName(i);
+		if (Len(L) > 900) { Say(L); L = "agent actions (more):"; }
+	}
+	Say(L);
+	for (i = 0; i < P.MeshAgentGetChannelCount(); i++)
+		Say("agent channel "$i$" "$P.MeshAgentGetChannelName(i)$" bound by "$P.MeshAgentGetChannelBoundAction(i)$" level "$P.MeshAgentGetChannelBoundLevel(i)$" script "$P.MeshAgentGetChannelScriptName(i));
+}
+
+// hub agentset INPUT VALUE [lock]: set an animation input on your character (lock keeps the game
+// from changing it again; "hub agentset INPUT unlock" frees it)
+function AgentSet(string In, string V, bool bLock)
+{
+	local Pawn P;
+	local bool Ok;
+	local int i, j;
+	local name InName, VName;
+
+	P = PC.Pawn;
+	if (P == None || In == "")
+		return;
+	// names can't be made from strings here: find them among the agent's own
+	for (i = 0; i < P.MeshAgentGetInputCount(); i++)
+		if (string(P.MeshAgentGetInputName(i)) ~= In)
+		{
+			InName = P.MeshAgentGetInputName(i);
+			for (j = 0; j < P.MeshAgentGetInputValueCount(i); j++)
+				if (string(P.MeshAgentGetInputValueName(i, j)) ~= V)
+					VName = P.MeshAgentGetInputValueName(i, j);
+			break;
+		}
+	if (InName == '')
+	{
+		Say("agentset: no input "$In);
+		return;
+	}
+	P.MeshAgentSetInputLock(InName, false);
+	if (Caps(V) == "UNLOCK")
+	{
+		Say("agentset: "$InName$" unlocked");
+		return;
+	}
+	if (VName == '')
+	{
+		Say("agentset: "$InName$" has no value "$V);
+		return;
+	}
+	Ok = P.MeshAgentSetInputCurValue(InName, VName);
+	if (bLock)
+		P.MeshAgentSetInputLock(InName, true);
+	Say("agentset: "$InName$" = "$VName$" ok "$Ok$" now "$P.MeshAgentGetInputCurValue(InName)$" locked "$bLock);
+}
+
+// hub agentdo TEXT: compile TEXT as a Golem action and run it on your character, e.g.
+//   hub agentdo set AnimUpper { script "U_N_LG_AmbientLowered"; blend 0.2; }
+function AgentDo(string Text)
+{
+	local int i;
+
+	if (PC.Pawn == None)
+		return;
+	Say("agentdo: "$Text$" -> "$PC.Pawn.MeshAgentImmediateAction(Text));
+	for (i = 0; i < PC.Pawn.MeshAgentGetChannelCount(); i++)
+		if (PC.Pawn.MeshAgentGetChannelBoundLevel(i) > 0)
+			Say("agentdo: channel "$PC.Pawn.MeshAgentGetChannelName(i)$" script "$PC.Pawn.MeshAgentGetChannelScriptName(i));
 }
 
 // which lights each visible character's shadows are using

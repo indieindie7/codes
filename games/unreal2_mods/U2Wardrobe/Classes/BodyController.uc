@@ -59,7 +59,19 @@ event PlayerCalcView(out Actor ViewActor, out vector CameraLocation, out rotator
 		HideWeapon(Pawn.Weapon);
 		// the first-person weapon is placed from the game's eye point: move it with the camera
 		// (U2Weapon.CalcDrawOffset adds WeaponKickOffset; the game's own kick code is disabled)
-		WeaponKickOffset = CameraLocation - GameCamera;
+		// the first-person gun is placed from the pawn's eye height, not from WeaponKickOffset's
+		// height (tested: a lowered camera saw the gun from below with or without the offset):
+		// put the eye at the camera's height, and only the sideways part in the offset
+		if (Body.bGunWithCamera)
+		{
+			WeaponKickOffset = CameraLocation - GameCamera;
+			Pawn.EyeHeight += WeaponKickOffset.Z;
+			WeaponKickOffset.Z = 0;
+		}
+		else
+			WeaponKickOffset = vect(0,0,0);
+		if (Body.bGunEyeHeight && Pawn.Weapon != None)
+			WeaponKickOffset = vect(0,0,0);   // the camera is the eye point already
 	}
 	else
 	{
