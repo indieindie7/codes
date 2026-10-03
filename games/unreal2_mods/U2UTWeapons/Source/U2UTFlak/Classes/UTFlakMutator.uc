@@ -32,7 +32,7 @@ var() config bool bReplaceShotgun;
 var Pawn Armed;   // last pawn bGiveOnSpawn handled
 
 // ExtraWeapons: weapons handed to the player on maps whose name starts with ExtraMaps
-// (e.g. ExtraMaps=m01 + ExtraWeapons=U2Weapons.weaponInvFlamethrower: the flamethrower
+// ("*" = every map; e.g. ExtraMaps=m01 + ExtraWeapons=U2Weapons.weaponInvFlamethrower: the flamethrower
 // from the first mission on, for trying it out). Given once per pawn, with full ammo.
 var() config array<string> ExtraMaps;
 var() config array<string> ExtraWeapons;
@@ -147,13 +147,15 @@ function ReplaceWeapon(PlayerController PC, Pawn P, Weapon Old, class<Weapon> Ne
 	Log("U2UTFlak: replaced "$Old.Class.Name$" with "$NewW.ItemName);
 }
 
+// the lists are read from the class defaults (the ini): a mutator restored from an older
+// save keeps its old (empty) values
 function bool OnExtraMap()
 {
 	local string M;
 	local int i;
 	M = Caps(Left(string(Level), InStr(string(Level), ".")));
-	for (i = 0; i < ExtraMaps.Length; i++)
-		if (ExtraMaps[i] != "" && Left(M, Len(ExtraMaps[i])) == Caps(ExtraMaps[i]))
+	for (i = 0; i < default.ExtraMaps.Length; i++)
+		if (default.ExtraMaps[i] == "*" || (default.ExtraMaps[i] != "" && Left(M, Len(default.ExtraMaps[i])) == Caps(default.ExtraMaps[i])))
 			return true;
 	return false;
 }
@@ -163,20 +165,20 @@ function GiveExtras(Pawn P)
 	local int i;
 	local Weapon W;
 	local class<Weapon> C;
-	for (i = 0; i < ExtraWeapons.Length; i++)
+	for (i = 0; i < default.ExtraWeapons.Length; i++)
 	{
-		C = class<Weapon>(DynamicLoadObject(ExtraWeapons[i], class'Class', true));
+		C = class<Weapon>(DynamicLoadObject(default.ExtraWeapons[i], class'Class', true));
 		if (C == None)
 		{
-			Log("U2UTFlak: extra weapon "$ExtraWeapons[i]$" not found");
+			Log("U2UTFlak: extra weapon "$default.ExtraWeapons[i]$" not found");
 			continue;
 		}
 		if (FindExact(P, C) == None)
-			P.GiveWeapon(ExtraWeapons[i]);
+			P.GiveWeapon(default.ExtraWeapons[i]);
 		W = Weapon(FindExact(P, C));
 		if (W != None && W.AmmoType != None)
 			W.AmmoType.AmmoAmount = W.AmmoType.MaxAmmo;
-		Log("U2UTFlak: extra weapon "$ExtraWeapons[i]$" -> "$W);
+		Log("U2UTFlak: extra weapon "$default.ExtraWeapons[i]$" -> "$W);
 	}
 }
 
@@ -192,7 +194,7 @@ event Tick(float DeltaTime)
 		if (PlayerController(C) == None || P == None || P.Health <= 0)
 			continue;
 
-		if (P != ExtraArmed && ExtraWeapons.Length > 0 && OnExtraMap())
+		if (P != ExtraArmed && default.ExtraWeapons.Length > 0 && OnExtraMap())
 		{
 			ExtraArmed = P;
 			GiveExtras(P);

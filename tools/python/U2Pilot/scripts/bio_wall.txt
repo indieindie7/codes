@@ -1,0 +1,21 @@
+# Bio goo stuck on a wall and the floor, close up (Sanctuary, Bio Rifle in hand)
+background
+map M08A1
+waitcontrol 180
+wait 2
+console hub kill 30000
+give U2UTFlak.WeaponInvUTBio
+wait 1.5
+turn 90 -35 0.3
+fire 0.15
+wait 0.5
+fire 0.15
+wait 0.5
+fire 0.15
+wait 0.9
+shotp
+turn 0 -30 0.3
+fire 0.15
+wait 0.9
+shotp
+quit
