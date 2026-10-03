@@ -18,9 +18,9 @@ event bool OpenMenu(string NewMenuName, optional string Param1, optional string 
 	// collects every script class nothing refers to, and the engine then fails to load it
 	// again (the page would silently not open from the pause menu). These references keep
 	// the pages alive for as long as this controller is.
-	// (the title menu is the game's own again: ModTitle, which skipped the Alienware screen,
-	// is the first suspect for the slow motion; testing without it)
-	if (NewMenuName ~= "Interface.MenuPauseOptionsVideo")
+	if (NewMenuName ~= "ini:Engine.GameEngine.InitialMenuClass" || NewMenuName ~= "Interface.MenuTitle_pc")
+		NewMenuName = string(class'ModTitle');
+	else if (NewMenuName ~= "Interface.MenuPauseOptionsVideo")
 		NewMenuName = string(class'ModVideoOptions');
 	else if (NewMenuName ~= "Interface.MenuPCOptions")
 		NewMenuName = string(class'ModPCOptions');
