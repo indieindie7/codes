@@ -1,0 +1,38 @@
+AdventMod - credits and licences
+================================
+
+AdventMod (AdventMod.u, AdventNative.dll, the U2Shaders additions to d3d8to9 and
+the shaders in System\U2Shaders written for it) is free software under the
+GNU General Public License version 3 (GPL-3.0.txt), and it is a non-commercial
+mod: share it, change it, keep the source open. Source:
+  https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods
+  https://github.com/indieindie7/d3d8to9 (branch advent-post)
+
+Parts by others, under their own licences:
+
+- d3d8to9 by Patrick Mours (crosire): the Direct3D 8 to 9 layer d3d8.dll is
+  built on. BSD 2-clause, see d3d8to9-LICENSE.md.
+  https://github.com/crosire/d3d8to9
+
+- SMAA by Jorge Jimenez, Jose I. Echevarria, Belen Masia, Fernando Navarro and
+  Diego Gutierrez: SMAA.hlsl, AreaTexDX9.dds, SearchTex.dds. MIT, see
+  SMAA-LICENSE.txt.  https://github.com/iryoku/smaa
+
+- AMD FidelityFX Contrast Adaptive Sharpening (CAS), Copyright (c) 2020
+  Advanced Micro Devices, Inc.: ported to ps_2 in post_final.hlsl. MIT.
+  https://github.com/GPUOpen-Effects/FidelityFX-CAS
+
+- Khronos PBR Neutral tone mapper (Khronos Group): its highlight shoulder in
+  post_final.hlsl. Apache-2.0.
+  https://github.com/KhronosGroup/ToneMapping
+
+- Inigo Quilez: "texture repetition" technique 3 and "better fog", in the
+  terrain shader (terrain3.hlsl, terrain4.hlsl, terrain_src.hlsl).
+  CC BY-NC-SA 3.0 (https://creativecommons.org/licenses/by-nc-sa/3.0/), so
+  those files are under CC BY-NC-SA 3.0 too.
+  https://iquilezles.org/articles/texturerepetition/
+
+- Bloom down/up sampling after Jorge Jimenez, "Next Generation Post Processing
+  in Call of Duty: Advanced Warfare" (SIGGRAPH 2014).
+
+Advent Rising is (c) GlyphX Games / Majesco. No game files are included.

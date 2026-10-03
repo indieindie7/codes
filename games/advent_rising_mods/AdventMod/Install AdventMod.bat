@@ -172,20 +172,38 @@ try {
             Copy-Item $src (Join-Path $sys $f) -Force
         }
         Say "  copied $($files -join ', ')"
+        # the Direct3D layer (shadow and post-processing shaders): an existing d3d8.dll that
+        # isn't ours (dgVoodoo, an older copy...) and U2Shaders.ini are kept as backups
+        $dll = Join-Path $sys 'd3d8.dll'
+        if ((Test-Path $dll) -and (Get-FileHash $dll).Hash -ne (Get-FileHash (Join-Path $here 'System\d3d8.dll')).Hash) { Backup $dll }
+        Copy-Item (Join-Path $here 'System\d3d8.dll') $dll -Force
+        $ini = Join-Path $sys 'U2Shaders.ini'
+        if (Test-Path $ini) { Backup $ini }
+        Copy-Item (Join-Path $here 'System\U2Shaders.ini') $ini -Force
+        New-Item -ItemType Directory -Force (Join-Path $sys 'U2Shaders') | Out-Null
+        Copy-Item (Join-Path $here 'System\U2Shaders\*') (Join-Path $sys 'U2Shaders') -Force
+        Say "  copied d3d8.dll, U2Shaders.ini and the U2Shaders folder (shaders)"
         foreach ($t in $targets) {
             Add-Controller (Join-Path $t 'Mydefault.ini') $sys
             Add-Mutator (Join-Path $t 'MyDefUser.ini')
         }
-        Say "`nDone! In game: Options > Video (Fullscreen, Borderless, VSync, More Display Options), Graphics (resolutions), Audio (dialogue volume)." 'Green'
+        Say "`nDone! In game: Options > Video > More Display Options > Graphics (post effects, shadows, anti-aliasing, frame cap)." 'Green'
     }
     else {
         foreach ($t in $targets) {
             Remove-Controller (Join-Path $t 'Mydefault.ini')
             Remove-Mutator (Join-Path $t 'MyDefUser.ini')
         }
-        foreach ($f in ($files + 'AdventMod.ini', 'AdventNative.log')) {
+        foreach ($f in ($files + 'AdventMod.ini', 'AdventNative.log', 'd3d8.dll', 'U2Shaders.ini', 'U2Shaders.log')) {
             $p = Join-Path $sys $f
             if (Test-Path $p) { Remove-Item $p -Force; Say "  removed $f" }
+        }
+        $dir = Join-Path $sys 'U2Shaders'
+        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force; Say "  removed the U2Shaders folder" }
+        # a d3d8.dll or U2Shaders.ini that was there before the mod comes back
+        foreach ($f in 'd3d8.dll', 'U2Shaders.ini') {
+            $bak = Join-Path $sys "$f.adventmod-backup"
+            if (Test-Path $bak) { Move-Item $bak (Join-Path $sys $f) -Force; Say "  put back your earlier $f" }
         }
         Say "`nAdventMod removed. (The *.adventmod-backup files are yours to delete.)" 'Green'
     }

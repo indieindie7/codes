@@ -285,6 +285,9 @@ static function Startup(PlayerController PC)
 
 defaultproperties
 {
+     bShadowFix=True
+     bSoftShadows=True
+     bNoGamePostFx=True
      bTrilinear=True
      FOV=75
      MaxFps=-1
