@@ -1,0 +1,21 @@
+# UC2 Devastation imported via U2Golem: as a dummy next to a marine, lit, after post
+background
+map M08A1
+waitcontrol 180
+wait 3
+console hub kill 30000
+console BeMyMonkey
+console hub dummy GlmDevastationG.Devastation 160 150
+turn 30 0 0.2
+console hub dummy - 200 200
+turn -30 0 0.2
+console hub lamp 220 45 200
+console hub clean
+turn 0 -8 0.2
+wait 3
+shotp
+turn 15 0 0.3
+wait 2
+shotp
+wait 1
+quit

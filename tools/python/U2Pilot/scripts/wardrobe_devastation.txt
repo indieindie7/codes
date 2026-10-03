@@ -1,0 +1,17 @@
+# wear Devastation (UC2) in third person, then first person looking down
+background
+map M08A1
+waitcontrol 180
+wait 3
+console hub kill 30000
+console BeMyMonkey
+console wardrobe wear Devastation (UC2)
+wait 1.5
+console wardrobe view
+wait 1.5
+shotp
+console behindview 0
+turn 0 -50 0.3
+wait 1.5
+shotp
+quit

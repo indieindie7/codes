@@ -58,7 +58,7 @@ ROWS = [
 # (widget-column coordinates). Cells of U2Wardrobe\Textures\Portraits.tga, as
 # U2Wardrobe\make_portraits.py prints them; WardrobeMenuHelper sends the event
 # "WardrobePortraitN" when outfit N is picked or the page is shown.
-PORTRAITS = 7
+PORTRAITS = 8
 PORTRAIT_CELL = (240, 400, 4)       # cell width, height, cells per row
 PORTRAIT_AT = (240, -62)
 PORTRAIT_SIZE = (240, 400)

@@ -28,6 +28,9 @@ shot
 console wardrobe photo 6 430
 wait 2
 shot
+console wardrobe photo 7 430
+wait 2
+shot
 console wardrobe photo off
 wait 1.5
 shot
