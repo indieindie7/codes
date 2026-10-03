@@ -5,7 +5,11 @@ textures). Run inside UnrealEd's command bar:  exec <path to import_meshes.txt>
 Unreal II never textures vertex meshes, and UCC crashes building static meshes
 from #exec, so the meshes are built once in the editor and loaded from the .usx.
 """
-import os
+import os, sys
+
+# --canister: the Bio Rifle frames with the slung fuel canister (canister/build_canister.py),
+# and the package saved to U2UTFlak\U2UTFlakSM.usx (a staging copy, not the live one)
+CANISTER = "--canister" in sys.argv
 
 GAME = r"C:\PROGRA~2\Steam\STEAMA~1\common\UNREAL~2"   # 8.3 path: Unreal filenames can't contain spaces
 ASE = os.path.join(GAME, "U2UTFlak", "Models", "ase")
@@ -28,10 +32,11 @@ lines.append(f'NEW StaticMeshFactory PACKAGE="{PKG}" GROUP="Ripper" NAME="RipBla
              f'FILE="{os.path.join(ASE, "RipBlade000.ase")}"')
 for i in range(91):                                   # UT's GES Bio Rifle (BRifle2), 91 frames
     lines.append(f'NEW StaticMeshFactory PACKAGE="{PKG}" GROUP="Bio" NAME="BioV{i:03d}" '
-                 f'FILE="{os.path.join(ASE, "BioV%03d.ase" % i)}"')
+                 f'FILE="{os.path.join(ASE + "_can" if CANISTER else ASE, "BioV%03d.ase" % i)}"')
 for name, f in [("BioGelFly", "BioGelFly000.ase"), ("BioGelStuck", "BioGelStuck023.ase")]:
     lines.append(f'NEW StaticMeshFactory PACKAGE="{PKG}" GROUP="Bio" NAME="{name}" FILE="{os.path.join(ASE, f)}"')
-lines.append(f'OBJ SAVEPACKAGE PACKAGE="{PKG}" FILE="{os.path.join(GAME, "StaticMeshes", PKG + ".usx")}"')
+SAVE = os.path.join(GAME, "U2UTFlak", PKG + ".usx") if CANISTER else os.path.join(GAME, "StaticMeshes", PKG + ".usx")
+lines.append(f'OBJ SAVEPACKAGE PACKAGE="{PKG}" FILE="{SAVE}"')
 
 out = os.path.join(GAME, "U2UTFlak", "import_meshes.txt")
 open(out, "w").write("\n".join(lines) + "\n")
