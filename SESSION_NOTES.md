@@ -45,6 +45,10 @@ the cloud can (Wine, headless Blender). The real check is the user's QA of the g
     "lmcapture: N lightmaps" (0 = U2 doesn't draw lightmaps on stage 1). Then
     `bake_lightmaps.py --capture ... --t3d ...` and the `replace=` lines.
 
+13. **Dust (U2Grime):** copy `games/unreal2_mods/U2Grime/Source/U2Grime` into the game folder,
+    add `EditPackages=U2Grime`, `UCC make`, then `python u2pilot.py scripts/grime_test.txt
+    --background`. Send the `Grime:` lines and the shots (each spot with and without dust).
+
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
 
@@ -133,6 +137,15 @@ any further penumbra change must fit); `decal_parallax` 178/512, `world_parallax
 Tests on the nearest solid map prop: can it be hidden and its collision turned off, can a
 solid movable copy replace it, does Karma debris made from its mesh fall and land. All three
 are needed for Black-style destruction of map props.
+
+### U2Grime (`games/unreal2_mods/U2Grime`): dust, not compiled
+
+Dust patches (down-facing modulate projectors) placed live at map load: wall feet found by low
+rays from every navigation point, scored by corner/cover/narrow-gap traces (rough AO) and by
+distance from the AI path network (traffic). Walking over a patch wears it lighter, then away.
+Console: `set GrimeManager bShow False`, `ViewSpot N`, `bRebuild True`. Possible later:
+scattered props (clutter) the same way, and real SSAO in the post pass (INTZ depth works on
+the PC, per the depth probe).
 
 ### U2Pilot scripts
 
