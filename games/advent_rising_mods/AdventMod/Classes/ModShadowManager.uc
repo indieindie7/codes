@@ -25,7 +25,8 @@ var float OutdoorTime;             // how long the player has been on the other 
 var int PcssState;                 // -1 unknown, 0 off, 1 on
 var float LastFrameTime;           // newest LastRenderTime seen: what "on screen now" means
 var config int NpcShadows;         // how many other characters cast shadows at once: the nearest ones in view
-var config bool bCrowdShadows;     // also Advent's simpleAnim crowd actors (off: switching their bActorShadows on crashed the game)
+var config bool bCrowdShadows;     // also Advent's simpleAnim crowd actors
+var config bool bCrowdActorShadows; // switch their bActorShadows on (without it the engine never draws their shadows; it came with crashes before the FPU fix)
 var config float NpcSwapTime;      // a character out of that set this long gives its shadows up
 var array<Actor> TurnedOn;          // characters whose bActorShadows we switched on (put back when they leave the pool)
 
@@ -215,6 +216,7 @@ function UpdatePool()
 			Npcs++;
 			continue;
 		}
+		Note("shadows of " $ Controllers[i].Owner.Name $ " go back to the pool");
 		Release(Controllers[i].Owner);
 		Controllers[i].Destroy();
 		Controllers.Remove(i, 1);
@@ -223,8 +225,7 @@ function UpdatePool()
 		if (Find(Want[k]) < 0)
 		{
 			// the engine only updates the shadows of actors that have bActorShadows
-			// (never on anything else: on the crowd actors it crashed the game)
-			if (!Want[k].bActorShadows && Pawn(Want[k]) != None)
+			if (!Want[k].bActorShadows && (Pawn(Want[k]) != None || bCrowdActorShadows))
 			{
 				Want[k].bActorShadows = true;
 				TurnedOn[TurnedOn.Length] = Want[k];
@@ -316,7 +317,7 @@ function Adopt(Actor A)
 	if (P != None && class'ModShadowController'.default.bDebugOwnShadow && C.Shadows.Length > 0)
 		P.Shadow = C.Shadows[0].Proj;
 	Controllers[Controllers.Length] = C;
-	Note("multi-light shadows for " $ A.Name $ " (" $ C.OwnMax() $ " max)");
+	Note("multi-light shadows for " $ A.Name $ " (" $ C.OwnMax() $ " max) at " $ A.Location $ " collision " $ A.CollisionRadius $ "x" $ A.CollisionHeight $ " drawtype " $ A.DrawType);
 }
 
 event Destroyed()
@@ -335,6 +336,7 @@ defaultproperties
 	NpcShadows=4
 	NpcSwapTime=1.5
 	bCrowdShadows=False
+	bCrowdActorShadows=False
 	PcssState=-1
 	RemoteRole=ROLE_None
 }

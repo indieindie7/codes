@@ -210,8 +210,8 @@ function Step(float DeltaTime)
 	// feet-to-head fade: past the head's tip on flat ground
 	// (the stock shadow uses 350, which fades most of a long shadow away)
 	Half = ShadowActor.CollisionHeight;
-	if (Half < 20)
-		Half = 44;   // crowd actors without collision: a person's height
+	if (Half < 20 || Half > 120)
+		Half = 44;   // crowd actors: no collision, or a tall made-up one (256): a person's height
 	SinE = FMax(SmoothDir.Z * -1, 0.25);
 	TipDepth = 2 * Half / SinE - Half * SinE;
 	Proj.MaxTraceDistance = int(FClamp(TipDepth * GradientScale, Half, MaxGradient));
