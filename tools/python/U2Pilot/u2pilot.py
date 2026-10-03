@@ -32,7 +32,10 @@ by the PilotDriver mutator inside the game instead, so the game never takes
 focus and your keyboard/mouse stay yours. Frames come from in-game screenshots.
 Steps there: map, waitcontrol, wait, move FWD STRAFE SECS, turn YAW PITCH SECS,
 fire SECS, altfire SECS, jump, crouch 1|0, run 1|0, console CMD, shots INTERVAL,
-shot, mark TEXT, quit (see U2PilotDriver\Classes\PilotDriver.uc).
+shot, shotp, mark TEXT, quit (see U2PilotDriver\Classes\PilotDriver.uc).
+"shot" is the game's own screenshot, taken before post-processing that runs at Present (frames
+without a 2D draw, e.g. cutscenes); "shotp" asks the d3d8 fork for the frame as presented, after
+post (ShotP#####.bmp, saved within ~10 frames; needs the fork's d3d8.dll).
 """
 import argparse, ctypes, ctypes.wintypes as wt, datetime, glob, os, re, shutil, subprocess, sys, time
 

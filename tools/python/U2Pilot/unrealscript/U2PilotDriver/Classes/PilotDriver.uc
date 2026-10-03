@@ -39,6 +39,7 @@ var array<string> Args;
 var float TurnYaw, TurnPitch;   // degrees per second while turning
 var float ShotInterval, NextShot;
 var int ShotCount;
+var PilotShotP ShotP;           // shotp: screenshots after post-processing, by the d3d8 fork
 var bool bDone;
 
 event PostBeginPlay()
@@ -263,6 +264,14 @@ function StartStep()
 		break;
 	case "SHOT":
 		TakeShot();
+		break;
+	case "SHOTP":  // the frame as presented, after post (saved by the d3d8 fork within ~10 frames)
+		if (ShotP == None)
+			ShotP = new(None) class'PilotShotP';
+		ShotP.shotp++;
+		ShotP.SaveConfig();
+		ShotCount++;
+		Log("PilotDriver: shotp "$ShotCount$" at "$Level.TimeSeconds);
 		break;
 	case "MARK":
 		break;

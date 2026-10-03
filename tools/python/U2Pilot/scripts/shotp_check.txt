@@ -1,0 +1,13 @@
+# shotp (frame as presented, after post) vs the game's own shot: Avalon intro cutscene (bright sky)
+background
+map TutA
+wait 12
+shot
+wait 0.5
+shotp
+wait 3
+shot
+wait 0.5
+shotp
+wait 2
+quit

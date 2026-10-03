@@ -2715,6 +2715,81 @@ public:
 	// changed, the post keys are read again (any case, any section: UnrealScript writes them
 	// under [U2SoftShadows.PostFXHelper]). The rest of the file is only read at start.
 	FILETIME IniTime = {};
+	// shotp: the frame exactly as presented (after post), System\ShotP#####.bmp. The game's own
+	// "shot" reads the back buffer before Present, so it misses post that runs at Present
+	// (frames without a 2D draw: cutscenes). Asked for by bumping shotp= in U2Shaders.ini
+	// (U2Pilot's "shotp" step); the ini is checked every 10 frames.
+	unsigned ShotPSeen = 0xFFFFFFFFu;
+	bool ShotPWant = false;
+	void ShotP(IDirect3DDevice9 *Dev)
+	{
+		ShotPWant = false;
+		IDirect3DSurface9 *BB = nullptr, *Plain = nullptr, *Sys = nullptr;
+		if (FAILED(Dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &BB)) || BB == nullptr)
+			return;
+		D3DSURFACE_DESC D = {};
+		BB->GetDesc(&D);
+		IDirect3DSurface9 *Src = BB;
+		if (D.MultiSampleType != D3DMULTISAMPLE_NONE)
+		{
+			// a multisampled back buffer can't be read directly: resolve it into a plain target
+			if (SUCCEEDED(Dev->CreateRenderTarget(D.Width, D.Height, D.Format, D3DMULTISAMPLE_NONE, 0, FALSE, &Plain, nullptr))
+				&& SUCCEEDED(Dev->StretchRect(BB, nullptr, Plain, nullptr, D3DTEXF_NONE)))
+				Src = Plain;
+		}
+		HRESULT hr = Dev->CreateOffscreenPlainSurface(D.Width, D.Height, D.Format, D3DPOOL_SYSTEMMEM, &Sys, nullptr);
+		if (SUCCEEDED(hr))
+			hr = Dev->GetRenderTargetData(Src, Sys);
+		D3DLOCKED_RECT L = {};
+		if (SUCCEEDED(hr))
+			hr = Sys->LockRect(&L, nullptr, D3DLOCK_READONLY);
+		if (SUCCEEDED(hr))
+		{
+			char Path[MAX_PATH];
+			static unsigned Next = 0;
+			do
+				snprintf(Path, sizeof(Path), "%sShotP%05u.bmp", Dir.c_str(), Next++);
+			while (GetFileAttributesA(Path) != INVALID_FILE_ATTRIBUTES && Next < 100000);
+			FILE *F = nullptr;
+			if (!fopen_s(&F, Path, "wb") && F)
+			{
+				const DWORD Row = (D.Width * 3 + 3) & ~3u, Size = Row * D.Height;
+				BITMAPFILEHEADER FH = {};
+				BITMAPINFOHEADER IH = {};
+				FH.bfType = 0x4D42;
+				FH.bfOffBits = sizeof(FH) + sizeof(IH);
+				FH.bfSize = FH.bfOffBits + Size;
+				IH.biSize = sizeof(IH);
+				IH.biWidth = (LONG)D.Width;
+				IH.biHeight = (LONG)D.Height;          // bottom-up
+				IH.biPlanes = 1;
+				IH.biBitCount = 24;
+				IH.biSizeImage = Size;
+				fwrite(&FH, sizeof(FH), 1, F);
+				fwrite(&IH, sizeof(IH), 1, F);
+				std::vector<BYTE> Out(Row, 0);
+				for (UINT y = D.Height; y-- > 0;)
+				{
+					const BYTE *In = static_cast<const BYTE *>(L.pBits) + (size_t)y * L.Pitch;
+					for (UINT x = 0; x < D.Width; x++)       // X8R8G8B8 / A8R8G8B8: B G R x
+					{
+						Out[x * 3 + 0] = In[x * 4 + 0];
+						Out[x * 3 + 1] = In[x * 4 + 1];
+						Out[x * 3 + 2] = In[x * 4 + 2];
+					}
+					fwrite(Out.data(), Row, 1, F);
+				}
+				fclose(F);
+			}
+			Sys->UnlockRect();
+		}
+		else
+			Message("shotp: couldn't read the back buffer (%08x, format %u)", (unsigned)hr, (unsigned)D.Format);
+		if (Sys) Sys->Release();
+		if (Plain) Plain->Release();
+		BB->Release();
+	}
+
 	void ReloadPost(bool Force)
 	{
 		WIN32_FILE_ATTRIBUTE_DATA A = {};
@@ -2740,6 +2815,14 @@ public:
 		{
 			for (char *c = Line; *c; c++)
 				*c = (char)tolower((unsigned char)*c);
+			if (sscanf_s(Line, " shotp=%u", &V) == 1)
+			{
+				// a pilot "shotp" step bumped the counter: save the next presented frame
+				if (ShotPSeen != 0xFFFFFFFFu && V != ShotPSeen)
+					ShotPWant = true;
+				ShotPSeen = V;
+				continue;
+			}
 			if (sscanf_s(Line, " post=%u", &V) == 1)
 			{
 				Post = V != 0;
@@ -2796,14 +2879,16 @@ public:
 			}
 		}
 		fclose(F);
+		if (ShotPSeen == 0xFFFFFFFFu)
+			ShotPSeen = 0;            // no shotp= yet: the pilot's first request will be shotp=1
 		if (!Force)
 			Message("post: settings reloaded (post %d, bloom %.2f %.2f, grade %.2f %.2f %.2f %.2f, sharpen %.2f)", (int)Post,
 				PostBloom[0], PostBloom[1], PostGrade[0], PostGrade[1], PostGrade[2], PostGrade[3], PostBalance[3]);
 	}
 
-	void OnPresent()
+	void OnPresent(IDirect3DDevice9 *Dev)
 	{
-		if (Loaded && Frame % 60 == 0)
+		if (Loaded && Frame % 10 == 0)
 			ReloadPost(IniTime.dwLowDateTime == 0 && IniTime.dwHighDateTime == 0);
 		if (PostTrace > 0)
 		{
@@ -2820,6 +2905,8 @@ public:
 			RunPost(LastDev);
 			LastDev->EndScene();
 		}
+		if (ShotPWant && Dev != nullptr)
+			ShotP(Dev);
 		if (PostTrace > 0 && !PostTraceLine.empty())
 		{
 			static int frame = 0;
