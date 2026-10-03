@@ -257,6 +257,34 @@ function Give(string ClassName)
 	Note("give: " $ I $ " right weapon now " $ PC().Pawn.RightWeapon);
 }
 
+// what a shot through the nearest body does (ModGore.CorpseHit, the same call its
+// projectile check makes); spawning a real projectile without a gun behind it crashes
+function ShootCorpse(string ClassName)
+{
+	local Pawn P, Best;
+	local ModGore G;
+	local vector Dir;
+
+	if (PC() == None || PC().Pawn == None)
+		return;
+	ForEach DynamicActors(class'Pawn', P)
+		if (P != PC().Pawn && P.Health <= 0 && !P.bDeleteMe && (Best == None || VSize(P.Location - PC().Pawn.Location) < VSize(Best.Location - PC().Pawn.Location)))
+			Best = P;
+	ForEach DynamicActors(class'ModGore', G)
+		break;
+	if (Best == None || G == None)
+	{
+		ForEach PC().Pawn.RadiusActors(class'Pawn', P, 2000)
+			if (P != PC().Pawn)
+				Note("shootcorpse: near " $ P $ " health " $ P.Health $ " state " $ P.GetStateName() $ " physics " $ P.Physics $ " deleted " $ P.bDeleteMe);
+		Note("shootcorpse: no body or no ModGore (" $ G $ ")");
+		return;
+	}
+	Note("shootcorpse: " $ Best $ " (" $ Best.GetStateName() $ ", physics " $ Best.Physics $ ")");
+	Dir = Normal(Best.Location - PC().Pawn.Location);
+	G.CorpseHit(Best, Best.Location - Dir * Best.CollisionRadius * 0.5, Dir);
+}
+
 function Hurt(int Damage, string TypeName)
 {
 	local Pawn P, Best;
@@ -450,6 +478,11 @@ function StartStep()
 		// GIVE Package.WeaponClass: into the player's right hand
 		Give(Args[1]);
 		StepLength = 1.5;
+		break;
+	case "SHOOTCORPSE":
+		// SHOOTCORPSE [Package.ProjectileClass]: a shot from beside the player through the nearest body
+		ShootCorpse(Args.Length > 1 ? Args[1] : "EonWeapons.HumanXJ9Fire_Proj");
+		StepLength = 0.5;
 		break;
 	case "HURT":
 		// HURT damage [Package.DamageType]: the nearest other character takes a shot from the player

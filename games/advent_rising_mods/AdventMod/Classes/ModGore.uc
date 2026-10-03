@@ -22,6 +22,11 @@ var config bool bImpacts;          // scorch marks where shots hit walls and flo
 var config int MaxHoles;
 var config bool bCasings;          // the game's shell particles become casings that land and stay
 var config int MaxClutter;
+var config bool bCorpseShots;      // corpses bleed and move when shot (a body still standing in its death pose goes limp)
+var config float CorpseKick;       // the push a shot gives a ragdoll
+var KarmaParamsSkel CorpseParams;  // ragdoll settings for corpses the level gave none (a subobject below, so saves can refer to it)
+var array<Pawn> Corpses;
+var float CorpseScan;
 
 var Material Splats[4], Sprays[2], Pool, Scorches[3], CasingTex;   // the textures, referenced so the package keeps them
 var array<ModBloodDecal> Decals, Holes, Clutter;
@@ -146,6 +151,7 @@ function TrackShots()
 		}
 		else
 		{
+			ShotThroughCorpses(ShotLoc[i], Shots[i].Location);
 			ShotLoc[i] = Shots[i].Location;
 			ShotVel[i] = Shots[i].Velocity;
 		}
@@ -253,6 +259,117 @@ function AddClutter(vector Spot, int Yaw)
 		class'ModSettings'.static.Note("gore: casing settled at " $ HitL $ " (" $ Clutter.Length $ " on the floor)");
 }
 
+// the dead lying around (refreshed twice a second): Health gone, in the Dying state
+function ScanCorpses()
+{
+	local Pawn P;
+	local int i;
+	local bool bKnown;
+
+	for (i = Corpses.Length - 1; i >= 0; i--)
+		if (Corpses[i] == None || Corpses[i].bDeleteMe)
+			Corpses.Remove(i, 1);
+	ForEach DynamicActors(class'Pawn', P)
+	{
+		if (P.Health > 0 || P.IsHumanControlled() || P.bDeleteMe || !P.IsInState('Dying'))
+			continue;
+		bKnown = false;
+		for (i = 0; i < Corpses.Length; i++)
+			if (Corpses[i] == P)
+			{
+				bKnown = true;
+				break;
+			}
+		if (!bKnown)
+			Corpses[Corpses.Length] = P;
+	}
+}
+
+// a shot's path from A to B through a body: closest approach to the body's axis, within its width
+function ShotThroughCorpses(vector A, vector B)
+{
+	local int i;
+	local Pawn P;
+	local vector D, C, Q, Dir;
+	local float T, L, R;
+
+	if (!bCorpseShots || Corpses.Length == 0)
+		return;
+	D = B - A;
+	L = VSize(D);
+	if (L < 1)
+		return;
+	Dir = D / L;
+	for (i = 0; i < Corpses.Length; i++)
+	{
+		P = Corpses[i];
+		if (P == None || P.bDeleteMe)
+			continue;
+		C = P.Location;
+		T = FClamp((C - A) Dot Dir, 0, L);
+		Q = A + Dir * T;
+		R = FMax(P.CollisionRadius, 30) * 1.3;
+		if (VSize((Q - C) * vect(1,1,0)) > R || Q.Z > C.Z + 25 || Q.Z < C.Z - P.CollisionHeight - 15)
+			continue;
+		CorpseHit(P, Q, Dir);
+		return;
+	}
+}
+
+function CorpseHit(Pawn P, vector Spot, vector Dir)
+{
+	local vector HitL, HitN;
+
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: corpse hit " $ P $ " physics " $ P.Physics $ " at " $ Spot);
+	// it bleeds like the living do (they don't reach NetDamage any more: Dying.TakeDamage
+	// doesn't pass hits on)
+	if (bBlood)
+	{
+		if (Trace(HitL, HitN, Spot + Normal(Dir + vect(0,0,-0.4)) * SprayReach, Spot, false) != None)
+			Mark(Sprays[Rand(2)], HitL, HitN, Dir, DecalScale * 0.6);
+		if (Trace(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,10), false) != None)
+			Mark(Splats[Rand(4)], HitL + VRand() * vect(1,1,0) * 20, HitN, vect(0,0,0), DecalScale * 0.45);
+	}
+	if (P.LifeSpan > 0)
+		P.LifeSpan += 0.2;
+	if (P.Physics == PHYS_KarmaRagdoll)
+		P.KAddImpulse(Dir * CorpseKick, Spot);
+	else
+		Limp(P, Dir, Spot);
+}
+
+// a body still in its death pose goes ragdoll, pushed along the shot (its species' own
+// ragdoll skeleton, AdventPawn.RagdollOverride; the engine allows MaxRagdolls at a time)
+function Limp(Pawn P, vector Dir, vector Spot)
+{
+	local AdventPawn A;
+	local KarmaParamsSkel K;
+
+	A = AdventPawn(P);
+	if (A == None || A.RagdollOverride == "")
+		return;
+	A.KMakeRagdollAvailable();
+	if (!A.KIsRagdollAvailable())
+		return;
+	if (KarmaParamsSkel(A.KParams) == None)
+		A.KParams = CorpseParams;
+	K = KarmaParamsSkel(A.KParams);
+	if (K == None)
+		return;
+	K.KSkeleton = A.RagdollOverride;
+	K.KStartLinVel = Dir * 250 + vect(0,0,60);
+	K.KStartAngVel = VRand() * 3000;
+	K.KShotStart = Spot - Dir;
+	K.KShotEnd = Spot + Dir * 100;
+	K.KShotStrength = CorpseKick;
+	A.KSetBlockKarma(true);
+	A.SetPhysics(PHYS_KarmaRagdoll);
+	A.StopAnimating(true);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: " $ A $ " went limp (" $ A.RagdollOverride $ "), physics " $ A.Physics);
+}
+
 // testing: actors the player's gun or pawn just made (what marks a shot)
 function LogNewActors(Pawn P)
 {
@@ -285,6 +402,8 @@ function ShotGone(vector Loc, vector Vel)
 	local vector HitL, HitN;
 	local Actor A;
 
+	ShotThroughCorpses(Loc, Loc + Vel * 0.1);
+
 	A = Trace(HitL, HitN, Loc + Vel * 0.1, Loc - Normal(Vel) * 20, false);
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: shot gone at " $ Loc $ " hit " $ A $ " at " $ HitL);
@@ -299,6 +418,12 @@ event Tick(float DeltaTime)
 	local vector HitL, HitN, Spot;
 	local ModBloodDecal D;
 
+	CorpseScan -= DeltaTime;
+	if (CorpseScan <= 0)
+	{
+		CorpseScan = 0.5;
+		ScanCorpses();
+	}
 	TrackShots();
 	for (i = Dying.Length - 1; i >= 0; i--)
 	{
@@ -407,6 +532,26 @@ defaultproperties
      CasingTex=Texture'AdventMod.Blood.Casing0'
      bCasings=True
      MaxClutter=150
+     bCorpseShots=True
+     CorpseKick=8000.000000
+     Begin Object Class=KarmaParamsSkel Name=CorpseRagdoll
+         KConvulseSpacing=(Max=2.200000)
+         KLinearDamping=0.150000
+         KAngularDamping=0.050000
+         KBuoyancy=1.000000
+         KStartEnabled=True
+         KVelDropBelowThreshold=50.000000
+         bHighDetailOnly=False
+         bClientOnly=True
+         bKDoubleTickRate=True
+         bKStayUpright=False
+         bKAllowRotate=False
+         bDestroyOnWorldPenetrate=True
+         bDoSafetime=True
+         KFriction=0.600000
+         KImpactThreshold=500.000000
+     End Object
+     CorpseParams=KarmaParamsSkel'AdventMod.ModGore.CorpseRagdoll'
      bImpacts=True
      MaxHoles=60
      bBlood=True

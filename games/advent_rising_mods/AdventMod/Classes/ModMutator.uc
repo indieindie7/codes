@@ -85,6 +85,8 @@ function Every()
 		Targeting = Spawn(class'ModTargeting');
 	if (Targeting != None)
 		Targeting.Update(PC);
+	if (class'ModSettings'.default.bFpsGraph && !class'ModFpsGraph'.default.bAdded && PC != None && PC.Player != None)
+		PC.Player.InteractionMaster.AddInteraction(string(class'ModFpsGraph'), PC.Player);
 	if (Gore == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Gore = Spawn(class'ModGore');
 	if (class'ModSettings'.default.bD3DTrace)

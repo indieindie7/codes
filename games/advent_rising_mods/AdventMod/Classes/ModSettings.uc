@@ -39,6 +39,7 @@ var config float ExploreSpeed;        // running speed while no enemy is near (M
 var bool bInCombat;                   // a hostile within CombatRange (ModTargeting, twice a second)
 var config bool bGoreLog;             // testing: log every hit and blood mark (ModGore)
 var config string DebugDecalTexture;  // testing: every blood mark with this texture instead
+var config bool bFpsGraph;            // development: the frame-time graph overlay (ModFpsGraph); off in releases
 var config bool bJumpLog;             // testing: log every jump (ModInput)
 var config bool bMouseLog;            // testing: log how much of the mouse movement the engine's curve keeps
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
