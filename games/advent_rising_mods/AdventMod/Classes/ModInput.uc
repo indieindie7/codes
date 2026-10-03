@@ -37,6 +37,8 @@ var float LastTurn, LastLook;
 var float TurnStill, LookStill;         // seconds the axis has held one exact value
 var float LogTime, LogRaw, LogKept;     // bMouseLog: one second of mouse movement before / after the engine's curve
 var int LogFrames;
+var bool bInAir;                       // bJumpLog
+var float JumpBaseZ, JumpApexZ, JumpLaunchZ;
 var int LastDesiredYaw, LastCurrentYaw;
 var float LogDesired, LogCurrent;    // camera yaw turned in that second, degrees
 
@@ -124,6 +126,31 @@ event PlayerInput(float DeltaTime)
 		aLookUp += LinearTurn(aMouseY) * (1 - 2 * int(bInvertMouse)) - aMouseY * (1 - 2 * int(bInvertMouse));
 	if (class'ModSettings'.default.bMouseLog)
 		LogMouse(Raw, DeltaTime);
+	if (class'ModSettings'.default.bJumpLog)
+		LogJump();
+}
+
+// testing: each jump's launch speed, how high it went, and the settings that decide it
+function LogJump()
+{
+	if (Pawn == None)
+		return;
+	if (!bInAir && Pawn.Physics == PHYS_Falling && Pawn.Velocity.Z > 100)
+	{
+		bInAir = true;
+		JumpBaseZ = Pawn.Location.Z;
+		JumpApexZ = JumpBaseZ;
+		JumpLaunchZ = Pawn.Velocity.Z;
+	}
+	else if (bInAir)
+	{
+		JumpApexZ = FMax(JumpApexZ, Pawn.Location.Z);
+		if (Pawn.Physics != PHYS_Falling)
+		{
+			bInAir = false;
+			class'ModSettings'.static.Note("jump: launch " $ int(JumpLaunchZ) $ " up, rose " $ int(JumpApexZ - JumpBaseZ) $ ", JumpZ " $ Pawn.JumpZ $ ", jump power " $ Pawn.GetPowerLevel(POWERAFFECTOR_PLAYER_JUMPING) $ ", gravity " $ Pawn.PhysicsVolume.Gravity.Z $ ", dodge held " $ EonPlayerController(Outer).bHoldingDodge $ ", use held " $ EonPlayerController(Outer).bHoldingUse);
+		}
+	}
 }
 
 // the camera input that turns the third-person camera Rate x M degrees a second:

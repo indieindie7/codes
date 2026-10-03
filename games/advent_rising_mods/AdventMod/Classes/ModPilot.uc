@@ -42,6 +42,7 @@ var bool bAimPitch;                    // FACE/TURN: steer the pitch too
 var float OnTargetTime;
 var string ReleaseCommand;             // console command that "lets go" of the held button
 var bool bWantPause;
+var float JumpStartZ, JumpTopZ;       // JUMPTEST
 var float ControlTime;                   // the script itself paused the game (pause button, menu step)
 
 function Note(string S)
@@ -396,7 +397,14 @@ function StartStep()
 		// NEARENEMY [distance]: the player moved to that far from the level's nearest hostile, facing it
 		NearEnemy(ArgF(1, 900));
 		break;
-	case "MOUSE":
+	case "JUMPTEST":
+		// JUMPTEST: jump once and log how high the pawn rose (and the settings that decide it)
+		JumpStartZ = PC().Pawn.Location.Z;
+		JumpTopZ = JumpStartZ;
+		Note("jumptest: JumpZ " $ PC().Pawn.JumpZ $ " default " $ PC().Pawn.default.JumpZ $ " gravity " $ PC().Pawn.PhysicsVolume.Gravity.Z $ " jump power " $ PC().Pawn.GetPowerLevel(POWERAFFECTOR_PLAYER_JUMPING) $ " fps cap " $ class'ModSettings'.default.MaxFps);
+		PressButton("JUMP");
+		StepLength = 2.5;
+		break;
 		// MOUSE x seconds: the mouse moving sideways at a steady raw rate
 		class'ModPilot'.default.MouseX = ArgF(1, 0);
 		StepLength = ArgF(2, 1);
@@ -507,6 +515,14 @@ event Tick(float DeltaTime)
 	{
 		SteerView(P, DeltaTime);
 		return;
+	}
+	if (Cmd == "JUMPTEST" && P.Pawn != None)
+	{
+		JumpTopZ = FMax(JumpTopZ, P.Pawn.Location.Z);
+		if (StepTime > 0.15)
+			class'ModPilot'.default.Up = 0;   // a tap, not a held jump
+		if (StepTime >= StepLength)
+			Note("jumptest: rose " $ int(JumpTopZ - JumpStartZ) $ " units (JumpZ now " $ P.Pawn.JumpZ $ ")");
 	}
 	if (StepTime >= StepLength)
 		StartStep();

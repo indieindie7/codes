@@ -31,6 +31,7 @@ var config float CombatRange;         // a hostile this close (unreal units, 1 m
 var config float PickupReach;         // weapons this close stay targetable in a fight
 var config bool bTargetLog;           // testing: log the lock-on target as it changes
 var config bool bDebugCombat;         // testing: ModTargeting acts as if a hostile were near
+var config bool bJumpLog;             // testing: log every jump (ModInput)
 var config bool bMouseLog;            // testing: log how much of the mouse movement the engine's curve keeps
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
 var config float Sharpen;             // CAS sharpening 0..1 (the preset sets it; the Graphics page slider changes it)
