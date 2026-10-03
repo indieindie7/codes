@@ -1,0 +1,14 @@
+# graphics pack smoke test: shipped renderer + shaders only; post, SMAA, PCSS, soft shadows; frames after post
+background
+map M08A1
+waitcontrol 180
+wait 3
+console behindview 1
+wait 1
+shotp
+wait 1
+console behindview 0
+wait 1
+shotp
+wait 1
+quit
