@@ -41,7 +41,11 @@ function PostRender(Canvas C)
 	local int i, n;
 	local float X0, Y0, W, H, BarW, T, Sum, Worst, Ms;
 
-	if (!class'ModSettings'.default.bFpsGraph || Count == 0)
+	// levels only, with the HUD's fonts loaded (at the title the canvas has none:
+	// drawing text there crashed the game)
+	if (!class'ModSettings'.default.bFpsGraph || Count == 0 || C == None || C.SmallFont == None
+		|| ViewportOwner == None || ViewportOwner.Actor == None || ViewportOwner.Actor.Level == None
+		|| ViewportOwner.Actor.Level.Game == None || ViewportOwner.Actor.Level.Game.IsInFrontEnd)
 		return;
 	W = 360;
 	H = 90;
