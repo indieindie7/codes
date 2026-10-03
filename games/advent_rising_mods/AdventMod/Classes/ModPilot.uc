@@ -29,6 +29,7 @@ var config array<string> Steps;
 var bool bActive;
 var float Forward, Strafe, Up;
 var float TurnAxis, LookAxis;          // added to aTurn / aLookUp while a turn step runs
+var float MouseX;                       // MOUSE step: added to the raw mouse axis (before the engine's sensitivity and curve)
 var bool bHoldFire, bHoldFavoriteFire, bHoldWalk;
 
 var int StepIndex;
@@ -110,6 +111,7 @@ function ReleaseAll()
 	class'ModPilot'.default.bHoldWalk = false;
 	class'ModPilot'.default.TurnAxis = 0;
 	class'ModPilot'.default.LookAxis = 0;
+	class'ModPilot'.default.MouseX = 0;
 	TurnYaw = 0;
 	TurnPitch = 0;
 	if (ReleaseCommand != "" && PC() != None)
@@ -318,6 +320,11 @@ function StartStep()
 		// UE2 turns the view by 32 * DeltaTime * aTurn rotation units (65536 = 360 degrees)
 		class'ModPilot'.default.TurnAxis = TurnYaw * 65536.0 / 360.0 / 32.0;
 		class'ModPilot'.default.LookAxis = TurnPitch * 65536.0 / 360.0 / 32.0;
+		break;
+	case "MOUSE":
+		// MOUSE x seconds: the mouse moving sideways at a steady raw rate
+		class'ModPilot'.default.MouseX = ArgF(1, 0);
+		StepLength = ArgF(2, 1);
 		break;
 	case "HOLD":
 		if (Args.Length > 1)

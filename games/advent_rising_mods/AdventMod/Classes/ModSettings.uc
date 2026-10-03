@@ -23,6 +23,9 @@ var config bool bPadDriftFix;         // ignore stuck gamepad camera axes: the c
 var config float PadCentre;           // an axis counts once it has been this close to the centre
 var config float StuckTime;           // an axis frozen off-centre this long (seconds) stops counting
 var config float DebugStuckTurn;      // testing: add a phantom axis value to the camera turn
+var config bool bRawMouse;            // mouse look without the engine's smoothing and slow-speed damping (ModInput)
+var config float MouseTurnRate;       // raw mouse: camera degrees per second for one unit of mouse speed (after the game's sensitivity)
+var config bool bMouseLog;            // testing: log how much of the mouse movement the engine's curve keeps
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
 var config float Sharpen;             // CAS sharpening 0..1 (the preset sets it; the Graphics page slider changes it)
 var config bool bSMAA;                // the layer's SMAA anti-aliasing
@@ -301,6 +304,8 @@ defaultproperties
      bPadDriftFix=True
      PadCentre=0.100000
      StuckTime=1.500000
+     bRawMouse=True
+     MouseTurnRate=80.000000
      PostPreset=1
      Sharpen=0.400000
      bSMAA=True
