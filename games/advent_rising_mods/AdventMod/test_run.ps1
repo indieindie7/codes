@@ -35,7 +35,10 @@ public class K { [DllImport("user32.dll")] public static extern void keybd_event
 # the game's client area, asked from the window itself (works while other windows cover it)
 function Shot($name) { $h = (Get-Process advent).MainWindowHandle; $c = New-Object K+RECT; [void][K]::GetClientRect($h, [ref]$c); $bmp = New-Object System.Drawing.Bitmap $c.R, $c.B; $g = [System.Drawing.Graphics]::FromImage($bmp); $dc = $g.GetHdc(); [void][K]::PrintWindow($h, $dc, 3); $g.ReleaseHdc($dc); $bmp.Save("$shots\$name"); $g.Dispose(); $bmp.Dispose() }
 function Win($p) { $r = New-Object K+RECT; $c = New-Object K+RECT; [void][K]::GetWindowRect($p.MainWindowHandle, [ref]$r); [void][K]::GetClientRect($p.MainWindowHandle, [ref]$c); "window {0}x{1} at {2},{3} client {4}x{5} caption={6}" -f ($r.R-$r.L), ($r.B-$r.T), $r.L, $r.T, $c.R, $c.B, [bool]([K]::GetWindowLong($p.MainWindowHandle, -16) -band 0xC00000) }
+# a test stopped half way couldn't restore the player's files: they wait in *.test-backup, put them back first
+foreach ($f in 'Mydefault.ini','MyDefUser.ini','AdventMod.ini') { if (Test-Path "$S\$f.test-backup") { Copy-Item "$S\$f.test-backup" "$S\$f" -Force; "restored $f from an unfinished test" } }
 $saved = Get-Content "$S\Mydefault.ini"; $savedUser = Get-Content "$S\MyDefUser.ini"; $savedMod = Get-Content "$S\AdventMod.ini"
+foreach ($f in 'Mydefault.ini','MyDefUser.ini','AdventMod.ini') { Copy-Item "$S\$f" "$S\$f.test-backup" -Force }
 $pilot = @(); if ($Steps) { $pilot = @('', '[AdventMod.ModPilot]') + ($Steps | ForEach-Object { "Steps=$_" }) }
 (@('[AdventMod.ModSettings]') + $Ini + $pilot) | Set-Content "$S\AdventMod.ini" -Encoding ascii
 $env:SteamAppId = '3800'; $env:SteamGameId = '3800'; $env:PATH = "C:\Program Files (x86)\Steam;" + $env:PATH
@@ -71,3 +74,4 @@ $nowU = Get-Content "$S\MyDefUser.ini"; $dU = Compare-Object $savedUser $nowU; i
 $savedUser | Set-Content "$S\MyDefUser.ini" -Encoding ascii
 # the player's own AdventMod settings come back as they were
 $savedMod | Set-Content "$S\AdventMod.ini" -Encoding ascii
+foreach ($f in 'Mydefault.ini','MyDefUser.ini','AdventMod.ini') { [IO.File]::Delete("$S\$f.test-backup") }

@@ -25,6 +25,11 @@ var config float StuckTime;           // an axis frozen off-centre this long (se
 var config float DebugStuckTurn;      // testing: add a phantom axis value to the camera turn
 var config bool bRawMouse;            // mouse look without the engine's smoothing and slow-speed damping (ModInput)
 var config float MouseTurnRate;       // raw mouse: camera degrees per second for one unit of mouse speed (after the game's sensitivity)
+var config bool bCombatPickupFilter;  // no lock-on to weapons on the ground during a fight, unless at your feet (ModTargeting)
+var config float CombatRange;         // a hostile this close (unreal units, 1 m = ~52) means a fight
+var config float PickupReach;         // weapons this close stay targetable in a fight
+var config bool bTargetLog;           // testing: log the lock-on target as it changes
+var config bool bDebugCombat;         // testing: ModTargeting acts as if a hostile were near
 var config bool bMouseLog;            // testing: log how much of the mouse movement the engine's curve keeps
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
 var config float Sharpen;             // CAS sharpening 0..1 (the preset sets it; the Graphics page slider changes it)
@@ -306,6 +311,9 @@ defaultproperties
      StuckTime=1.500000
      bRawMouse=True
      MouseTurnRate=80.000000
+     bCombatPickupFilter=True
+     CombatRange=2500.000000
+     PickupReach=250.000000
      PostPreset=1
      Sharpen=0.400000
      bSMAA=True

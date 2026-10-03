@@ -12,6 +12,7 @@ var int DebugStage;
 var bool bProbed, bPiloted;
 var int RemovedFx;
 var ModShadowManager Shadows;
+var ModTargeting Targeting;
 
 // ticks while the game is paused too (bAlwaysTick), so the FOV slider in the pause menu
 // shows its effect at once
@@ -71,6 +72,10 @@ function Every()
 		Shadows.Destroy();
 		Shadows = None;
 	}
+	if (Targeting == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
+		Targeting = Spawn(class'ModTargeting');
+	if (Targeting != None)
+		Targeting.Update(PC);
 	if (class'ModSettings'.default.bD3DTrace)
 		class'ModSettings'.static.NativeCall("D3DTrace");     // testing: follows the game to a new device
 	class'ModSettings'.static.NativeCall("MaxFps:" $ class'ModSettings'.default.MaxFps);  // follows the game to a new device

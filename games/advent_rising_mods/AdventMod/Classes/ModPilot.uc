@@ -233,6 +233,72 @@ function Aim(float YawDeg, float PitchDeg)
 	Note("aim: view set to " $ R);
 }
 
+function NearEnemy(float Dist)
+{
+	local Pawn P, Best;
+	local vector Spot, Dir;
+	local PlayerController C;
+
+	C = PC();
+	if (C == None || C.Pawn == None)
+		return;
+	ForEach DynamicActors(class'Pawn', P)
+		if (class'ModTargeting'.static.IsHostile(P) && (Best == None || VSize(P.Location - C.Pawn.Location) < VSize(Best.Location - C.Pawn.Location)))
+			Best = P;
+	if (Best == None)
+	{
+		Note("nearenemy: no hostile in the level");
+		return;
+	}
+	Dir = C.Pawn.Location - Best.Location;
+	Dir.Z = 0;
+	Spot = Best.Location + Normal(Dir) * Dist + vect(0,0,60);
+	if (!C.Pawn.SetLocation(Spot))
+		Spot = Best.Location + vect(0,0,1) * (Best.CollisionHeight + C.Pawn.CollisionHeight + 20);
+	C.Pawn.SetLocation(Spot);
+	C.SetRotation(rotator(Best.Location - C.Pawn.Location));
+	Aim(ViewDeg(C.Rotation.Yaw), 0);
+	Note("nearenemy: " $ Best $ " (" $ Best.Controller $ "), player at " $ C.Pawn.Location $ ", " $ int(VSize(Best.Location - C.Pawn.Location)) $ " away");
+}
+
+function SpawnAhead(string ClassName, float Ahead, float Right)
+{
+	local class<Actor> C;
+	local Actor A;
+	local Pawn P;
+	local vector X, Y, Z, Spot, HitLocation, HitNormal;
+
+	C = class<Actor>(DynamicLoadObject(ClassName, class'Class'));
+	if (C == None || PC() == None || PC().Pawn == None)
+	{
+		Note("spawn: no class " $ ClassName $ " (" $ C $ ") or no player");
+		return;
+	}
+	GetAxes(PC().Rotation, X, Y, Z);
+	X.Z = 0;
+	Y.Z = 0;
+	Spot = PC().Pawn.Location + Normal(X) * Ahead + Normal(Y) * Right;
+	// stand it on the floor there, clear of the walls
+	if (Trace(HitLocation, HitNormal, Spot - vect(0,0,1000), Spot + vect(0,0,200), false) != None)
+		Spot = HitLocation + vect(0,0,1) * (C.default.CollisionHeight + 10);
+	A = Spawn(C,,, Spot, rotator(PC().Pawn.Location - Spot), C.default.DrawScale, C.default.DrawScale3D, true);
+	P = Pawn(A);
+	if (P != None && P.Controller == None && P.ControllerClass != None)
+	{
+		P.Controller = Spawn(P.ControllerClass);
+		if (P.Controller != None)
+			P.Controller.Possess(P);
+	}
+	Note("spawn: " $ A $ " at " $ Spot $ Eval2(P != None, " controller " $ P.Controller, ""));
+}
+
+static function string Eval2(bool B, string T, string F)
+{
+	if (B)
+		return T;
+	return F;
+}
+
 function Where()
 {
 	local PlayerController P;
@@ -320,6 +386,15 @@ function StartStep()
 		// UE2 turns the view by 32 * DeltaTime * aTurn rotation units (65536 = 360 degrees)
 		class'ModPilot'.default.TurnAxis = TurnYaw * 65536.0 / 360.0 / 32.0;
 		class'ModPilot'.default.LookAxis = TurnPitch * 65536.0 / 360.0 / 32.0;
+		break;
+	case "SPAWN":
+		// SPAWN Package.Class ahead [right]: an actor that far in front of the player
+		// (unreal units), a pawn with its own AI
+		SpawnAhead(Args[1], ArgF(2, 300), ArgF(3, 0));
+		break;
+	case "NEARENEMY":
+		// NEARENEMY [distance]: the player moved to that far from the level's nearest hostile, facing it
+		NearEnemy(ArgF(1, 900));
 		break;
 	case "MOUSE":
 		// MOUSE x seconds: the mouse moving sideways at a steady raw rate
