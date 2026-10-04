@@ -14,7 +14,12 @@ Bone names are given without the rig prefix ("L UpperArm" matches "Merc L UpperA
 "Bip01 L UpperArm"). Per swap also: "girth" (thickness factor), "mode": "overlay" (keep the base's
 own triangles there, donor armour goes on top), "keep_top": 0..1 (only the donor's top part of the
 region, e.g. 0.6 of a head = a hat), "keep_hue": [min, max] degrees (only faces whose texture
-is that colour, e.g. [70, 170] = a green beret), "offset": [x, y, z] (nudge, base units).
+is that colour, e.g. [70, 170] = a green beret), "offset": [x, y, z] (nudge, base units),
+"exact": true (only points skinned to those very bones; by default points of child bones that
+still lie along a region bone are included, e.g. a forearm skinned to the hand - but in a biped
+the clavicles hang off the neck, so a neck swap needs "stop": ["L Clavicle", "R Clavicle"]
+(child chains not to follow) or "exact"), "fit_cap": {sit, back, overhang,
+tilt} (sit a hat on the skull already in the mesh).
 
 For each swap: the base's triangles whose corners all belong to those bones (strongest weight)
 are removed; the donor's triangles whose corners all belong to them are added, carried from the
@@ -128,7 +133,7 @@ def bone_length(m, W, i):
     return np.linalg.norm(W[ks[0]][:3, 3] - W[i][:3, 3]) if ks else None
 
 
-def region_points(m, W, region):
+def region_points(m, W, region, exact=False, stop=()):
     """points belonging to a set of bones: their strongest bone is one of them, or it hangs
     below one of them but the point still lies before that bone's next joint (UT2004 skins most
     of the forearm to the hand, the lower shin to the foot)"""
@@ -141,12 +146,14 @@ def region_points(m, W, region):
     out = set()
     for p, b in strong.items():
         r = b
-        while r >= 0 and keys[r] not in region:
+        while r >= 0 and keys[r] not in region and keys[r] not in stop:
             r = bones[r]["parent"]
-        if r < 0:
+        if r < 0 or keys[r] in stop:
             continue
         if r == b:
             out.add(p)
+            continue
+        if exact:
             continue
         ks = [k for k in kids.get(r, []) if np.linalg.norm(bones[k]["pos"]) > 1e-3]
         if not ks:
@@ -158,6 +165,40 @@ def region_points(m, W, region):
         if t <= 0.97:
             out.add(p)
     return out
+
+
+def fit_cap(opt, pts, weights, bshort, used, pmap, live):
+    """sit a hat on the skull already in the mesh: the hat's footprint is centred over the top
+    of the head (shifted "back" units toward the back of the head), scaled to the skull's width
+    plus "overhang", its rim "sit" units below the crown, then tilted "tilt" degrees to the
+    hat's own right (a beret's slouch). Head = points whose strongest bone is the head."""
+    head = bshort["head"]
+    strong = {}
+    for w, p, b in weights:
+        if p not in strong or w > strong[p][0]:
+            strong[p] = (w, b)
+    new = {pmap[p] for p in used}
+    H = np.array([pts[p] for p, (w, b) in strong.items() if b == head and p not in new and p in live])
+    hat = np.array([pts[pmap[p]] for p in used])
+    ztop = H[:, 2].max()
+    sit = opt.get("sit", 6.0)
+    band = H[H[:, 2] > ztop - sit]
+    c = band[:, :2].mean(0) + np.array([0.0, opt.get("back", 0.0)])
+    span = band[:, :2].max(0) - band[:, :2].min(0)
+    hc = (hat[:, :2].max(0) + hat[:, :2].min(0)) / 2
+    hspan = hat[:, :2].max(0) - hat[:, :2].min(0)
+    s = (span * (1.0 + opt.get("overhang", 0.15))) / hspan
+    sz = s.mean()
+    out = np.empty_like(hat)
+    out[:, :2] = (hat[:, :2] - hc) * s + c
+    out[:, 2] = (hat[:, 2] - hat[:, 2].min()) * sz + (ztop - sit)
+    a = np.radians(opt.get("tilt", 0.0))            # roll about the front-back (Y) axis
+    piv = np.array([c[0], c[1], ztop - sit])
+    R = np.array([[np.cos(a), 0, -np.sin(a)], [0, 1, 0], [np.sin(a), 0, np.cos(a)]])
+    out = (out - piv) @ R.T + piv
+    for p, q in zip(used, out):
+        pts[pmap[p]] = tuple(q)
+    print(f"  hat fit: crown z {ztop:.1f}, skull {span.round(1)}, hat scale {s.round(2)}")
 
 
 def height(m):
@@ -215,13 +256,13 @@ def kitbash(recipe_path):
 
         # base triangles in the region go ("overlay" keeps them: donor armour on top)
         if sw.get("mode", "replace") == "replace":
-            breg = region_points(base, bW, region)
+            breg = region_points(base, bW, region, sw.get("exact", False), {short(s) for s in sw.get("stop", [])})
             for fi, (a, b, c, m) in enumerate(faces):
                 if fi < len(base["faces"]) and all(base["wedges"][w][0] in breg for w in (a, b, c)):
                     removed.add(fi)
 
         # donor triangles in the region come in
-        dreg = region_points(d, dW, region)
+        dreg = region_points(d, dW, region, sw.get("exact", False), {short(s) for s in sw.get("stop", [])})
         if "keep_top" in sw:
             # only the top of the region (a hat): points at least this far from the region's
             # lowest joint to its highest point, measured straight up
@@ -265,6 +306,9 @@ def kitbash(recipe_path):
                 merged[tgt[b]] = merged.get(tgt[b], 0.0) + w
             for b, w in merged.items():
                 weights.append((w, pmap[p], b))
+        if "fit_cap" in sw:
+            live = {wedges[w][0] for fi, f in enumerate(faces) if fi not in removed for w in f[:3]}
+            fit_cap(sw["fit_cap"], pts, weights, bshort, used, pmap, live)
         mat0 = len(mats)
         dmats_used = sorted({f[3] for f in keep})
         mslot = {}
