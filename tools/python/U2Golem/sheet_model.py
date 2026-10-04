@@ -18,7 +18,9 @@ The method (after Noggi's "Japan's 3D modeling philosophy" and Aka's low-poly bu
      get a tight pair of loops and smooth stretches get few.
   4. Armour that overlaps another section is its own piece: shoulder balls are found as a bulge in the
      arm's outer outline and completed as round forms (see pauldron()).
-  5. level = how far the refinement goes: 1 blockout (~500 tris), 2 (~1,100), 3 (~2,300), 4 (~3,600).
+  5. Torso and thighs are one skin: each leg's top loop is its half of the torso's hip ring plus a short
+     arc of shared vertices under the crotch. Hands (level 2+) are cut from the guide and reduced.
+  6. level = how far the refinement goes: 1 blockout (~500 tris), 2 (~1,100), 3 (~2,300), 4 (~3,600).
 UVs: every tube is one rectangle with its seam on the hidden side, at true relative size, packed.
 Writes <out>.blend and <out>.glb (mesh "Low", UVs, sharp edges by angle); paint it with project_views.py
 and bake with retopo_bake.py low=<out>.glb.
@@ -288,7 +290,9 @@ uv = bm.loops.layers.uv.verify()
 island_x = [0.0]
 
 
-def tube(name, prof, sides, nrings, seam_deg, rnd=ROUND):
+def tube(name, prof, sides, nrings, seam_deg, rnd=ROUND, caps=(True, True), join=None):
+    """caps: close the top / bottom end with a fan. join: a loop of existing vertices (as many as `sides`)
+    that the top ring is stitched to, so two sections share one skin. Returns the rings' vertices."""
     rs, P = prof
     keep = pick_rings(rs, P, nrings)
     z = row2z(rs[keep])
@@ -312,8 +316,24 @@ def tube(name, prof, sides, nrings, seam_deg, rnd=ROUND):
             f = bm.faces.new((bv[j][k], bv[j + 1][k], bv[j + 1][k2], bv[j][k2]))
             for lp, (ku, jv) in zip(f.loops, ((k, j), (k, j + 1), (k + 1, j + 1), (k + 1, j))):
                 lp[uv].uv = (x0 + ku / sides * girth, -vlen[jv])
+    if join is not None:
+        # stitch: pick the rotation / direction of the loop that lines up best with the top ring
+        jp = np.array([tuple(v.co) for v in join])
+        cands = [(float(np.linalg.norm(np.roll(q, -o_, 0) - ring[0], axis=1).sum()), o_, rev)
+                 for rev, q in ((False, jp), (True, jp[::-1])) for o_ in range(sides)]
+        _, o_, rev = min(cands)
+        jl = (join[::-1] if rev else join)
+        jl = jl[o_:] + jl[:o_]
+        blen = float(np.linalg.norm(np.array([tuple(v.co) for v in jl]) - ring[0], axis=1).mean())
+        for k in range(sides):
+            k2 = (k + 1) % sides
+            f = bm.faces.new((jl[k], bv[0][k], bv[0][k2], jl[k2]))
+            for lp, (ku, vv) in zip(f.loops, ((k, blen), (k, 0.0), (k + 1, 0.0), (k + 1, blen))):
+                lp[uv].uv = (x0 + ku / sides * girth, vv)
     x0 += girth * 1.05
     for end, j in ((0, 0), (1, len(keep) - 1)):
+        if not caps[end]:
+            continue
         cpt = ring[j].mean(0)
         cv = bm.verts.new(tuple(cpt))
         d = ring[j] - cpt
@@ -327,6 +347,7 @@ def tube(name, prof, sides, nrings, seam_deg, rnd=ROUND):
         x0 = x0 if end == 0 else x0 + rad * 2.2
     island_x[0] = x0
     print(f"TUBE {name}: {sides} sides x {len(keep)} rings")
+    return bv
 
 
 def pauldron(side):
@@ -380,6 +401,8 @@ def pauldron(side):
 
 
 sec = section_spans()
+HAND_TRIS = {1: 0, 2: 70, 3: 140, 4: 240}[LEVEL]
+wrists = {}
 # seam angle: 0 deg = +X, 90 = +Y (back). Seams sit on the inner side of limbs and down the back.
 for side, seam in (("L", 0), ("R", 180)):
     pd = pauldron(side)
@@ -387,9 +410,35 @@ for side, seam in (("L", 0), ("R", 180)):
         prof_p, arm_from = pd
         tube("pauldron" + side, prof_p, S_LIMB, max(5, R_ARM // 2 + 1), seam, 2.0)
         sec["arm" + side] = {r: v for r, v in sec["arm" + side].items() if r >= arm_from}
-    tube("arm" + side, profile(sec["arm" + side]), S_LIMB, R_ARM, seam)
-    tube("leg" + side, profile(sec["leg" + side]), S_LIMB, R_LEG, seam)
-tube("torso", profile(sec["torso"]), S_TORSO, R_TORSO, 90, ROUND + 0.4)
+    arm = sec["arm" + side]
+    if HAND_TRIS:
+        # the wrist is the arm's thinnest row in its lower third; the tube stops there and the hand is its own piece
+        ar = sorted(arm)
+        low3 = ar[int(len(ar) * 0.70):int(len(ar) * 0.93)]
+        wrists[side] = min(low3, key=lambda r: arm[r][1] - arm[r][0])
+        arm = {r: v for r, v in arm.items() if r <= wrists[side] + 2}
+    tube("arm" + side, profile(arm), S_LIMB, R_ARM, seam)
+
+# torso, open at the hips; the legs are stitched to its hip ring so torso and thighs are one skin:
+# each leg's top loop = its half of the hip ring + a short arc of shared vertices under the crotch
+hip = tube("torso", profile(sec["torso"]), S_TORSO, R_TORSO, 90, ROUND + 0.4, caps=(True, False))[-1]
+half = S_TORSO // 2
+n_arc = S_LIMB - half - 1
+tip = next(r for r in range(crotch + 1, r1) if not core(r))          # first row below the crotch tip
+leg_from = tip + int(0.012 * hpx)
+front_c, back_c = hip[half], hip[0]
+zf = float(front_c.co.z)
+dip = max(0.01 * H, zf - float(row2z(tip)))
+arc = []
+for i in range(1, n_arc + 1):
+    t = i / (n_arc + 1)
+    co = front_c.co.lerp(back_c.co, t)
+    arc.append(bm.verts.new((co.x, co.y, zf - dip * math.sin(math.pi * t))))
+loops = {"L": [back_c] + hip[1:half] + [front_c] + arc,
+         "R": [front_c] + hip[half + 1:] + [back_c] + arc[::-1]}
+for side, seam in (("L", 0), ("R", 180)):
+    leg = {r: v for r, v in sec["leg" + side].items() if r >= leg_from}
+    tube("leg" + side, profile(leg), S_LIMB, R_LEG, seam, caps=(False, True), join=loops[side])
 tube("head", profile(sec["head"], top_frac=0.3), S_HEAD, R_HEAD, 90, 2.0)
 
 me = bpy.data.meshes.new("Low")
@@ -398,6 +447,42 @@ bm.to_mesh(me)
 bm.free()
 low = bpy.data.objects.new("Low", me)
 bpy.context.scene.collection.objects.link(low)
+# hands: fingers are not a tube. Each hand is cut out of the guide below the wrist and reduced.
+gcen = GV[GT].mean(1)
+grow = np.clip(np.round(r0 + (ghi[2] - gcen[:, 2]) / H * (r1 - r0)).astype(int), r0, r1)
+for side, wr in wrists.items():
+    edge = in_l if side == "L" else in_r
+    lim = np.array([col2x(edge.get(int(r), edge[max(edge)])) for r in grow])
+    m = (grow > wr) & ((gcen[:, 0] < lim) if side == "L" else (gcen[:, 0] > lim))
+    hf = np.where(m)[0]
+    if len(hf) < 20:
+        continue
+    used = np.unique(GT[hf])
+    remap = {int(v): i for i, v in enumerate(used)}
+    hm = bpy.data.meshes.new("Hand" + side)
+    hm.from_pydata([tuple(GV[v]) for v in used], [], [tuple(remap[int(v)] for v in tri) for tri in GT[hf]])
+    ho = bpy.data.objects.new("Hand" + side, hm)
+    bpy.context.scene.collection.objects.link(ho)
+    bpy.ops.object.select_all(action="DESELECT")
+    ho.select_set(True)
+    bpy.context.view_layer.objects.active = ho
+    if len(hf) > HAND_TRIS:
+        md = ho.modifiers.new("dec", "DECIMATE")
+        md.ratio = HAND_TRIS / len(hf)
+        bpy.ops.object.modifier_apply(modifier=md.name)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(75), island_margin=0.03)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    sc_ = math.sqrt(sum(p.area for p in ho.data.polygons))       # true size, like the tubes' islands
+    for l in ho.data.uv_layers[0].data:
+        l.uv = (l.uv[0] * sc_ + island_x[0], l.uv[1] * sc_ + 1.0)
+    island_x[0] += sc_ * 1.1
+    print(f"HAND {side}: {len(ho.data.polygons)} faces from the guide below row {wr}")
+    low.select_set(True)
+    bpy.context.view_layer.objects.active = low
+    bpy.ops.object.join()
+bpy.ops.object.select_all(action="DESELECT")
 bpy.context.view_layer.objects.active = low
 low.select_set(True)
 bpy.ops.object.mode_set(mode="EDIT")
