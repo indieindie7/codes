@@ -415,9 +415,14 @@ function CorpseList()
 		C = P.GetBoneCoords('head');
 		Floor = P.Location - vect(0,0,1) * (P.CollisionHeight + 200);
 		Trace(HitL, HitN, Floor, P.Location + vect(0,0,10), false);
-		Note("corpselist: " $ P $ " health " $ P.Health $ " physics " $ P.Physics $ " state " $ P.GetStateName() $ " head above floor " $ int(C.Origin.Z - HitL.Z) $ " (standing " $ int(2 * P.default.CollisionHeight) $ ") hidden " $ P.bHidden);
+		Note("corpselist: " $ P $ " health " $ P.Health $ " physics " $ P.Physics $ " state " $ P.GetStateName() $ " head above floor " $ int(C.Origin.Z - HitL.Z) $ " (standing " $ int(2 * P.default.CollisionHeight) $ ") z " $ int(P.Location.Z) $ " head z " $ int(C.Origin.Z) $ " hidden " $ P.bHidden);
 	}
 	Note("corpselist: " $ n $ " dead, ragdoll cap " $ Level.MaxRagdolls);
+	n = 0;
+	foreach DynamicActors(class'Pawn', P)
+		if (P.Health > 0 && !P.IsHumanControlled() && P.Controller != None && !P.Controller.SameTeamAs(PC().Pawn))
+			n++;
+	Note("corpselist: " $ n $ " hostiles alive, player at " $ PC().Pawn.Location);
 }
 
 function GibList()

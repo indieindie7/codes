@@ -42,6 +42,21 @@ struct StaggerState
 };
 var array<StaggerState> Staggers;
 
+// a body in ragdoll: where its floor was when it fell. Some floors (static meshes
+// without Karma collision) don't stop a ragdoll, and a body that drops out of the
+// world is destroyed, which leaves its squad a member short (the waves stall). So a
+// ragdoll is frozen (KFreezeRagdoll) as soon as it reaches its floor height, once it
+// stops moving, or after RagdollTime. Its "floating body" check (which reads the
+// ragdoll as floating and erases it at once) is kept off meanwhile.
+struct RagdollState
+{
+	var Pawn P;
+	var float FloorZ, T;
+	var bool bFrozen;      // still watched: the engine may switch it to falling
+};
+var array<RagdollState> Ragdolls;
+var config float RagdollTime;
+
 struct DeathState
 {
 	var Pawn P;
@@ -230,13 +245,90 @@ event Tick(float DeltaTime)
 		if (P.IsInState('Dying') && Gore != None)
 		{
 			Gore.Limp(P, Deaths[i].Dir, Deaths[i].Spot);
+			if (P.Physics == PHYS_KarmaRagdoll)
+				AddRagdoll(P);
 			Deaths.Remove(i, 1);
 		}
+	}
+	WatchRagdolls(DeltaTime);
+}
+
+function AddRagdoll(Pawn P)
+{
+	local RagdollState R;
+	local vector HitL, HitN;
+	local Actor Floor;
+
+	R.P = P;
+	R.FloorZ = P.Location.Z - P.CollisionHeight;
+	Floor = Trace(HitL, HitN, P.Location - vect(0,0,1) * (P.CollisionHeight + 300), P.Location, false);
+	if (Floor != None)
+		R.FloorZ = HitL.Z;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("react: " $ P $ " ragdoll over " $ Floor $ " (" $ Floor.Class $ ", static mesh " $ Floor.StaticMesh $ ")");
+	Ragdolls[Ragdolls.Length] = R;
+	if (AdventPawn(P) != None)
+		AdventPawn(P).shouldCheckForQuickDeadFade = false;
+}
+
+function WatchRagdolls(float DeltaTime)
+{
+	local int i;
+	local Pawn P;
+	local float Low;
+	local string Why;
+
+	for (i = Ragdolls.Length - 1; i >= 0; i--)
+	{
+		P = Ragdolls[i].P;
+		// gone, or the game took the body back (recycled for a squad)
+		if (P == None || P.bDeleteMe || P.Health > 0 || !P.IsInState('Dying'))
+		{
+			Ragdolls.Remove(i, 1);
+			continue;
+		}
+		if (AdventPawn(P) != None)
+			AdventPawn(P).shouldCheckForQuickDeadFade = false;
+		// a frozen ragdoll (ours, or the engine's own once it comes to rest) is left
+		// PHYS_Falling with no world collision: it would drop through the floor and out
+		// of the world. Nothing moves it: it stays where it lies.
+		if (P.Physics == PHYS_Falling && !P.bCollideWorld)
+		{
+			P.SetPhysics(PHYS_None);
+			P.Velocity = vect(0,0,0);
+			if (class'ModSettings'.default.bGoreLog && !Ragdolls[i].bFrozen)
+				class'ModSettings'.static.Note("react: " $ P $ " held in place (frozen ragdoll was falling)");
+			Ragdolls[i].bFrozen = true;
+			continue;
+		}
+		if (Ragdolls[i].bFrozen || P.Physics != PHYS_KarmaRagdoll)
+			continue;
+		Ragdolls[i].T += DeltaTime;
+		Low = FMin(P.GetBoneCoords('hips').Origin.Z, P.GetBoneCoords('head').Origin.Z);
+		Why = "";
+		if (Low < Ragdolls[i].FloorZ + 2)
+			Why = "at its floor";
+		else if (Ragdolls[i].T > 0.8 && !P.KIsAwake())
+			Why = "at rest";
+		else if (Ragdolls[i].T > RagdollTime)
+			Why = "time";
+		if (Why == "")
+			continue;
+		P.KFreezeRagdoll();
+		if (P.Physics == PHYS_Falling && !P.bCollideWorld)
+		{
+			P.SetPhysics(PHYS_None);
+			P.Velocity = vect(0,0,0);
+		}
+		Ragdolls[i].bFrozen = true;
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("react: " $ P $ " ragdoll frozen (" $ Why $ ", " $ Ragdolls[i].T $ " s, low " $ int(Low - Ragdolls[i].FloorZ) $ " over floor), physics now " $ P.Physics);
 	}
 }
 
 defaultproperties
 {
+     RagdollTime=4.000000
      bFlinch=True
      FlinchAngle=4500.000000
      FlinchTime=0.300000
