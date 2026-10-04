@@ -1,0 +1,11 @@
+# name | prompt (one sentence: Kimodo splits prompts at full stops) | seconds
+chest|A standing person is shot in the chest, staggers backward and collapses to the ground|4
+head|A standing person is shot in the head, the head snaps back and the body drops limp to the ground|3.5
+gut|A standing person is shot in the stomach, clutches the stomach, doubles over, drops to the knees and falls forward on the face|4.5
+back|A standing person is shot in the back, arches the back, stumbles forward and falls face down on the ground|4
+legleft|A standing person is shot in the left leg, the left leg gives way and the person falls down on the left side|4
+legright|A standing person is shot in the right leg, the right leg gives way and the person falls down on the right side|4
+shoulderleft|A standing person is hit hard in the left shoulder, spins around to the left and falls to the ground|4
+shoulderright|A standing person is hit hard in the right shoulder, spins around to the right and falls to the ground|4
+blast|A standing person is thrown backward through the air by an explosion and lands flat on the back|3.5
+knees|A standing person slowly drops to the knees, then slumps over sideways and lies still on the ground|4.5

@@ -23,7 +23,10 @@ var config float StaggerPush, StaggerSlow, StaggerTime;
 var config bool bDeathRagdoll;
 var config int MaxRagdolls;
 var config bool bDeathAnims;       // play a death clip first, ragdoll partway through it
-var config float DeathAnimHandoff; // seconds into the clip the body goes limp
+var config float DeathAnimHandoff; // seconds into the clip the body goes limp (a clip without its own time)
+var config bool bDeathAnimRagdoll; // go limp partway through a death clip. Off: the clip plays out and the body lies as it ends (a ragdoll begun from a clip crashed the game twice)
+var config string TestClip;        // testing: always this clip
+var name ClipName;                 // a name from a string (SetPropertyText)
 
 var ModGore Gore;
 
@@ -65,6 +68,11 @@ struct DeathState
 	var vector Dir, Spot;
 	var float T;
 	var float AnimT;       // >= 0: playing a death clip for this long
+	var float Handoff;     // the clip's own time to go limp
+	var float Length;      // and how long it runs
+	var vector Start;      // testing: where and how the body stood when the clip began
+	var rotator Facing;
+	var class<DamageType> Type;
 };
 var array<DeathState> Deaths;
 
@@ -104,7 +112,7 @@ function Hit(Pawn Victim, vector HitLocation, vector Momentum, int Damage, class
 			return;
 		}
 		if (bDeathRagdoll)
-			AddDeath(Victim, Dir, HitLocation);
+			AddDeath(Victim, Dir, HitLocation, DamageType);
 		return;
 	}
 	if (bFlinch)
@@ -187,7 +195,7 @@ function Stagger(Pawn P, vector Dir)
 		class'ModSettings'.static.Note("react: " $ P $ " staggers");
 }
 
-function AddDeath(Pawn P, vector Dir, vector Spot)
+function AddDeath(Pawn P, vector Dir, vector Spot, class<DamageType> Type)
 {
 	local int i;
 	local DeathState S;
@@ -199,6 +207,7 @@ function AddDeath(Pawn P, vector Dir, vector Spot)
 	S.Dir = Dir;
 	S.Spot = Spot;
 	S.AnimT = -1;
+	S.Type = Type;
 	Deaths[Deaths.Length] = S;
 }
 
@@ -258,18 +267,39 @@ event Tick(float DeltaTime)
 		}
 		if (Deaths[i].AnimT >= 0)
 		{
+			// the game's "floating body" check takes a body mid clip for one to erase
+			// (it faded standing up as the ragdoll began)
+			if (AdventPawn(P) != None)
+				AdventPawn(P).shouldCheckForQuickDeadFade = false;
 			// testing: where the clip put the limbs, in the body's own frame (X forward,
 			// Z up), just before the handoff
-			if (class'ModSettings'.default.bGoreLog && Deaths[i].AnimT < DeathAnimHandoff - 0.1 && Deaths[i].AnimT + DeltaTime >= DeathAnimHandoff - 0.1)
+			if (class'ModSettings'.default.bGoreLog && Deaths[i].AnimT < Deaths[i].Handoff - 0.1 && Deaths[i].AnimT + DeltaTime >= Deaths[i].Handoff - 0.1)
 				PoseLog(P);
+			// testing: how the clip moves the body (the actor, and the hips over it), in
+			// the frame the body died in, five times a second
+			if (class'ModSettings'.default.bGoreLog && int(Deaths[i].AnimT * 5) != int((Deaths[i].AnimT + DeltaTime) * 5))
+				class'ModSettings'.static.Note("react: move " $ P $ " t " $ Deaths[i].AnimT $ " actor " $ ((P.Location - Deaths[i].Start) << Deaths[i].Facing) $ " hips " $ ((P.GetBoneCoords('hips').Origin - Deaths[i].Start) << Deaths[i].Facing) $ " physics " $ P.Physics $ " hips over floor " $ OverFloor(P, 'hips') $ " head " $ OverFloor(P, 'head') $ " actor " $ int(P.Location.Z - P.GetBoneCoords('hips').Origin.Z + OverFloor(P, 'hips')) $ " collision " $ P.CollisionHeight);
 			Deaths[i].AnimT += DeltaTime;
-			if (Deaths[i].AnimT < DeathAnimHandoff)
+			if (Deaths[i].AnimT < Deaths[i].Handoff)
 				continue;
+			if (!bDeathAnimRagdoll)
+			{
+				// the clip plays out; the body stays in its last pose
+				if (Deaths[i].AnimT >= Deaths[i].Length + 0.5)
+					Deaths.Remove(i, 1);
+				continue;
+			}
 		}
-		else if (P.IsInState('Dying') && bDeathAnims && DeathAnim(P))
+		else if (P.IsInState('Dying') && bDeathAnims)
 		{
-			Deaths[i].AnimT = 0;
-			continue;
+			Deaths[i].Handoff = DeathAnim(P, Deaths[i].Spot, Deaths[i].Dir, Deaths[i].Type, Deaths[i].Length);
+			if (Deaths[i].Handoff > 0)
+			{
+				Deaths[i].Start = P.Location;
+				Deaths[i].Facing = P.Rotation;
+				Deaths[i].AnimT = 0;
+				continue;
+			}
 		}
 		if (P.IsInState('Dying') && Gore != None)
 		{
@@ -282,6 +312,17 @@ event Tick(float DeltaTime)
 	WatchRagdolls(DeltaTime);
 }
 
+// how high a bone is over the floor under it
+function int OverFloor(Pawn P, name Bone)
+{
+	local vector O, HitL, HitN;
+
+	O = P.GetBoneCoords(Bone).Origin;
+	if (Trace(HitL, HitN, O - vect(0,0,400), O + vect(0,0,30), false) == None)
+		return 999;
+	return int(O.Z - HitL.Z);
+}
+
 function string Rel(Pawn P, name A, name B)
 {
 	local vector V;
@@ -292,31 +333,123 @@ function string Rel(Pawn P, name A, name B)
 
 function PoseLog(Pawn P)
 {
-	class'ModSettings'.static.Note("react: pose " $ P $ ": " $ Rel(P, 'hips', 'head') $ " | " $ Rel(P, 'hips', 'leftUpLeg') $ " | " $ Rel(P, 'leftUpLeg', 'leftLeg') $ " | " $ Rel(P, 'leftLeg', 'leftFoot') $ " | " $ Rel(P, 'leftArm', 'lefthand') $ " | " $ Rel(P, 'rightArm', 'righthand') $ " | hips over feet " $ int(P.GetBoneCoords('hips').Origin.Z - P.GetBoneCoords('leftFoot').Origin.Z));
+	class'ModSettings'.static.Note("react: pose " $ P $ ": " $ Rel(P, 'hips', 'head') $ " | " $ Rel(P, 'hips', 'leftUpLeg') $ " | " $ Rel(P, 'leftUpLeg', 'leftLeg') $ " | " $ Rel(P, 'leftLeg', 'leftFoot') $ " | " $ Rel(P, 'rightUpLeg', 'rightLeg') $ " | " $ Rel(P, 'rightLeg', 'rightFoot') $ " | " $ Rel(P, 'leftArm', 'lefthand') $ " | " $ Rel(P, 'rightArm', 'righthand') $ " | hips over feet " $ int(P.GetBoneCoords('hips').Origin.Z - P.GetBoneCoords('leftFoot').Origin.Z));
 }
 
-// a death clip (ModDeathAnims) on a body with the human skeleton; true if it plays
-function bool DeathAnim(Pawn P)
+// which kind of death clip a killing blow asks for (ModDeathClips' zones): a blast, a
+// shot in the back, or the part of the body hit
+function string DeathZone(Pawn P, vector Spot, vector Dir, class<DamageType> Type)
+{
+	local string N;
+	local int i, Best;
+	local float D, BestD;
+	local coords C;
+	local vector X, Y, Z;
+
+	if (Type != None)
+	{
+		N = Caps(string(Type.Name));
+		if (InStr(N, "EXPLOSION") >= 0 || InStr(N, "GRENADE") >= 0 || InStr(N, "LAUNCHER") >= 0 || InStr(N, "MISSLE") >= 0)
+			return "blast";
+	}
+	GetAxes(P.Rotation, X, Y, Z);
+	BestD = 1000000;
+	Best = -1;
+	for (i = 0; i < 12; i++)
+	{
+		C = P.GetBoneCoords(Bones[i]);
+		if (C.Origin == vect(0,0,0))
+			continue;
+		D = VSize(C.Origin - Spot);
+		if (D < BestD)
+		{
+			BestD = D;
+			Best = i;
+		}
+	}
+	if (Best < 0)
+		return "chest";
+	N = Caps(string(Bones[Best]));
+	if (N == "HEAD" || N == "NECK")
+		return "head";
+	if (InStr(N, "LEG") >= 0)
+	{
+		if (Left(N, 4) == "LEFT")
+			return "legleft";
+		return "legright";
+	}
+	// the torso from behind
+	if ((Dir Dot X) > 0.3)
+		return "back";
+	if (InStr(N, "ARM") >= 0)
+	{
+		if (Left(N, 4) == "LEFT")
+			return "shoulderleft";
+		return "shoulderright";
+	}
+	if (N == "HIPS" || N == "SPINE")
+		return "gut";
+	return "chest";
+}
+
+// a death clip (ModDeathAnims) on a body with the human skeleton: one for the hit's
+// zone, at random. Returns when the body should go limp (seconds in), 0 if none plays.
+function float DeathAnim(Pawn P, vector Spot, vector Dir, class<DamageType> Type, out float Length)
 {
 	local MeshAnimation A;
+	local class<ModDeathClips> T;
+	local string Zone;
+	local int i, n, Pick;
+	local float Handoff;
 
 	if (AdventPawn(P) == None || Gore == None || Gore.RagdollSkeleton(AdventPawn(P)) != "humanMale2")
-		return false;
+		return 0;
 	A = class'ModDeathAnims'.default.Deaths;
 	if (A == None)
-		return false;
+		return 0;
 	P.LinkSkelAnim(A);
-	if (!P.HasAnim('ModDie_Buckle'))
+	T = class'ModDeathClips';
+	Handoff = DeathAnimHandoff;
+	Length = 4;
+	if (TestClip != "")
+		SetPropertyText("ClipName", TestClip);
+	else
+	{
+		Zone = DeathZone(P, Spot, Dir, Type);
+		for (i = 0; i < T.default.Clips.Length; i++)
+			if (T.default.Clips[i].Zone == Zone)
+				n++;
+		if (n == 0)
+		{
+			// none for this hit: any clip
+			Zone = "";
+			n = T.default.Clips.Length;
+		}
+		if (n == 0)
+			return 0;
+		Pick = Rand(n);
+		for (i = 0; i < T.default.Clips.Length; i++)
+			if (Zone == "" || T.default.Clips[i].Zone == Zone)
+			{
+				if (Pick == 0)
+					break;
+				Pick--;
+			}
+		ClipName = T.default.Clips[i].Clip;
+		Handoff = T.default.Clips[i].Handoff;
+		Length = T.default.Clips[i].Length;
+	}
+	if (!P.HasAnim(ClipName))
 	{
 		if (class'ModSettings'.default.bGoreLog)
-			class'ModSettings'.static.Note("react: " $ P $ " (" $ P.Mesh $ ") took no death clip");
-		return false;
+			class'ModSettings'.static.Note("react: " $ P $ " (" $ P.Mesh $ ") has no death clip " $ ClipName);
+		return 0;
 	}
 	P.AnimBlendParams(1, 0.0);
-	P.PlayAnim('ModDie_Buckle', 1.0, 0.1, 0);
+	P.PlayAnim(ClipName, 1.0, 0.1, 0);
 	if (class'ModSettings'.default.bGoreLog)
-		class'ModSettings'.static.Note("react: " $ P $ " plays ModDie_Buckle, limp in " $ DeathAnimHandoff $ " s");
-	return true;
+		class'ModSettings'.static.Note("react: " $ P $ " plays " $ ClipName $ " (" $ Zone $ "), limp in " $ Handoff $ " s");
+	return Handoff;
 }
 
 function AddRagdoll(Pawn P)
@@ -369,6 +502,9 @@ function WatchRagdolls(float DeltaTime)
 		}
 		if (Ragdolls[i].bFrozen || P.Physics != PHYS_KarmaRagdoll)
 			continue;
+		// testing: how the ragdoll falls, twice a second
+		if (class'ModSettings'.default.bGoreLog && int(Ragdolls[i].T * 2) != int((Ragdolls[i].T + DeltaTime) * 2))
+			class'ModSettings'.static.Note("react: ragdoll " $ P $ " t " $ Ragdolls[i].T $ " hips " $ int(P.GetBoneCoords('hips').Origin.Z - Ragdolls[i].FloorZ) $ " head " $ int(P.GetBoneCoords('head').Origin.Z - Ragdolls[i].FloorZ) $ " over floor, awake " $ P.KIsAwake());
 		Ragdolls[i].T += DeltaTime;
 		Low = FMin(P.GetBoneCoords('hips').Origin.Z, P.GetBoneCoords('head').Origin.Z);
 		Why = "";

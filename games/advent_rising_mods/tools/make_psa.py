@@ -10,11 +10,14 @@ Mesh space of the human skeletons: -Y up, +X the body's left, +Z forward.
 Clips are functions of t (0..1) returning {bone: (axis, degrees)} plus a root offset; this
 first one is a hand-made test (knees buckle, then a fall forward) to prove the import path.
 """
+import glob
+import json
 import math
 import os
 import struct
 import sys
 
+ANIMS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "AdventMod", "Anims")
 MESHES = os.path.join(os.path.expanduser("~"), "Documents", "AdventRising_meshes")
 
 
@@ -99,29 +102,62 @@ def chunk(fh, cid, size, recs):
         fh.write(r)
 
 
+def hand_frames(fn, length):
+    """a clip function sampled into frames: (root offset, {bone: local quat})"""
+    n = max(2, int(round(length * FPS)) + 1)
+    frames = []
+    for f in range(n):
+        rot, root = fn(f / (n - 1))
+        quats = {}
+        for name, turns in rot.items():
+            q = (0.0, 0.0, 0.0, 1.0)
+            for axis, deg in turns:
+                q = qmul(axis_angle(axis, deg), q)
+            quats[name] = q
+        frames.append((root, quats))
+    return frames
+
+
+def load_clips(folder):
+    """retargeted clips (tools/kimodo_retarget.py): <name>.json, {fps, frames: [{root, rot}]}"""
+    clips = []
+    for fn in sorted(glob.glob(os.path.join(folder, "*.json"))):
+        d = json.load(open(fn))
+        frames = [(tuple(f["root"]), {k: tuple(v) for k, v in f["rot"].items()}) for f in d["frames"]]
+        name = os.path.splitext(os.path.basename(fn))[0]
+        clips.append((name, d["fps"], frames))
+        META[name] = (d.get("zone", "any"), d.get("handoff", 0.9))
+    return clips
+
+
 def write_psa(path, bones, clips):
+    """clips: (name, fps, frames); a frame is (root offset in mesh space, {bone: quat}).
+    Quats are plain right-handed rotations in mesh space, local to the parent bone."""
     infos, keys = [], []
-    for name, fn, length in clips:
-        n = max(2, int(round(length * FPS)) + 1)
+    names_known = {b["name"] for b in bones}
+    for name, fps, frames in clips:
+        n = len(frames)
         first = len(keys) // len(bones)
-        for f in range(n):
-            rot, root = fn(f / (n - 1))
+        for root, quats in frames:
+            unknown = set(quats) - names_known
+            if unknown:
+                raise ValueError("%s: no bones %s" % (name, sorted(unknown)))
             for i, b in enumerate(bones):
-                q = (0.0, 0.0, 0.0, 1.0)
-                for axis, deg in rot.get(b["name"], []):
-                    q = qmul(axis_angle(axis, deg), q)
+                q = quats.get(b["name"], (0.0, 0.0, 0.0, 1.0))
                 pos = b["pos"]
                 if i == 0:
                     pos = tuple(p + o for p, o in zip(pos, root))
-                    # the game's root key carries a half turn about the forward axis: with
-                    # an identity root the body stands on its head (measured in game)
-                    q = qmul(ROOT_TURN, q)
+                    # the root's own space is the mesh's turned half round about the forward
+                    # axis (see root_key): its position turns with it. Measured in game:
+                    # unturned, the hips sat two hip-heights too low and moved mirrored.
+                    pos = (-pos[0], -pos[1], pos[2])
+                    q = root_key(q)
                 else:
                     # ActorX stores every bone but the root conjugated
                     q = (-q[0], -q[1], -q[2], q[3])
                 keys.append(struct.pack("<3f4ff", *pos, *q, 1.0))
         infos.append(struct.pack("<64s64siiiifffiii", name.encode(), b"None", len(bones), 0, 0,
-                                 n * len(bones), 0.0, float(n), float(FPS), 0, first, n))
+                                 n * len(bones), 0.0, float(n), float(fps), 0, first, n))
     names = [struct.pack("<64sIii4f3ff3f", b["name"].encode(), 0, b["children"], b["parent"],
                          0, 0, 0, 1, *b["pos"], 0, 0, 0, 0) for b in bones]
     with open(path, "wb") as fh:
@@ -131,12 +167,62 @@ def write_psa(path, bones, clips):
         chunk(fh, "ANIMKEYS", 32, keys)
 
 
+def root_key(q):
+    """the root's key. The game's root carries a half turn about the forward axis: with an
+    identity root the body stands on its head (measured in game). MAKEPSA_ROOT picks the
+    variant while the convention for a turned root is being measured."""
+    mode = os.environ.get("MAKEPSA_ROOT", "turn*q")
+    c = (-q[0], -q[1], -q[2], q[3])
+    return {"turn*q": qmul(ROOT_TURN, q), "q*turn": qmul(q, ROOT_TURN),
+            "turn*c": qmul(ROOT_TURN, c), "c*turn": qmul(c, ROOT_TURN)}[mode]
+
+
+META = {"ModDie_Buckle": ("any", 0.9)}
+UC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "AdventMod", "Classes", "ModDeathClips.uc")
+UC_TEMPLATE = """//=============================================================================
+// ModDeathClips - the death clips in ModDeathAnims' animation set: which hit each one
+// answers (Zone), when the body may go limp (Handoff, seconds in) and how long it runs
+// (Length). Generated by
+// tools/make_psa.py from AdventMod/Anims: don't edit by hand.
+//=============================================================================
+class ModDeathClips extends Object;
+
+struct DeathClip
+{
+	var name Clip;
+	var string Zone;
+	var float Handoff;
+	var float Length;
+};
+var array<DeathClip> Clips;
+
+defaultproperties
+{
+%s
+}
+"""
+
+
+def write_table(clips):
+    rows = []
+    for name, fps, frames in clips:
+        if name.startswith("ModTest"):
+            continue
+        zone, handoff = META.get(name, ("any", 0.9))
+        rows.append('     Clips(%d)=(Clip=%s,Zone="%s",Handoff=%.3f,Length=%.3f)'
+                    % (len(rows), name, zone, handoff, len(frames) / float(fps)))
+    open(UC, "w", newline="\r\n").write(UC_TEMPLATE % "\n".join(rows))
+
+
 def main():
     out = sys.argv[1]
     mesh = sys.argv[2] if len(sys.argv) > 2 else "marine"
     bones = read_skeleton(os.path.join(MESHES, mesh + ".psk"))
-    write_psa(out, bones, CLIPS)
-    print(out, ":", len(bones), "bones,", ", ".join(c[0] for c in CLIPS))
+    clips = [(name, FPS, hand_frames(fn, length)) for name, fn, length in CLIPS]
+    clips += load_clips(ANIMS)
+    write_psa(out, bones, clips)
+    write_table(clips)
+    print(out, ":", len(bones), "bones,", ", ".join("%s (%d frames)" % (c[0], len(c[2])) for c in clips))
 
 
 if __name__ == "__main__":

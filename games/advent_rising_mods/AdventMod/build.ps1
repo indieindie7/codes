@@ -5,6 +5,12 @@ $ErrorActionPreference = 'Stop'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Ucc = Join-Path (Split-Path -Parent $Here) 'AdventUCC'
 
+# death clips (ModDeathAnims imports them): written on the game's own skeleton, so
+# generated here rather than kept in the repo. First of all:
+# it also writes Classes\ModDeathClips.uc, which the copy below must pick up
+New-Item -ItemType Directory -Force "$Game\AdventMod\Anims" | Out-Null
+& python (Join-Path (Split-Path -Parent $Here) 'tools\make_psa.py') "$Game\AdventMod\Anims\ModDeaths.psa" marine
+if ($LASTEXITCODE -ne 0) { throw 'make_psa failed' }
 # 1. script: the compiler reads <game>\AdventMod\Classes and the package list in AdventUCC's own ini
 New-Item -ItemType Directory -Force "$Game\AdventMod\Classes" | Out-Null
 Remove-Item "$Game\AdventMod\Classes\*.uc" -Confirm:$false -ErrorAction SilentlyContinue
@@ -24,11 +30,6 @@ foreach ($set in (Select-String -Path "$Here\Classes\ModGibParts.uc" -Pattern 'F
   & python (Join-Path (Split-Path -Parent $Here) 'tools\ase_flip.py') $src "$Game\AdventMod\Gibs\$f"
   if ($LASTEXITCODE -ne 0) { throw "ase_flip failed on $f" }
 }
-# death clips (ModDeathAnims imports them): written on the game's own skeleton, so
-# generated here rather than kept in the repo
-New-Item -ItemType Directory -Force "$Game\AdventMod\Anims" | Out-Null
-& python (Join-Path (Split-Path -Parent $Here) 'tools\make_psa.py') "$Game\AdventMod\Anims\ModDeaths.psa" marine
-if ($LASTEXITCODE -ne 0) { throw 'make_psa failed' }
 # ragdoll skeletons (tools/make_ka.py): the engine reads <game>\KarmaData\*.ka
 New-Item -ItemType Directory -Force "$Game\KarmaData" | Out-Null
 Copy-Item "$Here\KarmaData\*.ka" "$Game\KarmaData" -Force
