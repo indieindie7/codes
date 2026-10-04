@@ -16,9 +16,16 @@ Every plate is built the same way, so a whole suit speaks one design language:
 Spec: {"palette": {"plate": [r,g,b], "trim": [..], "cloth": [..], "cloth_trim": [..]},
        "plates": [{"name", "bone", "rows": [[t, left, right], ...], "gap", "thickness",
                    "material": "plate"|"cloth", "weights": {...}, "mirror": true,
-                   "ridges": n, "ridge_height": h (raised ribs across the plate)}, ...]}
+                   "ridges": n, "ridge_height": h (raised ribs across the plate),
+                   "quilt": [across, down], "quilt_depth": d (padded pillows, stitched in a grid;
+                   [0, n] = horizontal rolls, [n, 0] = vertical channels)}, ...]}
 Angles: 0 = front; for a vertical (torso) bone +90 = his left; for an arm bone (T-pose) +90 = up,
 180 = back; for leg bones +90 = outside of the left leg.
+"tubes": [{"name", "points": [[bone, t, angle, out], ...], "radius", "count" (wire bundle),
+            "spread", "material": "tube"|"plate"|"cloth", "mirror"}] - hoses/wires through points on
+            the body, each vertex following its nearest anchor's bone.
+"replace": true (default) - plates hug the body (thickness grows inward, small gap) and the body
+faces hidden under them are deleted, so armour replaces skin instead of bulking it out.
 "mirror": true also builds the mirror image on the other side (L <-> R bone, angles negated).
 """
 import json, math, os, sys
@@ -82,6 +89,13 @@ mat.node_tree.links.new(tn.outputs["Color"], bsdf.inputs["Base Color"])
 bsdf.inputs["Metallic"].default_value = 0.6
 bsdf.inputs["Roughness"].default_value = 0.35
 mat["source_texture"] = tex_path
+mat.diffuse_color = tuple(pal["plate"]) + (1,)
+cmat = mat.copy()                                  # same texture (its cloth half), own colour
+cmat.name = "ArmourCloth"
+cmat.diffuse_color = tuple(pal["cloth"]) + (1,)
+bsdf_c = cmat.node_tree.nodes["Principled BSDF"]
+bsdf_c.inputs["Metallic"].default_value = 0.0
+bsdf_c.inputs["Roughness"].default_value = 0.9
 
 # ---- the body surface to project onto (rest pose) ---------------------------------------------
 dg = bpy.context.evaluated_depsgraph_get()
@@ -122,7 +136,8 @@ def project(head, a, length, f, left, t, ang, gap, reach):
 def build_plate(pl):
     head, a, length, f, left = bone_frame(pl["bone"])
     rows = pl["rows"]
-    nu = pl.get("cols", 8)
+    qu, qv = pl.get("quilt", [0, 0])
+    nu = max(pl.get("cols", 8), qu * 4)
     nv_per = pl.get("subdiv", 3) if not pl.get("ridges") else max(pl.get("subdiv", 3), 4 * pl["ridges"] // max(len(pl["rows"]) - 1, 1) + 1)
     # densify rows
     R = []
@@ -131,7 +146,12 @@ def build_plate(pl):
             s = k / nv_per
             R.append([rows[i][j] * (1 - s) + rows[i + 1][j] * s for j in range(3)])
     R.append(rows[-1])
-    gap = pl.get("gap", 1.2)
+    while qv and len(R) < qv * 4 + 1:             # quilting needs a few rows per pillow
+        R2 = []
+        for i in range(len(R) - 1):
+            R2 += [R[i], [(R[i][k] + R[i + 1][k]) / 2 for k in range(3)]]
+        R = R2 + [R[-1]]
+    gap = pl.get("gap", 0.5 if spec.get("replace", True) else 1.2)
     reach = pl.get("reach", 22.0 if "Thigh" in pl["bone"] or "Calf" in pl["bone"] or "Arm" in pl["bone"] or "Forearm" in pl["bone"] else 40.0)
     bm = bmesh.new()
     uv_layer = bm.loops.layers.uv.new("UVMap")
@@ -140,7 +160,16 @@ def build_plate(pl):
     for j, (t, l, r) in enumerate(R):
         v = j / max(len(R) - 1, 1)
         g = gap + (rh * 0.5 * (1 - math.cos(2 * math.pi * ridges * v)) if ridges else 0.0)   # raised ribs across the plate
-        grid.append([bm.verts.new(project(head, a, length, f, left, t, l + (r - l) * u / nu, g, reach)) for u in range(nu + 1)])
+        qd = pl.get("quilt_depth", 0.9)
+        row = []
+        for u in range(nu + 1):
+            puff = 0.0
+            if qu or qv:
+                su = abs(math.sin(math.pi * (u / nu) * qu)) if qu else 1.0
+                sv = abs(math.sin(math.pi * v * qv)) if qv else 1.0
+                puff = qd * (su * sv) ** 0.6         # pillows, pinched at the stitch lines
+            row.append(bm.verts.new(project(head, a, length, f, left, t, l + (r - l) * u / nu, g + puff, reach)))
+        grid.append(row)
     vhalf = 0.0 if pl.get("material", "plate") == "plate" else 0.5
     for j in range(len(R) - 1):
         for i in range(nu):
@@ -166,16 +195,14 @@ def build_plate(pl):
     bm.to_mesh(me)
     obj = bpy.data.objects.new(pl["name"], me)
     bpy.context.scene.collection.objects.link(obj)
-    me.materials.append(mat)
-    for v in me.vertices:
-        pass
+    me.materials.append(cmat if pl.get("material", "plate") == "cloth" else mat)
     weights = pl.get("weights", {pl["bone"]: 1.0})
     for bone, w in weights.items():
         g = obj.vertex_groups.new(name=bone)
         g.add(list(range(len(me.vertices))), w, "REPLACE")
     sol = obj.modifiers.new("solid", "SOLIDIFY")
     sol.thickness = pl.get("thickness", 1.5)
-    sol.offset = 1.0
+    sol.offset = -1.0 if spec.get("replace", True) else 1.0
     sol.use_rim = True
     bev = obj.modifiers.new("bevel", "BEVEL")
     bev.width = pl.get("bevel", 0.35)
@@ -204,6 +231,97 @@ for pl in spec["plates"]:
     made.append(build_plate(pl))
     if pl.get("mirror"):
         made.append(build_plate(mirrored(pl)))
+
+# ---- tubes and wires: smooth hoses between points on bones ------------------------------------
+def anchor(pt):
+    bone, tt, ang, out = pt
+    head, a, length, f, left = bone_frame(bone)
+    p = project(head, a, length, f, left, tt, ang, out, 30.0)
+    return Vector(p), bone
+
+
+def build_tube(tb, idx):
+    pts = [anchor(p) for p in tb["points"]]
+    radius = tb.get("radius", 1.0)
+    count = tb.get("count", 1)              # a bundle of wires side by side
+    spread = tb.get("spread", radius * 2.2)
+    objs = []
+    for k in range(count):
+        cu = bpy.data.curves.new(f"{tb['name']}_{k}", "CURVE")
+        cu.dimensions = "3D"
+        cu.bevel_depth = radius
+        cu.bevel_resolution = tb.get("bevel_resolution", 2)
+        cu.resolution_u = tb.get("resolution", 6)
+        cu.use_fill_caps = True
+        sp = cu.splines.new("NURBS")
+        sp.points.add(len(pts) - 1)
+        off = Vector((0, 0, (k - (count - 1) / 2) * spread))
+        for i, (p, b) in enumerate(pts):
+            sp.points[i].co = (*(p + off), 1.0)
+        sp.order_u = min(4, len(pts))
+        sp.use_endpoint_u = True
+        o = bpy.data.objects.new(cu.name, cu)
+        bpy.context.scene.collection.objects.link(o)
+        bpy.context.view_layer.objects.active = o
+        o.select_set(True)
+        bpy.ops.object.convert(target="MESH")
+        o = bpy.context.view_layer.objects.active
+        o.select_set(False)
+        o.data.materials.clear()
+        o.data.materials.append(tmat if tb.get("material", "tube") == "tube" else (cmat if tb["material"] == "cloth" else mat))
+        # each vertex follows the bone of its nearest anchor (blended between two)
+        groups = {b: o.vertex_groups.get(b) or o.vertex_groups.new(name=b) for _, b in pts}
+        for v in o.data.vertices:
+            d = sorted(((v.co - p).length, b) for p, b in pts)
+            (d0, b0), (d1, b1) = d[0], d[1] if len(d) > 1 else d[0]
+            w0 = d1 / (d0 + d1 + 1e-6)
+            groups[b0].add([v.index], w0, "ADD")
+            if b1 != b0:
+                groups[b1].add([v.index], 1 - w0, "ADD")
+        o.parent = arm
+        o.modifiers.new("Armature", "ARMATURE").object = arm
+        objs.append(o)
+    return objs
+
+
+tmat = bpy.data.materials.new("Tube")
+tmat.use_nodes = True
+tcol = spec.get("palette", {}).get("tube", [0.12, 0.12, 0.12])
+tmat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*tcol, 1)
+tmat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.6
+tmat.diffuse_color = (*tcol, 1)
+for i, tb in enumerate(spec.get("tubes", [])):
+    made += build_tube(tb, i)
+    if tb.get("mirror"):
+        m = json.loads(json.dumps(tb))
+        swap = lambda n: n.replace(" L ", " #").replace(" R ", " L ").replace(" #", " R ")
+        m["name"] += "_mirror"
+        m["points"] = [[swap(b), tt, -ang, out] for b, tt, ang, out in tb["points"]]
+        made += build_tube(m, i)
+
+# ---- replace, don't stack: delete body faces hidden under armour --------------------------------
+if spec.get("replace", True):
+    dg = bpy.context.evaluated_depsgraph_get()
+    plates_bm = bmesh.new()
+    for o in made:
+        if o.type == "MESH" and not o.name.startswith(tuple(t["name"] for t in spec.get("tubes", []))):
+            tmp = o.data.copy()
+            tmp.transform(o.matrix_world)
+            plates_bm.from_mesh(tmp)
+    cover = BVHTree.FromBMesh(plates_bm)
+    depth = spec.get("cover_depth", 4.0)
+    bmb = bmesh.new()
+    bmb.from_mesh(body.data)
+    gone = []
+    for fc in bmb.faces:
+        c = body.matrix_world @ fc.calc_center_median()
+        n = (body.matrix_world.to_3x3() @ fc.normal).normalized()
+        if all(cover.ray_cast(body.matrix_world @ v.co - n * 0.2, n, depth)[0] is not None for v in fc.verts):
+            gone.append(fc)
+    bmesh.ops.delete(bmb, geom=gone, context="FACES")
+    bmb.to_mesh(body.data)
+    body.data.update()
+    print("REPLACED", len(gone), "body faces hidden under armour")
 
 # one armour object
 bpy.ops.object.select_all(action="DESELECT")

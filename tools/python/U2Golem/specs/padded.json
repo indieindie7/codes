@@ -1,0 +1,368 @@
+{
+ "texture_size": 512,
+ "palette": {
+  "plate": [
+   0.8,
+   0.78,
+   0.72
+  ],
+  "trim": [
+   0.58,
+   0.56,
+   0.5
+  ],
+  "cloth": [
+   0.3,
+   0.36,
+   0.45
+  ],
+  "cloth_trim": [
+   0.26,
+   0.31,
+   0.39
+  ],
+  "tube": [
+   0.55,
+   0.5,
+   0.4
+  ]
+ },
+ "plates": [
+  {
+   "name": "gambeson",
+   "bone": "Merc Spine1",
+   "material": "cloth",
+   "rows": [
+    [
+     1.9,
+     -180,
+     180
+    ],
+    [
+     0.0,
+     -180,
+     180
+    ],
+    [
+     -0.95,
+     -180,
+     180
+    ]
+   ],
+   "gap": 0.3,
+   "thickness": 1.0,
+   "cols": 40,
+   "quilt": [
+    10,
+    6
+   ],
+   "quilt_depth": 1.5,
+   "reach": 30
+  },
+  {
+   "name": "collar",
+   "bone": "Merc Neck",
+   "material": "cloth",
+   "rows": [
+    [
+     -0.35,
+     -180,
+     180
+    ],
+    [
+     0.55,
+     -180,
+     180
+    ]
+   ],
+   "gap": 0.3,
+   "thickness": 1.0,
+   "cols": 32,
+   "quilt": [
+    12,
+    0
+   ],
+   "quilt_depth": 0.9,
+   "ridges": 1,
+   "ridge_height": 1.6,
+   "reach": 20
+  },
+  {
+   "name": "chest_plate",
+   "bone": "Merc Spine2",
+   "rows": [
+    [
+     0.85,
+     -48,
+     48
+    ],
+    [
+     0.15,
+     -52,
+     52
+    ]
+   ],
+   "gap": 0.6,
+   "thickness": 1.5,
+   "cols": 10,
+   "reach": 30
+  },
+  {
+   "name": "chest_lame1",
+   "bone": "Merc Spine1",
+   "rows": [
+    [
+     1.1,
+     -46,
+     46
+    ],
+    [
+     0.82,
+     -44,
+     44
+    ]
+   ],
+   "gap": 0.6,
+   "thickness": 1.4,
+   "cols": 10,
+   "reach": 30
+  },
+  {
+   "name": "chest_lame2",
+   "bone": "Merc Spine1",
+   "rows": [
+    [
+     0.86,
+     -42,
+     42
+    ],
+    [
+     0.58,
+     -40,
+     40
+    ]
+   ],
+   "gap": 0.6,
+   "thickness": 1.4,
+   "cols": 10,
+   "reach": 30
+  },
+  {
+   "name": "sleeve",
+   "bone": "Merc L UpperArm",
+   "mirror": true,
+   "material": "cloth",
+   "rows": [
+    [
+     0.05,
+     -180,
+     180
+    ],
+    [
+     0.95,
+     -180,
+     180
+    ]
+   ],
+   "gap": 0.3,
+   "thickness": 0.8,
+   "cols": 24,
+   "quilt": [
+    6,
+    4
+   ],
+   "quilt_depth": 1.0
+  },
+  {
+   "name": "shoulder_plate",
+   "bone": "Merc L UpperArm",
+   "mirror": true,
+   "rows": [
+    [
+     -0.28,
+     -40,
+     220
+    ],
+    [
+     0.0,
+     -55,
+     235
+    ],
+    [
+     0.32,
+     -50,
+     230
+    ]
+   ],
+   "gap": 0.6,
+   "thickness": 1.5,
+   "cols": 12,
+   "ridges": 2,
+   "ridge_height": 0.6,
+   "weights": {
+    "Merc L Clavicle": 0.5,
+    "Merc L UpperArm": 0.5
+   }
+  },
+  {
+   "name": "cuff",
+   "bone": "Merc L Forearm",
+   "mirror": true,
+   "material": "cloth",
+   "rows": [
+    [
+     0.55,
+     -180,
+     180
+    ],
+    [
+     0.97,
+     -180,
+     180
+    ]
+   ],
+   "gap": 0.3,
+   "thickness": 0.8,
+   "cols": 20,
+   "quilt": [
+    0,
+    4
+   ],
+   "quilt_depth": 0.9
+  },
+  {
+   "name": "trouser",
+   "bone": "Merc L Thigh",
+   "mirror": true,
+   "material": "cloth",
+   "rows": [
+    [
+     0.0,
+     -180,
+     180
+    ],
+    [
+     0.95,
+     -180,
+     180
+    ]
+   ],
+   "gap": 0.3,
+   "thickness": 0.8,
+   "cols": 24,
+   "quilt": [
+    6,
+    5
+   ],
+   "quilt_depth": 1.3,
+   "reach": 11
+  },
+  {
+   "name": "knee_rolls",
+   "bone": "Merc L Calf",
+   "mirror": true,
+   "material": "cloth",
+   "rows": [
+    [
+     -0.12,
+     -85,
+     85
+    ],
+    [
+     0.16,
+     -85,
+     85
+    ]
+   ],
+   "gap": 0.3,
+   "thickness": 0.8,
+   "cols": 16,
+   "quilt": [
+    0,
+    4
+   ],
+   "quilt_depth": 1.1
+  },
+  {
+   "name": "shin_plate",
+   "bone": "Merc L Calf",
+   "mirror": true,
+   "rows": [
+    [
+     0.3,
+     -60,
+     60
+    ],
+    [
+     0.9,
+     -65,
+     65
+    ]
+   ],
+   "gap": 0.6,
+   "thickness": 1.3,
+   "cols": 10
+  }
+ ],
+ "replace": true,
+ "tubes": [
+  {
+   "name": "hose",
+   "points": [
+    [
+     "Merc Spine2",
+     0.3,
+     40,
+     2.5
+    ],
+    [
+     "Merc Spine1",
+     0.4,
+     80,
+     3.5
+    ],
+    [
+     "Merc Spine1",
+     -0.4,
+     150,
+     3.5
+    ],
+    [
+     "Merc Spine2",
+     0.6,
+     175,
+     3.0
+    ]
+   ],
+   "radius": 1.1,
+   "mirror": true
+  },
+  {
+   "name": "wires",
+   "points": [
+    [
+     "Merc L UpperArm",
+     0.15,
+     170,
+     1.5
+    ],
+    [
+     "Merc L UpperArm",
+     0.6,
+     180,
+     1.2
+    ],
+    [
+     "Merc L Forearm",
+     0.3,
+     175,
+     1.0
+    ]
+   ],
+   "radius": 0.3,
+   "count": 3,
+   "spread": 0.8,
+   "mirror": true
+  }
+ ]
+}
