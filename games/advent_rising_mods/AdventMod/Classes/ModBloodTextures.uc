@@ -23,6 +23,8 @@ class ModBloodTextures extends Object;
 #exec TEXTURE IMPORT NAME=BloodRemains1 FILE=Textures\blood_remains1.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=AlienRemains0 FILE=Textures\alien_remains0.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=AlienRemains1 FILE=Textures\alien_remains1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=BloodMeat FILE=Textures\blood_meat.tga GROUP=Blood MIPS=1
+#exec TEXTURE IMPORT NAME=AlienMeat FILE=Textures\alien_meat.tga GROUP=Blood MIPS=1
 #exec TEXTURE IMPORT NAME=Scorch0 FILE=Textures\scorch0.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=Scorch1 FILE=Textures\scorch1.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=Scorch2 FILE=Textures\scorch2.tga GROUP=Blood MIPS=1 ALPHA=1

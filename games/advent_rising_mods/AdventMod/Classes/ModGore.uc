@@ -15,6 +15,9 @@
 // When the game takes a body away (it fades the oldest when someone else dies, and
 // recycles the pawn for its spawners), what's left stays on the floor: a flat mark of
 // chunks and bone in the body's blood colour, clutter that costs nothing.
+// A body killed by an explosion, or by a hit far past what it had left, comes apart:
+// its parts (ModGibParts, cut from the game's own meshes) fly as ModGib, the body is
+// hidden until the game recycles the pawn.
 //=============================================================================
 class ModGore extends Info
 	config(AdventMod);
@@ -38,6 +41,16 @@ var config int MaxRemains;
 var array<vector> CorpseLoc;       // where each corpse lies, and its blood (BloodKind),
 var array<int> CorpseKind;         // kept for when the body is gone
 var array<ModBloodDecal> Remains;
+
+var config bool bGibs;             // explosions and big overkills blow bodies apart
+var config int GibOverkill;        // damage past the victim's health that gibs it
+var config int MaxGibs;
+var config float GibSpeed;
+var array<ModGib> Gibs;
+var array<Pawn> Gibbed;            // hidden bodies, shown again when the game reuses the pawn
+var array<float> GibbedTime;
+var array<Material> SetSkins;      // ModGibParts.Sets' skins, loaded once (their Diffuse)
+var Material MeatTex, AlienMeatTex;
 
 var Material Splats[4], Sprays[2], Pool, Scorches[3], CasingTex;   // the textures, referenced so the package keeps them
 var Material RemainsTex[2];
@@ -186,7 +199,226 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
 	// a pool under a fresh body
 	if (Victim.Health <= 0 || Damage >= Victim.Health)
+	{
 		AddDying(Victim);
+		if (bGibs && WantsGib(Victim, Damage, DamageType))
+			Gib(Victim, Dir, Damage);
+	}
+}
+
+// an explosion (the game's dmgType_Explosion family, less the push/pull powers that
+// throw bodies about) or a hit GibOverkill past what the victim had left
+function bool WantsGib(Pawn P, int Damage, class<DamageType> DamageType)
+{
+	local string N;
+
+	if (P.bHidden || GibSet(P) < 0)
+		return false;
+	if (Damage - Max(P.Health, 0) >= GibOverkill || DamageType.default.bAlwaysGibs)
+		return true;
+	N = Caps(string(DamageType.Name));
+	if (InStr(N, "PUSH") >= 0 || InStr(N, "PULL") >= 0 || InStr(N, "LEVITATE") >= 0 || InStr(N, "SHATTER") >= 0 || InStr(N, "SPEEDBURST") >= 0 || InStr(N, "SHIELD") >= 0)
+		return false;
+	return InStr(N, "EXPLOSION") >= 0 || InStr(N, "GRENADE") >= 0 || InStr(N, "LAUNCHER") >= 0 || InStr(N, "ALTFIRE") >= 0 || InStr(N, "MISSLE") >= 0;
+}
+
+// which set of parts fits a body: humans the marine's, Seeker soldiers the infantry's
+// (not their hounds or shock troopers); -1 none
+function int GibSet(Pawn P)
+{
+	local name Want;
+	local int i;
+	local string M;
+
+	M = Caps(string(P.Mesh));
+	switch (P.GetSurfaceType())
+	{
+	case EST_Human:
+		Want = 'marine';
+		break;
+	case EST_Seeker:
+	case EST_SeekerBlocking:
+		if (InStr(M, "HOUND") >= 0 || InStr(M, "SHOCK") >= 0 || InStr(M, "DOG") >= 0)
+			return -1;
+		Want = 'seekerinfantry';
+		break;
+	default:
+		return -1;
+	}
+	for (i = 0; i < class'ModGibParts'.default.Sets.Length; i++)
+		if (class'ModGibParts'.default.Sets[i].Name == Want)
+			return i;
+	return -1;
+}
+
+function Material SetSkin(int Set)
+{
+	local Material M;
+
+	while (SetSkins.Length <= Set)
+		SetSkins[SetSkins.Length] = None;
+	if (SetSkins[Set] == None)
+	{
+		M = Material(DynamicLoadObject(class'ModGibParts'.default.Sets[Set].Skin, class'Material'));
+		// a skin shader is for skinned meshes: the parts wear its plain texture
+		if (AdventShaderMaterial(M) != None && AdventShaderMaterial(M).Diffuse != None)
+			M = AdventShaderMaterial(M).Diffuse;
+		else if (PSSkinShader(M) != None && PSSkinShader(M).Diffuse != None)
+			M = PSSkinShader(M).Diffuse;
+		SetSkins[Set] = M;
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: gib skin " $ class'ModGibParts'.default.Sets[Set].Name $ " = " $ M);
+	}
+	return SetSkins[Set];
+}
+
+// the body comes apart: each part where it was on the body (scaled to the victim's
+// height, turned with it), thrown out from the middle and along the shot
+function Gib(Pawn P, vector Dir, int Damage)
+{
+	local int Set, Kind;
+	local float K;
+	local vector Feet;
+	local class<ModGibParts> T;
+
+	T = class'ModGibParts';
+	Set = GibSet(P);
+	if (Set < 0)
+		return;
+	Kind = BloodKind(P);
+	K = FClamp(2 * P.CollisionHeight / T.default.Sets[Set].Height, 0.5, 2.0);
+	Feet = P.Location - vect(0,0,1) * P.CollisionHeight;
+	if (SpawnGibs(Set, Kind, Feet, P.Rotation.Yaw, K, Dir, Damage) == 0)
+		return;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: " $ P $ " comes apart (" $ T.default.Sets[Set].Name $ ", scale " $ K $ ")");
+	Hide(P, true);
+	Gibbed[Gibbed.Length] = P;
+	GibbedTime[GibbedTime.Length] = Level.TimeSeconds;
+}
+
+// one set of parts standing at Feet facing Yaw, thrown apart; the number of parts
+function int SpawnGibs(int Set, int Kind, vector Feet, int Yaw, float K, vector Dir, int Damage)
+{
+	local int i, n;
+	local float Speed, Push, MinSize;
+	local vector Mid, W, V, HitL, HitN;
+	local rotator R;
+	local ModGib G;
+	local class<ModGibParts> T;
+
+	T = class'ModGibParts';
+	Mid = Feet + vect(0,0,1) * T.default.Sets[Set].Height * K * 0.55;
+	R.Yaw = Yaw - 16384;    // the meshes' forward is their Y
+	Speed = GibSpeed * FClamp(0.8 + Damage / 600.0, 0.8, 1.6);
+	for (i = 0; i < T.default.Parts.Length; i++)
+	{
+		if (T.default.Parts[i].Set != T.default.Sets[Set].Name || T.default.Parts[i].Mesh == None)
+			continue;
+		while (Gibs.Length > 0 && (Gibs.Length >= MaxGibs || Gibs[0] == None || Gibs[0].bDeleteMe))
+		{
+			if (Gibs[0] != None && !Gibs[0].bDeleteMe)
+				Gibs[0].Destroy();
+			Gibs.Remove(0, 1);
+		}
+		W = Feet + ((T.default.Parts[i].Pivot * K) >> R);
+		G = Spawn(class'ModGib',,, W, R);
+		if (G == None)
+			continue;
+		n++;
+		G.Gore = self;
+		G.Kind = Kind;
+		G.SetStaticMesh(T.default.Parts[i].Mesh);
+		G.SetDrawScale(K);
+		G.Skins[0] = SetSkin(Set);
+		if (Kind == 2)
+			G.Skins[1] = AlienMeatTex;
+		else
+			G.Skins[1] = MeatTex;
+		G.Stay = 30 + 20 * FRand();
+		G.Size = T.default.Parts[i].Size * K;
+		MinSize = FMin(T.default.Parts[i].Size.X, FMin(T.default.Parts[i].Size.Y, T.default.Parts[i].Size.Z));
+		// light parts fly farther than the torso
+		Push = FClamp(1.5 - T.default.Parts[i].Mass / 90.0, 0.45, 1.4);
+		V = Normal(W - Mid + VRand() * 10) * Speed * Push * (0.6 + 0.8 * FRand()) + Dir * Speed * 0.7 * Push + vect(0,0,1) * Speed * (0.4 + 0.5 * FRand());
+		G.Launch(V, PhysicsVolume.Gravity.Z, MinSize * K * 0.5);
+		Gibs[Gibs.Length] = G;
+	}
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: " $ n $ " gib parts at " $ Feet);
+	if (n == 0)
+		return 0;
+	// a burst of blood all round, and the body gone
+	for (i = 0; i < 6; i++)
+	{
+		V = Normal(VRand() + Dir * 0.6 + vect(0,0,-0.4));
+		if (Trace(HitL, HitN, Mid + V * SprayReach * 1.4, Mid, false) != None)
+			Mark(KindSpray(Kind), HitL, HitN, V, DecalScale * (0.7 + 0.5 * FRand()));
+	}
+	if (Trace(HitL, HitN, Mid - vect(0,0,400), Mid, false) != None)
+		Mark(KindSplat(Kind), HitL, HitN, vect(0,0,0), DecalScale * 1.1);
+	return n;
+}
+
+function Hide(Pawn P, bool bHide)
+{
+	local int i;
+
+	P.bHidden = bHide;
+	for (i = 0; i < P.Attached.Length; i++)
+		if (P.Attached[i] != None)
+			P.Attached[i].bHidden = bHide;
+}
+
+// a gibbed body shown again once the game brings the pawn back
+function CheckGibbed()
+{
+	local int i;
+
+	for (i = Gibbed.Length - 1; i >= 0; i--)
+	{
+		if (Gibbed[i] == None || Gibbed[i].bDeleteMe)
+		{
+			Gibbed.Remove(i, 1);
+			GibbedTime.Remove(i, 1);
+		}
+		else if (Level.TimeSeconds - GibbedTime[i] > 1.0 && (Gibbed[i].Health > 0 || !Gibbed[i].IsInState('Dying')))
+		{
+			Hide(Gibbed[i], false);
+			Gibbed.Remove(i, 1);
+			GibbedTime.Remove(i, 1);
+		}
+	}
+}
+
+// a part thrown hard against something
+function GibHit(vector Spot, vector N, int Kind, float Speed)
+{
+	if (bBlood && Kind != 0)
+		Mark(KindSplat(Kind), Spot, N, vect(0,0,0), DecalScale * FClamp(Speed / 1600.0, 0.2, 0.5));
+}
+
+// a part that has lain long enough sinks into a stain
+function GibGone(ModGib G)
+{
+	local vector HitL, HitN;
+
+	if (bBlood && G.Kind != 0 && Trace(HitL, HitN, G.Location - vect(0,0,100), G.Location + vect(0,0,20), false) != None)
+		Mark(KindSplat(G.Kind), HitL, HitN, vect(0,0,0), DecalScale * 0.35);
+}
+
+function Material KindSplat(int Kind)
+{
+	if (Kind == 2)
+		return AlienSplats[Rand(4)];
+	return Splats[Rand(4)];
+}
+
+function Material KindSpray(int Kind)
+{
+	if (Kind == 2)
+		return AlienSprays[Rand(2)];
+	return Sprays[Rand(2)];
 }
 
 function AddDying(Pawn P)
@@ -356,7 +588,7 @@ function ScanCorpses()
 	{
 		if (P.Health > 0 || P.IsHumanControlled() || P.bDeleteMe || !P.IsInState('Dying'))
 			continue;
-		if (P.bAllowAlphaFading && !P.default.bAllowAlphaFading)
+		if ((P.bAllowAlphaFading && !P.default.bAllowAlphaFading) || P.bHidden)
 			continue;
 		bKnown = false;
 		for (i = 0; i < Corpses.Length; i++)
@@ -541,6 +773,7 @@ event Tick(float DeltaTime)
 	{
 		CorpseScan = 0.5;
 		ScanCorpses();
+		CheckGibbed();
 	}
 	TrackShots();
 	for (i = Dying.Length - 1; i >= 0; i--)
@@ -635,6 +868,9 @@ event Destroyed()
 	for (i = 0; i < Remains.Length; i++)
 		if (Remains[i] != None)
 			Remains[i].Destroy();
+	for (i = 0; i < Gibs.Length; i++)
+		if (Gibs[i] != None)
+			Gibs[i].Destroy();
 	Super.Destroyed();
 }
 
@@ -659,6 +895,12 @@ defaultproperties
      AlienRemains(0)=Texture'AdventMod.Blood.AlienRemains0'
      AlienRemains(1)=Texture'AdventMod.Blood.AlienRemains1'
      bRemains=True
+     MeatTex=Texture'AdventMod.Blood.BloodMeat'
+     AlienMeatTex=Texture'AdventMod.Blood.AlienMeat'
+     bGibs=True
+     GibOverkill=60
+     MaxGibs=60
+     GibSpeed=380.000000
      MaxRemains=40
      Scorches(0)=Texture'AdventMod.Blood.Scorch0'
      Scorches(1)=Texture'AdventMod.Blood.Scorch1'

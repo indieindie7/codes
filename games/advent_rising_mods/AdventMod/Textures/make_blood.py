@@ -7,6 +7,7 @@ surface as it is), imported into AdventMod.u by Classes/ModBloodTextures.uc.
                     a wall behind the victim (the projector's roll lines it up with the shot)
   blood_pool0       a pool under a body (round, thick, a soft rim)
   blood_remains0..1 what's left on the floor when the game takes a body away (chunks, bone)
+  blood_meat        the cut face of a gib part (opaque, not a decal)
   alien_*           the same in the Seekers' purple
   scorch0..2        where an energy bolt hit a wall: a burnt pit and soot rays
   casing0           a spent shell lying on the floor, from above (ModCasing's flattened self)
@@ -254,6 +255,30 @@ def remains(name, rng, palette=RED, size=128):
     print(path)
 
 
+def meat(name, rng, palette=RED, size=64):
+    """the cut face of a gib part (an opaque texture, not a decal): raw tissue in the
+    blood colour, mottled, paler fat and gristle streaks, dark wet spots"""
+    thin, thick_ = palette
+    noise = fbm(size, rng)
+    streaks = fbm(size, rng)
+    px = bytearray()
+    for y in range(size - 1, -1, -1):
+        for x in range(size):
+            n, st = noise[y][x], streaks[y][x]
+            base = [t * (0.75 + 0.5 * n) for t in thin]
+            fat = smoothstep(0.62, 0.72, st)
+            col = [c * (1 - fat) + f * fat for c, f in zip(base, (0.85, 0.72, 0.62))]
+            wet = smoothstep(0.65, 0.8, n)
+            col = [c * (1 - 0.5 * wet) for c in col]
+            r_, g_, b_ = (min(max(c, 0), 1) for c in col)
+            px += bytes([int(255 * c + 0.5) for c in (b_, g_, r_)] + [255])
+    path = os.path.join(HERE, name + ".tga")
+    with open(path, "wb") as fh:
+        fh.write(struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, size, size, 32, 8))
+        fh.write(px)
+    print(path)
+
+
 if __name__ == "__main__":
     casing("casing0", random.Random(5000))
     for i in range(3):
@@ -271,3 +296,4 @@ if __name__ == "__main__":
         render(128, pool(rng), rng, edge_noise=0.35, name="%s_pool0" % prefix, palette=pal)
         for i in range(2):
             remains("%s_remains%d" % (prefix, i), random.Random(6000 + i), palette=pal)
+        meat("%s_meat" % prefix, random.Random(7000), palette=pal)

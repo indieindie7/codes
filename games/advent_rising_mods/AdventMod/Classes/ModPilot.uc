@@ -398,6 +398,43 @@ function Where()
 		Note("where: camera " $ E.Camera.MoveController.Name $ " desired " $ E.Camera.MoveController.DesiredXAxisRotation $ " current " $ E.Camera.MoveController.CurrentXAxisRotation $ " camera rot " $ E.Camera.Rotation);
 }
 
+function GibList()
+{
+	local ModGib G;
+	local int n;
+
+	foreach DynamicActors(class'ModGib', G)
+	{
+		n++;
+		if (n <= 6)
+			Note("giblist: " $ G $ " at " $ G.Location $ " mesh " $ G.StaticMesh $ " scale " $ G.DrawScale $ " hidden " $ G.bHidden $ " settled " $ G.bSettled $ " vel " $ G.Vel $ " skins " $ G.Skins[0] $ "/" $ G.Skins[1] $ " drawtype " $ G.DrawType);
+	}
+	Note("giblist: " $ n $ " gibs, player at " $ PC().Pawn.Location);
+}
+
+function GibAhead(float Dist, string SetName)
+{
+	local ModGore G;
+	local int i, Set;
+	local vector X, Y, Z, Feet;
+
+	Set = -1;
+	for (i = 0; i < class'ModGibParts'.default.Sets.Length; i++)
+		if (string(class'ModGibParts'.default.Sets[i].Name) ~= SetName)
+			Set = i;
+	foreach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None || Set < 0 || PC() == None || PC().Pawn == None)
+	{
+		Note("gibahead: no ModGore, no set " $ SetName $ " or no player");
+		return;
+	}
+	GetAxes(PC().Rotation, X, Y, Z);
+	X.Z = 0;
+	Feet = PC().Pawn.Location + Normal(X) * Dist - vect(0,0,1) * PC().Pawn.CollisionHeight;
+	Note("gibahead: " $ G.SpawnGibs(Set, 1 + int(SetName ~= "seekerinfantry"), Feet, rotator(-X).Yaw, 1.0, Normal(X), 500) $ " parts of " $ SetName);
+}
+
 function BloodFx()
 {
 	local SurfaceProperties S;
@@ -606,6 +643,13 @@ function StartStep()
 		break;
 	case "WHERE":
 		Where();
+		break;
+	case "GIBLIST":
+		GibList();
+		break;
+	case "GIBAHEAD":
+		// GIBAHEAD [distance] [set]: a set of gib parts thrown apart that far in front of the player
+		GibAhead(ArgF(1, 250), Args.Length > 2 ? Args[2] : "marine");
 		break;
 	case "BLOODFX":
 		// the level's hit effects per species (the surface table), with their particle colours
