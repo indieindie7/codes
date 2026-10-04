@@ -1,7 +1,7 @@
 """Put a separately generated head (e.g. a Hunyuan head + beret bust) on a layered StdGEN character.
 
 Run:  blender -b --python combine_head.py -- <out_prefix> clothes=<glb> body=<glb> head=<glb>
-      [faces=150000] [head_eye_z=0.19] [head_cut_z=-0.75] [neck_z=auto]
+      [faces=150000] [head_eye_z=0.19] [head_cut_z=-0.75] [neck_z=auto] [head_scale=1.05]
 
 - clothes/body: StdGEN refined layers (vertex colour "Color"), decimated to `faces` each.
 - head: a bust normalised to +-1 (Hunyuan output), painted (project_views.py, colour "Col").
@@ -22,6 +22,7 @@ o = dict(x.split("=", 1) for x in a[1:])
 FACES = int(o.get("faces", 150000))
 EYE_H = float(o.get("head_eye_z", 0.19))
 CUT_H = float(o.get("head_cut_z", -0.75))
+HEAD_SCALE = float(o.get("head_scale", 1.05))   # >1: the bust's skin sits outside the mannequin; heroic heads go bigger
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
@@ -88,7 +89,7 @@ H = verts(head)
 hband = H[np.abs(H[:, 2] - EYE_H) < 0.04]
 head_w = hband[:, 0].max() - hband[:, 0].min()
 head_c = (hband.min(0) + hband.max(0)) / 2
-s = body_w / head_w * 1.05          # a touch bigger: the bust's skin sits outside the mannequin
+s = body_w / head_w * HEAD_SCALE
 print(f"HEAD body top {top:.3f} neck {neck_z:.3f} eye {eye_z:.3f} width {body_w:.3f}; bust width {head_w:.3f} -> scale {s:.4f}")
 
 # cut the bust below the collar, then scale and place it
