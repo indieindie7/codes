@@ -19,7 +19,11 @@ is that colour, e.g. [70, 170] = a green beret), "offset": [x, y, z] (nudge, bas
 still lie along a region bone are included, e.g. a forearm skinned to the hand - but in a biped
 the clavicles hang off the neck, so a neck swap needs "stop": ["L Clavicle", "R Clavicle"]
 (child chains not to follow) or "exact"), "fit_cap": {sit, back, overhang,
-tilt} (sit a hat on the skull already in the mesh).
+tilt} (sit a hat on the skull already in the mesh), "faces": "all"|"most"|"any" (how many corners of
+a donor triangle must be in the region; "most" overlaps the seam), "extend": e (stretch the piece
+toward its parent joint by e x bone length: a shin guard reaching the knee), "bridge": f (keep
+the base's own mesh over the first f of each region bone: joint geometry under the armour).
+The result is compacted (loose points dropped) and its open-edge count printed.
 
 For each swap: the base's triangles whose corners all belong to those bones (strongest weight)
 are removed; the donor's triangles whose corners all belong to them are added, carried from the
@@ -133,7 +137,7 @@ def bone_length(m, W, i):
     return np.linalg.norm(W[ks[0]][:3, 3] - W[i][:3, 3]) if ks else None
 
 
-def region_points(m, W, region, exact=False, stop=()):
+def region_points(m, W, region, exact=False, stop=(), margin=0.0):
     """points belonging to a set of bones: their strongest bone is one of them, or it hangs
     below one of them but the point still lies before that bone's next joint (UT2004 skins most
     of the forearm to the hand, the lower shin to the foot)"""
@@ -150,19 +154,22 @@ def region_points(m, W, region, exact=False, stop=()):
             r = bones[r]["parent"]
         if r < 0 or keys[r] in stop:
             continue
-        if r == b:
-            out.add(p)
-            continue
-        if exact:
+        if r != b and exact:
             continue
         ks = [k for k in kids.get(r, []) if np.linalg.norm(bones[k]["pos"]) > 1e-3]
         if not ks:
+            if r == b:
+                out.add(p)
             continue
         o = W[r][:3, 3]
         end = W[ks[0]][:3, 3]
         axis = end - o
         t = np.dot(m["pts"][p] - o, axis) / np.dot(axis, axis)
-        if t <= 0.97:
+        # margin: leave the first part of the bone (the joint it hangs from) alone, so the
+        # base's own joint geometry stays as a bridge under the donor armour
+        if margin > 0 and t < margin:
+            continue
+        if r == b or t <= 0.97:
             out.add(p)
     return out
 
@@ -199,6 +206,19 @@ def fit_cap(opt, pts, weights, bshort, used, pmap, live):
     for p, q in zip(used, out):
         pts[pmap[p]] = tuple(q)
     print(f"  hat fit: crown z {ztop:.1f}, skull {span.round(1)}, hat scale {s.round(2)}")
+
+
+def open_edges(pts, wedges, faces):
+    """edges used by only one triangle, on points welded by position (holes and cut seams)"""
+    from collections import Counter
+    key = {}
+    weld = [key.setdefault(tuple(np.round(p, 2)), i) for i, p in enumerate(pts)]
+    c = Counter()
+    for a, b, cc, m in faces:
+        P = [weld[wedges[w][0]] for w in (a, b, cc)]
+        for i in range(3):
+            c[frozenset((P[i], P[(i + 1) % 3]))] += 1
+    return sum(1 for e, n in c.items() if n == 1 and len(e) == 2)
 
 
 def height(m):
@@ -252,11 +272,17 @@ def kitbash(recipe_path):
             ld, lb = bone_length(d, dW, i), bone_length(base, bW, tgt[i])
             along = lb / ld if ld and lb and dshort[i] == short(bnames[tgt[i]]) else girth
             S = np.diag([along, girth, girth, 1.0])
+            ext = sw.get("extend", 0.0)
+            if ext and lb and dshort[i] in region:
+                # stretch toward the parent joint: x' = lb + (x - lb) * (1 + ext), so the
+                # piece's far end stays put and its near end reaches ext * length further up
+                S[0, 0] *= 1.0 + ext
+                S[0, 3] = -ext * lb
             M.append(bF[tgt[i]] @ S @ np.linalg.inv(dF[i]))
 
         # base triangles in the region go ("overlay" keeps them: donor armour on top)
         if sw.get("mode", "replace") == "replace":
-            breg = region_points(base, bW, region, sw.get("exact", False), {short(s) for s in sw.get("stop", [])})
+            breg = region_points(base, bW, region, sw.get("exact", False), {short(s) for s in sw.get("stop", [])}, sw.get("bridge", 0.0))
             for fi, (a, b, c, m) in enumerate(faces):
                 if fi < len(base["faces"]) and all(base["wedges"][w][0] in breg for w in (a, b, c)):
                     removed.add(fi)
@@ -270,7 +296,11 @@ def kitbash(recipe_path):
             j0 = min(dW[i][2, 3] for i, k in enumerate(dshort) if k in region)
             ztop = P[:, 2].max()
             dreg = {p for p in dreg if (d["pts"][p][2] - j0) >= sw["keep_top"] * (ztop - j0)}
-        keep = [f for f in d["faces"] if all(d["wedges"][w][0] in dreg for w in (f[0], f[1], f[2]))]
+        # a donor triangle comes in when enough of its corners are in the region: "most" (2 of
+        # 3, default) or "any" lets pieces reach across the joint and overlap the neighbour, so
+        # seams hide under the armour instead of opening into holes; "all" = strict
+        need = {"all": 3, "most": 2, "any": 1}[sw.get("faces", "most")]
+        keep = [f for f in d["faces"] if sum(d["wedges"][w][0] in dreg for w in (f[0], f[1], f[2])) >= need]
         if "keep_hue" in sw:
             # only faces whose texture is in a hue range (degrees), e.g. a green beret [70, 170]
             from PIL import Image
@@ -330,6 +360,18 @@ def kitbash(recipe_path):
         print(f"{os.path.basename(sw['donor'])}: {sorted(region)} -> {len(keep)} faces in, size {scale:.3f}, girth {girth:.3f}")
 
     faces = [f for i, f in enumerate(faces) if i not in removed]
+
+    # compact: drop points (and their weights) no remaining face uses, and unused wedges
+    used_w = sorted({w for f in faces for w in f[:3]})
+    wnew = {w: i for i, w in enumerate(used_w)}
+    used_p = sorted({wedges[w][0] for w in used_w})
+    pnew = {p: i for i, p in enumerate(used_p)}
+    loose = len(pts) - len(used_p)
+    pts = [pts[p] for p in used_p]
+    wedges = [(pnew[wedges[w][0]],) + tuple(wedges[w][1:]) for w in used_w]
+    faces = [(wnew[a], wnew[b], wnew[c], m) for a, b, c, m in faces]
+    weights = [(w, pnew[p], b) for w, p, b in weights if p in pnew]
+    print(f"compacted: {loose} loose points removed; open edges {open_edges(pts, wedges, faces)}")
     print(f"base faces removed: {len(removed)}; result {len(pts)} points, {len(faces)} faces, {len(mats)} materials")
 
     def chunk(cid, size, recs):
