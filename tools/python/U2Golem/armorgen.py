@@ -15,7 +15,10 @@ Every plate is built the same way, so a whole suit speaks one design language:
      with a trim band and rivets along the edge (cloth plates use the cloth half).
 Spec: {"palette": {"plate": [r,g,b], "trim": [..], "cloth": [..], "cloth_trim": [..]},
        "plates": [{"name", "bone", "rows": [[t, left, right], ...], "gap", "thickness",
-                   "material": "plate"|"cloth", "weights": {...}, "mirror": true}, ...]}
+                   "material": "plate"|"cloth", "weights": {...}, "mirror": true,
+                   "ridges": n, "ridge_height": h (raised ribs across the plate)}, ...]}
+Angles: 0 = front; for a vertical (torso) bone +90 = his left; for an arm bone (T-pose) +90 = up,
+180 = back; for leg bones +90 = outside of the left leg.
 "mirror": true also builds the mirror image on the other side (L <-> R bone, angles negated).
 """
 import json, math, os, sys
@@ -69,7 +72,7 @@ def make_texture(path, size=256):
     return path
 
 
-tex_path = make_texture(os.path.join(texdir, "plate.tga"))
+tex_path = make_texture(os.path.join(texdir, "plate.tga"), spec.get("texture_size", 512))
 mat = bpy.data.materials.new("ArmourPlate")
 mat.use_nodes = True
 tn = mat.node_tree.nodes.new("ShaderNodeTexImage")
@@ -105,13 +108,14 @@ def bone_frame(name):
     return head, a, length, f, left
 
 
-def project(head, a, length, f, left, t, ang, gap):
+def project(head, a, length, f, left, t, ang, gap, reach):
+    """outermost body surface within `reach` of the bone axis in that direction (casting from
+    further out would hit other limbs first, e.g. the legs under a T-posed arm)"""
     p = head + a * (t * length)
     d = (f * math.cos(math.radians(ang)) + left * math.sin(math.radians(ang))).normalized()
-    far = p + d * 200
-    hit = bvh.ray_cast(far, -d, 400)
+    hit = bvh.ray_cast(p + d * reach, -d, reach)
     if hit[0] is None:
-        return p + d * 12
+        return p + d * (reach * 0.5 + gap)
     return hit[0] + d * gap
 
 
@@ -119,7 +123,7 @@ def build_plate(pl):
     head, a, length, f, left = bone_frame(pl["bone"])
     rows = pl["rows"]
     nu = pl.get("cols", 8)
-    nv_per = pl.get("subdiv", 3)
+    nv_per = pl.get("subdiv", 3) if not pl.get("ridges") else max(pl.get("subdiv", 3), 4 * pl["ridges"] // max(len(pl["rows"]) - 1, 1) + 1)
     # densify rows
     R = []
     for i in range(len(rows) - 1):
@@ -128,11 +132,15 @@ def build_plate(pl):
             R.append([rows[i][j] * (1 - s) + rows[i + 1][j] * s for j in range(3)])
     R.append(rows[-1])
     gap = pl.get("gap", 1.2)
+    reach = pl.get("reach", 22.0 if "Thigh" in pl["bone"] or "Calf" in pl["bone"] or "Arm" in pl["bone"] or "Forearm" in pl["bone"] else 40.0)
     bm = bmesh.new()
     uv_layer = bm.loops.layers.uv.new("UVMap")
     grid = []
-    for (t, l, r) in R:
-        grid.append([bm.verts.new(project(head, a, length, f, left, t, l + (r - l) * u / nu, gap)) for u in range(nu + 1)])
+    ridges, rh = pl.get("ridges", 0), pl.get("ridge_height", 0.7)
+    for j, (t, l, r) in enumerate(R):
+        v = j / max(len(R) - 1, 1)
+        g = gap + (rh * 0.5 * (1 - math.cos(2 * math.pi * ridges * v)) if ridges else 0.0)   # raised ribs across the plate
+        grid.append([bm.verts.new(project(head, a, length, f, left, t, l + (r - l) * u / nu, g, reach)) for u in range(nu + 1)])
     vhalf = 0.0 if pl.get("material", "plate") == "plate" else 0.5
     for j in range(len(R) - 1):
         for i in range(nu):
@@ -152,6 +160,8 @@ def build_plate(pl):
     axis_pt = head + a * (a.dot(c - head))
     if sum(fc.normal.dot(fc.calc_center_median() - axis_pt) for fc in bm.faces) < 0:
         bmesh.ops.reverse_faces(bm, faces=bm.faces)
+    for fc in bm.faces:
+        fc.smooth = True
     me = bpy.data.meshes.new(pl["name"])
     bm.to_mesh(me)
     obj = bpy.data.objects.new(pl["name"], me)
