@@ -1,0 +1,23 @@
+# U2Hover with UT3's Necris Viper (ViperBike): board, drive, hop, shoot, get off on HoverTest.
+userini U2Hover.HoverMutator BikeClass=U2Hover.ViperBike
+map HoverTest?Mutator=U2Hover.HoverMutator
+waitcontrol 60
+shots 0.5
+wait 1.5
+dump ViperBike Location Rotation bIsDriven bOnGround StaticMesh Skins
+move 1 0 1.6
+wait 1
+dump ViperBike bIsDriven Location
+move 1 0 3
+dump ViperBike Location Velocity bOnGround
+turn 70 0 1
+fire 1
+move 1 0 3
+dump ViperBike Location Velocity bOnGround
+altfire 0.2
+wait 0.6
+dump ViperBike Location Velocity bOnGround
+jump
+wait 1.5
+dump ViperBike bIsDriven Location
+quit

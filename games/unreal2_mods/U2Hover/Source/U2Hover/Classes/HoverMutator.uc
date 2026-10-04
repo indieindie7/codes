@@ -8,6 +8,7 @@ class HoverMutator extends Mutator
 
 var() config bool bSpawnEverywhere;
 var() config float PrairieMaxSpeed;   // cruise on Prairie maps (the ride should take a while)
+var() config string BikeClass;        // which bike to spawn, e.g. U2Hover.ViperBike (UT3 Necris Viper)
 var bool bDone;
 
 function bool WantBike()
@@ -22,6 +23,7 @@ simulated event Tick(float Delta)
 	local rotator R;
 	local HoverBike B;
 	local float Dist;
+	local class<HoverBike> BC;
 
 	if (bDone)
 		return;
@@ -35,13 +37,18 @@ simulated event Tick(float Delta)
 	{
 		if (PlayerController(C) == None || C.Pawn == None)
 			continue;
+		BC = class'HoverBike';
+		if (BikeClass != "")
+			BC = class<HoverBike>(DynamicLoadObject(BikeClass, class'Class'));
+		if (BC == None)
+			BC = class'HoverBike';
 		R.Yaw = C.Pawn.Rotation.Yaw;
 		GetAxes(R, X, Y, Z);
 		// try a few spots in front of the player
 		for (Dist = 350; Dist <= 800 && B == None; Dist += 150)
 		{
 			Spot = C.Pawn.Location + X * Dist + vect(0,0,1) * 60;
-			B = Spawn(class'HoverBike', , , Spot, R);
+			B = Spawn(BC, , , Spot, R);
 		}
 		if (B != None && PrairieMaxSpeed > 0 && Left(Caps(string(Level.Outer)), 7) == "PRAIRIE")
 			B.MaxSpeed = PrairieMaxSpeed;
@@ -56,4 +63,5 @@ defaultproperties
 {
 	bSpawnEverywhere=False
 	PrairieMaxSpeed=1200.000000
+	BikeClass=""
 }

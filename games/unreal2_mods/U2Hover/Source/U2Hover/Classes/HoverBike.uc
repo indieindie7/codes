@@ -41,11 +41,15 @@ var() vector GunOffset;         // bike-space muzzle; Y is mirrored for the othe
 var float  NextShotTime;
 var int    GunSide;
 var() bool bDebug;
+var() string BodyMesh;          // static mesh to wear, loaded at spawn (subclasses swap the look)
+var() string BodySkin;          // optional texture for Skins[0], loaded at spawn
 
 simulated event PostBeginPlay()
 {
 	Super.PostBeginPlay();
-	StaticMesh = StaticMesh(DynamicLoadObject("U2HoverSM.Manta.MantaBody", class'StaticMesh'));
+	StaticMesh = StaticMesh(DynamicLoadObject(BodyMesh, class'StaticMesh'));
+	if (BodySkin != "")
+		Skins[0] = Material(DynamicLoadObject(BodySkin, class'Material'));
 	VehicleYaw = Rotation.Yaw;
 	FloorNormal = vect(0,0,1);
 	SetPhysics(PHYS_None);
@@ -351,4 +355,5 @@ defaultproperties
 	SoundPitch=64
 	RemoteRole=ROLE_None
 	bDebug=False
+	BodyMesh="U2HoverSM.Manta.MantaBody"
 }
