@@ -319,7 +319,8 @@ function Gib(Pawn P, vector Dir, int Damage)
 	if (Set < 0)
 		return;
 	Kind = BloodKind(P);
-	K = FClamp(2 * P.CollisionHeight / T.default.Sets[Set].Height, 0.5, 2.0);
+	// its standing height: a corpse's collision is a low box (a pulped corpse came out half size)
+	K = FClamp(2 * FMax(P.CollisionHeight, P.default.CollisionHeight) / T.default.Sets[Set].Height, 0.5, 2.0);
 	Feet = P.Location - vect(0,0,1) * P.CollisionHeight;
 	if (SpawnGibs(Set, Kind, Feet, P.Rotation.Yaw, K, Dir, Damage) == 0)
 		return;
