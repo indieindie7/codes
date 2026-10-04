@@ -733,10 +733,18 @@ function Limp(Pawn P, vector Dir, vector Spot)
 {
 	local AdventPawn A;
 	local KarmaParamsSkel K;
+	local string Skel;
 
 	A = AdventPawn(P);
-	if (A == None || A.RagdollOverride == "")
+	if (A == None)
 		return;
+	Skel = RagdollSkeleton(A);
+	if (Skel == "")
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: " $ A $ " (" $ A.Mesh $ ") fits no ragdoll skeleton, keeps its death animation");
+		return;
+	}
 	A.KMakeRagdollAvailable();
 	if (!A.KIsRagdollAvailable())
 		return;
@@ -747,7 +755,7 @@ function Limp(Pawn P, vector Dir, vector Spot)
 	K = KarmaParamsSkel(A.KParams);
 	if (K == None)
 		return;
-	K.KSkeleton = A.RagdollOverride;
+	K.KSkeleton = Skel;
 	K.KStartLinVel = Dir * 250 + vect(0,0,60);
 	K.KStartAngVel = VRand() * 3000;
 	K.KShotStart = Spot - Dir;
@@ -757,7 +765,45 @@ function Limp(Pawn P, vector Dir, vector Spot)
 	A.SetPhysics(PHYS_KarmaRagdoll);
 	A.StopAnimating(true);
 	if (class'ModSettings'.default.bGoreLog)
-		class'ModSettings'.static.Note("gore: " $ A $ " went limp (" $ A.RagdollOverride $ "), physics " $ A.Physics);
+		class'ModSettings'.static.Note("gore: " $ A $ " went limp (" $ Skel $ "), physics " $ A.Physics);
+}
+
+// the ragdoll skeleton (KarmaData\Advent.ka, listed in ModRagdollBones) whose every
+// bone this body's mesh has: the one it asks for first, then any other. "" if none
+// fits: a ragdoll part with no bone crashes the game (Seeker hounds ask for "seeker"
+// but have no upper arms), and a skeleton the file doesn't have freezes the body.
+function string RagdollSkeleton(AdventPawn A)
+{
+	local class<ModRagdollBones> T;
+	local int i;
+
+	T = class'ModRagdollBones';
+	for (i = 0; i < T.default.Skeletons.Length; i++)
+		if (T.default.Skeletons[i].Name ~= A.RagdollOverride && FitsSkeleton(A, i))
+			return T.default.Skeletons[i].Name;
+	for (i = 0; i < T.default.Skeletons.Length; i++)
+		if (!(T.default.Skeletons[i].Name ~= A.RagdollOverride) && FitsSkeleton(A, i))
+			return T.default.Skeletons[i].Name;
+	return "";
+}
+
+// a bone the mesh doesn't have comes back where the root is, as a made-up name does
+function bool FitsSkeleton(Pawn P, int S)
+{
+	local class<ModRagdollBones> T;
+	local vector Missing;
+	local int i;
+	local name B;
+
+	T = class'ModRagdollBones';
+	Missing = P.GetBoneCoords('AdventModNoSuchBone').Origin;
+	for (i = 0; i < T.default.Skeletons[S].Count; i++)
+	{
+		B = T.default.Bones[T.default.Skeletons[S].First + i];
+		if (i > 0 && VSize(P.GetBoneCoords(B).Origin - Missing) < 0.01)
+			return false;
+	}
+	return true;
 }
 
 // testing: actors the player's gun or pawn just made (what marks a shot)

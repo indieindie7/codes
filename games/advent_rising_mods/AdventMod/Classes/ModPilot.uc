@@ -671,6 +671,9 @@ function StartStep()
 	case "WHERE":
 		Where();
 		break;
+	case "BONETEST":
+		Note("bonetest: player at " $ PC().Pawn.Location $ " hips " $ PC().Pawn.GetBoneCoords('hips').Origin $ " nosuchbone " $ PC().Pawn.GetBoneCoords('nosuchbone').Origin $ " leftArm " $ PC().Pawn.GetBoneCoords('leftArm').Origin);
+		break;
 	case "CORPSELIST":
 		CorpseList();
 		break;
