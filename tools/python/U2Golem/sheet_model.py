@@ -447,6 +447,12 @@ bm.to_mesh(me)
 bm.free()
 low = bpy.data.objects.new("Low", me)
 bpy.context.scene.collection.objects.link(low)
+bpy.context.view_layer.objects.active = low
+low.select_set(True)
+bpy.ops.object.mode_set(mode="EDIT")
+bpy.ops.mesh.select_all(action="SELECT")
+bpy.ops.mesh.normals_make_consistent(inside=False)
+bpy.ops.object.mode_set(mode="OBJECT")
 # hands: fingers are not a tube. Each hand is cut out of the guide below the wrist and reduced.
 gcen = GV[GT].mean(1)
 grow = np.clip(np.round(r0 + (ghi[2] - gcen[:, 2]) / H * (r1 - r0)).astype(int), r0, r1)
@@ -474,10 +480,16 @@ for side, wr in wrists.items():
     bpy.ops.mesh.select_all(action="SELECT")
     bpy.ops.uv.smart_project(angle_limit=math.radians(75), island_margin=0.03)
     bpy.ops.object.mode_set(mode="OBJECT")
+    # an open shell (cut at the wrist) can come out inside-out: face it away from its own middle
+    hc = np.mean([tuple(v.co) for v in ho.data.vertices], 0)
+    out_dot = sum((np.array(p.center) - hc) @ np.array(p.normal) * p.area for p in ho.data.polygons)
+    if out_dot < 0:
+        ho.data.flip_normals()
     sc_ = math.sqrt(sum(p.area for p in ho.data.polygons))       # true size, like the tubes' islands
     for l in ho.data.uv_layers[0].data:
         l.uv = (l.uv[0] * sc_ + island_x[0], l.uv[1] * sc_ + 1.0)
     island_x[0] += sc_ * 1.1
+    ho.data.uv_layers[0].name = low.data.uv_layers[0].name      # same layer name, or the join keeps two layers
     print(f"HAND {side}: {len(ho.data.polygons)} faces from the guide below row {wr}")
     low.select_set(True)
     bpy.context.view_layer.objects.active = low
@@ -487,7 +499,6 @@ bpy.context.view_layer.objects.active = low
 low.select_set(True)
 bpy.ops.object.mode_set(mode="EDIT")
 bpy.ops.mesh.select_all(action="SELECT")
-bpy.ops.mesh.normals_make_consistent(inside=False)
 bpy.ops.uv.select_all(action="SELECT")
 bpy.ops.uv.pack_islands(rotate=True, margin=0.006)
 bpy.ops.object.mode_set(mode="OBJECT")
