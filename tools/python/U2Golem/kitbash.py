@@ -405,6 +405,9 @@ def kitbash(recipe_path):
             faces.append((new[0], new[1], new[2], mslot[m]))
         print(f"{os.path.basename(sw['donor'])}: {sorted(region)} -> {len(keep)} faces in, size {scale:.3f}, girth {girth:.3f}")
 
+    if R.get("drop_base"):
+        # a whole new body: none of the base mesh is kept, only its skeleton
+        removed |= set(range(len(base["faces"])))
     faces = [f for i, f in enumerate(faces) if i not in removed]
 
     # compact: drop points (and their weights) no remaining face uses, and unused wedges

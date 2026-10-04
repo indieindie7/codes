@@ -10,7 +10,9 @@
   {
    "donor": "C:/Users/john/Documents/U2Golem/scratch_dalton/body.psk",
    "textures": [
-    ""
+    "C:\\Users\\john\\Documents\\U2Golem\\scratch_dalton\\..\\..\\..\\AppData\\Roaming\\Blender Foundation\\Blender\\5.2\\extensions\\.user\\blender_org\\mpfb\\data\\skins\\middleage_african_male\\middleage_darkskinned_male_diffuse.png",
+    "C:\\Users\\john\\Documents\\U2Golem\\scratch_dalton\\..\\..\\..\\AppData\\Roaming\\Blender Foundation\\Blender\\5.2\\extensions\\.user\\blender_org\\mpfb\\data\\eyebrows\\eyebrow001\\eyebrow001.png",
+    "C:\\Users\\john\\Documents\\U2Golem\\scratch_dalton\\..\\..\\..\\AppData\\Roaming\\Blender Foundation\\Blender\\5.2\\extensions\\.user\\blender_org\\mpfb\\data\\eyes\\materials\\brown_eye.png"
    ],
    "bones": [
     "Pelvis",
@@ -33,45 +35,11 @@
     "R Foot",
     "L Toe0",
     "R Toe0",
-    "Neck"
-   ],
-   "stop": [
+    "Neck",
     "Head"
    ],
    "faces": "most",
    "girth": 1.12
-  },
-  {
-   "donor": "C:/Users/john/Documents/U2Golem/scratch_dalton/body.psk",
-   "textures": [
-    ""
-   ],
-   "bones": [
-    "Head"
-   ],
-   "mode": "overlay",
-   "keep_bottom": 0.22,
-   "faces": "all",
-   "girth": 1.12
-  },
-  {
-   "donor": "C:/Users/john/Documents/U2Golem/kitbash/PlayerAtlantis.psk",
-   "textures": [
-    "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerLimbs_Default.tga",
-    "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerTorso_Default.tga",
-    "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerTorso_Default.tga"
-   ],
-   "bones": [
-    "Head"
-   ],
-   "girth": 1.0,
-   "stop": [
-    "Neck"
-   ],
-   "faces": "all",
-   "materials": [
-    2
-   ]
   },
   {
    "donor": "C:/Users/john/Documents/UT2004_extract/psk/HumanMaleA/SkeletalMesh/MercMaleD.psk",
@@ -96,5 +64,6 @@
    },
    "faces": "all"
   }
- ]
+ ],
+ "drop_base": true
 }
