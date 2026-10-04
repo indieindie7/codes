@@ -93,10 +93,11 @@ function Hit(Pawn Victim, vector HitLocation, vector Momentum, int Damage, class
 		Dir = Normal(Momentum);
 	if (Victim.Health <= 0 || Damage >= Victim.Health)
 	{
-		// a death the level scripts (plain DamageType, or a pawn its script drives): the
+		// a death the level scripts (plain DamageType, or a pawn mid script sequence: every AI is a
+		// ScriptedController, so it's the Scripting state that tells): the
 		// level goes on using the body, so it keeps the game's own death (a scripted
 		// marine death ragdolled crashed the game in level03sectionb)
-		if (DamageType == class'DamageType' || DamageType == None || ScriptedController(Victim.Controller) != None)
+		if (DamageType == class'DamageType' || DamageType == None || (Victim.Controller != None && Victim.Controller.IsInState('Scripting')))
 		{
 			if (class'ModSettings'.default.bGoreLog)
 				class'ModSettings'.static.Note("react: " $ Victim $ " dies by script (" $ DamageType $ ", " $ Victim.Controller $ "): no clip, no ragdoll");
