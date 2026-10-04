@@ -30,7 +30,7 @@ var config bool bImpacts;          // scorch marks where shots hit walls and flo
 var config int MaxHoles;
 var config bool bCasings;          // the game's shell particles become casings that land and stay
 var config int MaxClutter;
-var config bool bCorpseShots;      // corpses bleed and move when shot (a body still standing in its death pose goes limp)
+var config bool bCorpseShots;      // corpses bleed and twitch when shot
 var config float CorpseKick;       // the push a shot gives a ragdoll
 var KarmaParamsSkel CorpseParams;  // ragdoll settings for corpses the level gave none (a subobject below, so saves can refer to it)
 var array<Pawn> Corpses;
@@ -720,10 +720,11 @@ function CorpseHit(Pawn P, vector Spot, vector Dir)
 	}
 	if (P.LifeSpan > 0)
 		P.LifeSpan += 0.2;
+	// no ragdolls in this release (no KarmaData): the body twitches instead
 	if (P.Physics == PHYS_KarmaRagdoll)
 		P.KAddImpulse(Dir * CorpseKick, Spot);
-	else
-		Limp(P, Dir, Spot);
+	else if (React != None)
+		React.CorpseFlinch(P, Spot, Dir);
 }
 
 // a body still in its death pose goes ragdoll, pushed along the shot (its species' own
@@ -739,6 +740,8 @@ function Limp(Pawn P, vector Dir, vector Spot)
 	A.KMakeRagdollAvailable();
 	if (!A.KIsRagdollAvailable())
 		return;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: limp " $ A $ " had KParams " $ A.KParams $ class'ModPilot'.static.Eval2(KarmaParamsSkel(A.KParams) != None, " enabled " $ KarmaParamsSkel(A.KParams).KStartEnabled $ " drop " $ KarmaParamsSkel(A.KParams).KVelDropBelowThreshold $ " upright " $ KarmaParamsSkel(A.KParams).bKStayUpright $ " skel " $ KarmaParamsSkel(A.KParams).KSkeleton, ""));
 	if (KarmaParamsSkel(A.KParams) == None)
 		A.KParams = CorpseParams;
 	K = KarmaParamsSkel(A.KParams);

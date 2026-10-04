@@ -398,6 +398,28 @@ function Where()
 		Note("where: camera " $ E.Camera.MoveController.Name $ " desired " $ E.Camera.MoveController.DesiredXAxisRotation $ " current " $ E.Camera.MoveController.CurrentXAxisRotation $ " camera rot " $ E.Camera.Rotation);
 }
 
+// the dead: physics, state, and how high the head is above the feet (a body frozen
+// standing has its head high)
+function CorpseList()
+{
+	local Pawn P;
+	local int n;
+	local coords C;
+	local vector Floor, HitL, HitN;
+
+	foreach DynamicActors(class'Pawn', P)
+	{
+		if ((P.Health > 0 && P.Physics != PHYS_KarmaRagdoll) || P.IsHumanControlled())
+			continue;
+		n++;
+		C = P.GetBoneCoords('head');
+		Floor = P.Location - vect(0,0,1) * (P.CollisionHeight + 200);
+		Trace(HitL, HitN, Floor, P.Location + vect(0,0,10), false);
+		Note("corpselist: " $ P $ " health " $ P.Health $ " physics " $ P.Physics $ " state " $ P.GetStateName() $ " head above floor " $ int(C.Origin.Z - HitL.Z) $ " (standing " $ int(2 * P.default.CollisionHeight) $ ") hidden " $ P.bHidden);
+	}
+	Note("corpselist: " $ n $ " dead, ragdoll cap " $ Level.MaxRagdolls);
+}
+
 function GibList()
 {
 	local ModGib G;
@@ -643,6 +665,9 @@ function StartStep()
 		break;
 	case "WHERE":
 		Where();
+		break;
+	case "CORPSELIST":
+		CorpseList();
 		break;
 	case "GIBLIST":
 		GibList();

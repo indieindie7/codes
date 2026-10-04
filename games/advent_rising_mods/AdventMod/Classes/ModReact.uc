@@ -5,9 +5,10 @@
 //     (SetBoneRotation over the animation, FlinchTime long);
 //   - stagger: a hit of StaggerDamage or more pushes the victim back a step and
 //     slows it for StaggerTime (bosses don't stagger);
-//   - ragdoll on death: the body goes limp at the killing blow, pushed along the
-//     shot (ModGore.Limp), instead of freezing in its death pose. The engine's
-//     ragdoll cap is raised to MaxRagdolls.
+//   - ragdoll on death (off): the PC release ships no KarmaData\*.ka ragdoll
+//     skeletons, so a body set to PHYS_KarmaRagdoll has nothing to simulate and
+//     freezes as it stands. Only with bDeathRagdoll, for when there are .ka files.
+//   - a corpse shot twitches: the bone nearest the hit jerks (CorpseFlinch).
 // Only characters the AI drives; not the player, vehicles or turrets.
 //=============================================================================
 class ModReact extends Info
@@ -30,6 +31,7 @@ struct FlinchState
 	var name Bone;
 	var rotator Turn;
 	var float T;
+	var bool bCorpse;      // on a dead body: not cut short by the death
 };
 var array<FlinchState> Flinches;
 
@@ -78,13 +80,20 @@ function Hit(Pawn Victim, vector HitLocation, vector Momentum, int Damage, class
 		return;
 	}
 	if (bFlinch)
-		Flinch(Victim, HitLocation, Dir, Damage);
+		Flinch(Victim, HitLocation, Dir, Damage, false);
 	if (bStagger && Damage >= StaggerDamage && Victim.iBaseTargetingPriority < 255)
 		Stagger(Victim, Dir);
 }
 
+// a corpse hit: a twitch, a little stronger than a living flinch
+function CorpseFlinch(Pawn P, vector HitLocation, vector Dir)
+{
+	if (bFlinch && P != None && !P.bHidden)
+		Flinch(P, HitLocation, Dir, 70, true);
+}
+
 // the bone nearest the hit, turned away from the shot (into the pawn's own frame)
-function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage)
+function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional bool bCorpse)
 {
 	local int i, Best;
 	local float D, BestD;
@@ -118,6 +127,7 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage)
 	A = FlinchAngle * FClamp(Damage / 40.0, 0.4, 1.6);
 	L = Dir << P.Rotation;
 	F.P = P;
+	F.bCorpse = bCorpse;
 	F.Bone = Bones[Best];
 	F.Turn.Pitch = int(-L.X * A);
 	F.Turn.Roll = int(L.Y * A);
@@ -178,7 +188,7 @@ event Tick(float DeltaTime)
 			Flinches.Remove(i, 1);
 			continue;
 		}
-		if (Flinches[i].T >= FlinchTime || P.Health <= 0)
+		if (Flinches[i].T >= FlinchTime || (P.Health <= 0 && !Flinches[i].bCorpse))
 		{
 			P.SetBoneRotation(Flinches[i].Bone, rot(0,0,0), 0, 0);
 			Flinches.Remove(i, 1);
@@ -235,7 +245,7 @@ defaultproperties
      StaggerPush=260.000000
      StaggerSlow=0.350000
      StaggerTime=0.450000
-     bDeathRagdoll=True
+     bDeathRagdoll=False
      MaxRagdolls=8
      Bones(0)=hips
      Bones(1)=spine
