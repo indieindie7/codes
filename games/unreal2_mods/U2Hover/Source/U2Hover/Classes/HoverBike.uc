@@ -43,11 +43,13 @@ var int    GunSide;
 var() bool bDebug;
 var() string BodyMesh;          // static mesh to wear, loaded at spawn (subclasses swap the look)
 var() string BodySkin;          // optional texture for Skins[0], loaded at spawn
+var() bool bAltFireHops;        // Alt Fire hops (RigBike subclasses use Alt Fire for their own moves)
 
 simulated event PostBeginPlay()
 {
 	Super.PostBeginPlay();
-	StaticMesh = StaticMesh(DynamicLoadObject(BodyMesh, class'StaticMesh'));
+	if (BodyMesh != "")
+		StaticMesh = StaticMesh(DynamicLoadObject(BodyMesh, class'StaticMesh'));
 	if (BodySkin != "")
 		Skins[0] = Material(DynamicLoadObject(BodySkin, class'Material'));
 	VehicleYaw = Rotation.Yaw;
@@ -268,7 +270,7 @@ event Tick(float Delta)
 	if (C != None)
 	{
 		VehicleYaw = TurnTowards(VehicleYaw, C.Rotation.Yaw, int(TurnRate * Delta));
-		if (C.bAltFire != 0 && bOnGround && Level.TimeSeconds - LastJumpTime > 1.0)
+		if (bAltFireHops && C.bAltFire != 0 && bOnGround && Level.TimeSeconds - LastJumpTime > 1.0)
 		{
 			LastJumpTime = Level.TimeSeconds;
 			Velocity.Z += JumpSpeed;
@@ -356,4 +358,5 @@ defaultproperties
 	RemoteRole=ROLE_None
 	bDebug=False
 	BodyMesh="U2HoverSM.Manta.MantaBody"
+	bAltFireHops=True
 }

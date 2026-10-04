@@ -1,0 +1,23 @@
+# U2Hover with UT3's Nightshade (NightshadeBike, a RigBike): board, drive, look around (turret), hold Alt Fire
+# (arm deploy animation), release (retract), get off.
+userini U2Hover.HoverMutator BikeClass=U2Hover.NightshadeBike
+map HoverTest?Mutator=U2Hover.HoverMutator
+waitcontrol 60
+shots 0.4
+wait 1.5
+dump NightshadeBike Location Rotation bIsDriven CurSeq SeqTime
+move 1 0 1.6
+wait 1
+dump NightshadeBike bIsDriven Location
+move 1 0 2
+turn 60 0 1
+wait 0.5
+dump NightshadeBike AimYaw AimPitch
+altfire 4.5
+dump NightshadeBike CurSeq SeqTime bDeployed
+wait 1.5
+dump NightshadeBike CurSeq SeqTime bDeployed
+jump
+wait 1.5
+dump NightshadeBike bIsDriven
+quit
