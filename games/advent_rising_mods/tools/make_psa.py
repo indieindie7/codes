@@ -67,7 +67,7 @@ Z = (0, 0, 1)
 
 def clip_buckle(t):
     """knees give (onto them, shins back along the floor), then the body pitches forward.
-    Signs (checked in game): about X, - swings a bone hanging down (a leg) forward, so
+    Signs (worked out, not yet seen in game): about X, - swings a bone hanging down (a leg) forward, so
     it swings a bone pointing up (the spine) back; a knee bends with +."""
     k = ease(t, 0.0, 0.45)        # buckle
     f = ease(t, 0.35, 1.0)        # fall forward
