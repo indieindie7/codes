@@ -47,6 +47,8 @@ var float TopSpeed;                    // SPEEDTEST
 var vector SpeedFrom;
 var float ControlTime;                   // the script itself paused the game (pause button, menu step)
 
+var name HurtBone;    // HURT's bone (a string can only become a name through SetPropertyText)
+
 function Note(string S)
 {
 	class'ModSettings'.static.Note("pilot: " $ S);
@@ -285,7 +287,7 @@ function ShootCorpse(string ClassName)
 	G.CorpseHit(Best, Best.Location - Dir * Best.CollisionRadius * 0.5, Dir);
 }
 
-function Hurt(int Damage, string TypeName)
+function Hurt(int Damage, string TypeName, optional string BoneName)
 {
 	local Pawn P, Best;
 	local PlayerController C;
@@ -306,6 +308,12 @@ function Hurt(int Damage, string TypeName)
 	}
 	Dir = Normal(Best.Location - C.Pawn.Location);
 	Spot = Best.Location + vect(0,0,1) * Best.CollisionHeight * 0.4 - Dir * Best.CollisionRadius * 0.5;
+	if (BoneName != "")
+	{
+		// a name from a string: through a property that takes text
+		SetPropertyText("HurtBone", BoneName);
+		Spot = Best.GetBoneCoords(HurtBone).Origin;
+	}
 	Note("hurt: " $ Best $ " (health " $ Best.Health $ ") " $ Damage $ " " $ T $ ", " $ int(VSize(Best.Location - C.Pawn.Location)) $ " away");
 	Best.TakeDamage(Damage, C.Pawn, Spot, Dir * 20000, T);
 	Aim(ViewDeg(rotator(Best.Location - C.Pawn.Location).Yaw), -12);
@@ -625,8 +633,9 @@ function StartStep()
 		StepLength = 0.5;
 		break;
 	case "HURT":
-		// HURT damage [Package.DamageType]: the nearest other character takes a shot from the player
-		Hurt(int(ArgF(1, 30)), Args.Length > 2 ? Args[2] : "EonWeapons.dmgType_HumanPistolFire");
+		// HURT damage [Package.DamageType] [bone]: the nearest other character takes a shot from
+		// the player (at that bone if one is given)
+		Hurt(int(ArgF(1, 30)), Args.Length > 2 ? Args[2] : "EonWeapons.dmgType_HumanPistolFire", Args.Length > 3 ? Args[3] : "");
 		break;
 	case "SPEEDTEST":
 		// SPEEDTEST [seconds] [walk]: run forward and log the top speed and what decides it

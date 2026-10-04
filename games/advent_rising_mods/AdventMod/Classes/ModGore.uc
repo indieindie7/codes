@@ -53,7 +53,8 @@ var array<float> GibbedTime;
 var array<Material> SetSkins;      // ModGibParts.Sets' skins, loaded once (their Diffuse)
 var Material MeatTex, AlienMeatTex;
 
-var ModReact React;                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
+var ModReact React;
+var ModSever Severer;              // decapitation and limb loss                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
 var config float BulletScale;      // shots' trails and meshes drawn at this size (the game's are huge)
 var array<byte> ShotScaled;        // per Shots entry: its trail has been scaled
 
@@ -102,6 +103,8 @@ event PostBeginPlay()
 		ClampTex(Scorches[i]);
 	React = Spawn(class'ModReact');
 	React.Gore = self;
+	Severer = Spawn(class'ModSever');
+	Severer.Gore = self;
 	R = Spawn(class'ModGoreRules');
 	R.Gore = self;
 	if (Level.Game.GameRulesModifiers == None)
@@ -210,6 +213,8 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 		AddDying(Victim);
 		if (bGibs && WantsGib(Victim, Damage, DamageType))
 			Gib(Victim, Dir, Damage);
+		else if (Severer != None)
+			Severer.Kill(Victim, HitLocation, Dir, Damage);
 	}
 }
 
@@ -365,6 +370,73 @@ function int SpawnGibs(int Set, int Kind, vector Feet, int Yaw, float K, vector 
 	if (Trace(HitL, HitN, Mid - vect(0,0,400), Mid, false) != None)
 		Mark(KindSplat(Kind), HitL, HitN, vect(0,0,0), DecalScale * 1.1);
 	return n;
+}
+
+// one gib piece by its part name ("head", "l_lowerarm"...) of a set, thrown from Spot
+function ModGib ThrowPart(int Set, int Kind, string Part, vector Spot, int Yaw, float K, vector V)
+{
+	local class<ModGibParts> T;
+	local int i;
+	local ModGib G;
+	local rotator R;
+	local float MinSize;
+	local string Want;
+
+	T = class'ModGibParts';
+	Want = Caps(string(T.default.Sets[Set].Name) $ "_" $ Part);
+	for (i = 0; i < T.default.Parts.Length; i++)
+	{
+		if (T.default.Parts[i].Set != T.default.Sets[Set].Name || T.default.Parts[i].Mesh == None)
+			continue;
+		if (Caps(string(T.default.Parts[i].Mesh.Name)) != Want)
+			continue;
+		while (Gibs.Length > 0 && (Gibs.Length >= MaxGibs || Gibs[0] == None || Gibs[0].bDeleteMe))
+		{
+			if (Gibs[0] != None && !Gibs[0].bDeleteMe)
+				Gibs[0].Destroy();
+			Gibs.Remove(0, 1);
+		}
+		R.Yaw = Yaw - 16384;
+		G = Spawn(class'ModGib',,, Spot, R);
+		if (G == None)
+			return None;
+		G.Gore = self;
+		G.Kind = Kind;
+		G.SetStaticMesh(T.default.Parts[i].Mesh);
+		G.SetDrawScale(K);
+		G.Skins[0] = SetSkin(Set);
+		if (Kind == 2)
+			G.Skins[1] = AlienMeatTex;
+		else
+			G.Skins[1] = MeatTex;
+		G.Stay = 30 + 20 * FRand();
+		G.Size = T.default.Parts[i].Size * K;
+		MinSize = FMin(T.default.Parts[i].Size.X, FMin(T.default.Parts[i].Size.Y, T.default.Parts[i].Size.Z));
+		G.Launch(V, PhysicsVolume.Gravity.Z, MinSize * K * 0.5);
+		Gibs[Gibs.Length] = G;
+		return G;
+	}
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: no gib part " $ Want);
+	return None;
+}
+
+// blood from a fresh cut: sprays along the shot and around, drips below
+function CutBlood(vector Spot, vector Dir, int Kind)
+{
+	local int i;
+	local vector V, HitL, HitN;
+
+	if (!bBlood || Kind == 0)
+		return;
+	for (i = 0; i < 3; i++)
+	{
+		V = Normal(Dir * (i == 0 ? 1.0 : 0.3) + VRand() * 0.6 + vect(0,0,-0.3));
+		if (Trace(HitL, HitN, Spot + V * SprayReach, Spot, false) != None)
+			Mark(KindSpray(Kind), HitL, HitN, V, DecalScale * (0.6 + 0.3 * FRand()));
+	}
+	if (Trace(HitL, HitN, Spot - vect(0,0,400), Spot, false) != None)
+		Mark(KindSplat(Kind), HitL, HitN, vect(0,0,0), DecalScale * 0.7);
 }
 
 function Hide(Pawn P, bool bHide)
@@ -721,6 +793,8 @@ function CorpseHit(Pawn P, vector Spot, vector Dir)
 	}
 	if (P.LifeSpan > 0)
 		P.LifeSpan += 0.2;
+	if (Severer != None)
+		Severer.CorpseHit(P, Spot, Dir);
 	// no ragdolls in this release (no KarmaData): the body twitches instead
 	if (P.Physics == PHYS_KarmaRagdoll)
 		P.KAddImpulse(Dir * CorpseKick, Spot);
@@ -995,6 +1069,8 @@ event Destroyed()
 	for (i = 0; i < Gibs.Length; i++)
 		if (Gibs[i] != None)
 			Gibs[i].Destroy();
+	if (Severer != None)
+		Severer.Destroy();
 	Super.Destroyed();
 }
 
