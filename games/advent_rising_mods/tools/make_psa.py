@@ -67,19 +67,20 @@ Z = (0, 0, 1)
 
 def clip_buckle(t):
     """knees give (onto them, shins back along the floor), then the body pitches forward.
-    Signs (worked out, not yet seen in game): about X, - swings a bone hanging down (a leg) forward, so
-    it swings a bone pointing up (the spine) back; a knee bends with +."""
+    Signs, measured in game (ModReact pose log): about X, + swings a bone hanging down
+    (a leg, an arm) forward and so leans a bone pointing up (the spine) back; a knee
+    folds the shin back with -."""
     k = ease(t, 0.0, 0.45)        # buckle
     f = ease(t, 0.35, 1.0)        # fall forward
     rot = {
-        "leftUpLeg": [(X, -15 * k)], "rightUpLeg": [(X, -15 * k)],
-        "leftLeg": [(X, 115 * k)], "rightLeg": [(X, 115 * k)],
-        "leftFoot": [(X, 40 * k)], "rightFoot": [(X, 40 * k)],
-        "hips": [(X, 55 * f)],
-        "spine1": [(X, 10 * k + 10 * f)], "Spine3": [(X, 8 * k + 8 * f)],
-        "head": [(X, -15 * k + 20 * f)],
+        "leftUpLeg": [(X, 15 * k)], "rightUpLeg": [(X, 15 * k)],
+        "leftLeg": [(X, -115 * k)], "rightLeg": [(X, -115 * k)],
+        "leftFoot": [(X, -40 * k)], "rightFoot": [(X, -40 * k)],
+        "hips": [(X, -55 * f)],
+        "spine1": [(X, -10 * k - 10 * f)], "Spine3": [(X, -8 * k - 8 * f)],
+        "head": [(X, 10 * k - 20 * f)],
         # arms down from the T pose, then reaching forward as the body goes
-        "leftArm": [(Z, 70 * k), (X, -40 * f)], "rightArm": [(Z, -70 * k), (X, -40 * f)],
+        "leftArm": [(Z, 70 * k), (X, 40 * f)], "rightArm": [(Z, -70 * k), (X, 40 * f)],
         "leftForeArm": [(Y, 20 * f)], "rightForeArm": [(Y, -20 * f)],
     }
     # the hips drop a thigh's length as the knees fold (+Y is down)
@@ -89,6 +90,7 @@ def clip_buckle(t):
 
 CLIPS = [("ModDie_Buckle", clip_buckle, 1.6)]
 FPS = 30
+ROOT_TURN = (0.0, 0.0, 1.0, 0.0)
 
 
 def chunk(fh, cid, size, recs):
@@ -111,6 +113,9 @@ def write_psa(path, bones, clips):
                 pos = b["pos"]
                 if i == 0:
                     pos = tuple(p + o for p, o in zip(pos, root))
+                    # the game's root key carries a half turn about the forward axis: with
+                    # an identity root the body stands on its head (measured in game)
+                    q = qmul(ROOT_TURN, q)
                 else:
                     # ActorX stores every bone but the root conjugated
                     q = (-q[0], -q[1], -q[2], q[3])

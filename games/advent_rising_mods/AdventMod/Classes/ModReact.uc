@@ -248,6 +248,10 @@ event Tick(float DeltaTime)
 		}
 		if (Deaths[i].AnimT >= 0)
 		{
+			// testing: where the clip put the limbs, in the body's own frame (X forward,
+			// Z up), just before the handoff
+			if (class'ModSettings'.default.bGoreLog && Deaths[i].AnimT < DeathAnimHandoff - 0.1 && Deaths[i].AnimT + DeltaTime >= DeathAnimHandoff - 0.1)
+				PoseLog(P);
 			Deaths[i].AnimT += DeltaTime;
 			if (Deaths[i].AnimT < DeathAnimHandoff)
 				continue;
@@ -266,6 +270,19 @@ event Tick(float DeltaTime)
 		}
 	}
 	WatchRagdolls(DeltaTime);
+}
+
+function string Rel(Pawn P, name A, name B)
+{
+	local vector V;
+
+	V = (P.GetBoneCoords(B).Origin - P.GetBoneCoords(A).Origin) << P.Rotation;
+	return string(A) $ "->" $ string(B) $ " " $ int(V.X) $ "," $ int(V.Y) $ "," $ int(V.Z);
+}
+
+function PoseLog(Pawn P)
+{
+	class'ModSettings'.static.Note("react: pose " $ P $ ": " $ Rel(P, 'hips', 'head') $ " | " $ Rel(P, 'hips', 'leftUpLeg') $ " | " $ Rel(P, 'leftUpLeg', 'leftLeg') $ " | " $ Rel(P, 'leftLeg', 'leftFoot') $ " | " $ Rel(P, 'leftArm', 'lefthand') $ " | " $ Rel(P, 'rightArm', 'righthand') $ " | hips over feet " $ int(P.GetBoneCoords('hips').Origin.Z - P.GetBoneCoords('leftFoot').Origin.Z));
 }
 
 // a death clip (ModDeathAnims) on a body with the human skeleton; true if it plays
