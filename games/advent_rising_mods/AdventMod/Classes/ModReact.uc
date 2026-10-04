@@ -5,9 +5,9 @@
 //     (SetBoneRotation over the animation, FlinchTime long);
 //   - stagger: a hit of StaggerDamage or more pushes the victim back a step and
 //     slows it for StaggerTime (bosses don't stagger);
-//   - ragdoll on death (off): the PC release ships no KarmaData\*.ka ragdoll
-//     skeletons, so a body set to PHYS_KarmaRagdoll has nothing to simulate and
-//     freezes as it stands. Only with bDeathRagdoll, for when there are .ka files.
+//   - ragdoll on death: the body goes limp at the killing blow. The PC release
+//     ships no KarmaData\*.ka ragdoll skeletons; AdventMod brings its own
+//     (KarmaData\Advent.ka from tools/make_ka.py, installed by build.ps1).
 //   - a corpse shot twitches: the bone nearest the hit jerks (CorpseFlinch).
 // Only characters the AI drives; not the player, vehicles or turrets.
 //=============================================================================
@@ -245,7 +245,7 @@ defaultproperties
      StaggerPush=260.000000
      StaggerSlow=0.350000
      StaggerTime=0.450000
-     bDeathRagdoll=False
+     bDeathRagdoll=True
      MaxRagdolls=8
      Bones(0)=hips
      Bones(1)=spine

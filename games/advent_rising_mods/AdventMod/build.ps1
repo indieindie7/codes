@@ -24,6 +24,9 @@ foreach ($set in (Select-String -Path "$Here\Classes\ModGibParts.uc" -Pattern 'F
   & python (Join-Path (Split-Path -Parent $Here) 'tools\ase_flip.py') $src "$Game\AdventMod\Gibs\$f"
   if ($LASTEXITCODE -ne 0) { throw "ase_flip failed on $f" }
 }
+# ragdoll skeletons (tools/make_ka.py): the engine reads <game>\KarmaData\*.ka
+New-Item -ItemType Directory -Force "$Game\KarmaData" | Out-Null
+Copy-Item "$Here\KarmaData\*.ka" "$Game\KarmaData" -Force
 $ini = "$Ucc\work\AdventUCC.ini"
 if (-not (Test-Path $ini)) { New-Item -ItemType Directory -Force "$Ucc\work" | Out-Null; Copy-Item "$Game\System\default.ini" $ini }
 $lines = Get-Content $ini | Where-Object { $_ -ne 'EditPackages=UnrealEd' }
