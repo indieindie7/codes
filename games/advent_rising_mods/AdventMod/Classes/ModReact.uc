@@ -22,6 +22,8 @@ var config int StaggerDamage;
 var config float StaggerPush, StaggerSlow, StaggerTime;
 var config bool bDeathRagdoll;
 var config int MaxRagdolls;
+var config bool bDeathAnims;       // play a death clip first, ragdoll partway through it
+var config float DeathAnimHandoff; // seconds into the clip the body goes limp
 
 var ModGore Gore;
 
@@ -62,6 +64,7 @@ struct DeathState
 	var Pawn P;
 	var vector Dir, Spot;
 	var float T;
+	var float AnimT;       // >= 0: playing a death clip for this long
 };
 var array<DeathState> Deaths;
 
@@ -185,6 +188,7 @@ function AddDeath(Pawn P, vector Dir, vector Spot)
 	S.P = P;
 	S.Dir = Dir;
 	S.Spot = Spot;
+	S.AnimT = -1;
 	Deaths[Deaths.Length] = S;
 }
 
@@ -237,9 +241,20 @@ event Tick(float DeltaTime)
 	{
 		P = Deaths[i].P;
 		Deaths[i].T += DeltaTime;
-		if (P == None || P.bDeleteMe || P.bHidden || P.Physics == PHYS_KarmaRagdoll || Deaths[i].T > 0.6 || P.Health > 0 && Deaths[i].T > 0.2)
+		if (P == None || P.bDeleteMe || P.bHidden || P.Physics == PHYS_KarmaRagdoll || (Deaths[i].T > 0.6 && Deaths[i].AnimT < 0) || P.Health > 0 && Deaths[i].T > 0.2)
 		{
 			Deaths.Remove(i, 1);
+			continue;
+		}
+		if (Deaths[i].AnimT >= 0)
+		{
+			Deaths[i].AnimT += DeltaTime;
+			if (Deaths[i].AnimT < DeathAnimHandoff)
+				continue;
+		}
+		else if (P.IsInState('Dying') && bDeathAnims && DeathAnim(P))
+		{
+			Deaths[i].AnimT = 0;
 			continue;
 		}
 		if (P.IsInState('Dying') && Gore != None)
@@ -251,6 +266,30 @@ event Tick(float DeltaTime)
 		}
 	}
 	WatchRagdolls(DeltaTime);
+}
+
+// a death clip (ModDeathAnims) on a body with the human skeleton; true if it plays
+function bool DeathAnim(Pawn P)
+{
+	local MeshAnimation A;
+
+	if (AdventPawn(P) == None || Gore == None || Gore.RagdollSkeleton(AdventPawn(P)) != "humanMale2")
+		return false;
+	A = class'ModDeathAnims'.default.Deaths;
+	if (A == None)
+		return false;
+	P.LinkSkelAnim(A);
+	if (!P.HasAnim('ModDie_Buckle'))
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("react: " $ P $ " (" $ P.Mesh $ ") took no death clip");
+		return false;
+	}
+	P.AnimBlendParams(1, 0.0);
+	P.PlayAnim('ModDie_Buckle', 1.0, 0.1, 0);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("react: " $ P $ " plays ModDie_Buckle, limp in " $ DeathAnimHandoff $ " s");
+	return true;
 }
 
 function AddRagdoll(Pawn P)
@@ -338,6 +377,7 @@ defaultproperties
      StaggerSlow=0.350000
      StaggerTime=0.450000
      bDeathRagdoll=True
+     DeathAnimHandoff=0.900000
      MaxRagdolls=8
      Bones(0)=hips
      Bones(1)=spine

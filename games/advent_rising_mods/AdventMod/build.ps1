@@ -24,6 +24,11 @@ foreach ($set in (Select-String -Path "$Here\Classes\ModGibParts.uc" -Pattern 'F
   & python (Join-Path (Split-Path -Parent $Here) 'tools\ase_flip.py') $src "$Game\AdventMod\Gibs\$f"
   if ($LASTEXITCODE -ne 0) { throw "ase_flip failed on $f" }
 }
+# death clips (ModDeathAnims imports them): written on the game's own skeleton, so
+# generated here rather than kept in the repo
+New-Item -ItemType Directory -Force "$Game\AdventMod\Anims" | Out-Null
+& python (Join-Path (Split-Path -Parent $Here) 'tools\make_psa.py') "$Game\AdventMod\Anims\ModDeaths.psa" marine
+if ($LASTEXITCODE -ne 0) { throw 'make_psa failed' }
 # ragdoll skeletons (tools/make_ka.py): the engine reads <game>\KarmaData\*.ka
 New-Item -ItemType Directory -Force "$Game\KarmaData" | Out-Null
 Copy-Item "$Here\KarmaData\*.ka" "$Game\KarmaData" -Force
