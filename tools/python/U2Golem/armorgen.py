@@ -45,11 +45,11 @@ pal = spec["palette"]
 
 
 # ---- the shared plate texture: top half metal plate, bottom half cloth ------------------------
-def make_texture(path, size=256):
+def make_texture(path, size=256, plate=None, trim_c=None, cloth=None, cloth_trim=None):
     rng = np.random.default_rng(7)
     img = np.zeros((size, size, 3), np.float32)
     half = size // 2
-    for y0, base, trim in ((0, pal["plate"], pal["trim"]), (half, pal["cloth"], pal["cloth_trim"])):
+    for y0, base, trim in ((0, plate or pal["plate"], trim_c or pal["trim"]), (half, cloth or pal["cloth"], cloth_trim or pal["cloth_trim"])):
         yy, xx = np.mgrid[0:half, 0:size]
         u, v = xx / size, yy / half
         # brushed base, a little darker toward the edges
@@ -80,6 +80,9 @@ def make_texture(path, size=256):
 
 
 tex_path = make_texture(os.path.join(texdir, "plate.tga"), spec.get("texture_size", 512))
+# extra named materials: {"name": {"color": [..], "trim": [..], "kind": "plate"|"cloth"}}, each with
+# its own generated texture (same layout: plate half on top, cloth half below)
+named = {}
 mat = bpy.data.materials.new("ArmourPlate")
 mat.use_nodes = True
 tn = mat.node_tree.nodes.new("ShaderNodeTexImage")
@@ -96,6 +99,32 @@ cmat.diffuse_color = tuple(pal["cloth"]) + (1,)
 bsdf_c = cmat.node_tree.nodes["Principled BSDF"]
 bsdf_c.inputs["Metallic"].default_value = 0.0
 bsdf_c.inputs["Roughness"].default_value = 0.9
+for nm, md in spec.get("materials", {}).items():
+    col, trim = md["color"], md.get("trim", [c * 0.7 for c in md["color"]])
+    tp = make_texture(os.path.join(texdir, f"mat_{nm}.tga"), spec.get("texture_size", 512), col, trim, col, trim)
+    m = bpy.data.materials.new(nm)
+    m.use_nodes = True
+    n = m.node_tree.nodes.new("ShaderNodeTexImage")
+    n.image = bpy.data.images.load(tp)
+    b = m.node_tree.nodes["Principled BSDF"]
+    m.node_tree.links.new(n.outputs["Color"], b.inputs["Base Color"])
+    cloth_kind = md.get("kind", "plate") == "cloth"
+    b.inputs["Metallic"].default_value = 0.0 if cloth_kind else 0.5
+    b.inputs["Roughness"].default_value = 0.9 if cloth_kind else 0.4
+    m.diffuse_color = tuple(col) + (1,)
+    m["source_texture"] = tp
+    m["kind"] = md.get("kind", "plate")
+    named[nm] = m
+
+
+def material_of(name):
+    if name in named:
+        return named[name]
+    return cmat if name == "cloth" else mat
+
+
+def kind_of(name):
+    return named[name]["kind"] if name in named else ("cloth" if name == "cloth" else "plate")
 
 # ---- the body surface to project onto (rest pose) ---------------------------------------------
 dg = bpy.context.evaluated_depsgraph_get()
@@ -170,7 +199,7 @@ def build_plate(pl):
                 puff = qd * (su * sv) ** 0.6         # pillows, pinched at the stitch lines
             row.append(bm.verts.new(project(head, a, length, f, left, t, l + (r - l) * u / nu, g + puff, reach)))
         grid.append(row)
-    vhalf = 0.0 if pl.get("material", "plate") == "plate" else 0.5
+    vhalf = 0.0 if kind_of(pl.get("material", "plate")) == "plate" else 0.5
     for j in range(len(R) - 1):
         for i in range(nu):
             q = [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]]
@@ -195,7 +224,7 @@ def build_plate(pl):
     bm.to_mesh(me)
     obj = bpy.data.objects.new(pl["name"], me)
     bpy.context.scene.collection.objects.link(obj)
-    me.materials.append(cmat if pl.get("material", "plate") == "cloth" else mat)
+    me.materials.append(material_of(pl.get("material", "plate")))
     weights = pl.get("weights", {pl["bone"]: 1.0})
     for bone, w in weights.items():
         g = obj.vertex_groups.new(name=bone)
@@ -268,7 +297,7 @@ def build_tube(tb, idx):
         o = bpy.context.view_layer.objects.active
         o.select_set(False)
         o.data.materials.clear()
-        o.data.materials.append(tmat if tb.get("material", "tube") == "tube" else (cmat if tb["material"] == "cloth" else mat))
+        o.data.materials.append(tmat if tb.get("material", "tube") == "tube" else material_of(tb["material"]))
         # each vertex follows the bone of its nearest anchor (blended between two)
         groups = {b: o.vertex_groups.get(b) or o.vertex_groups.new(name=b) for _, b in pts}
         for v in o.data.vertices:

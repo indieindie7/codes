@@ -1,0 +1,100 @@
+{
+ "base": "C:/Users/john/Documents/U2Golem/kitbash/PlayerGame.psk",
+ "base_textures": [
+  "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerLimbs_Default.tga",
+  "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerTorso_Default.tga",
+  "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerTorso_Default.tga"
+ ],
+ "out": "C:/Users/john/Documents/U2Golem/scratch_dalton/DaltonScratch.psk",
+ "swaps": [
+  {
+   "donor": "C:/Users/john/Documents/U2Golem/scratch_dalton/body.psk",
+   "textures": [
+    ""
+   ],
+   "bones": [
+    "Pelvis",
+    "Spine",
+    "Spine1",
+    "Spine2",
+    "L Clavicle",
+    "R Clavicle",
+    "L UpperArm",
+    "R UpperArm",
+    "L Forearm",
+    "R Forearm",
+    "L Hand",
+    "R Hand",
+    "L Thigh",
+    "R Thigh",
+    "L Calf",
+    "R Calf",
+    "L Foot",
+    "R Foot",
+    "L Toe0",
+    "R Toe0",
+    "Neck"
+   ],
+   "stop": [
+    "Head"
+   ],
+   "faces": "most",
+   "girth": 1.12
+  },
+  {
+   "donor": "C:/Users/john/Documents/U2Golem/scratch_dalton/body.psk",
+   "textures": [
+    ""
+   ],
+   "bones": [
+    "Head"
+   ],
+   "mode": "overlay",
+   "keep_bottom": 0.22,
+   "faces": "all",
+   "girth": 1.12
+  },
+  {
+   "donor": "C:/Users/john/Documents/U2Golem/kitbash/PlayerAtlantis.psk",
+   "textures": [
+    "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerLimbs_Default.tga",
+    "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerTorso_Default.tga",
+    "C:/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/Meshes/Characters/Player/PlayerTorso_Default.tga"
+   ],
+   "bones": [
+    "Head"
+   ],
+   "girth": 1.0,
+   "stop": [
+    "Neck"
+   ],
+   "faces": "all",
+   "materials": [
+    2
+   ]
+  },
+  {
+   "donor": "C:/Users/john/Documents/UT2004_extract/psk/HumanMaleA/SkeletalMesh/MercMaleD.psk",
+   "textures": [
+    "C:/Users/john/Documents/UT2004_extract/psk/PlayerSkins/Texture/MercMaleDBodyA.tga",
+    "C:/Users/john/Documents/UT2004_extract/psk/PlayerSkins/Texture/MercMaleDHeadA.tga"
+   ],
+   "bones": [
+    "Head"
+   ],
+   "mode": "overlay",
+   "keep_hue": [
+    60,
+    170
+   ],
+   "keep_top": 0.5,
+   "fit_cap": {
+    "sit": 7.0,
+    "back": 1.5,
+    "overhang": 0.22,
+    "tilt": 9.0
+   },
+   "faces": "all"
+  }
+ ]
+}

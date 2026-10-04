@@ -102,6 +102,23 @@ def strongest(m):
     return {p: b for p, (w, b) in best.items()}
 
 
+def main_child(bones, i, kids):
+    """the child that continues a bone's chain: a spine/neck child for the pelvis and spine,
+    else the first non-finger child (so rigs that list children in another order agree)"""
+    ks = kids.get(i, [])
+    if not ks:
+        return None
+    names = [short(bones[k]["name"]) for k in ks]
+    for want in ("spine", "neck", "head"):
+        for k, n in zip(ks, names):
+            if n.startswith(want):
+                return k
+    for k, n in zip(ks, names):
+        if "finger" not in n and "toe" not in n and "nub" not in n:
+            return k
+    return ks[0]
+
+
 def aligned_frames(m, W):
     """a frame per bone that both rigs agree on, whatever their local axes (Golem bones run
     along local Z, Character Studio/ActorX along X): origin at the joint, X toward the next
@@ -116,7 +133,7 @@ def aligned_frames(m, W):
     for i, b in enumerate(bones):
         o = W[i][:3, 3]
         if i in kids:
-            x = W[kids[i][0]][:3, 3] - o
+            x = W[main_child(bones, i, kids)][:3, 3] - o
         elif b["parent"] >= 0:
             x = o - W[b["parent"]][:3, 3]
         else:
@@ -135,8 +152,12 @@ def aligned_frames(m, W):
 
 def bone_length(m, W, i):
     bones = m["bones"]
-    ks = [j for j, b in enumerate(bones) if b["parent"] == i and np.linalg.norm(b["pos"]) > 1e-3]
-    return np.linalg.norm(W[ks[0]][:3, 3] - W[i][:3, 3]) if ks else None
+    kids = {}
+    for j, b in enumerate(bones):
+        if np.linalg.norm(b["pos"]) > 1e-3:
+            kids.setdefault(b["parent"], []).append(j)
+    k = main_child(bones, i, kids)
+    return np.linalg.norm(W[k][:3, 3] - W[i][:3, 3]) if k is not None else None
 
 
 def region_points(m, W, region, exact=False, stop=(), margin=0.0):
@@ -164,7 +185,7 @@ def region_points(m, W, region, exact=False, stop=(), margin=0.0):
                 out.add(p)
             continue
         o = W[r][:3, 3]
-        end = W[ks[0]][:3, 3]
+        end = W[main_child(bones, r, {r: ks})][:3, 3]
         axis = end - o
         t = np.dot(m["pts"][p] - o, axis) / np.dot(axis, axis)
         # margin: leave the first part of the bone (the joint it hangs from) alone, so the
@@ -298,6 +319,13 @@ def kitbash(recipe_path):
 
         # donor triangles in the region come in
         dreg = region_points(d, dW, region, sw.get("exact", False), {short(s) for s in sw.get("stop", [])})
+        if "keep_bottom" in sw:
+            # only the bottom of the region: points up to this fraction from the region's
+            # lowest joint to its highest point (e.g. a donor's upper neck under the jaw)
+            P = np.array([d["pts"][p] for p in dreg])
+            j0 = min(dW[i][2, 3] for i, k in enumerate(dshort) if k in region)
+            ztop = P[:, 2].max()
+            dreg = {p for p in dreg if (d["pts"][p][2] - j0) <= sw["keep_bottom"] * (ztop - j0)}
         if "keep_top" in sw:
             # only the top of the region (a hat): points at least this far from the region's
             # lowest joint to its highest point, measured straight up
@@ -310,6 +338,8 @@ def kitbash(recipe_path):
         # seams hide under the armour instead of opening into holes; "all" = strict
         need = {"all": 3, "most": 2, "any": 1}[sw.get("faces", "most")]
         keep = [f for f in d["faces"] if sum(d["wedges"][w][0] in dreg for w in (f[0], f[1], f[2])) >= need]
+        if "materials" in sw:
+            keep = [f for f in keep if f[3] in sw["materials"]]     # only these donor slots
         if "keep_hue" in sw:
             # only faces whose texture is in a hue range (degrees), e.g. a green beret [70, 170]
             from PIL import Image
@@ -355,7 +385,7 @@ def kitbash(recipe_path):
             mslot[dm] = len(mats)
             mats.append(f"{os.path.splitext(os.path.basename(sw['donor']))[0]}_{d['mats'][dm] or dm}")
             tex = sw.get("textures", [])
-            tpath = path(tex[dm]) if dm < len(tex) else ""
+            tpath = path(tex[dm]) if dm < len(tex) and tex[dm] else ""
             if tpath and pal and dm in sw.get("dye", []):
                 import dye
                 dyed = os.path.join(os.path.dirname(path(R["out"])), "dyed",

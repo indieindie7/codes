@@ -102,7 +102,7 @@ def load(path, textures=None, name=None):
         mat = bpy.data.materials.new(f"{name}_{slot or i}")
         mat.use_nodes = True
         tex = textures[i] if i < len(textures) else None
-        if tex and os.path.exists(tex):
+        if tex and os.path.isfile(tex):
             img = bpy.data.images.load(tex)
             img.alpha_mode = "NONE"
             tn = mat.node_tree.nodes.new("ShaderNodeTexImage")
