@@ -11,7 +11,10 @@ Recipe:
              "bones": ["L Clavicle", "L UpperArm"], "scale": 1.05}, ... ]
 }
 Bone names are given without the rig prefix ("L UpperArm" matches "Merc L UpperArm" and
-"Bip01 L UpperArm").
+"Bip01 L UpperArm"). Per swap also: "girth" (thickness factor), "mode": "overlay" (keep the base's
+own triangles there, donor armour goes on top), "keep_top": 0..1 (only the donor's top part of the
+region, e.g. 0.6 of a head = a hat), "keep_hue": [min, max] degrees (only faces whose texture
+is that colour, e.g. [70, 170] = a green beret), "offset": [x, y, z] (nudge, base units).
 
 For each swap: the base's triangles whose corners all belong to those bones (strongest weight)
 are removed; the donor's triangles whose corners all belong to them are added, carried from the
@@ -219,7 +222,33 @@ def kitbash(recipe_path):
 
         # donor triangles in the region come in
         dreg = region_points(d, dW, region)
+        if "keep_top" in sw:
+            # only the top of the region (a hat): points at least this far from the region's
+            # lowest joint to its highest point, measured straight up
+            P = np.array([d["pts"][p] for p in dreg])
+            j0 = min(dW[i][2, 3] for i, k in enumerate(dshort) if k in region)
+            ztop = P[:, 2].max()
+            dreg = {p for p in dreg if (d["pts"][p][2] - j0) >= sw["keep_top"] * (ztop - j0)}
         keep = [f for f in d["faces"] if all(d["wedges"][w][0] in dreg for w in (f[0], f[1], f[2]))]
+        if "keep_hue" in sw:
+            # only faces whose texture is in a hue range (degrees), e.g. a green beret [70, 170]
+            from PIL import Image
+            import colorsys
+            lo, hi = sw["keep_hue"]
+            imgs = {}
+            def hue_ok(f):
+                tex = sw.get("textures", [])
+                if f[3] >= len(tex):
+                    return False
+                if f[3] not in imgs:
+                    imgs[f[3]] = Image.open(path(tex[f[3]])).convert("RGB")
+                im = imgs[f[3]]
+                u = sum(d["wedges"][w][2] for w in f[:3]) / 3 % 1.0
+                v = sum(d["wedges"][w][3] for w in f[:3]) / 3 % 1.0
+                r, g, b = [c / 255 for c in im.getpixel((min(int(u * im.width), im.width - 1), min(int(v * im.height), im.height - 1)))]
+                h, s, val = colorsys.rgb_to_hsv(r, g, b)
+                return lo <= h * 360 <= hi and s > 0.2
+            keep = [f for f in keep if hue_ok(f)]
         used = sorted({d["wedges"][w][0] for f in keep for w in f[:3]})
         dweights = {}
         for w, p, b in d["weights"]:
@@ -228,6 +257,7 @@ def kitbash(recipe_path):
         for p in used:
             v = np.append(d["pts"][p], 1.0)
             moved = sum(w * (M[b] @ v) for w, b in dweights.get(p, [(1.0, 0)]))
+            moved[:3] += np.array(sw.get("offset", [0, 0, 0]))
             pmap[p] = len(pts)
             pts.append(tuple(moved[:3]))
             merged = {}
