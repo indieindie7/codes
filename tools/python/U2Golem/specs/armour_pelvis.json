@@ -1,0 +1,17 @@
+{
+ "palette": {"plate": [0.55, 0.38, 0.18], "trim": [0.85, 0.66, 0.28],
+             "cloth": [0.10, 0.13, 0.20], "cloth_trim": [0.80, 0.62, 0.26]},
+ "plates": [
+  {"name": "fauld1", "bone": "Merc Pelvis", "rows": [[2.6, -60, 60], [2.0, -58, 58]], "gap": 1.9, "thickness": 1.2, "cols": 12},
+  {"name": "fauld2", "bone": "Merc Pelvis", "rows": [[2.1, -58, 58], [1.5, -55, 55]], "gap": 1.5, "thickness": 1.2, "cols": 12},
+  {"name": "fauld3", "bone": "Merc Pelvis", "rows": [[1.6, -55, 55], [1.0, -50, 50]], "gap": 1.1, "thickness": 1.2, "cols": 12},
+  {"name": "mark", "bone": "Merc Pelvis", "material": "cloth",
+   "rows": [[1.05, -16, 16], [0.0, -13, 13], [-1.4, -10, 10], [-2.3, 0, 0]], "gap": 2.4, "thickness": 0.6, "cols": 6},
+  {"name": "tasset_upper", "bone": "Merc L Thigh", "mirror": true,
+   "rows": [[-0.14, 30, 145], [0.24, 38, 140]], "gap": 2.2, "thickness": 1.3, "cols": 8,
+   "weights": {"Merc Pelvis": 0.35, "Merc L Thigh": 0.65}},
+  {"name": "tasset_lower", "bone": "Merc L Thigh", "mirror": true,
+   "rows": [[0.18, 40, 138], [0.52, 50, 128], [0.6, 89, 89]], "gap": 1.6, "thickness": 1.3, "cols": 8,
+   "weights": {"Merc L Thigh": 1.0}}
+ ]
+}
