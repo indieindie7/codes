@@ -1,7 +1,7 @@
 """Game mesh from an AI high-poly character: shape-driven low-poly per body section, clean UVs, baked maps.
 
 Run:  blender -b <painted_high.blend> --python retopo_bake.py -- <out_prefix> [method=tube|decimate]
-      [size=2048] [detail=1.0] [tris=3000] [ao=0.85] [samples=32] [low=<lowpoly.glb>]
+      [size=2048] [detail=1.0] [tris=3000] [ao=0.85] [samples=32] [low=<lowpoly.glb>] [high=<textured.glb>] [cage=]
 <painted_high.blend> is project_views.py output: one A-pose mesh (front = -Y, up = +Z) with the
 "Col" vertex colour. Use the true high-poly (img2shape_mv.py faces=0), not a reduced one.
 
@@ -16,6 +16,7 @@ method=tube (the poly-modelling way: sections built from simple tubes, edges whe
   3. UVs are laid out analytically: every tube is one rectangle (around x along), seam on its hidden
      side, scaled to its real size, then packed.
 method=decimate: Blender's Decimate (collapse) to `tris` + angle-based UVs. The "just decimate" baseline.
+high=<glb>: use this textured mesh as the high-poly (no .blend needed); its texture is the colour source.
 low=<glb>: no retopo; bake onto this finished low-poly and its UVs (sheet_model.py output, with the blend
   being its painted copy from project_views.py).
 
@@ -39,6 +40,21 @@ TRIS = int(o.get("tris", 3000))
 AO_STRENGTH = float(o.get("ao", 0.85))
 SAMPLES = int(o.get("samples", 32))
 
+if o.get("high"):
+    # a textured high-poly given as a file (Hunyuan3D-Paint output) instead of a painted .blend
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=o["high"])
+    ms = [ob for ob in bpy.context.scene.objects if ob.type == "MESH"]
+    bpy.ops.object.select_all(action="DESELECT")
+    for ob in ms:
+        ob.select_set(True)
+    bpy.context.view_layer.objects.active = ms[0]
+    if len(ms) > 1:
+        bpy.ops.object.join()
+    ms[0].data.transform(ms[0].matrix_world)
+    ms[0].matrix_world.identity()
+    for ob in [x for x in bpy.context.scene.objects if x.type != "MESH"]:
+        bpy.data.objects.remove(ob, do_unlink=True)
 hi = [ob for ob in bpy.context.scene.objects if ob.type == "MESH"][0]
 hi.name = "High"
 me = hi.data
@@ -441,8 +457,20 @@ mh.use_nodes = True
 nt = mh.node_tree
 for n in list(nt.nodes):
     nt.nodes.remove(n)
-vc = nt.nodes.new("ShaderNodeVertexColor")
-vc.layer_name = "Col"
+# colour source on the high-poly: the "Col" vertex colour, or else its own texture
+src_img = None
+if not me.color_attributes.get("Col"):
+    for m_ in me.materials:
+        if m_ and m_.use_nodes:
+            for n_ in m_.node_tree.nodes:
+                if n_.type == "TEX_IMAGE" and n_.image:
+                    src_img = n_.image
+if src_img:
+    vc = nt.nodes.new("ShaderNodeTexImage")
+    vc.image = src_img
+else:
+    vc = nt.nodes.new("ShaderNodeVertexColor")
+    vc.layer_name = "Col"
 em = nt.nodes.new("ShaderNodeEmission")
 mo = nt.nodes.new("ShaderNodeOutputMaterial")
 nt.links.new(vc.outputs["Color"], em.inputs["Color"])
@@ -464,8 +492,10 @@ sc.cycles.device = "CPU"
 sc.render.bake.margin = 12
 sc.render.bake.use_selected_to_active = True
 # a given low-poly is the same surface as its painted copy: keep the rays short so they cannot reach a neighbour
-sc.render.bake.cage_extrusion = H * (0.003 if GIVEN else 0.02)
-sc.render.bake.max_ray_distance = H * (0.01 if GIVEN else 0.06)
+# (cage=<fraction of height> overrides: use 0.02 when the given low-poly is a reduced version of the high-poly)
+CAGE = float(o.get("cage", 0.003 if GIVEN else 0.02))
+sc.render.bake.cage_extrusion = H * CAGE
+sc.render.bake.max_ray_distance = H * CAGE * 3
 bpy.ops.object.select_all(action="DESELECT")
 hi.select_set(True)
 low.select_set(True)
