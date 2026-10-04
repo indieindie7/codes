@@ -1,7 +1,7 @@
 """Game mesh from an AI high-poly character: shape-driven low-poly per body section, clean UVs, baked maps.
 
 Run:  blender -b <painted_high.blend> --python retopo_bake.py -- <out_prefix> [method=tube|decimate]
-      [size=2048] [detail=1.0] [tris=3000] [ao=0.85] [samples=32] [low=<lowpoly.glb>] [high=<textured.glb>] [cage=] [extra=Trust] [albedo=<png>]
+      [size=2048] [detail=1.0] [tris=3000] [ao=0.85] [samples=32] [low=<lowpoly.glb>] [high=<textured.glb>] [cage=] [extra=Trust] [albedo=<png>] [cpu=1]
 <painted_high.blend> is project_views.py output: one A-pose mesh (front = -Y, up = +Z) with the
 "Col" vertex colour. Use the true high-poly (img2shape_mv.py faces=0), not a reduced one.
 
@@ -608,12 +608,20 @@ def shots(tag):
     return row
 
 
-try:
-    sc.render.engine = "BLENDER_EEVEE"
-except TypeError:
-    sc.render.engine = "BLENDER_EEVEE_NEXT"
+CPU = int(o.get("cpu", 0))        # cpu=1: previews with Cycles on the CPU (no GPU use: safe while a game is running)
+if CPU:
+    sc.render.engine = "CYCLES"
+    sc.cycles.device = "CPU"
+    sc.cycles.samples = 12
+    sc.cycles.max_bounces = 1
+else:
+    try:
+        sc.render.engine = "BLENDER_EEVEE"
+    except TypeError:
+        sc.render.engine = "BLENDER_EEVEE_NEXT"
 tex_row = shots("tex")
-sc.render.engine = "BLENDER_WORKBENCH"
+if not CPU:
+    sc.render.engine = "BLENDER_WORKBENCH"
 sc.display.shading.light = "STUDIO"
 sc.display.shading.color_type = "SINGLE"
 sc.display.shading.single_color = (0.75, 0.75, 0.75)
@@ -629,6 +637,13 @@ wm = wire.modifiers.new("w", "WIREFRAME")
 wm.thickness = h * 0.0022
 wm.use_even_offset = False
 wire.data.materials.clear()
+if CPU:
+    for ob_, col_ in ((low, (0.75, 0.75, 0.75, 1)), (wire, (0.02, 0.02, 0.02, 1))):
+        m_ = bpy.data.materials.new("flat")
+        m_.use_nodes = True
+        m_.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = col_
+        ob_.data.materials.clear()
+        ob_.data.materials.append(m_)
 sc.display.shading.color_type = "OBJECT"
 low.color = (0.75, 0.75, 0.75, 1)
 wire.color = (0.02, 0.02, 0.02, 1)
