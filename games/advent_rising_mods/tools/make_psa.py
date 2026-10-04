@@ -61,25 +61,29 @@ def ease(t, a, b):
 
 
 X = (1, 0, 0)
+Y = (0, 1, 0)
 Z = (0, 0, 1)
 
 
 def clip_buckle(t):
-    """knees give, the body sags onto them, then pitches forward"""
+    """knees give (onto them, shins back along the floor), then the body pitches forward.
+    Signs (checked in game): about X, - swings a bone hanging down (a leg) forward, so
+    it swings a bone pointing up (the spine) back; a knee bends with +."""
     k = ease(t, 0.0, 0.45)        # buckle
     f = ease(t, 0.35, 1.0)        # fall forward
     rot = {
-        "leftUpLeg": [(X, -75 * k)], "rightUpLeg": [(X, -75 * k)],
-        "leftLeg": [(X, 110 * k)], "rightLeg": [(X, 110 * k)],
-        "leftFoot": [(X, -35 * k)], "rightFoot": [(X, -35 * k)],
-        "hips": [(X, -60 * f)],
-        "spine1": [(X, -12 * k - 10 * f)], "Spine3": [(X, -10 * k - 8 * f)],
-        "head": [(X, 20 * k - 30 * f)],
-        "leftArm": [(Z, -60 * k)], "rightArm": [(Z, 60 * k)],
-        "leftForeArm": [(X, -30 * f)], "rightForeArm": [(X, -30 * f)],
+        "leftUpLeg": [(X, -15 * k)], "rightUpLeg": [(X, -15 * k)],
+        "leftLeg": [(X, 115 * k)], "rightLeg": [(X, 115 * k)],
+        "leftFoot": [(X, 40 * k)], "rightFoot": [(X, 40 * k)],
+        "hips": [(X, 55 * f)],
+        "spine1": [(X, 10 * k + 10 * f)], "Spine3": [(X, 8 * k + 8 * f)],
+        "head": [(X, -15 * k + 20 * f)],
+        # arms down from the T pose, then reaching forward as the body goes
+        "leftArm": [(Z, 70 * k), (X, -40 * f)], "rightArm": [(Z, -70 * k), (X, -40 * f)],
+        "leftForeArm": [(Y, 20 * f)], "rightForeArm": [(Y, -20 * f)],
     }
-    # the hips drop as the knees fold (+Y is down)
-    root = (0.0, 45 * k + 10 * f, 25 * f)
+    # the hips drop a thigh's length as the knees fold (+Y is down)
+    root = (0.0, 42 * k + 8 * f, 20 * f)
     return rot, root
 
 

@@ -345,7 +345,9 @@ function WatchRagdolls(float DeltaTime)
 		Ragdolls[i].T += DeltaTime;
 		Low = FMin(P.GetBoneCoords('hips').Origin.Z, P.GetBoneCoords('head').Origin.Z);
 		Why = "";
-		if (Low < Ragdolls[i].FloorZ + 2)
+		// not in its first moments: a body handed over from a death clip starts low
+		// (kneeling), and its bones read wrong for a tick or two
+		if (Low < Ragdolls[i].FloorZ + 2 && Ragdolls[i].T > 0.3)
 			Why = "at its floor";
 		else if (Ragdolls[i].T > 0.8 && !P.KIsAwake())
 			Why = "at rest";
