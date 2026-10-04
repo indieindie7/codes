@@ -1,7 +1,7 @@
 """Game mesh from an AI high-poly character: shape-driven low-poly per body section, clean UVs, baked maps.
 
 Run:  blender -b <painted_high.blend> --python retopo_bake.py -- <out_prefix> [method=tube|decimate]
-      [size=2048] [detail=1.0] [tris=3000] [ao=0.85] [samples=32]
+      [size=2048] [detail=1.0] [tris=3000] [ao=0.85] [samples=32] [low=<lowpoly.glb>]
 <painted_high.blend> is project_views.py output: one A-pose mesh (front = -Y, up = +Z) with the
 "Col" vertex colour. Use the true high-poly (img2shape_mv.py faces=0), not a reduced one.
 
@@ -16,6 +16,8 @@ method=tube (the poly-modelling way: sections built from simple tubes, edges whe
   3. UVs are laid out analytically: every tube is one rectangle (around x along), seam on its hidden
      side, scaled to its real size, then packed.
 method=decimate: Blender's Decimate (collapse) to `tris` + angle-based UVs. The "just decimate" baseline.
+low=<glb>: no retopo; bake onto this finished low-poly and its UVs (sheet_model.py output, with the blend
+  being its painted copy from project_views.py).
 
 Bakes high -> low (Cycles, selected to active): tangent normal map, ambient occlusion, colour ("Col").
 Writes <out>_albedo.png, <out>_ao.png, <out>_normal.png, <out>_diffuse.png (albedo x AO, the texture
@@ -387,7 +389,23 @@ def make_decimate_mesh():
     return low
 
 
-low = make_tube_mesh() if METHOD == "tube" else make_decimate_mesh()
+def load_given_low(path):
+    """a finished low-poly with its own UVs (sheet_model.py); the blend's mesh is its painted, subdivided copy"""
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=path)
+    low = [ob for ob in bpy.data.objects if ob not in before and ob.type == "MESH"][0]
+    low.data.transform(low.matrix_world)
+    low.matrix_world.identity()
+    low.name = "Low"
+    return low
+
+
+GIVEN = o.get("low")
+if GIVEN:
+    METHOD = "given"
+    low = load_given_low(GIVEN)
+else:
+    low = make_tube_mesh() if METHOD == "tube" else make_decimate_mesh()
 if me.color_attributes.get("Sect"):
     sc = bpy.context.scene
     sc.render.engine = "BLENDER_WORKBENCH"
@@ -408,8 +426,9 @@ if me.color_attributes.get("Sect"):
     low.hide_render = False
     me.color_attributes.active_color = me.color_attributes["Col"]
 low.data.materials.clear()
-for p in low.data.polygons:
-    p.use_smooth = True
+if not GIVEN:
+    for p in low.data.polygons:
+        p.use_smooth = True
 low.data.calc_loop_triangles()
 ntris = len(low.data.loop_triangles)
 print(f"LOW {METHOD}: {len(low.data.vertices)} verts, {ntris} tris")
@@ -444,8 +463,9 @@ sc.render.engine = "CYCLES"
 sc.cycles.device = "CPU"
 sc.render.bake.margin = 12
 sc.render.bake.use_selected_to_active = True
-sc.render.bake.cage_extrusion = H * 0.02
-sc.render.bake.max_ray_distance = H * 0.06
+# a given low-poly is the same surface as its painted copy: keep the rays short so they cannot reach a neighbour
+sc.render.bake.cage_extrusion = H * (0.003 if GIVEN else 0.02)
+sc.render.bake.max_ray_distance = H * (0.01 if GIVEN else 0.06)
 bpy.ops.object.select_all(action="DESELECT")
 hi.select_set(True)
 low.select_set(True)
