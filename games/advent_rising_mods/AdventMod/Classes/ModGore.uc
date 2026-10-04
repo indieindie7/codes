@@ -52,6 +52,10 @@ var array<float> GibbedTime;
 var array<Material> SetSkins;      // ModGibParts.Sets' skins, loaded once (their Diffuse)
 var Material MeatTex, AlienMeatTex;
 
+var ModReact React;                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
+var config float BulletScale;      // shots' trails and meshes drawn at this size (the game's are huge)
+var array<byte> ShotScaled;        // per Shots entry: its trail has been scaled
+
 var Material Splats[4], Sprays[2], Pool, Scorches[3], CasingTex;   // the textures, referenced so the package keeps them
 var Material RemainsTex[2];
 var Material AlienSplats[4], AlienSprays[2], AlienPool, AlienRemains[2];   // the same in the Seekers' purple
@@ -95,6 +99,8 @@ event PostBeginPlay()
 	ClampTex(CasingTex);
 	for (i = 0; i < 3; i++)
 		ClampTex(Scorches[i]);
+	React = Spawn(class'ModReact');
+	React.Gore = self;
 	R = Spawn(class'ModGoreRules');
 	R.Gore = self;
 	if (Level.Game.GameRulesModifiers == None)
@@ -382,7 +388,7 @@ function CheckGibbed()
 			Gibbed.Remove(i, 1);
 			GibbedTime.Remove(i, 1);
 		}
-		else if (Level.TimeSeconds - GibbedTime[i] > 1.0 && (Gibbed[i].Health > 0 || !Gibbed[i].IsInState('Dying')))
+		else if (Level.TimeSeconds - GibbedTime[i] > 1.0 && Gibbed[i].Health > 0)
 		{
 			Hide(Gibbed[i], false);
 			Gibbed.Remove(i, 1);
@@ -448,9 +454,12 @@ function TrackShots()
 			Shots.Remove(i, 1);
 			ShotLoc.Remove(i, 1);
 			ShotVel.Remove(i, 1);
+			ShotScaled.Remove(i, 1);
 		}
 		else
 		{
+			if (ShotScaled[i] != 1)
+				ShrinkShot(i);
 			ShotThroughCorpses(ShotLoc[i], Shots[i].Location);
 			ShotLoc[i] = Shots[i].Location;
 			ShotVel[i] = Shots[i].Velocity;
@@ -474,8 +483,36 @@ function TrackShots()
 		Shots[Shots.Length] = P;
 		ShotLoc[ShotLoc.Length] = P.Location;
 		ShotVel[ShotVel.Length] = P.Velocity;
+		ShotScaled[ShotScaled.Length] = 0;
+		ShrinkShot(Shots.Length - 1);
 		if (class'ModSettings'.default.bGoreLog)
 			class'ModSettings'.static.Note("gore: shot " $ P.Class $ " owner " $ P.Owner $ " instigator " $ P.Instigator $ " speed " $ int(VSize(P.Velocity)));
+	}
+}
+
+// a shot drawn smaller: its mesh at once, its trail (spawned a moment after the shot)
+// as soon as it's there. Grenades and rockets keep their size.
+function ShrinkShot(int i)
+{
+	local EonProjectile P;
+
+	P = EonProjectile(Shots[i]);
+	if (P == None || BulletScale >= 0.99 || P.IsA('GrenadeProjectile'))
+	{
+		ShotScaled[i] = 1;
+		return;
+	}
+	if (ShotScaled[i] == 0)
+	{
+		P.SetDrawScale(P.DrawScale * BulletScale);
+		ShotScaled[i] = 2;
+	}
+	if (P.Trail != None)
+	{
+		P.Trail.Scale(BulletScale);
+		if (P.TrailSmoke != None)
+			P.TrailSmoke.Scale(BulletScale);
+		ShotScaled[i] = 1;
 	}
 }
 
@@ -898,6 +935,7 @@ defaultproperties
      MeatTex=Texture'AdventMod.Blood.BloodMeat'
      AlienMeatTex=Texture'AdventMod.Blood.AlienMeat'
      bGibs=True
+     BulletScale=0.550000
      GibOverkill=60
      MaxGibs=60
      GibSpeed=380.000000
