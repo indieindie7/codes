@@ -738,6 +738,14 @@ function Limp(Pawn P, vector Dir, vector Spot)
 	A = AdventPawn(P);
 	if (A == None)
 		return;
+	// only from an ordinary death: not mid-leap or scripted movement, not stuck in a wall
+	// (a hound dying as it jumps through a window crashed the game)
+	if (!RagdollSafe(A))
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: " $ A $ " not ragdolled: physics " $ A.Physics $ " state " $ A.GetStateName() $ " in a wall " $ InWall(A));
+		return;
+	}
 	Skel = RagdollSkeleton(A);
 	if (Skel == "")
 	{
@@ -749,7 +757,7 @@ function Limp(Pawn P, vector Dir, vector Spot)
 	if (!A.KIsRagdollAvailable())
 		return;
 	if (class'ModSettings'.default.bGoreLog)
-		class'ModSettings'.static.Note("gore: limp " $ A $ " had KParams " $ A.KParams $ class'ModPilot'.static.Eval2(KarmaParamsSkel(A.KParams) != None, " enabled " $ KarmaParamsSkel(A.KParams).KStartEnabled $ " drop " $ KarmaParamsSkel(A.KParams).KVelDropBelowThreshold $ " upright " $ KarmaParamsSkel(A.KParams).bKStayUpright $ " skel " $ KarmaParamsSkel(A.KParams).KSkeleton, ""));
+		class'ModSettings'.static.Note("gore: limp " $ A $ " physics " $ A.Physics $ " state " $ A.GetStateName() $ " had KParams " $ A.KParams $ class'ModPilot'.static.Eval2(KarmaParamsSkel(A.KParams) != None, " enabled " $ KarmaParamsSkel(A.KParams).KStartEnabled $ " drop " $ KarmaParamsSkel(A.KParams).KVelDropBelowThreshold $ " upright " $ KarmaParamsSkel(A.KParams).bKStayUpright $ " skel " $ KarmaParamsSkel(A.KParams).KSkeleton, ""));
 	if (KarmaParamsSkel(A.KParams) == None)
 		A.KParams = CorpseParams;
 	K = KarmaParamsSkel(A.KParams);
@@ -766,6 +774,24 @@ function Limp(Pawn P, vector Dir, vector Spot)
 	A.StopAnimating(true);
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: " $ A $ " went limp (" $ Skel $ "), physics " $ A.Physics);
+}
+
+function bool RagdollSafe(Pawn P)
+{
+	if (P.Physics != PHYS_Walking && P.Physics != PHYS_Falling && P.Physics != PHYS_RootMotion && P.Physics != PHYS_None)
+		return false;
+	if (P.Base != None && Pawn(P.Base) != None)
+		return false;
+	return !InWall(P);
+}
+
+// the body's middle inside solid geometry: short traces up and down from it both blocked
+function bool InWall(Pawn P)
+{
+	local vector Up;
+
+	Up = vect(0,0,1) * FMin(P.CollisionHeight * 0.5, 30);
+	return !FastTrace(P.Location + Up, P.Location) && !FastTrace(P.Location - Up, P.Location);
 }
 
 // the ragdoll skeleton (KarmaData\Advent.ka, listed in ModRagdollBones) whose every
@@ -1009,7 +1035,7 @@ defaultproperties
          bKDoubleTickRate=True
          bKStayUpright=False
          bKAllowRotate=False
-         bDestroyOnWorldPenetrate=True
+         bDestroyOnWorldPenetrate=False
          bDoSafetime=True
          KFriction=0.600000
          KImpactThreshold=500.000000

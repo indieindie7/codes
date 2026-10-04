@@ -425,6 +425,15 @@ function CorpseList()
 	Note("corpselist: " $ n $ " hostiles alive, player at " $ PC().Pawn.Location);
 }
 
+function Dogs()
+{
+	local Pawn P;
+
+	foreach AllActors(class'Pawn', P)
+		if (P.IsA('SeekerDog') || InStr(Caps(string(P.Mesh)), "HOUND") >= 0)
+			Note("dogs: " $ P $ " class " $ P.Class $ " mesh " $ P.Mesh $ " drawscale " $ P.DrawScale $ " 3d " $ P.DrawScale3D $ " prepivot " $ P.PrePivot $ " ragdoll " $ AdventPawn(P).RagdollOverride $ " kparams " $ P.KParams $ " health " $ P.Health $ " collision " $ P.CollisionRadius $ "/" $ P.CollisionHeight);
+}
+
 function GibList()
 {
 	local ModGib G;
@@ -670,6 +679,10 @@ function StartStep()
 		break;
 	case "WHERE":
 		Where();
+		break;
+	case "DOGS":
+		// every hound in the level: how it's drawn (ragdoll trouble hunting)
+		Dogs();
 		break;
 	case "BONETEST":
 		Note("bonetest: player at " $ PC().Pawn.Location $ " hips " $ PC().Pawn.GetBoneCoords('hips').Origin $ " nosuchbone " $ PC().Pawn.GetBoneCoords('nosuchbone').Origin $ " leftArm " $ PC().Pawn.GetBoneCoords('leftArm').Origin);
