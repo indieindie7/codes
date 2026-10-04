@@ -19,6 +19,8 @@ var config float DecapChance, LimbChance;
 var config int SeverDamage;        // the killing blow at least this much
 var config int SeverHits;          // corpse hits in one limb that take it off
 var config float SeverReach;       // how near a hit must be to a joint to count
+var config bool bStumps;           // a meat cap on the body where the part came off
+var name AboveName;                // a name from a string (SetPropertyText)
 
 var ModGore Gore;
 
@@ -28,6 +30,8 @@ struct Cut
 	var name Bone;
 	var string Parts;
 	var bool bHead;
+	var string Above;      // the bone the stump cap rides on: the first of these the mesh has
+	var float Cap;         // the cap's radius
 };
 var array<Cut> Cuts;
 
@@ -36,6 +40,7 @@ struct Severed
 	var Pawn P;
 	var name Bone;
 	var int Slot;
+	var ModStump Cap;
 };
 var array<Severed> Done;
 
@@ -140,6 +145,8 @@ function Sever(Pawn P, int c, vector Dir)
 	S.P = P;
 	S.Bone = Cuts[c].Bone;
 	S.Slot = c;
+	if (bStumps)
+		S.Cap = Stump(P, c, Spot, Kind, K);
 	Done[Done.Length] = S;
 	P.SetBoneScale(c, 0.0, Cuts[c].Bone);
 	// the piece (or pieces: an arm cut at the shoulder throws upper and lower arm)
@@ -177,6 +184,60 @@ function Sever(Pawn P, int c, vector Dir)
 		class'ModSettings'.static.Note("sever: " $ P $ " loses " $ Cuts[c].Bone $ " (" $ Cuts[c].Parts $ ", " $ n $ " pieces)");
 }
 
+// the meat cap where the part was: on the bone above the cut, at the cut
+function ModStump Stump(Pawn P, int c, vector Spot, int Kind, float K)
+{
+	local ModStump M;
+	local string List, One;
+	local int i;
+	local vector Missing, D, Rel;
+	local coords BC;
+
+	Missing = P.GetBoneCoords('AdventModNoSuchBone').Origin;
+	List = Cuts[c].Above;
+	while (List != "")
+	{
+		i = InStr(List, ",");
+		if (i < 0)
+		{
+			One = List;
+			List = "";
+		}
+		else
+		{
+			One = Left(List, i);
+			List = Mid(List, i + 1);
+		}
+		SetPropertyText("AboveName", One);
+		BC = P.GetBoneCoords(AboveName);
+		if (VSize(BC.Origin - Missing) > 0.01)
+			break;
+		One = "";
+	}
+	if (One == "")
+		return None;
+	M = Spawn(class'ModStump',,, Spot);
+	if (M == None)
+		return None;
+	M.SetDrawScale(Cuts[c].Cap * K);
+	if (Kind == 2)
+		M.Skins[0] = Gore.AlienMeatTex;
+	else
+		M.Skins[0] = Gore.MeatTex;
+	if (!P.AttachToBone(M, AboveName))
+	{
+		M.Destroy();
+		return None;
+	}
+	// where the cut is, in that bone's own axes
+	D = Spot - BC.Origin;
+	Rel.X = D Dot BC.XAxis;
+	Rel.Y = D Dot BC.YAxis;
+	Rel.Z = D Dot BC.ZAxis;
+	M.SetRelativeLocation(Rel);
+	return M;
+}
+
 // bones back for a pawn the game reuses (it comes back to life with its whole body)
 event Tick(float DeltaTime)
 {
@@ -186,14 +247,25 @@ event Tick(float DeltaTime)
 	{
 		if (Done[i].P == None || Done[i].P.bDeleteMe)
 		{
+			if (Done[i].Cap != None)
+				Done[i].Cap.Destroy();
 			Done.Remove(i, 1);
 			continue;
 		}
 		if (Done[i].P.Health > 0)
 		{
 			Done[i].P.SetBoneScale(Done[i].Slot, 1.0, Done[i].Bone);
+			if (Done[i].Cap != None)
+			{
+				Done[i].P.DetachFromBone(Done[i].Cap);
+				Done[i].Cap.Destroy();
+			}
 			Done.Remove(i, 1);
+			continue;
 		}
+		// a body blown apart or faded takes its caps with it
+		if (Done[i].Cap != None && Done[i].Cap.bHidden != Done[i].P.bHidden)
+			Done[i].Cap.bHidden = Done[i].P.bHidden;
 	}
 	for (i = Counts.Length - 1; i >= 0; i--)
 		if (Counts[i].P == None || Counts[i].P.bDeleteMe || Counts[i].P.Health > 0)
@@ -208,17 +280,18 @@ defaultproperties
      SeverDamage=20
      SeverHits=3
      SeverReach=40.000000
-     Cuts(0)=(Bone=head,Parts="head",bHead=True)
-     Cuts(1)=(Bone=leftArm,Parts="l_upperarm,l_lowerarm")
-     Cuts(2)=(Bone=leftForeArm,Parts="l_lowerarm")
-     Cuts(3)=(Bone=rightArm,Parts="r_upperarm,r_lowerarm")
-     Cuts(4)=(Bone=rightForeArm,Parts="r_lowerarm")
-     Cuts(5)=(Bone=leftUpLeg,Parts="l_upperleg,l_lowerleg")
-     Cuts(6)=(Bone=leftLeg,Parts="l_lowerleg")
-     Cuts(7)=(Bone=rightUpLeg,Parts="r_upperleg,r_lowerleg")
-     Cuts(8)=(Bone=rightLeg,Parts="r_lowerleg")
-     Cuts(9)=(Bone=LeftFrontArm,Parts="l_front_upper,l_front_lower")
-     Cuts(10)=(Bone=LeftFrontElbow,Parts="l_front_lower")
-     Cuts(11)=(Bone=RightFrontArm,Parts="r_front_upper,r_front_lower")
-     Cuts(12)=(Bone=RightFrontElbow,Parts="r_front_lower")
+     bStumps=True
+     Cuts(0)=(Bone=head,Parts="head",bHead=True,Above="Neck02,neck",Cap=6.5)
+     Cuts(1)=(Bone=leftArm,Parts="l_upperarm,l_lowerarm",Above="leftShoulder",Cap=5.5)
+     Cuts(2)=(Bone=leftForeArm,Parts="l_lowerarm",Above="leftArm",Cap=4.5)
+     Cuts(3)=(Bone=rightArm,Parts="r_upperarm,r_lowerarm",Above="rightShoulder",Cap=5.5)
+     Cuts(4)=(Bone=rightForeArm,Parts="r_lowerarm",Above="rightArm",Cap=4.5)
+     Cuts(5)=(Bone=leftUpLeg,Parts="l_upperleg,l_lowerleg",Above="hips",Cap=8.0)
+     Cuts(6)=(Bone=leftLeg,Parts="l_lowerleg",Above="leftUpLeg",Cap=6.0)
+     Cuts(7)=(Bone=rightUpLeg,Parts="r_upperleg,r_lowerleg",Above="hips",Cap=8.0)
+     Cuts(8)=(Bone=rightLeg,Parts="r_lowerleg",Above="rightUpLeg",Cap=6.0)
+     Cuts(9)=(Bone=LeftFrontArm,Parts="l_front_upper,l_front_lower",Above="LeftFrontShoulder",Cap=6.0)
+     Cuts(10)=(Bone=LeftFrontElbow,Parts="l_front_lower",Above="LeftFrontArm",Cap=5.0)
+     Cuts(11)=(Bone=RightFrontArm,Parts="r_front_upper,r_front_lower",Above="RightFrontShoulder",Cap=6.0)
+     Cuts(12)=(Bone=RightFrontElbow,Parts="r_front_lower",Above="RightFrontArm",Cap=5.0)
 }

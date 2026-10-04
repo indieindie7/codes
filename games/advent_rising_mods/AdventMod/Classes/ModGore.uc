@@ -55,6 +55,11 @@ var Material MeatTex, AlienMeatTex;
 
 var ModReact React;
 var ModSever Severer;              // decapitation and limb loss                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
+var config bool bBleedTrail;       // the badly wounded leave drops where they go
+var config float BleedClot;        // seconds a wound takes to stop dripping
+var config int CorpsePulpHits;     // shots into one corpse that pulp it into pieces (0: never)
+var config bool bScreenBlood;      // close kills splash the screen
+var config float ScreenBloodReach;
 var config float BulletScale;      // shots' trails and meshes drawn at this size (the game's are huge)
 var array<byte> ShotScaled;        // per Shots entry: its trail has been scaled
 
@@ -67,6 +72,19 @@ var float ShellScale;              // ...and the size those particles draw it at
 var array<Pawn> Dying;             // bodies waiting for their pool
 var array<float> DyingTime;
 var int Hits;
+struct Bleeder
+{
+	var Pawn P;
+	var float Rate;        // 0..1: how hard it bleeds
+	var float Next;        // seconds to the next drop
+};
+var array<Bleeder> Bleeders;
+struct Pulp
+{
+	var Pawn P;
+	var int Hits;
+};
+var array<Pulp> Pulps;
 var string LastGuns;                // bGoreLog
 var array<Actor> Seen;
 var array<Projectile> Shots;       // projectiles in flight: where they were and how fast,
@@ -207,9 +225,12 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	// drips under the hit
 	if (FRand() < 0.85 && Trace(HitL, HitN, HitLocation - vect(0,0,400), HitLocation, false) != None)
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
+	if (bBleedTrail && Victim.Health > Damage && !Victim.IsHumanControlled())
+		Bleed(Victim, Damage);
 	// a pool under a fresh body
 	if (Victim.Health <= 0 || Damage >= Victim.Health)
 	{
+		ScreenSplash(Victim.Location, BloodKind(Victim), 0.3 + FClamp(Damage / 150.0, 0, 0.4));
 		AddDying(Victim);
 		if (bGibs && WantsGib(Victim, Damage, DamageType))
 			Gib(Victim, Dir, Damage);
@@ -304,6 +325,7 @@ function Gib(Pawn P, vector Dir, int Damage)
 		return;
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: " $ P $ " comes apart (" $ T.default.Sets[Set].Name $ ", scale " $ K $ ")");
+	ScreenSplash(P.Location, Kind, 1.0);
 	Hide(P, true);
 	Gibbed[Gibbed.Length] = P;
 	GibbedTime[GibbedTime.Length] = Level.TimeSeconds;
@@ -795,6 +817,8 @@ function CorpseHit(Pawn P, vector Spot, vector Dir)
 		P.LifeSpan += 0.2;
 	if (Severer != None)
 		Severer.CorpseHit(P, Spot, Dir);
+	if (PulpHit(P, Dir))
+		return;
 	// no ragdolls in this release (no KarmaData): the body twitches instead
 	if (P.Physics == PHYS_KarmaRagdoll)
 		P.KAddImpulse(Dir * CorpseKick, Spot);
@@ -971,6 +995,8 @@ event Tick(float DeltaTime)
 		CheckGibbed();
 	}
 	TrackShots();
+	if (bBleedTrail)
+		BleedTrails(DeltaTime);
 	for (i = Dying.Length - 1; i >= 0; i--)
 	{
 		if (Dying[i] != None && !Dying[i].bDeleteMe && Level.TimeSeconds < DyingTime[i])
@@ -993,6 +1019,107 @@ event Tick(float DeltaTime)
 		Dying.Remove(i, 1);
 		DyingTime.Remove(i, 1);
 	}
+}
+
+// a wound that drips: the harder the hit against what the victim can take, the more
+function Bleed(Pawn P, int Damage)
+{
+	local int i;
+	local Bleeder B;
+	local float Add;
+
+	if (BloodKind(P) == 0)
+		return;
+	Add = Damage / (0.3 * FMax(P.default.Health, 100));
+	for (i = 0; i < Bleeders.Length; i++)
+		if (Bleeders[i].P == P)
+		{
+			Bleeders[i].Rate = FMin(Bleeders[i].Rate + Add, 1.0);
+			return;
+		}
+	if (Bleeders.Length >= 16)
+		return;
+	B.P = P;
+	B.Rate = FMin(Add, 1.0);
+	B.Next = 0.3;
+	Bleeders[Bleeders.Length] = B;
+}
+
+// drops under the wounded, fewer as the wound clots; none from the dead (they pool)
+function BleedTrails(float DeltaTime)
+{
+	local int i;
+	local Pawn P;
+	local vector HitL, HitN;
+
+	for (i = Bleeders.Length - 1; i >= 0; i--)
+	{
+		P = Bleeders[i].P;
+		Bleeders[i].Rate -= DeltaTime / BleedClot;
+		if (P == None || P.bDeleteMe || P.Health <= 0 || P.bHidden || Bleeders[i].Rate <= 0.05)
+		{
+			Bleeders.Remove(i, 1);
+			continue;
+		}
+		Bleeders[i].Next -= DeltaTime;
+		if (Bleeders[i].Next > 0)
+			continue;
+		// a drop every 0.25 s at the worst, every 1.5 s when nearly clotted
+		Bleeders[i].Next = 0.25 + 1.25 * (1 - Bleeders[i].Rate) + 0.2 * FRand();
+		if (Trace(HitL, HitN, P.Location - vect(0,0,1) * (P.CollisionHeight + 120), P.Location, false) != None)
+			Mark(SplatTex(P), HitL + VRand() * vect(1,1,0) * 14, HitN, vect(0,0,0), DecalScale * (0.14 + 0.16 * Bleeders[i].Rate));
+	}
+}
+
+// shots into a corpse add up: CorpsePulpHits of them and it comes apart
+function bool PulpHit(Pawn P, vector Dir)
+{
+	local int i;
+	local Pulp N;
+
+	if (CorpsePulpHits <= 0 || !bGibs || P.bHidden || GibSet(P) < 0)
+		return false;
+	for (i = Pulps.Length - 1; i >= 0; i--)
+		if (Pulps[i].P == None || Pulps[i].P.bDeleteMe || Pulps[i].P.Health > 0)
+			Pulps.Remove(i, 1);
+	for (i = 0; i < Pulps.Length; i++)
+		if (Pulps[i].P == P)
+			break;
+	if (i == Pulps.Length)
+	{
+		N.P = P;
+		Pulps[Pulps.Length] = N;
+	}
+	Pulps[i].Hits++;
+	if (Pulps[i].Hits < CorpsePulpHits)
+		return false;
+	Pulps.Remove(i, 1);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: " $ P $ " pulped by shots");
+	Gib(P, Dir, 80);
+	return true;
+}
+
+// blood on the screen from something bloody close to the player (ModScreenBlood)
+function ScreenSplash(vector Spot, int Kind, float Strength)
+{
+	local PlayerController C;
+	local ModScreenBlood B;
+	local float D;
+
+	B = class'ModScreenBlood'.default.Live;
+	if (!bScreenBlood || !bBlood || Kind == 0 || B == None)
+		return;
+	C = Level.GetLocalPlayerController();
+	if (C == None || C.Pawn == None)
+		return;
+	D = VSize(Spot - C.Pawn.Location);
+	if (D > ScreenBloodReach)
+		return;
+	Strength *= 1 - 0.6 * D / ScreenBloodReach;
+	B.Splash(KindSplat(Kind), 1 + int(Strength * 4), Strength);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: screen blood, strength " $ Strength $ " from " $ int(D) $ " away");
 }
 
 function ModBloodDecal AddHole(Material T, vector Spot, vector N, float Size)
@@ -1107,6 +1234,11 @@ defaultproperties
      bCasings=True
      MaxClutter=150
      bCorpseShots=True
+     bBleedTrail=True
+     BleedClot=14.000000
+     CorpsePulpHits=10
+     bScreenBlood=True
+     ScreenBloodReach=260.000000
      CorpseKick=8000.000000
      Begin Object Class=KarmaParamsSkel Name=CorpseRagdoll
          KConvulseSpacing=(Max=2.200000)
