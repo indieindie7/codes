@@ -23,7 +23,9 @@ tilt} (sit a hat on the skull already in the mesh), "faces": "all"|"most"|"any" 
 a donor triangle must be in the region; "most" overlaps the seam), "extend": e (stretch the piece
 toward its parent joint by e x bone length: a shin guard reaching the knee), "bridge": f (keep
 the base's own mesh over the first f of each region bone: joint geometry under the armour).
-The result is compacted (loose points dropped) and its open-edge count printed.
+Recipe-level "palette_from": [textures] (+ "palette_skip": {texture: [[x0,y0,x1,y1] in 0..1]})
+and per swap "dye": [material slots] repaint those donor textures into the base's palette
+(dye.py), so all parts share one colour language. The result is compacted (loose points dropped) and its open-edge count printed.
 
 For each swap: the base's triangles whose corners all belong to those bones (strongest weight)
 are removed; the donor's triangles whose corners all belong to them are added, carried from the
@@ -239,6 +241,13 @@ def kitbash(recipe_path):
     bW = world_matrices(base["bones"])
     bstrong = strongest(base)
     textures = list(R.get("base_textures", []))
+    pal = None
+    if "palette_from" in R:
+        # one palette for the whole suit (dye.py): sampled from the base's armour textures
+        import dye
+        pal = dye.palette_from([path(p) for p in R["palette_from"]],
+                               {path(k): v for k, v in R.get("palette_skip", {}).items()})
+        print("palette:", {k: tuple(round(x, 2) for x in v) for k, v in pal.items() if v})
     mats = list(base["mats"])
 
     pts = list(map(tuple, base["pts"]))
@@ -346,7 +355,14 @@ def kitbash(recipe_path):
             mslot[dm] = len(mats)
             mats.append(f"{os.path.splitext(os.path.basename(sw['donor']))[0]}_{d['mats'][dm] or dm}")
             tex = sw.get("textures", [])
-            textures.append(path(tex[dm]) if dm < len(tex) else "")
+            tpath = path(tex[dm]) if dm < len(tex) else ""
+            if tpath and pal and dm in sw.get("dye", []):
+                import dye
+                dyed = os.path.join(os.path.dirname(path(R["out"])), "dyed",
+                                    os.path.splitext(os.path.basename(tpath))[0] + "_dyed.tga")
+                os.makedirs(os.path.dirname(dyed), exist_ok=True)
+                tpath = dye.dye(tpath, pal, dyed, sw.get("dye_strength", 1.0))
+            textures.append(tpath)
         wmap = {}
         for a, b, c, m in keep:
             new = []
