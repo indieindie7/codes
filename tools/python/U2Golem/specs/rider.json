@@ -1,0 +1,17 @@
+{
+ "texture_size": 512,
+ "palette": {"plate": [0.30, 0.36, 0.29], "trim": [0.20, 0.24, 0.19],
+             "cloth": [0.30, 0.22, 0.15], "cloth_trim": [0.62, 0.62, 0.64]},
+ "plates": [
+  {"name": "chest_upper", "bone": "Merc Spine2", "rows": [[0.95, -60, 60], [0.45, -78, 78], [0.0, -48, 48]], "gap": 1.4, "thickness": 1.6, "cols": 12, "reach": 30},
+  {"name": "chest_seg1", "bone": "Merc Spine1", "rows": [[1.05, -40, 40], [0.65, -34, 34]], "gap": 1.8, "thickness": 1.5, "cols": 8, "reach": 30},
+  {"name": "chest_seg2", "bone": "Merc Spine1", "rows": [[0.68, -32, 32], [0.3, -26, 26]], "gap": 1.3, "thickness": 1.5, "cols": 8, "reach": 30},
+  {"name": "belt", "bone": "Merc Pelvis", "material": "cloth", "rows": [[0.8, -180, 180], [0.45, -180, 180]], "gap": 0.6, "thickness": 0.9, "cols": 28, "reach": 30},
+  {"name": "shoulder_cap", "bone": "Merc L UpperArm", "rows": [[-0.22, -40, 220], [0.08, -70, 250], [0.3, -55, 235]], "gap": 1.4, "thickness": 1.6, "cols": 12},
+  {"name": "forearm_fin", "bone": "Merc L Forearm", "mirror": true, "rows": [[0.22, 120, 225], [0.85, 115, 230], [1.0, 175, 175]], "gap": 1.0, "thickness": 1.3, "cols": 8, "ridges": 1, "ridge_height": 1.2},
+  {"name": "thigh_plate", "bone": "Merc L Thigh", "mirror": true, "rows": [[0.45, -40, 30], [0.92, -34, 26]], "gap": 1.1, "thickness": 1.3, "cols": 8, "reach": 25},
+  {"name": "knee_pad", "bone": "Merc L Calf", "mirror": true, "rows": [[-0.13, -50, 50], [0.0, -62, 62], [0.13, -50, 50]], "gap": 1.8, "thickness": 1.6, "cols": 10, "ridges": 1, "ridge_height": 0.8},
+  {"name": "greave", "bone": "Merc L Calf", "mirror": true, "rows": [[0.3, -68, 68], [0.95, -76, 76]], "gap": 1.0, "thickness": 1.2, "cols": 10},
+  {"name": "toe_cap", "bone": "Merc L Foot", "mirror": true, "rows": [[0.35, -105, 105], [1.08, -95, 95]], "gap": 0.8, "thickness": 1.2, "cols": 10, "reach": 12}
+ ]
+}
