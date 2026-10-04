@@ -16,7 +16,9 @@ silhouette are not sampled unless they belong to a dark area thicker than a line
 only paints surfaces that face it by at least `minface` (cosine). The side views only assist where
 front or back already painted.
 A vertex takes a weighted mix of the views that see it: weight = max(0, normal . to_camera)^2, zero
-if a ray toward that camera hits the mesh first (occluded). Vertices no view sees take the nearest
+if a ray toward that camera hits the mesh first (occluded). A second attribute, "Trust", records how squarely the front/back drawings saw each vertex (1) versus
+side views and guesses (0); blend_paint.py uses it to mix this paint with a generated one.
+Vertices no view sees take the nearest
 painted vertices' colour, with height counted 4x (they stay on the same band of the limb). Writes <out>.blend, <out>.glb and <out>.png (front, 3/4, side, back).
 """
 import math, os, sys
@@ -145,6 +147,7 @@ for view, path, flipped in jobs:
         # along the surface. Thin parts (hands, antennae) are then fully painted by their own colours and the
         # side drawing, where they overlap the body, does not repaint them (see the thickness test below).
         spread_done = True
+        trust = np.clip((wsum - 0.15) / 0.35, 0, 1)        # how squarely front/back saw each vertex, before any guessing
         nb = [[] for _ in P]
         elen = []
         for e_ in me.edges:
@@ -228,10 +231,16 @@ if len(todo) and len(done):
         col[i] = (np.array([src[done[j]] for _, j, _ in near]) * wts[:, None]).sum(0) / wts.sum()
 col = np.nan_to_num(col, nan=0.5)
 
+if not spread_done:
+    trust = np.clip((wsum - 0.15) / 0.35, 0, 1)
+tr = me.color_attributes.new("Trust", "FLOAT_COLOR", "POINT")     # 1 = painted straight from front/back, 0 = side/guessed
+for i, t_ in enumerate(trust):
+    tr.data[i].color = (t_, t_, t_, 1.0)
 attr = me.color_attributes.new("Col", "FLOAT_COLOR", "POINT")
 lin = np.where(col <= 0.04045, col / 12.92, ((col + 0.055) / 1.055) ** 2.4)   # sRGB -> linear
 for i, c in enumerate(lin):
     attr.data[i].color = (*c, 1.0)
+me.color_attributes.active_color = attr
 mat = bpy.data.materials.new("Projected")
 mat.use_nodes = True
 nt = mat.node_tree

@@ -1,7 +1,7 @@
 """Game mesh from an AI high-poly character: shape-driven low-poly per body section, clean UVs, baked maps.
 
 Run:  blender -b <painted_high.blend> --python retopo_bake.py -- <out_prefix> [method=tube|decimate]
-      [size=2048] [detail=1.0] [tris=3000] [ao=0.85] [samples=32] [low=<lowpoly.glb>] [high=<textured.glb>] [cage=]
+      [size=2048] [detail=1.0] [tris=3000] [ao=0.85] [samples=32] [low=<lowpoly.glb>] [high=<textured.glb>] [cage=] [extra=Trust] [albedo=<png>]
 <painted_high.blend> is project_views.py output: one A-pose mesh (front = -Y, up = +Z) with the
 "Col" vertex colour. Use the true high-poly (img2shape_mv.py faces=0), not a reduced one.
 
@@ -501,8 +501,20 @@ hi.select_set(True)
 low.select_set(True)
 bpy.context.view_layer.objects.active = low
 maps = {}
-for name, btype, samples, colorspace in (("albedo", "EMIT", 4, "sRGB"), ("ao", "AO", SAMPLES, "Non-Color"),
-                                         ("normal", "NORMAL", 4, "Non-Color")):
+jobs = [("albedo", "EMIT", 4, "sRGB", None), ("ao", "AO", SAMPLES, "Non-Color", None),
+        ("normal", "NORMAL", 4, "Non-Color", None)]
+# extra=<attr>[,<attr>]: also bake these vertex-colour attributes of the high-poly (e.g. Trust) as data maps
+for ex in [x for x in o.get("extra", "").split(",") if x]:
+    if me.color_attributes.get(ex):
+        jobs.append((ex.lower(), "EMIT", 4, "Non-Color", ex))
+ALBEDO = o.get("albedo")          # albedo=<png>: use this (already in the low-poly's UVs) instead of baking colour
+for name, btype, samples, colorspace, attr_name in jobs:
+    if name == "albedo" and ALBEDO:
+        img = bpy.data.images.load(os.path.abspath(ALBEDO))
+        maps[name] = img
+        continue
+    if isinstance(vc, bpy.types.ShaderNodeVertexColor):
+        vc.layer_name = attr_name or "Col"
     img = bpy.data.images.new(os.path.basename(out) + "_" + name, SIZE, SIZE, alpha=False)
     img.colorspace_settings.name = colorspace
     img.filepath_raw = f"{out}_{name}.png"
@@ -515,7 +527,9 @@ for name, btype, samples, colorspace in (("albedo", "EMIT", 4, "sRGB"), ("ao", "
     print("BAKED", img.filepath_raw)
 
 # diffuse = albedo x AO (in display space: the look an unlit/vertex-lit engine shows)
-alb = np.array(maps["albedo"].pixels[:]).reshape(SIZE, SIZE, 4)
+alb = np.array(maps["albedo"].pixels[:]).reshape(SIZE, SIZE, -1)
+if alb.shape[2] == 3:
+    alb = np.concatenate([alb, np.ones((SIZE, SIZE, 1))], 2)
 ao = np.array(maps["ao"].pixels[:]).reshape(SIZE, SIZE, 4)[:, :, :1]
 dif = alb.copy()
 dif[:, :, :3] = alb[:, :, :3] * (1 - AO_STRENGTH + AO_STRENGTH * ao)
