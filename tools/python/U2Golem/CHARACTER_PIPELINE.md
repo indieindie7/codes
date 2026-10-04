@@ -17,6 +17,26 @@ All scripts named here are in this folder unless a path is given.
 | 7 | Low-poly + bakes | `retopo_bake.py method=decimate tris=3000` (colour, AO, normal; diffuse = colour x AO) | 1 min | no | works |
 | 8 | Rig onto the game skeleton, export, import | `fit_pieces.py` / U2Golem importer | - | no | NOT DONE for this pipeline yet |
 
+## Update, evening of 2026-10-04: the route for a character with ONE concept image
+
+Decided with the user on Dalton (peacekeeper concept `design-refs\dalton_peacekeeper\dalton_p1_s23.png`):
+**skip stage 2 and StdGEN entirely.** StdGEN redraws the character onto its own body template and lost the
+sash, the big pauldron and the face. Sana "five-view sheets" from the text prompt are new characters, not
+turns of the concept.
+
+    img2shape.py <concept.png> high.glb full octree=384 faces=0        # 517k faces, 3 min, 6 GB
+    paint_mesh.py high.glb paint.glb high_input.png faces=40000        # the concept as the only reference, 3 min
+    turnaround.py paint.glb turn angles=0,45,90,135,180,225,270,315    # reference views from the model (CPU)
+    project_views.py high.glb painted front=high_input.png subdiv=0    # reference colours + Trust
+    retopo_bake.py (blend painted) A method=decimate tris=3000 extra=Trust cpu=1
+    retopo_bake.py A_hp high=paint.glb low=A.glb cage=0.02 cpu=1
+    blend_paint.py A_albedo.png A_trust.png A_hp_albedo.png match_in.png mix=0
+    retopo_bake.py (blend painted) A_match low=A.glb cage=0.02 albedo=match_in.png cpu=1
+
+Result: `Documents\U2Golem\dalton_pk\direct\dalton_c_A_match.*`. Caveats: the model keeps the concept's
+pose (relaxed, arms down, head tilted), not an A-pose; an A-pose sheet "without heavy hallucination" is
+still an open wish. `cpu=1` makes every preview render on the CPU, so the bakes can run while a game has the GPU.
+
 ## Reference views (stage 2)
 
 Wanted set, agreed with the user: **front (0), 45, side (90), 135, back (180)**, plus the mirrored
