@@ -260,9 +260,20 @@ event Tick(float DeltaTime)
 	{
 		P = Deaths[i].P;
 		Deaths[i].T += DeltaTime;
-		if (P == None || P.bDeleteMe || P.bHidden || P.Physics == PHYS_KarmaRagdoll || (Deaths[i].T > 0.6 && Deaths[i].AnimT < 0) || P.Health > 0 && Deaths[i].T > 0.2)
+		if (P == None || P.bDeleteMe || P.bHidden || P.Physics == PHYS_KarmaRagdoll || (Deaths[i].T > 0.6 && Deaths[i].AnimT < 0 && Deaths[i].AnimT > -50) || P.Health > 0 && Deaths[i].T > 0.2)
 		{
 			Deaths.Remove(i, 1);
+			continue;
+		}
+		if (Deaths[i].AnimT < -50)
+		{
+			// testing: the pose a while after the clip ended
+			Deaths[i].AnimT -= DeltaTime;
+			if (Deaths[i].AnimT < -103)
+			{
+				class'ModSettings'.static.Note("react: 3 s after the clip " $ P $ " hips over floor " $ OverFloor(P, 'hips') $ " head " $ OverFloor(P, 'head'));
+				Deaths.Remove(i, 1);
+			}
 			continue;
 		}
 		if (Deaths[i].AnimT >= 0)
@@ -286,7 +297,11 @@ event Tick(float DeltaTime)
 			{
 				// the clip plays out; the body stays in its last pose
 				if (Deaths[i].AnimT >= Deaths[i].Length + 0.5)
-					Deaths.Remove(i, 1);
+				{
+					if (class'ModSettings'.default.bGoreLog)
+						class'ModSettings'.static.Note("react: clip over for " $ P $ ", hips over floor " $ OverFloor(P, 'hips') $ " animating " $ P.IsAnimating());
+					Deaths[i].AnimT = -100;
+				}
 				continue;
 			}
 		}
