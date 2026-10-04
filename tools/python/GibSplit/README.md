@@ -6,7 +6,7 @@ exported by `games/advent_rising_mods/tools/ukx_mesh.py`), works on any `.psk` w
 skeleton.
 
 ```
-py -3.13 gibsplit.py <mesh.psk> <out dir> [--space zup|mesh] [--meat NAME]
+py -3.13 gibsplit.py <mesh.psk> <out dir> [--space zup|mesh] [--meat NAME] [--flipwinding]
 py -3.13 preview.py <out dir> <picture.png>      # exploded view, caps in red
 ```
 
@@ -24,3 +24,16 @@ py -3.13 preview.py <out dir> <picture.png>      # exploded view, caps in red
   spawn bone, pivot (in the original mesh space), size, faces, caps and a mass guess.
 - **Mass guess:** closed volume x a density calibrated so Advent's marine totals ~90 kg.
   Meaningless for non-characters (ships, props) or meshes at another scale.
+
+## Importing into UE2 (tested in Advent Rising, 2026-10-03)
+
+- **Import line:** `#exec NEW StaticMesh FILE=Gibs\x.ase NAME=x GROUP=Gibs`. Advent's build
+  silently ignores `#exec STATICMESH IMPORT`. The Multi/Sub-Object material imports fine
+  (two sections: skin, meat).
+- **Mirroring:** UE2's ASE import mirrors an axis, so the parts come out inside out
+  (back-face culled, dark shards). Use `--flipwinding` (reverses A B C -> A C B on faces and
+  texture faces).
+- **Pivots:** `pivot_mesh` is in the .psk's own space. For Advent: Z up from the feet
+  (up = -y), and the set rotated by the victim's yaw minus 16384.
+- **Skins:** slot 0 = the character's diffuse texture (Advent: the skin shader's Diffuse),
+  slot 1 = a meat texture.

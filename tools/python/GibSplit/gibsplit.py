@@ -1,7 +1,7 @@
 """Cut a skinned character (.psk) into gib parts: one static mesh (.ase) per body part, each cut
 closed with a flat "meat" cap, plus a manifest (part, source bone, size, mass guess).
 
-Usage:  py -3.13 gibsplit.py <mesh.psk> <out dir> [--space mesh|zup] [--meat NAME]
+Usage:  py -3.13 gibsplit.py <mesh.psk> <out dir> [--space mesh|zup] [--meat NAME] [--flipwinding]
 
 How a part is chosen: every point goes to its strongest bone; from that bone we walk up the
 skeleton to the first bone that starts a part (RULES, by name). Triangles go to the part most of
@@ -147,7 +147,7 @@ def write_ase(path, name, verts, faces, tverts, tfaces, mats):
 
 
 # ---- the split -----------------------------------------------------------------------------
-def split(psk, outdir, space="zup", meat="meat"):
+def split(psk, outdir, space="zup", meat="meat", flip=False):
     pts, wedges, faces, mats, bones, weights = read_psk(psk)
     mesh = os.path.splitext(os.path.basename(psk))[0]
     os.makedirs(outdir, exist_ok=True)
@@ -230,6 +230,9 @@ def split(psk, outdir, space="zup", meat="meat"):
         hi = [max(p[k] for p in verts) for k in range(3)]
         mass = abs(vol) * UNIT_M ** 3 * DENSITY
         name = f"{mesh}_{part}"
+        if flip:   # for importers that mirror an axis (Advent Rising, Unreal II): reverse the winding
+            out_faces = [(a, c, b, m) for a, b, c, m in out_faces]
+            tfaces = [(a, c, b) for a, b, c in tfaces]
         write_ase(os.path.join(outdir, name + ".ase"), name, verts, out_faces, tverts, tfaces, mats + [meat])
         manifest.append(dict(part=part, file=name + ".ase", bone=part_root_bone(bones, bparts, part),
                              pivot_mesh=[round(x, 3) for x in centre], size=[round(h - l, 2) for l, h in zip(lo, hi)],
@@ -243,5 +246,5 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     space = args[args.index("--space") + 1] if "--space" in args else "zup"
     meat = args[args.index("--meat") + 1] if "--meat" in args else "meat"
-    for p in split(args[0], args[1], space, meat):
+    for p in split(args[0], args[1], space, meat, "--flipwinding" in args):
         print(f"{p['part']:18s} bone {p['bone']:18s} faces {p['faces']:5d} caps {p['caps']} size {p['size']} mass {p['mass_kg']} kg")
