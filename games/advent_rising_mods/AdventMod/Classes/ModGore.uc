@@ -32,7 +32,7 @@ var config bool bCasings;          // the game's shell particles become casings 
 var config int MaxClutter;
 var config bool bCorpseShots;      // corpses bleed and twitch when shot
 var config float CorpseKick;       // the push a shot gives a ragdoll
-var config array<string> NoRagdoll; // skeletons not used (seekerhound: hounds crashed the game going limp in level03sectionb, cause not found yet)
+var config bool bHoundRagdolls;    // off: hounds crash the game going limp (levels 03 b and c), cause not found yet. (A config array of skeleton names came up empty in game, and the hounds went limp.)
 var KarmaParamsSkel CorpseParams;  // ragdoll settings for corpses the level gave none (a subobject below, so saves can refer to it)
 var array<Pawn> Corpses;
 var float CorpseScan;
@@ -888,14 +888,11 @@ function string RagdollSkeleton(AdventPawn A)
 	return "";
 }
 
-// "" for a skeleton switched off in NoRagdoll
+// "" for a skeleton switched off
 function string Allowed(string Skel)
 {
-	local int i;
-
-	for (i = 0; i < NoRagdoll.Length; i++)
-		if (NoRagdoll[i] ~= Skel)
-			return "";
+	if (!bHoundRagdolls && Skel ~= "seekerhound")
+		return "";
 	return Skel;
 }
 
@@ -1110,7 +1107,6 @@ defaultproperties
      bCasings=True
      MaxClutter=150
      bCorpseShots=True
-     NoRagdoll(0)="seekerhound"
      CorpseKick=8000.000000
      Begin Object Class=KarmaParamsSkel Name=CorpseRagdoll
          KConvulseSpacing=(Max=2.200000)
