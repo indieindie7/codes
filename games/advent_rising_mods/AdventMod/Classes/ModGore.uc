@@ -32,6 +32,7 @@ var config bool bCasings;          // the game's shell particles become casings 
 var config int MaxClutter;
 var config bool bCorpseShots;      // corpses bleed and twitch when shot
 var config float CorpseKick;       // the push a shot gives a ragdoll
+var config array<string> NoRagdoll; // skeletons not used (seekerhound: hounds crashed the game going limp in level03sectionb, cause not found yet)
 var KarmaParamsSkel CorpseParams;  // ragdoll settings for corpses the level gave none (a subobject below, so saves can refer to it)
 var array<Pawn> Corpses;
 var float CorpseScan;
@@ -806,11 +807,22 @@ function string RagdollSkeleton(AdventPawn A)
 	T = class'ModRagdollBones';
 	for (i = 0; i < T.default.Skeletons.Length; i++)
 		if (T.default.Skeletons[i].Name ~= A.RagdollOverride && FitsSkeleton(A, i))
-			return T.default.Skeletons[i].Name;
+			return Allowed(T.default.Skeletons[i].Name);
 	for (i = 0; i < T.default.Skeletons.Length; i++)
 		if (!(T.default.Skeletons[i].Name ~= A.RagdollOverride) && FitsSkeleton(A, i))
-			return T.default.Skeletons[i].Name;
+			return Allowed(T.default.Skeletons[i].Name);
 	return "";
+}
+
+// "" for a skeleton switched off in NoRagdoll
+function string Allowed(string Skel)
+{
+	local int i;
+
+	for (i = 0; i < NoRagdoll.Length; i++)
+		if (NoRagdoll[i] ~= Skel)
+			return "";
+	return Skel;
 }
 
 // a bone the mesh doesn't have comes back where the root is, as a made-up name does
@@ -1022,6 +1034,7 @@ defaultproperties
      bCasings=True
      MaxClutter=150
      bCorpseShots=True
+     NoRagdoll(0)="seekerhound"
      CorpseKick=8000.000000
      Begin Object Class=KarmaParamsSkel Name=CorpseRagdoll
          KConvulseSpacing=(Max=2.200000)
