@@ -33,6 +33,14 @@ var config vector TreeSpot[8];     // X=0,Y=0 = unused
 var config float TreeSize[8];
 var config int TreeLook[8];        // which tree picture (0-2)
 
+// kit-bashed scenery from other levels' static meshes, one per line:
+//   "Package.Group.Name X Y Yaw Scale Lift CX CY MinZ"
+// X,Y = where the mesh's centre goes (Yaw in degrees); it's stood on whatever is
+// straight below (land, or TutA's sea surface) by its lowest point, then lifted
+// by Lift. CX CY MinZ = the mesh's bounds centre and bottom, in its own units
+// (tools\mesh_bounds.py; tools\make_props.py writes these lines).
+var config string Props[64];
+
 var bool bRebuild;
 var array<Actor> Made;
 var Texture TreeTex[3];
@@ -222,7 +230,52 @@ function Build()
 			Made[Made.Length] = S;
 		}
 	}
+	for (i = 0; i < ArrayCount(Props); i++)
+		if (Props[i] != "")
+			PlaceProp(Props[i]);
 	Log("Cards: built "$Made.Length$" things on "$MapName());
+}
+
+// the n-th space separated word of S
+function string Word(string S, int n)
+{
+	local int i;
+
+	for (i = 0; i < n; i++)
+	{
+		if (InStr(S, " ") < 0)
+			return "";
+		S = Mid(S, InStr(S, " ") + 1);
+	}
+	if (InStr(S, " ") >= 0)
+		S = Left(S, InStr(S, " "));
+	return S;
+}
+
+function PlaceProp(string Line)
+{
+	local vector P, C, HitL, HitN;
+	local rotator R;
+	local float Scale;
+	local CardMesh M;
+
+	P.X = float(Word(Line, 1));
+	P.Y = float(Word(Line, 2));
+	R.Yaw = int(float(Word(Line, 3)) * 65536.0 / 360.0);
+	Scale = float(Word(Line, 4));
+	C.X = float(Word(Line, 6));
+	C.Y = float(Word(Line, 7));
+	if (!Ground(P, HitL, HitN))
+	{
+		Log("Cards: no ground under "$Line);
+		return;
+	}
+	P.Z = HitL.Z - float(Word(Line, 8)) * Scale + float(Word(Line, 5));
+	P -= (C * Scale) >> R;
+	M = Spawn(class'CardMesh',,, P, R);
+	if (M != None && M.Show(Word(Line, 0), Scale))
+		Made[Made.Length] = M;
+	Log("Cards: prop "$Word(Line, 0)$" at "$P$" ground "$HitL.Z);
 }
 
 defaultproperties

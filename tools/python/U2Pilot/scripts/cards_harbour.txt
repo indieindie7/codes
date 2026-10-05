@@ -1,0 +1,34 @@
+# cards_harbour: U2AvalonCards kit-bash harbour from the sea window, from the air and from the shore
+background
+map TutA?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+console hub face 315
+turn 0 -22 0.3
+wait 0.6
+shot
+console hub face 300
+turn 0 -22 0.3
+wait 0.6
+shot
+console ghost
+console hub tp 0 0 1500
+console hub face 315
+turn 0 -24 0.3
+wait 1
+shot
+console hub tp 2500 -2500 -3000
+console hub face 315
+turn 0 -8 0.3
+wait 1
+shot
+console hub tp 11000 -1000 -2500
+console hub face 250
+turn 0 -10 0.3
+wait 1
+shot
+quit
