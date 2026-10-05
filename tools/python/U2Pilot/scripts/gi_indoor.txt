@@ -1,0 +1,18 @@
+# gi_indoor: the covered hall right of the M08A1 start (orange lamp strips, grated floor, dark walls) for
+# global-illumination comparisons (U2Shaders.ini gi= / gifx=): one view, then a 30-degree turn (cache check)
+background
+map M08A1
+waitcontrol 180
+wait 3
+console god
+turn 90 -5 0.4
+wait 1.5
+shotp
+wait 0.5
+shotp
+wait 1
+turn 30 0 0.4
+wait 1
+shotp
+wait 1
+quit
