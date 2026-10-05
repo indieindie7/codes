@@ -1,0 +1,26 @@
+# cards_windows (tuta_windows + U2AvalonCards): in-game views out of the Avalon command-room windows (for concept paint-overs): walk to the
+# long window band, look out level and a little down, then the side window and the skylight. Shots every 2 s during the opening cutscene (the dropship).
+background
+map TutA?Mutator=U2AvalonCards.AvalonCards
+shots 2
+waitcontrol 240
+shots 0
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+shotp
+turn 0 -12 0.3
+wait 0.6
+shotp
+turn -35 12 0.4
+wait 0.6
+shotp
+turn 70 0 0.6
+wait 0.6
+shotp
+turn 0 55 0.5
+wait 0.6
+shotp
+quit

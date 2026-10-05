@@ -1,0 +1,32 @@
+# cards_look: views of the U2AvalonCards dressing on TutA: where the command-room window looks, then from
+# outside: the pad + dropship up close, the rig from the shore, the island from above the sea.
+background
+map TutA?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+dump PlayerController Rotation Location
+console ghost
+console hub tp -8600 5100 1600
+console hub face 180
+wait 1
+shot
+console hub tp -2000 -1500 0
+console hub face 340
+wait 1
+shot
+console hub tp 2000 -3000 -3800
+console hub face 0
+wait 1
+shot
+console hub tp 9000 9000 2500
+console hub face 225
+wait 1
+shot
+console hub face 270
+wait 1
+shot
+quit

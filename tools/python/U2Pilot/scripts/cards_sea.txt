@@ -1,0 +1,24 @@
+# cards_sea: the east (sea) window and the pad close up, for U2AvalonCards
+background
+map TutA?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+console hub face 315
+wait 0.6
+shot
+console hub face 315
+wait 0.6
+shot
+console hub face 300
+wait 0.6
+shot
+console ghost
+console hub tp -8600 5100 1600
+console hub face 180
+wait 1
+shot
+quit

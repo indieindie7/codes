@@ -1,0 +1,6 @@
+# cards_survey: load TutA with U2AvalonCards (bSurvey=True in System\U2AvalonCards.ini) to log the height /
+# water grid round the tower and the sun light ("Cards: grid" lines in the log).
+background
+map TutA?Mutator=U2AvalonCards.AvalonCards
+wait 20
+quit

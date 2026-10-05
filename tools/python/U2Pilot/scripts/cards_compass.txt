@@ -1,0 +1,38 @@
+# cards_compass: from the command-room window spot, shots facing 0,45..315 degrees (which way the windows look)
+# long window band, look out level and a little down, then the side window and the skylight. Shots every 2 s during the opening cutscene (the dropship).
+background
+map TutA?Mutator=U2AvalonCards.AvalonCards
+shots 2
+waitcontrol 240
+shots 0
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+dump Pawn Location Rotation
+console hub face 0
+wait 0.6
+shot
+console hub face 45
+wait 0.6
+shot
+console hub face 90
+wait 0.6
+shot
+console hub face 135
+wait 0.6
+shot
+console hub face 180
+wait 0.6
+shot
+console hub face 225
+wait 0.6
+shot
+console hub face 270
+wait 0.6
+shot
+console hub face 315
+wait 0.6
+shot
+quit
