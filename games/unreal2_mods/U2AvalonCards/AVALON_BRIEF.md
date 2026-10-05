@@ -19,8 +19,8 @@ being sidelined; the frontier is exactly the place the real powers have sideline
 and the player, feel parked at the edge of someone else's game.
 
 ## Premise
-Avalon is a company world. A mining corporation (working name **Izanagi**, whose Na Koja Abad kit we
-reuse) pulls ore and oil from the sea floor here. The Terran Colonial Authority rents one old tower on the
+Avalon is a company world. **Liandri** (the Liandri Mining Corporation of Unreal/UT; user's pick, 2026-10-05) pulls ore and oil from
+the sea floor here. Its plant is kit-bashed from other levels' meshes (Na Koja Abad, Waterfront, Avalon's ocean base). The Terran Colonial Authority rents one old tower on the
 company's island as its sector office. The company supplies the landing rights, the power and the water;
 the Authority supplies "the law".
 
@@ -75,7 +75,6 @@ lifting off the harbour pad, the dead rig beyond. Hawkins' room behind you is di
 - Cut anything that has no line on this page.
 
 ## Open questions (for the user)
-- Company name: reuse Izanagi (fits the kit we use) or invent one?
 - How far from canon: the intro only shows the tower, the sea and Hawkins' "quietest patrol" line.
 - Things we can't do yet: company signage/logo textures, night lights (emissive), moving dropships
   (cheap: a moving card or a mesh on a path).
