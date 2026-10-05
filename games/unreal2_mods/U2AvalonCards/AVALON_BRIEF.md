@@ -3,6 +3,21 @@
 What the island has to say from Hawkins' window, before any mesh is placed. Every placed thing should
 answer to this page; if it doesn't, it doesn't go in.
 
+## Keystone (the world above the place)
+User, 2026-10-05: the colonies are **backwater places forgotten by the centre and exploited by corporations
+and outlaws** - Star Wars politics (Outer Rim, Trade Federation, Hutts). Keystone: **the centre can't hold
+the edge, so whoever can pay holds it.** Three powers share every colony:
+- **The Authority:** the government's afterthought, underfunded and over-stretched.
+- **The companies:** Liandri, Izanagi and Axon in Unreal II's own lore. They hold the charters, the power and the jobs.
+- **The outlaws:** mercenaries and smugglers. The companies hire them, use them, or look away.
+
+The companies play both sides. That is the macro narrative every level sits inside (Ben Bear's "Tolkien
+method": the world is the main character; the character story is that world in one person).
+
+**Dalton is the mirror** (inner conflict = outer conflict): he wants back into the real fight and keeps
+being sidelined; the frontier is exactly the place the real powers have sidelined. Avalon should make him,
+and the player, feel parked at the edge of someone else's game.
+
 ## Premise
 Avalon is a company world. A mining corporation (working name **Izanagi**, whose Na Koja Abad kit we
 reuse) pulls ore and oil from the sea floor here. The Terran Colonial Authority rents one old tower on the
@@ -39,7 +54,9 @@ That's why Dalton gets "the quietest patrol": nothing happens here that the comp
 
 ## Micro-stories (one line per placed thing, the Mars-manor rule)
 - **The Authority pad and dropship:** the only Authority hardware outside. The company charges it docking fees.
-- **The old rig:** decommissioned after a blowout, never removed; cheaper to leave it.
+- **The old rig:** decommissioned after a blowout and never removed, because that was cheaper. Smugglers use it now,
+  and the company looks the other way (the third power, visible from the window: one light where there
+  should be none).
 - **The new rig:** where the money is now; a flare burns at its top.
 - **The pipeline:** runs straight past the tower's foot, not around it. The company was here first.
 - **The comm mast on the west hill:** the company's, taller than the Authority's antenna.
