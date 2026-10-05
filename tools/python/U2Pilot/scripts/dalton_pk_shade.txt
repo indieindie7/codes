@@ -1,0 +1,19 @@
+# Dalton Peacekeeper dummy, front and 3/4, for shader tests
+background
+map HoverTest?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 3
+console hub kill 30000
+console hub clean 31
+wait 1
+console hub dummy GlmDaltonPKG.DaltonPK 180 115
+wait 1.5
+shot
+turn 60 0 0.4
+wait 0.5
+console hub dummy GlmDaltonPKG.DaltonPK 135 115
+wait 1.5
+shot
+turn 60 0 0.4
+wait 0.5
+quit
