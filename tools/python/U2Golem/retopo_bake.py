@@ -55,6 +55,12 @@ if o.get("high"):
     ms[0].matrix_world.identity()
     for ob in [x for x in bpy.context.scene.objects if x.type != "MESH"]:
         bpy.data.objects.remove(ob, do_unlink=True)
+    # glTF splits vertices at every UV seam and normal break: weld them back, or Decimate sees loose triangles
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.remove_doubles(threshold=1e-6)
+    bpy.ops.mesh.delete_loose()
+    bpy.ops.object.mode_set(mode="OBJECT")
 hi = [ob for ob in bpy.context.scene.objects if ob.type == "MESH"][0]
 hi.name = "High"
 me = hi.data
@@ -466,17 +472,27 @@ if not me.color_attributes.get("Col"):
                 if n_.type == "TEX_IMAGE" and n_.image:
                     src_img = n_.image
 if src_img:
-    vc = nt.nodes.new("ShaderNodeTexImage")
-    vc.image = src_img
+    # textured high-poly (possibly several parts, each with its own texture): every material shows its own
+    # texture as emission, in place
+    vc = None
+    for m_ in me.materials:
+        if not (m_ and m_.use_nodes):
+            continue
+        t_ = next((n_ for n_ in m_.node_tree.nodes if n_.type == "TEX_IMAGE" and n_.image), None)
+        o_ = next((n_ for n_ in m_.node_tree.nodes if n_.type == "OUTPUT_MATERIAL"), None)
+        if t_ and o_:
+            e_ = m_.node_tree.nodes.new("ShaderNodeEmission")
+            m_.node_tree.links.new(t_.outputs["Color"], e_.inputs["Color"])
+            m_.node_tree.links.new(e_.outputs["Emission"], o_.inputs["Surface"])
 else:
     vc = nt.nodes.new("ShaderNodeVertexColor")
     vc.layer_name = "Col"
-em = nt.nodes.new("ShaderNodeEmission")
-mo = nt.nodes.new("ShaderNodeOutputMaterial")
-nt.links.new(vc.outputs["Color"], em.inputs["Color"])
-nt.links.new(em.outputs["Emission"], mo.inputs["Surface"])
-me.materials.clear()
-me.materials.append(mh)
+    em = nt.nodes.new("ShaderNodeEmission")
+    mo = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(vc.outputs["Color"], em.inputs["Color"])
+    nt.links.new(em.outputs["Emission"], mo.inputs["Surface"])
+    me.materials.clear()
+    me.materials.append(mh)
 for p in me.polygons:
     p.use_smooth = True
 
@@ -574,7 +590,10 @@ cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
 sc.collection.objects.link(cam)
 sc.camera = cam
 cam.data.type = "ORTHO"
-cam.data.ortho_scale = h * 1.06
+wide = float(max(P[:, 0].max() - P[:, 0].min(), P[:, 1].max() - P[:, 1].min()))
+if wide > h * 0.52:                       # a T-pose is as wide as it is tall: square tiles, everything in frame
+    W = HH
+cam.data.ortho_scale = max(h, wide) * 1.06
 sc.render.resolution_x, sc.render.resolution_y = W, HH
 sc.render.film_transparent = False
 world = bpy.data.worlds.new("w")
