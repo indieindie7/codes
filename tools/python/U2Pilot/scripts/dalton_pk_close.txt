@@ -1,0 +1,30 @@
+# Dalton Peacekeeper close-ups: portrait pose from the front (near and far), then as a dummy from the front,
+# then worn in third person while running forward, sideways and back.
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+console hub clean 23
+turn 0 1 0.3
+wait 1
+console wardrobe photo 8 430
+wait 2
+shot
+console wardrobe photo 8 220
+wait 2
+shot
+console wardrobe photo 8 130
+wait 2
+shot
+console wardrobe wear Dalton Peacekeeper
+console wardrobe view
+wait 1
+turn 0 -8 0.3
+move 1 0 2.0
+shots 0.25
+wait 1.2
+move 0 1 1.5
+shots 0.25
+wait 1.0
+quit
