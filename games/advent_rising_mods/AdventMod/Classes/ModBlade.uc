@@ -58,5 +58,7 @@ defaultproperties
      bBlockPlayers=False
      bHardAttach=True
      bShadowCast=False
+     SoundRadius=40.000000
+     SoundVolume=50
      RemoteRole=ROLE_None
 }

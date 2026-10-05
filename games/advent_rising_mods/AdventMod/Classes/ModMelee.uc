@@ -7,6 +7,10 @@
 //     kill takes off the part it hit (ModSever, no dice). Each hit uses one of BladeCharges;
 //     at none the blade burns out.
 // The blade stays with the player from level to level (SavedCharges, for the game's run).
+// It hums (louder in the hand), whooshes when swung and throws sparks where it hits: the
+// game's own sounds and sparks (loaded with this package: a name looked up at run time
+// came back None unless the level already had it in memory). The gun in the right hand is hidden
+// while the blade is in it.
 //=============================================================================
 class ModMelee extends Info
 	config(AdventMod);
@@ -20,6 +24,9 @@ var config float PickupReach;
 var config rotator HandRot, BackRot;       // how it sits on the hand and on the back
 var config vector HandOffset, BackOffset;
 var config bool bTestBlade;        // testing: the player starts with one
+var Sound Hum, Swing, StrikeSnd;
+var class<Emitter> Sparks;
+var WeaponBase HiddenGun;          // the gun put away while the blade is in the hand
 
 var ModGore Gore;
 var ModBlade Carried;
@@ -39,6 +46,25 @@ function Say(string S)
 		C.ClientMessage(S);
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("melee: " $ S);
+}
+
+// a blade humming: quietly on the back or lying, louder in the hand
+function SetHum(ModBlade B, bool bLoud)
+{
+	if (B == None || Hum == None)
+		return;
+	B.AmbientSound = Hum;
+	if (bLoud)
+		B.SoundVolume = 150;
+	else
+		B.SoundVolume = 50;
+}
+
+function ShowGun()
+{
+	if (HiddenGun != None && !HiddenGun.bDeleteMe)
+		HiddenGun.bHidden = false;
+	HiddenGun = None;
 }
 
 // the blade into the player's keeping: a pickup taken (B), or a new one made
@@ -72,19 +98,32 @@ function Place(bool bHand)
 		Holder.AttachToBone(Carried, 'righthand');
 		Carried.SetRelativeLocation(HandOffset);
 		Carried.SetRelativeRotation(HandRot);
+		// the gun out of the hand the blade is in (as the game does on its turrets)
+		if (Holder.RightWeapon != None && !Holder.RightWeapon.bHidden)
+		{
+			HiddenGun = Holder.RightWeapon;
+			HiddenGun.bHidden = true;
+		}
+		if (Swing != None)
+			Holder.PlaySound(Swing, SLOT_None, 1.0, false, 400, 0.9 + 0.2 * FRand());
 	}
 	else
 	{
 		Holder.AttachToBone(Carried, 'spine2');
 		Carried.SetRelativeLocation(BackOffset);
 		Carried.SetRelativeRotation(BackRot);
+		ShowGun();
 	}
 	bInHand = bHand;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("melee: blade in hand " $ bHand $ ", right gun " $ Holder.RightWeapon $ " hidden by us " $ HiddenGun);
+	SetHum(Carried, bHand);
 }
 
 function BurnOut()
 {
 	Say("The energy blade burns out.");
+	ShowGun();
 	if (Carried != None)
 	{
 		if (Holder != None)
@@ -117,6 +156,7 @@ function Drop(vector Spot)
 		return;
 	B.Lie(HitL + vect(0,0,34));
 	B.LifeSpan = 150;
+	SetHum(B, false);
 	Pickups[Pickups.Length] = B;
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("melee: a blade dropped at " $ B.Location);
@@ -127,6 +167,7 @@ function Drop(vector Spot)
 function int Strike(int Damage, Pawn Injured, Pawn By, vector Spot, class<DamageType> Type)
 {
 	local vector Dir;
+	local Emitter E;
 
 	if (Carried == None || By == None || By != Holder || Injured == None || Injured == By || Type == None || Damage <= 0)
 		return Damage;
@@ -134,6 +175,14 @@ function int Strike(int Damage, Pawn Injured, Pawn By, vector Spot, class<Damage
 		return Damage;
 	Damage = int(Damage * BladeDamage);
 	Dir = Normal(Injured.Location - By.Location);
+	if (Sparks != None)
+	{
+		E = Spawn(Sparks,,, Spot - Dir * 6, rotator(-Dir));
+		if (E != None)
+			E.LifeSpan = 1.5;
+	}
+	if (StrikeSnd != None)
+		Injured.PlaySound(StrikeSnd, SLOT_None, 1.0, false, 600, 0.9 + 0.25 * FRand());
 	if (Gore != None)
 	{
 		Gore.CutBlood(Spot, Dir, Gore.BloodKind(Injured));
@@ -143,7 +192,7 @@ function int Strike(int Damage, Pawn Injured, Pawn By, vector Spot, class<Damage
 	Charges--;
 	default.SavedCharges = Charges;
 	if (class'ModSettings'.default.bGoreLog)
-		class'ModSettings'.static.Note("melee: blade strike on " $ Injured $ " (" $ Type.Name $ "), damage " $ Damage $ ", " $ Charges $ " left");
+		class'ModSettings'.static.Note("melee: blade strike on " $ Injured $ " (" $ Type.Name $ "), damage " $ Damage $ ", " $ Charges $ " left (fx " $ Hum $ " " $ Swing $ " " $ StrikeSnd $ " " $ Sparks $ ", gun hidden " $ HiddenGun $ ")");
 	if (Charges <= 0)
 		BurnOut();
 	else if (Charges == 5)
@@ -172,6 +221,7 @@ event Tick(float DeltaTime)
 	if (P.Health <= 0)
 	{
 		// lost with the player's life
+		ShowGun();
 		if (Carried != None)
 		{
 			Carried.Destroy();
@@ -214,6 +264,7 @@ event Destroyed()
 {
 	local int i;
 
+	ShowGun();
 	for (i = 0; i < Pickups.Length; i++)
 		if (Pickups[i] != None)
 			Pickups[i].Destroy();
@@ -230,6 +281,10 @@ defaultproperties
      BladeDamage=5.000000
      MaxPickups=3
      PickupReach=60.000000
+     Hum=Sound'power.EnergyBlast.energy_loop'
+     Swing=Sound'fx.misc.koroem_whoosh'
+     StrikeSnd=Sound'fx.misc.sparks_burst'
+     Sparks=Class'EonEffects.fx_Default_Sparks'
      BackRot=(Pitch=-12000,Yaw=16384,Roll=0)
      BackOffset=(X=0.000000,Y=-8.000000,Z=-10.000000)
 }
