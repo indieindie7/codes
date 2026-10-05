@@ -1,0 +1,9 @@
+# cards_gallery: photograph static meshes for kit-bashing (U2AvalonCards.CardGallery; the list is
+# [U2AvalonCards.CardGallery] Items[] in System\U2AvalonCards.ini, from tools\mesh_bounds.py).
+background
+map TutA?Mutator=U2AvalonCards.CardGallery
+waitcontrol 240
+wait 1
+console set CardGallery bGo True
+wait 700
+quit
