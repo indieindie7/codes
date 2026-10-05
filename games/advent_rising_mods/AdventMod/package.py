@@ -2,7 +2,7 @@
 and AdventMod-<ver>-nexus.zip (no .bat files: Nexus quarantines them).
 Run build.ps1 first so System\\ has the compiled AdventMod.u and AdventNative.dll;
 System\\d3d8.dll is the U2Shaders d3d8to9 build (github.com/indieindie7/d3d8to9,
-branch advent-post) and U2Shaders\\ its shaders."""
+branch gi-cascades) and U2Shaders\\ its shaders."""
 import os, zipfile
 
 VER = "2.0"

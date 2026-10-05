@@ -7,8 +7,10 @@
 //=============================================================================
 class ModGraphicsOptions extends MenuPauseOptionsBase;
 
-var localized string LstrPost, LstrSoftShadows, LstrNpcShadows, LstrAA, LstrFrameCap, LstrShadowDark, LstrSharpen;
+var localized string LstrPost, LstrSoftShadows, LstrGi, LstrAA, LstrFrameCap, LstrShadowDark, LstrSharpen;
 var localized string LstrMonitor, LstrNoCap;
+var localized string ShadowNames[3];      // soft shadows: off, the player's, everyone's
+var localized string GiNames[3];
 var localized string PresetNames[5];
 var int FrameCaps[6];
 
@@ -23,7 +25,7 @@ function PreSetInitalPositions()
 	NumSliders = 2;
 	Labels[0].Caption = LstrPost;
 	Labels[1].Caption = LstrSoftShadows;
-	Labels[2].Caption = LstrNpcShadows;
+	Labels[2].Caption = LstrGi;
 	Labels[3].Caption = LstrAA;
 	Labels[4].Caption = LstrFrameCap;
 	Labels[5].Caption = LstrShadowDark;
@@ -33,7 +35,7 @@ function PreSetInitalPositions()
 	Button1.bActNormal = true;
 	Button1.OnClick = SoftShadowsClick;
 	Button2.bActNormal = true;
-	Button2.OnClick = NpcShadowsClick;
+	Button2.OnClick = GiClick;
 	Button3.bActNormal = true;
 	Button3.OnClick = AAClick;
 	Button4.bActNormal = true;
@@ -61,8 +63,8 @@ function SetLocalGuiOptions(bool Reset)
 	if (Reset)
 	{
 		class'ModSettings'.static.ApplyPostPreset(1);
-		SetSoftShadows(true);
-		SetNpcShadows(true);
+		SetShadows(2);
+		class'ModSettings'.static.ApplyGi(0);
 		SetAA(true);
 		class'ModSettings'.default.MaxFps = -1;
 		class'ModSettings'.static.StaticSaveConfig();
@@ -79,8 +81,8 @@ function Refresh()
 	local int i;
 
 	Button0.Caption = PresetNames[Clamp(class'ModSettings'.default.PostPreset, 0, 4)];
-	Button1.SetValueB(class'ModSettings'.default.bSoftShadows);
-	Button2.SetValueB(class'ModShadowManager'.default.NpcShadows > 0);
+	Button1.Caption = ShadowNames[ShadowLevel()];
+	Button2.Caption = GiNames[Clamp(class'ModSettings'.default.GiLevel, 0, 2)];
 	Button3.SetValueB(class'ModSettings'.default.bSMAA);
 	i = class'ModSettings'.default.MaxFps;
 	if (i < 0)
@@ -101,28 +103,34 @@ function bool PostClick(GUIComponent Sender)
 	return false;
 }
 
-function SetSoftShadows(bool bOn)
+// soft shadows in one setting: 0 off, 1 the player's only, 2 everyone's
+function int ShadowLevel()
 {
-	class'ModSettings'.default.bSoftShadows = bOn;
+	if (!class'ModSettings'.default.bSoftShadows)
+		return 0;
+	if (class'ModShadowManager'.default.NpcShadows > 0)
+		return 2;
+	return 1;
+}
+
+function SetShadows(int Level)
+{
+	class'ModSettings'.default.bSoftShadows = Level > 0;
 	class'ModSettings'.static.StaticSaveConfig();
+	class'ModShadowManager'.default.NpcShadows = 20 * int(Level > 1);
+	class'ModShadowManager'.static.StaticSaveConfig();
 }
 
 function bool SoftShadowsClick(GUIComponent Sender)
 {
-	SetSoftShadows(!class'ModSettings'.default.bSoftShadows);
+	SetShadows((ShadowLevel() + 1) % 3);
 	Refresh();
 	return false;
 }
 
-function SetNpcShadows(bool bOn)
+function bool GiClick(GUIComponent Sender)
 {
-	class'ModShadowManager'.default.NpcShadows = 20 * int(bOn);
-	class'ModShadowManager'.static.StaticSaveConfig();
-}
-
-function bool NpcShadowsClick(GUIComponent Sender)
-{
-	SetNpcShadows(class'ModShadowManager'.default.NpcShadows <= 0);
+	class'ModSettings'.static.ApplyGi((class'ModSettings'.default.GiLevel + 1) % 3);
 	Refresh();
 	return false;
 }
@@ -187,7 +195,13 @@ defaultproperties
      LstrLabelTitle="Graphics"
      LstrPost="Post Effects"
      LstrSoftShadows="Soft Shadows"
-     LstrNpcShadows="Shadows for Others"
+     LstrGi="Global Illumination"
+     ShadowNames(0)="Off"
+     ShadowNames(1)="Yours"
+     ShadowNames(2)="Everyone's"
+     GiNames(0)="Off"
+     GiNames(1)="On"
+     GiNames(2)="Strong"
      LstrAA="Anti-Aliasing (SMAA)"
      LstrFrameCap="Frame Cap"
      LstrShadowDark="Shadow Darkness"

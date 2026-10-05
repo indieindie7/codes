@@ -45,6 +45,7 @@ var config bool bMouseLog;            // testing: log how much of the mouse move
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
 var config float Sharpen;             // CAS sharpening 0..1 (the preset sets it; the Graphics page slider changes it)
 var config bool bSMAA;                // the layer's SMAA anti-aliasing
+var config int GiLevel;               // the layer's global illumination (gi.hlsl): 0 off, 1 on, 2 strong
 var config int Colorblind;            // colourblind correction in the U2Shaders layer: 0 off, 1 protanopia, 2 deuteranopia, 3 tritanopia
 var config float ColorblindStrength;  // 0..1
 var config int MaxFps;                // frame cap: -1 = the monitor's refresh rate, 0 = none (uncapped the GPU draws ~300 fps nobody sees)
@@ -264,6 +265,21 @@ static function ApplyPostPreset(int N)
 	NativeCall("U2Set:sharpen=" $ Num(default.Sharpen));
 	NativeCall("U2Set:postfx=" $ Fx);
 	NativeCall("U2Set:lut=" $ Lut);
+	StaticSaveConfig();
+}
+
+// global illumination (radiance cascades and a world cache in the Direct3D layer): bounce
+// light and darker corners. It runs in the post pass, so "Post Effects: Off" switches it off too.
+// gifx = bounce strength, corner darkening, reach, debug view
+static function ApplyGi(int Level)
+{
+	Level = Clamp(Level, 0, 2);
+	default.GiLevel = Level;
+	if (Level == 2)
+		NativeCall("U2Set:gifx=1 0.7 300 0");
+	else
+		NativeCall("U2Set:gifx=0.6 0.5 300 0");
+	NativeCall("U2Set:gi=" $ int(Level > 0));
 	StaticSaveConfig();
 }
 
