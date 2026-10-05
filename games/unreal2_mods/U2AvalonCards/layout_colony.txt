@@ -1,3 +1,4 @@
+# v2 (Liandri, AVALON_BRIEF.md): a BLOCKOUT for image paint-overs, not final art.
 # Kit-bash layout for TutA: an industrial harbour on the south-east shore, in the command room's sea
 # window (300-330 degrees from the player at -250,1100; look down ~25 degrees): tanks, cooling columns,
 # plant halls, a pipeline to a long dock, a crane, and the Avalon ocean base tower + lab out at sea.
@@ -31,5 +32,14 @@ Terran_DecoM.Vehicles.crane_armBv3a_ALT  10200  -6200  225  1.2 1900
 Mission_10M.oceanbase.towersbase         16500 -12500    0  0.6
 Mission_10M.oceanbase.toplab1            15500  -6500  315  0.6
 
-# west hill
-Terran_DecoM.Towers.CommTower_Entire    -12849  -8612    0  8.0
+# Liandri processing towers and vents by the tanks
+Mission_SulferonM.Base.Tower1a             2600  -6200   20  1.6
+Mission_SulferonM.Base.Tower1b             2300  -8300   20  1.6
+Mission_SulferonM.Base.TowerVentsLong      3000  -7300   20  2.5
+
+# Liandri cargo pad + company cargo dropship (south of the plant)
+Mission_SulferonM.Base.LandingPad1b        3600 -10400   20  1.5
+Terran_DecoM.Vehicles.Terran_Dropship_01   3600 -10400   20  7.0  80
+
+# the company's radio mast on the west hill, taller than anything the Authority has
+Janus_M.M09A.RadioAntenna1a              -12849  -8612    0  0.8
