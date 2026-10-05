@@ -73,6 +73,23 @@ RIGS = {
     }),
 }
 END_LEN = 20.0
+
+# hinge joints (knees, elbows): instead of a cone, one axis with an asymmetric range, as in
+# UT2004's Human.ka. Per rig: body -> (where the body's end goes when the joint bends,
+# mesh space; low limit; high limit), radians. Mesh space: X to the side, -Y up, Z forward.
+# The hinge axis is (bone direction x bend), so a positive angle bends toward "bend".
+BACK, FORWARD = (0, 0, -1), (0, 0, 1)
+HINGES = {
+    "humanMale2": {
+        "leftLeg": (BACK, -0.1, 1.9), "rightLeg": (BACK, -0.1, 1.9),          # knees
+        "leftForeArm": (FORWARD, -0.1, 2.0), "rightForeArm": (FORWARD, -0.1, 2.0),   # elbows
+    },
+    "seeker": {
+        "leftLeg": (BACK, -0.1, 1.9), "rightLeg": (BACK, -0.1, 1.9),
+        "leftForeArm": (FORWARD, -0.1, 2.0), "rightForeArm": (FORWARD, -0.1, 2.0),
+        "LeftFrontElbow": (BACK, -0.1, 1.5), "RightFrontElbow": (BACK, -0.1, 1.5),
+    },
+}
 UC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "AdventMod", "Classes", "ModRagdollBones.uc")
 TOTAL_MASS = 1.0
 
@@ -136,7 +153,8 @@ def perp(d):
 def f(v): return ",".join("%.7g" % x for x in v)
 
 
-def build(asset, psk, bodies):
+def build(asset, psk, bodies, hinges=None):
+    hinges = hinges or {}
     bones, order = read_bones(psk)
     for b, (end, *_rest) in bodies.items():
         if b not in bones or (end and end not in bones):
@@ -206,8 +224,8 @@ def build(asset, psk, bodies):
                 '\t\t\t\t<DENSITY>1</DENSITY>',
                 '\t\t\t\t<MASS_OFFSET>%s</MASS_OFFSET>' % f(mid),
                 '\t\t\t\t<INERTIA>%s</INERTIA>' % f((I[0][0], I[0][1], I[0][2], I[1][1], I[1][2], I[2][2])),
-                '\t\t\t\t<LIN_DAMP>0.05</LIN_DAMP>',
-                '\t\t\t\t<ANG_DAMP>0.1</ANG_DAMP>',
+                '\t\t\t\t<LIN_DAMP>0.1</LIN_DAMP>',
+                '\t\t\t\t<ANG_DAMP>0.3</ANG_DAMP>',
                 '\t\t\t\t<FAST_SPIN>0,1,0</FAST_SPIN>',
                 '\t\t\t\t<USE_FAST_SPIN>0</USE_FAST_SPIN>',
                 '\t\t\t</DYNAMICS>',
@@ -238,6 +256,26 @@ def build(asset, psk, bodies):
         d = norm(i["seg"])
         o = perp(d)
         pos2 = mul(sub(i["origin"], info[p]["origin"]), SCALE)
+        if b in hinges:
+            bend, low, high = hinges[b]
+            axis = norm(cross(d, bend))
+            out += ['\t\t<JOINT id="%s" part1="%s" part2="%s" type="hinge">' % (b, b, p),
+                    '\t\t\t<HIGH_LIMIT>%.7g</HIGH_LIMIT>' % high,
+                    '\t\t\t<LOW_LIMIT>%.7g</LOW_LIMIT>' % low,
+                    '\t\t\t<HIGH_STIFFNESS>1000</HIGH_STIFFNESS>',
+                    '\t\t\t<LOW_STIFFNESS>1000</LOW_STIFFNESS>',
+                    '\t\t\t<LIMITED>1</LIMITED>',
+                    '\t\t\t<MOTORIZED>0</MOTORIZED>',
+                    '\t\t\t<DES_VEL>1</DES_VEL>',
+                    '\t\t\t<MAX_FORCE>1000</MAX_FORCE>',
+                    '\t\t\t<POS1>0,0,0</POS1>',
+                    '\t\t\t<POS2>%s</POS2>' % f(pos2),
+                    '\t\t\t<PRIMARY_AXIS1>%s</PRIMARY_AXIS1>' % f(axis),
+                    '\t\t\t<PRIMARY_AXIS2>%s</PRIMARY_AXIS2>' % f(axis),
+                    '\t\t\t<ORTHOGONAL_AXIS1>%s</ORTHOGONAL_AXIS1>' % f(d),
+                    '\t\t\t<ORTHOGONAL_AXIS2>%s</ORTHOGONAL_AXIS2>' % f(d),
+                    '\t\t</JOINT>']
+            continue
         out += ['\t\t<JOINT id="%s" part1="%s" part2="%s" type="skeletal">' % (b, b, p),
                 '\t\t\t<CONE_TYPE>2</CONE_TYPE>',
                 '\t\t\t<CONE_HALF_ANGLE_X>%.7g</CONE_HALF_ANGLE_X>' % i["cone"],
@@ -274,7 +312,8 @@ def main():
         if os.environ.get("MAKEKA_CONE"):                # testing: one cone/twist for every joint
             c, t = (float(x) for x in os.environ["MAKEKA_CONE"].split(","))
             bodies = {k: (v[0], v[1], c, t, v[4]) for k, v in bodies.items()}
-        body, n = build(asset, os.path.join(meshes, mesh + ".psk"), bodies)
+        hinges = {} if os.environ.get("MAKEKA_NOHINGE") else HINGES.get(asset, {})   # testing: cones everywhere
+        body, n = build(asset, os.path.join(meshes, mesh + ".psk"), bodies, hinges)
         lines += body
         print(asset, "from", mesh + ".psk:", n, "bodies")
     lines.append('</KARMA>')

@@ -34,6 +34,9 @@ var config bool bCorpseShots;      // corpses bleed and twitch when shot
 var config float CorpseKick;       // the push a shot gives a ragdoll
 var config bool bHoundRagdolls;    // off: hounds crash the game going limp (levels 03 b and c), cause not found yet. (A config array of skeleton names came up empty in game, and the hounds went limp.)
 var KarmaParamsSkel CorpseParams;  // ragdoll settings for corpses the level gave none (a subobject below, so saves can refer to it)
+// the solver's settings for every ragdoll we start (KSetSimParams; 0 = the engine's own):
+// smaller steps and softer contacts settle bodies with less jitter and sinking
+var config float RagdollMaxTimestep, RagdollContactSoftness;
 var array<Pawn> Corpses;
 var float CorpseScan;
 
@@ -928,8 +931,27 @@ function Limp(Pawn P, vector Dir, vector Spot)
 	A.KSetBlockKarma(true);
 	A.SetPhysics(PHYS_KarmaRagdoll);
 	A.StopAnimating(true);
+	SolverSettings(A);
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: " $ A $ " went limp (" $ Skel $ "), physics " $ A.Physics);
+}
+
+// the solver's own knobs for one ragdoll (physics-plan.md, step 1)
+function SolverSettings(Actor A)
+{
+	local KSimParams S;
+
+	if (A.Physics != PHYS_KarmaRagdoll)
+		return;
+	A.KGetSimParams(S);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: solver for " $ A $ ": step " $ S.MaxTimestep $ " softness " $ S.ContactSoftness $ " penetration " $ S.PenetrationOffset $ "/" $ S.PenetrationScale $ "/" $ S.MaxPenetration $ " epsilon " $ S.Epsilon $ " gamma " $ S.GammaPerSec);
+	if (RagdollMaxTimestep > 0)
+		S.MaxTimestep = RagdollMaxTimestep;
+	if (RagdollContactSoftness > 0)
+		S.ContactSoftness = RagdollContactSoftness;
+	if (RagdollMaxTimestep > 0 || RagdollContactSoftness > 0)
+		A.KSetSimParams(S);
 }
 
 function bool RagdollSafe(Pawn P)
@@ -1668,6 +1690,8 @@ defaultproperties
          KImpactThreshold=500.000000
      End Object
      CorpseParams=KarmaParamsSkel'AdventMod.ModGore.CorpseRagdoll'
+     RagdollMaxTimestep=0.016000
+     RagdollContactSoftness=0.000000
      bImpacts=True
      MaxHoles=60
      bBlood=True

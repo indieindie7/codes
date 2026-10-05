@@ -22,6 +22,7 @@ var config int StaggerDamage;
 var config float StaggerPush, StaggerSlow, StaggerTime;
 var config bool bDeathRagdoll;
 var config int MaxRagdolls;
+var config float KarmaTimeScale, RagdollTimeScale;   // the level's physics speed (the game ships 0.9 / 1.0; 0 = leave)
 var config bool bDeathAnims;       // play a death clip first, ragdoll partway through it
 var config float DeathAnimHandoff; // seconds into the clip the body goes limp (a clip without its own time)
 var config bool bDeathAnimRagdoll; // go limp partway through a death clip. Off: the clip plays out and the body lies as it ends (a ragdoll begun from a clip crashed the game twice)
@@ -91,6 +92,10 @@ event PostBeginPlay()
 	Super.PostBeginPlay();
 	if (Level.MaxRagdolls < MaxRagdolls)
 		Level.MaxRagdolls = MaxRagdolls;
+	if (KarmaTimeScale > 0)
+		Level.KarmaTimeScale = KarmaTimeScale;
+	if (RagdollTimeScale > 0)
+		Level.RagdollTimeScale = RagdollTimeScale;
 }
 
 function bool Reacts(Pawn P)
@@ -416,6 +421,22 @@ function string Rel(Pawn P, name A, name B)
 	return string(A) $ "->" $ string(B) $ " " $ int(V.X) $ "," $ int(V.Y) $ "," $ int(V.Z);
 }
 
+// testing: a hinge's bend, in degrees, and which way it bends in the hips' frame (the hips'
+// Z axis is the body's forward; knees should bend "back", elbows "fwd")
+function string Hinge(Pawn P, name Top, name Mid, name End)
+{
+	local vector A, B, Fwd;
+	local float Deg;
+
+	A = Normal(P.GetBoneCoords(Mid).Origin - P.GetBoneCoords(Top).Origin);
+	B = Normal(P.GetBoneCoords(End).Origin - P.GetBoneCoords(Mid).Origin);
+	Fwd = P.GetBoneCoords('hips').ZAxis;
+	Deg = Acos(FClamp(A Dot B, -1, 1)) * 57.3;
+	if (Deg < 8)
+		return int(Deg) $ "";
+	return int(Deg) $ class'ModPilot'.static.Eval2(((B - A) Dot Fwd) < 0, "back", "fwd");
+}
+
 function PoseLog(Pawn P)
 {
 	class'ModSettings'.static.Note("react: pose " $ P $ ": " $ Rel(P, 'hips', 'head') $ " | " $ Rel(P, 'hips', 'leftUpLeg') $ " | " $ Rel(P, 'leftUpLeg', 'leftLeg') $ " | " $ Rel(P, 'leftLeg', 'leftFoot') $ " | " $ Rel(P, 'rightUpLeg', 'rightLeg') $ " | " $ Rel(P, 'rightLeg', 'rightFoot') $ " | " $ Rel(P, 'leftArm', 'lefthand') $ " | " $ Rel(P, 'rightArm', 'righthand') $ " | hips over feet " $ int(P.GetBoneCoords('hips').Origin.Z - P.GetBoneCoords('leftFoot').Origin.Z));
@@ -589,7 +610,7 @@ function WatchRagdolls(float DeltaTime)
 			continue;
 		// testing: how the ragdoll falls, twice a second
 		if (class'ModSettings'.default.bGoreLog && int(Ragdolls[i].T * 2) != int((Ragdolls[i].T + DeltaTime) * 2))
-			class'ModSettings'.static.Note("react: ragdoll " $ P $ " t " $ Ragdolls[i].T $ " hips " $ int(P.GetBoneCoords('hips').Origin.Z - Ragdolls[i].FloorZ) $ " head " $ int(P.GetBoneCoords('head').Origin.Z - Ragdolls[i].FloorZ) $ " over floor, awake " $ P.KIsAwake());
+			class'ModSettings'.static.Note("react: ragdoll " $ P $ " t " $ Ragdolls[i].T $ " hips " $ int(P.GetBoneCoords('hips').Origin.Z - Ragdolls[i].FloorZ) $ " head " $ int(P.GetBoneCoords('head').Origin.Z - Ragdolls[i].FloorZ) $ " over floor, awake " $ P.KIsAwake() $ "; knees " $ Hinge(P, 'leftUpLeg', 'leftLeg', 'leftFoot') $ " " $ Hinge(P, 'rightUpLeg', 'rightLeg', 'rightFoot') $ ", elbows " $ Hinge(P, 'leftArm', 'leftForeArm', 'lefthand') $ " " $ Hinge(P, 'rightArm', 'rightForeArm', 'righthand'));
 		Ragdolls[i].T += DeltaTime;
 		Low = FMin(P.GetBoneCoords('hips').Origin.Z, P.GetBoneCoords('head').Origin.Z);
 		Why = "";
@@ -637,7 +658,9 @@ defaultproperties
      FloorBones(6)=lefthand
      FloorBones(7)=righthand
      DeathAnimHandoff=0.900000
-     MaxRagdolls=8
+     MaxRagdolls=12
+     KarmaTimeScale=1.000000
+     RagdollTimeScale=0.850000
      Bones(0)=hips
      Bones(1)=spine
      Bones(2)=spine1
