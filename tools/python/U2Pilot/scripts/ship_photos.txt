@@ -1,0 +1,354 @@
+# ship_photos: the player's ships (the Atlantis and its dropships) as static meshes in the open sky, for references and
+# imposter cards: each spawned (hub mesh), then moved to four distances ahead (set HubMesh Location) and shot at four turns.
+background
+map HoverTest?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console hub kill 30000
+console hub clean 0
+wait 1
+mark Martins.Dropship.AtlantisDropship
+console hub mesh Martins.Dropship.AtlantisDropship 1
+wait 1
+console set HubMesh Location (X=400,Y=0,Z=-2952)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=1500,Y=0,Z=-2820)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=5000,Y=0,Z=-2400)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=20000,Y=0,Z=-600)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console killall U2TestHub.HubMesh
+wait 0.5
+mark Terran_DecoM.Vehicles.Terran_Dropship_01
+console hub mesh Terran_DecoM.Vehicles.Terran_Dropship_01 1
+wait 1
+console set HubMesh Location (X=400,Y=0,Z=-2952)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=1500,Y=0,Z=-2820)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=5000,Y=0,Z=-2400)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=20000,Y=0,Z=-600)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console killall U2TestHub.HubMesh
+wait 0.5
+mark CinemaM.Vehicles.DropshipBIGLoRes
+console hub mesh CinemaM.Vehicles.DropshipBIGLoRes 1
+wait 1
+console set HubMesh Location (X=400,Y=0,Z=-2952)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=1500,Y=0,Z=-2820)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=5000,Y=0,Z=-2400)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=20000,Y=0,Z=-600)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console killall U2TestHub.HubMesh
+wait 0.5
+mark CinemaM.Vehicles.AtlantisHi
+console hub mesh CinemaM.Vehicles.AtlantisHi 1
+wait 1
+console set HubMesh Location (X=400,Y=0,Z=-2952)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=1500,Y=0,Z=-2820)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=5000,Y=0,Z=-2400)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=20000,Y=0,Z=-600)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console killall U2TestHub.HubMesh
+wait 0.5
+mark Martins.Atlantis.Atlantis
+console hub mesh Martins.Atlantis.Atlantis 1
+wait 1
+console set HubMesh Location (X=400,Y=0,Z=-2952)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=1500,Y=0,Z=-2820)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=5000,Y=0,Z=-2400)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=20000,Y=0,Z=-600)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console killall U2TestHub.HubMesh
+wait 0.5
+mark AtlantisM.Decoration.AtlantisOutside
+console hub mesh AtlantisM.Decoration.AtlantisOutside 1
+wait 1
+console set HubMesh Location (X=400,Y=0,Z=-2952)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=1500,Y=0,Z=-2820)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=5000,Y=0,Z=-2400)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console set HubMesh Location (X=20000,Y=0,Z=-600)
+console set HubMesh Rotation (Pitch=0,Yaw=0,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=8192,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=16384,Roll=0)
+wait 0.4
+shot
+console set HubMesh Rotation (Pitch=0,Yaw=32768,Roll=0)
+wait 0.4
+shot
+console killall U2TestHub.HubMesh
+wait 0.5
+quit

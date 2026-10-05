@@ -1,0 +1,8 @@
+# zones_TutB: path points of TutB (hub zones) for the UnrealEd interior tour
+background
+map TutB
+waitcontrol 150
+wait 2
+console hub zones
+wait 1
+quit

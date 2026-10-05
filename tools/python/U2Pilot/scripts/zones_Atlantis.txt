@@ -1,0 +1,8 @@
+# zones_Atlantis: path points of Atlantis (hub zones) for the UnrealEd interior tour
+background
+map Atlantis
+waitcontrol 150
+wait 2
+console hub zones
+wait 1
+quit

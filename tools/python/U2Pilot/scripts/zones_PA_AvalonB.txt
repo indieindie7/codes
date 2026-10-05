@@ -1,0 +1,8 @@
+# zones_PA_AvalonB: path points of PA_AvalonB (hub zones) for the UnrealEd interior tour
+background
+map PA_AvalonB
+waitcontrol 150
+wait 2
+console hub zones
+wait 1
+quit

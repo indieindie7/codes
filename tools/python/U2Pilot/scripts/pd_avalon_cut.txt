@@ -1,0 +1,6 @@
+# pd_avalon_cut: the Avalon planet-drop cutscene (the Atlantis in orbit, its dropship going down), a shot every second
+background
+map PD_Avalon
+shots 1
+wait 70
+quit
