@@ -1,0 +1,35 @@
+# gore_look: U2Gore by eye. A merc killed in front of the big container (spray on its side), then a look at
+# the body's pool; the same for an Izarian (green).
+background
+map M08A1?Mutator=U2TestHub.HubMutator,U2Gore.GoreMutator
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console set GoreManager bLog True
+console hub tp -730 5000 6530
+wait 1
+turn -35 0 0.4
+wait 0.5
+spawn U2Pawns.U2MercJapLight 170
+wait 0.3
+console hub kill 400
+wait 1.5
+shot
+console hub tpto U2MercJapLight 170
+wait 0.5
+turn 0 -25 0.3
+wait 8
+shot
+turn 0 25 0.3
+console hub tp -730 5000 6530
+wait 1
+spawn U2Pawns.U2Izarian 170
+wait 0.3
+console hub kill 400
+wait 1.5
+shot
+turn 0 -25 0.3
+wait 8
+shot
+quit

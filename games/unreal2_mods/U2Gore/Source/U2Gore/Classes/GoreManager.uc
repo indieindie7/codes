@@ -112,11 +112,24 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 
 	// the spray behind the victim, along the shot (a little downward: blood falls)
 	Dir = Normal(Dir + vect(0,0,-0.25));
-	if (Trace(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius, false) != None)
+	if (Surface(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius))
 		Mark(SprayTex(Victim), HitL, HitN, Dir, Size * (0.8 + 0.6 * VSize(HitL - HitLocation) / SprayReach));
 	// drips under the hit
-	if (FRand() < 0.85 && Trace(HitL, HitN, HitLocation - vect(0,0,400), HitLocation, false) != None)
+	if (FRand() < 0.85 && Surface(HitL, HitN, HitLocation - vect(0,0,400), HitLocation))
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
+}
+
+// the first solid surface along a line: the level itself, terrain or a static mesh. (A plain Trace without
+// actors goes through static meshes, and floors and crates are often those: the mark would land on the
+// level geometry hidden underneath. One with actors stops at the bodies themselves.)
+function bool Surface(out vector HitL, out vector HitN, vector End, vector Start)
+{
+	local Actor A;
+
+	foreach TraceActors(class'Actor', A, HitL, HitN, End, Start)
+		if (A == Level || A.bWorldGeometry || TerrainInfo(A) != None || StaticMeshActor(A) != None)
+			return true;
+	return false;
 }
 
 function AddDying(Pawn P)
@@ -145,7 +158,7 @@ event Tick(float DeltaTime)
 		if (Dying[i] != None && !Dying[i].bDeleteMe && Dying[i].Health <= 0)
 		{
 			Spot = Dying[i].Location;
-			if (Trace(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,20), false) != None && HitN.Z > 0.6)
+			if (Surface(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,20)) && HitN.Z > 0.6)
 			{
 				if (BloodKind(Dying[i]) == 2)
 					T = IchorPool;
