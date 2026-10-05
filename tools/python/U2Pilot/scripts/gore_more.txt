@@ -1,0 +1,38 @@
+# gore_more: U2Gore blood on characters, remains and bleeding trails.
+# 1) an Izarian (lists its skins) killed close by: its body should be stained green.
+# 2) bodies set to be removed after 5 s: remains should be left where they lay.
+# 3) a merc wounded by a short burst: drops logged under it while it lives.
+background
+map M08A1?Mutator=U2TestHub.HubMutator,U2Gore.GoreMutator
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console set GoreManager bLog True
+console hub tp -730 5000 6530
+wait 1
+turn -35 0 0.4
+wait 0.5
+spawn U2Pawns.U2Izarian 150
+wait 0.6
+shot
+console hub kill 400
+wait 2.5
+turn 0 -20 0.3
+wait 0.5
+shot
+console set U2Pawn bQuickCarcassCleanup True
+console set U2Pawn TimeBeforeCarcassDestroyed 4
+spawn U2Pawns.U2MercJapLight 150
+wait 0.4
+console hub kill 400
+wait 14
+shot
+dump GoreManager Hits Marks CoatCount RemainsCount
+turn 0 20 0.3
+spawn U2Pawns.U2MercJapMedium 260
+wait 0.8
+fire 0.35
+wait 6
+dump GoreManager Hits Marks CoatCount RemainsCount
+quit

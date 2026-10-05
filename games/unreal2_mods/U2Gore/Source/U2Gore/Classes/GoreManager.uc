@@ -1,10 +1,13 @@
 //=============================================================================
 // U2Gore - blood that stays. One per level (GoreMutator spawns it), fed every
-// hit by GoreRules. Ported from the Advent Rising mod's ModGore (first slice):
+// hit by GoreRules. Ported from the Advent Rising mod's ModGore:
 //   - a spray on the wall or floor behind the victim, along the shot, if one is
 //     within SprayReach: the bigger the hit, the bigger the spray;
 //   - drips on the floor under the hit, most of the time;
-//   - a pool spreading under each body, a moment after it falls.
+//   - a pool spreading under each body, a moment after it falls;
+//   - the badly wounded leave drops where they go, fewer as the wound clots;
+//   - when the game takes a body away, remains stay on the floor where it lay;
+//   - blood lands on the bodies near a hit (GoreCoat): they look bloody.
 // The marks are GoreDecal projectors with procedural textures (tools\
 // make_textures.py). At most MaxDecals at once: the oldest goes first.
 // Who bleeds, and in which colour, follows the game's own tables: the damage
@@ -22,14 +25,33 @@ var config int MaxDecals;
 var config float SprayReach;       // how far behind a victim a wall still catches the spray
 var config float DecalSize;        // the biggest marks' width, world units
 var config float PoolSize;
+var config bool bBleedTrail;       // the wounded leave drops where they go
+var config float BleedClot;        // seconds a wound takes to stop dripping
+var config bool bRemains;          // a body the game takes away leaves remains on the floor
+var config int MaxRemains;
+var config float RemainsSize;
+var config bool bCoats;            // blood lands on the characters near a hit
+var config int MaxCoats;
 var config bool bLog;
 
-var Texture Splats[4], Sprays[2], Pool;
-var Texture IchorSplats[4], IchorSprays[2], IchorPool;
-var array<GoreDecal> Decals;
+var Texture Splats[4], Sprays[2], Pool, RemainsTex[2], CoatTex[3];
+var Texture IchorSplats[4], IchorSprays[2], IchorPool, IchorRemains[2], IchorCoatTex[3];
+var array<GoreDecal> Decals, Remains;
 var array<Pawn> Dying;             // bodies waiting for their pool
 var array<float> DyingTime;
-var int Hits, Marks;
+struct Bleeder
+{
+	var Pawn P;
+	var float Rate;        // 0..1: how hard it bleeds
+	var float Next;        // seconds to the next drop
+};
+var array<Bleeder> Bleeders;
+var array<Pawn> Corpses;           // the dead, where each lies and its blood,
+var array<vector> CorpseLoc;       // kept for when the body is gone
+var array<int> CorpseKind;
+var float CorpseScan;
+var array<GoreCoat> Coats;
+var int Hits, Marks, CoatCount, RemainsCount;
 
 event PostBeginPlay()
 {
@@ -117,6 +139,10 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	// drips under the hit
 	if (FRand() < 0.85 && Surface(HitL, HitN, HitLocation - vect(0,0,400), HitLocation))
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
+	if (bBleedTrail && Victim.Health > Damage && !Victim.IsRealPlayer())
+		Bleed(Victim, Damage);
+	if (bCoats)
+		Spatter(Victim, HitLocation, 0.2 + Damage / 150.0, 130);
 }
 
 // the first solid surface along a line: the level itself, terrain or a static mesh. (A plain Trace without
@@ -127,7 +153,8 @@ function bool Surface(out vector HitL, out vector HitN, vector End, vector Start
 	local Actor A;
 
 	foreach TraceActors(class'Actor', A, HitL, HitN, End, Start)
-		if (A == Level || A.bWorldGeometry || TerrainInfo(A) != None || StaticMeshActor(A) != None)
+		// (a face seen from behind is the inside of something the line started in: go on)
+		if ((A == Level || A.bWorldGeometry || TerrainInfo(A) != None || StaticMeshActor(A) != None) && (HitN Dot (End - Start)) < 0)
 			return true;
 	return false;
 }
@@ -150,6 +177,15 @@ event Tick(float DeltaTime)
 	local GoreDecal D;
 	local Texture T;
 
+	CorpseScan -= DeltaTime;
+	if (CorpseScan <= 0)
+	{
+		CorpseScan = 0.5;
+		if (bRemains)
+			ScanCorpses();
+	}
+	if (bBleedTrail)
+		BleedTrails(DeltaTime);
 	for (i = Dying.Length - 1; i >= 0; i--)
 	{
 		if (Dying[i] != None && !Dying[i].bDeleteMe && Level.TimeSeconds < DyingTime[i])
@@ -175,6 +211,202 @@ event Tick(float DeltaTime)
 		Dying.Remove(i, 1);
 		DyingTime.Remove(i, 1);
 	}
+}
+
+// ---- bleeding trails -----------------------------------------------------------------------
+function Bleed(Pawn P, int Damage)
+{
+	local int i;
+	local Bleeder B;
+	local float Add;
+
+	Add = Damage / (0.3 * FMax(P.default.Health, 100));
+	for (i = 0; i < Bleeders.Length; i++)
+		if (Bleeders[i].P == P)
+		{
+			Bleeders[i].Rate = FMin(Bleeders[i].Rate + Add, 1.0);
+			return;
+		}
+	if (Bleeders.Length >= 16)
+		return;
+	B.P = P;
+	B.Rate = FMin(Add, 1.0);
+	B.Next = 0.3;
+	Bleeders[Bleeders.Length] = B;
+}
+
+// drops under the wounded, fewer as the wound clots; none from the dead (they pool)
+function BleedTrails(float DeltaTime)
+{
+	local int i;
+	local Pawn P;
+	local vector HitL, HitN;
+
+	for (i = Bleeders.Length - 1; i >= 0; i--)
+	{
+		P = Bleeders[i].P;
+		Bleeders[i].Rate -= DeltaTime / BleedClot;
+		if (P == None || P.bDeleteMe || P.Health <= 0 || P.bHidden || Bleeders[i].Rate <= 0.05)
+		{
+			Bleeders.Remove(i, 1);
+			continue;
+		}
+		Bleeders[i].Next -= DeltaTime;
+		if (Bleeders[i].Next > 0)
+			continue;
+		// a drop every 0.25 s at the worst, every 1.5 s when nearly clotted
+		Bleeders[i].Next = 0.25 + 1.25 * (1 - Bleeders[i].Rate) + 0.2 * FRand();
+		if (Surface(HitL, HitN, P.Location - vect(0,0,1) * (P.CollisionHeight + 120), P.Location))
+			Mark(SplatTex(P), HitL + VRand() * vect(1,1,0) * 14, HitN, vect(0,0,0), DecalSize * (0.14 + 0.16 * Bleeders[i].Rate));
+	}
+}
+
+// ---- remains -------------------------------------------------------------------------------
+// the dead are remembered with where they lie; one that is gone (the game removes bodies after a
+// while, and gibs them at once) leaves remains there
+function ScanCorpses()
+{
+	local Pawn P;
+	local int i;
+	local bool bKnown;
+
+	for (i = Corpses.Length - 1; i >= 0; i--)
+	{
+		P = Corpses[i];
+		if (P == None || P.bDeleteMe || P.Health > 0)
+		{
+			if (P == None || P.bDeleteMe)
+				AddRemains(CorpseLoc[i], CorpseKind[i]);
+			Corpses.Remove(i, 1);
+			CorpseLoc.Remove(i, 1);
+			CorpseKind.Remove(i, 1);
+		}
+		else
+			CorpseLoc[i] = P.Location;
+	}
+	foreach DynamicActors(class'Pawn', P)
+	{
+		if (P.Health > 0 || P.bDeleteMe || P.bHidden || P.IsRealPlayer() || BloodKind(P) == 0)
+			continue;
+		bKnown = false;
+		for (i = 0; i < Corpses.Length; i++)
+			if (Corpses[i] == P)
+			{
+				bKnown = true;
+				break;
+			}
+		if (!bKnown)
+		{
+			Corpses[Corpses.Length] = P;
+			CorpseLoc[CorpseLoc.Length] = P.Location;
+			CorpseKind[CorpseKind.Length] = BloodKind(P);
+		}
+	}
+}
+
+// flat on the floor under where the body lay, turned any way
+function AddRemains(vector Spot, int Kind)
+{
+	local vector HitL, HitN;
+	local GoreDecal D;
+	local Texture T;
+
+	if (!Surface(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,20)) || HitN.Z < 0.6)
+		return;
+	while (Remains.Length > 0 && (Remains.Length >= MaxRemains || Remains[0] == None || Remains[0].bDeleteMe))
+	{
+		if (Remains[0] != None && !Remains[0].bDeleteMe)
+			Remains[0].Destroy();
+		Remains.Remove(0, 1);
+	}
+	if (Kind == 2)
+		T = IchorRemains[Rand(2)];
+	else
+		T = RemainsTex[Rand(2)];
+	D = Spawn(class'GoreDecal',,, HitL + HitN * 16);
+	if (D == None)
+		return;
+	D.Place(T, HitL, HitN, vect(0,0,0), RemainsSize * (1.0 + 0.25 * FRand()));
+	D.LifeSpan = 600;
+	Remains[Remains.Length] = D;
+	RemainsCount++;
+	if (bLog)
+		Log("U2Gore: remains at "$HitL$" ("$Remains.Length$")");
+}
+
+// ---- blood on characters -------------------------------------------------------------------
+// Blood from a hit lands on the bodies around it: the victim's own, and whoever stands within
+// Reach (the player too). Each body has one coat (GoreCoat), which gets heavier with more blood;
+// the blood's colour is the first bleeder's.
+function Spatter(Pawn From, vector Spot, float Amount, float Reach)
+{
+	local Pawn P;
+	local int Kind;
+
+	Kind = BloodKind(From);
+	if (Kind == 0)
+		return;
+	Amount = FMin(Amount, 1.5);
+	AddCoat(From, Amount, Kind);
+	foreach RadiusActors(class'Pawn', P, Reach, Spot)
+		if (P != From && !P.bHidden && P.Health > 0)
+			AddCoat(P, Amount * 0.6 * (1 - VSize(P.Location - Spot) / (Reach + P.CollisionRadius + 1)), Kind);
+}
+
+function AddCoat(Pawn P, float Amount, int Kind)
+{
+	local int i, Lightest;
+	local GoreCoat C;
+
+	if (Amount <= 0.02 || P == None || P.bHidden)
+		return;
+	for (i = Coats.Length - 1; i >= 0; i--)
+	{
+		if (Coats[i] == None || Coats[i].bDeleteMe)
+		{
+			Coats.Remove(i, 1);
+			continue;
+		}
+		if (Coats[i].Wearer == P)
+		{
+			Coats[i].More(Amount);
+			return;
+		}
+	}
+	if (Coats.Length >= MaxCoats)
+	{
+		// the lightest coat that isn't the player's makes room
+		Lightest = -1;
+		for (i = 0; i < Coats.Length; i++)
+			if (!Coats[i].Wearer.IsRealPlayer() && (Lightest < 0 || Coats[i].Amount < Coats[Lightest].Amount))
+				Lightest = i;
+		if (Lightest < 0)
+			return;
+		Coats[Lightest].Destroy();
+		Coats.Remove(Lightest, 1);
+	}
+	C = Spawn(class'GoreCoat',,, P.Location);
+	if (C == None)
+		return;
+	C.Gore = Self;
+	if (!C.Wear(P, Kind, Amount))
+	{
+		if (bLog)
+			Log("U2Gore: no blood coat for "$P$": "$P.Skins.Length$" skins, mesh "$P.Mesh);
+		C.Destroy();
+		return;
+	}
+	CoatCount++;
+	if (bLog)
+		Log("U2Gore: blood coat on "$P$" (kind "$Kind$", amount "$Amount$", skin "$C.OwnSkin[0]$", "$C.Slots$" slots, "$(Coats.Length + 1)$" coats)");
+	Coats[Coats.Length] = C;
+}
+
+function Texture CoatMaterial(int Kind, int Level)
+{
+	if (Kind == 2)
+		return IchorCoatTex[Clamp(Level, 0, 2)];
+	return CoatTex[Clamp(Level, 0, 2)];
 }
 
 function GoreDecal Mark(Texture T, vector Spot, vector N, vector Along, float Size)
@@ -205,6 +437,13 @@ defaultproperties
 	SprayReach=260.000000
 	DecalSize=200.000000
 	PoolSize=190.000000
+	bBleedTrail=True
+	BleedClot=12.000000
+	bRemains=True
+	MaxRemains=12
+	RemainsSize=220.000000
+	bCoats=True
+	MaxCoats=10
 	Splats(0)=Texture'BloodSplat0'
 	Splats(1)=Texture'BloodSplat1'
 	Splats(2)=Texture'BloodSplat2'
@@ -212,6 +451,11 @@ defaultproperties
 	Sprays(0)=Texture'BloodSpray0'
 	Sprays(1)=Texture'BloodSpray1'
 	Pool=Texture'BloodPool0'
+	RemainsTex(0)=Texture'BloodRemains0'
+	RemainsTex(1)=Texture'BloodRemains1'
+	CoatTex(0)=Texture'BloodCoat0'
+	CoatTex(1)=Texture'BloodCoat1'
+	CoatTex(2)=Texture'BloodCoat2'
 	IchorSplats(0)=Texture'IchorSplat0'
 	IchorSplats(1)=Texture'IchorSplat1'
 	IchorSplats(2)=Texture'IchorSplat2'
@@ -219,5 +463,10 @@ defaultproperties
 	IchorSprays(0)=Texture'IchorSpray0'
 	IchorSprays(1)=Texture'IchorSpray1'
 	IchorPool=Texture'IchorPool0'
+	IchorRemains(0)=Texture'IchorRemains0'
+	IchorRemains(1)=Texture'IchorRemains1'
+	IchorCoatTex(0)=Texture'IchorCoat0'
+	IchorCoatTex(1)=Texture'IchorCoat1'
+	IchorCoatTex(2)=Texture'IchorCoat2'
 	RemoteRole=ROLE_None
 }

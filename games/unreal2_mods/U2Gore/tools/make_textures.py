@@ -5,7 +5,8 @@
 The pictures come from the Advent Rising mod's generator (games/advent_rising_mods/AdventMod/Textures/
 make_blood.py: a metaball field with a ragged edge, colour already mixed for the projector's 2x multiply,
 plain Python, seeded so every build gives the same files). Here: red for humans and Skaarj, green for
-Izarians and Araknids. Only the marks U2Gore uses: 4 splats, 2 sprays (thrown along +X), 1 pool each.
+Izarians and Araknids. The marks U2Gore uses: 4 splats, 2 sprays (thrown along +X), 1 pool, 2 remains and 3 coats (blood on a
+body, light to heavy) each.
 """
 import os, random, sys
 
@@ -25,3 +26,8 @@ for prefix, pal in (("Blood", mb.RED), ("Ichor", GREEN)):
         mb.render(128, mb.splat(rng, directional=True), rng, edge_noise=0.8, name="%sSpray%d" % (prefix, i), palette=pal)
     rng = random.Random(3000)
     mb.render(128, mb.pool(rng), rng, edge_noise=0.35, name="%sPool0" % prefix, palette=pal)
+    for i in range(2):
+        mb.remains("%sRemains%d" % (prefix, i), random.Random(6000 + i), palette=pal)
+    for i in range(3):
+        rng = random.Random(8000 + i)
+        mb.render(128, mb.coat(rng, i), rng, edge_noise=0.7, name="%sCoat%d" % (prefix, i), palette=pal)

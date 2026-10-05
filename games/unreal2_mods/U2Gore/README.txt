@@ -12,23 +12,34 @@ each character's gib set). Only damage types that have a blood effect in the gam
 shrapnel; not fire, electricity, gas, EMP), but any death leaves a pool. The game's own blood particles
 and gibs are untouched. At most 80 marks at once; the oldest goes first.
 
-This is the first slice of a port of the Advent Rising mod's gore system (games/advent_rising_mods,
-AdventMod/Classes/ModGore.uc). Not ported yet: wounds on bodies, blood on characters (skin combiner),
-bleeding trails, scorch marks, screen blood, remains, dismemberment. The marks are projectors with
-procedural textures (tools/make_textures.py, which uses the Advent mod's generator).
+Also: the badly wounded leave drops where they go; a body the game removes leaves remains on the
+floor; blood lands on the bodies near a hit (the body's skins are swapped for skin x blood combiners).
+
+A port of the Advent Rising mod's gore system (games/advent_rising_mods, AdventMod/Classes/ModGore.uc).
+The marks are projectors with procedural textures (tools/make_textures.py, which uses the Advent mod's
+generator). State on 2026-10-05:
+  seen in game   floor drips and pools (red), wall spray (green), marks on static meshes
+  runs, unseen   blood on characters: only bodies that list their skins get it (Izarians, the named
+                 crew); mercs, marines and Skaarj use their mesh's own materials, which script cannot
+                 read, so they are skipped ("no blood coat" in the log). On the Izarian's dark skin the
+                 stains do not show. Needs another method (a mesh-to-skins table from the .gem files,
+                 or a projector on the body).
+  not tested     bleeding trails (the test's burst hit a cockroach), remains (bodies were not removed
+                 within the test's 14 s)
+  not ported     wounds on bodies, scorch marks, screen blood, dismemberment
 
 Build: copy Source\U2Gore into the game folder, add EditPackages=U2Gore to [Editor.EditorEngine] in
 Unreal2.ini, run "UCC make" from System.
 Install: add U2Gore.GoreMutator to the Mutator= line in User.ini's [DefaultPlayer] section
 (comma-separated). Uninstall: remove it from that line.
 
-Test: python u2pilot.py scripts/gore_test.txt --background (tools/python/U2Pilot). Seen working
-2026-10-05: red splat on a metal floor in M08A1; marks logged for Skaarj, mercs and Izarians.
-Not checked yet: sprays on walls, the green marks and the pools by eye; dark grass hides red blood.
+Test: python u2pilot.py scripts/gore_look.txt --background (tools/python/U2Pilot); gore_more.txt for
+coats, remains and trails. Dark grass hides red blood (the marks multiply the surface).
 
 Console (any time in a level):
   set GoreManager bBlood False     no new marks
   set GoreManager MaxDecals 120    DecalSize 200 (widest mark, world units), PoolSize 190, SprayReach 260
+  set GoreManager bBleedTrail False | bRemains False | bCoats False
   set GoreManager bLog True        every hit and mark in Unreal2.log
 
 old-sketch\ holds an earlier, never compiled draft (kept for reference).
