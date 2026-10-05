@@ -93,7 +93,10 @@ float ViewZ(float2 uv)
 float4 GBufPS(float2 uv : TEXCOORD0) : COLOR
 {
 	float z = ViewZ(uv);
-	if (z <= 0)
+	// S1 (when set): the depth of what the game drew after clearing the world's (a first-person
+	// weapon, in its own projection). What it covers is left alone.
+	float over = tex2Dlod(S1, float4(uv, 0, 0)).r;
+	if (z <= 0 || (over > 0 && over < 0.999999))
 		return float4(0, 0, 0, 0);                  // sky
 	float3 p = ViewPos(uv, z);
 	// the normal from the nearer neighbour on each axis (so edges don't bend it)

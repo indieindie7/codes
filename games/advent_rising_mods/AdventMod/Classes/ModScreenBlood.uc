@@ -2,6 +2,7 @@
 // ModScreenBlood - blood on the "lens": a kill or a body coming apart close to the
 // player throws a few splats on the screen, which fade out. ModGore adds them
 // (Splash); ModMutator adds this to the player's interactions.
+// It also draws the energy blade's strikes left (ModMelee), a row of pips low on the screen.
 //=============================================================================
 class ModScreenBlood extends Interaction;
 
@@ -16,6 +17,8 @@ struct Splat
 var Splat Splats[12];
 var bool bAdded;               // (default) one per player, for the whole run
 var ModScreenBlood Live;       // (default) the one ModGore talks to
+var int BladeShown;            // the blade's strikes when last drawn
+var float BladeFlash;          // >0: a strike was just used (the row is bright)
 
 event Initialized()
 {
@@ -50,6 +53,13 @@ function Tick(float DeltaTime)
 {
 	local int i;
 
+	if (class'ModMelee'.default.SavedCharges != BladeShown)
+	{
+		BladeShown = class'ModMelee'.default.SavedCharges;
+		BladeFlash = 1.0;
+	}
+	else if (BladeFlash > 0)
+		BladeFlash -= DeltaTime * 2;
 	for (i = 0; i < MAXSPLATS; i++)
 		if (Splats[i].Tex != None)
 		{
@@ -80,6 +90,38 @@ function PostRender(Canvas C)
 		C.SetPos(Splats[i].X * C.ClipX - S * 0.5,
 			Splats[i].Y * C.ClipY - S * 0.5 + Splats[i].Age * 0.012 * C.ClipY);
 		C.DrawTile(Splats[i].Tex, S, S * (1 + 0.04 * Splats[i].Age), 0, 0, 128, 128);
+	}
+	DrawBlade(C);
+}
+
+// the energy blade's strikes: a pip each, the used ones dim, the last five red
+function DrawBlade(Canvas C)
+{
+	local int i, Total, Have;
+	local float W, H, Gap, X0, Y0, Lit;
+
+	Have = class'ModMelee'.default.SavedCharges;
+	Total = Max(class'ModMelee'.default.BladeCharges, Have);
+	if (Have <= 0 || Total > 40)
+		return;
+	H = C.ClipY * 0.022;
+	W = C.ClipY * 0.007;
+	Gap = W * 0.8;
+	X0 = C.ClipX * 0.5 - (Total * (W + Gap) - Gap) * 0.5;
+	Y0 = C.ClipY * 0.925;
+	Lit = FClamp(BladeFlash, 0, 1);
+	C.Style = 5;
+	for (i = 0; i < Total; i++)
+	{
+		if (i >= Have)
+			C.SetDrawColor(40, 60, 70);
+		else if (Have <= 5)
+			C.SetDrawColor(255, 70 + 120 * Lit, 50 + 120 * Lit);
+		else
+			C.SetDrawColor(60 + 195 * Lit, 220 + 35 * Lit, 255);
+		C.DrawColor.A = 190;
+		C.SetPos(X0 + i * (W + Gap), Y0);
+		C.DrawTile(Texture'Engine.WhiteSquareTexture', W, H, 0, 0, 2, 2);
 	}
 }
 

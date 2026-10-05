@@ -62,6 +62,8 @@ var array<ModBloodCoat> Coats;
 var Material CoatTex[3], AlienCoatTex[3];
 var config bool bDirt;             // dirt and battle damage: grime where the player goes, cracks and craters where things explode
 var config int MaxDirt;
+var config int MaxRubble;          // loose pieces thrown out by explosions (ModRubble); 0: none
+var array<ModRubble> Rubble;
 var config float DirtEvery;        // seconds between grime patches around the player
 var array<ModBloodDecal> Dirt;
 var Material GrimeTex[2], CrackTex[2], RubbleTex, CraterTex;
@@ -1215,6 +1217,41 @@ function ModBloodDecal AddDirt(Material T, vector Spot, vector N, float Size, fl
 	return D;
 }
 
+// loose pieces knocked out of the surface an explosion went off on: up and outward, more
+// and bigger for a bigger blast. Its own pool (MaxRubble, the oldest goes first).
+function ThrowRubble(vector Spot, vector N, float Radius)
+{
+	local int i, Count;
+	local ModRubble R;
+	local float K;
+	local vector V;
+
+	if (MaxRubble <= 0)
+		return;
+	Count = Clamp(int(Radius / 60.0), 3, 7);
+	for (i = 0; i < Count; i++)
+	{
+		while (Rubble.Length > 0 && (Rubble.Length >= MaxRubble || Rubble[0] == None || Rubble[0].bDeleteMe))
+		{
+			if (Rubble[0] != None && !Rubble[0].bDeleteMe)
+				Rubble[0].Destroy();
+			Rubble.Remove(0, 1);
+		}
+		R = Spawn(class'ModRubble',,, Spot + N * 14 + VRand() * 10, RotRand());
+		if (R == None)
+			continue;
+		K = 3.0 + 6.0 * FRand() * FRand();
+		R.Gore = self;
+		R.SetStaticMesh(R.Shapes[Rand(2)]);
+		R.SetDrawScale(K);
+		R.Size = vect(1,1,1) * K;
+		R.Stay = 180 + 60 * FRand();
+		V = Normal(N * 1.2 + VRand()) * (220 + 380 * FRand());
+		R.Launch(V, PhysicsVolume.Gravity.Z, K * 0.5);
+		Rubble[Rubble.Length] = R;
+	}
+}
+
 function BlastMarks(vector Loc, float Radius)
 {
 	local vector HitL, HitN, Dir;
@@ -1227,6 +1264,7 @@ function BlastMarks(vector Loc, float Radius)
 	{
 		AddDirt(CraterTex, HitL, HitN, DecalScale * FClamp(Radius / 260.0, 0.9, 2.2), 600);
 		AddDirt(RubbleTex, HitL + VRand() * vect(1,1,0) * 40, HitN, DecalScale * 1.6, 600);
+		ThrowRubble(HitL, HitN, Radius);
 	}
 	// cracks where the blast reached a wall or the ceiling
 	for (i = 0; i < 6; i++)
@@ -1593,6 +1631,7 @@ defaultproperties
      AlienCoatTex(2)=Texture'AdventMod.Blood.AlienCoat2'
      bDirt=True
      MaxDirt=60
+     MaxRubble=30
      DirtEvery=2.500000
      GrimeTex(0)=Texture'AdventMod.Dirt.DirtGrime0'
      GrimeTex(1)=Texture'AdventMod.Dirt.DirtGrime1'
