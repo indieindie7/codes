@@ -43,6 +43,8 @@ def add_handpoints(mesh):
     right = names.index("Merc R Hand") if "Merc R Hand" in names else None
     left = names.index("Merc L Hand") if "Merc L Hand" in names else None
     added = []
+    if "handpointR02" in names:          # already an Unreal II skeleton (a mesh rigged on Dalton's own bones)
+        return ["handpointR02 (already there)"]
     if "Bone_weapon" in names:
         mesh.bones[names.index("Bone_weapon")].name = "handpointR02"
         added.append("handpointR02 (was Bone_weapon)")

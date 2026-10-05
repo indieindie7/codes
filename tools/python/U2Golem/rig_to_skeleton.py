@@ -5,7 +5,8 @@ Run:  blender -b <rigged_character.blend> --python rig_to_skeleton.py -- <out.bl
 <rigged_character.blend>: an armature with its skinned body (gem2blend.py output, e.g. dalton\\PlayerGame.blend).
 low: the new mesh (retopo_bake.py output), standing upright, facing -Y, arms out to the sides.
 
-1. Fit: the new mesh is scaled so its arms are as high above its soles as the old body's, and centred on it.
+1. Fit in sections to the skeleton's proportions (see the comment in the code): legs and torso are stretched
+   to the shoulder joints' height, the head keeps its shape, the arms take the skeleton's arm length.
 2. Match the pose: the old skeleton's arms and legs are rotated until the old body's hands and feet sit where
    the new mesh has its hands and feet (generated T-poses never have exactly the rest pose's angles).
 3. Weights: every new vertex takes the bone weights of the nearest point on the old body's surface in that
@@ -52,6 +53,25 @@ def ends(P):
     return r
 
 
+def bn(suffix):
+    """bone by the end of its name, any prefix or case: Unreal II's "Merc L UpperArm" or UT2004's "Bip01 L UpperArm" """
+    m = [b.name for b in arm.data.bones if b.name.lower().endswith(suffix.lower())]
+    if not m:
+        raise KeyError(suffix)
+    return min(m, key=len)
+
+
+
+def swing(root, tip, delta):
+    """rotate bone `root` about its head so that bone `tip`'s head moves by about `delta` (armature space)"""
+    h = pb[root].head.copy()
+    d0 = (pb[tip].head - h)
+    d1 = d0 + Vector(delta)
+    q = d0.rotation_difference(d1)
+    pb[root].matrix = Matrix.Translation(h) @ q.to_matrix().to_4x4() @ Matrix.Translation(-h) @ pb[root].matrix
+    bpy.context.view_layer.update()
+
+
 # ---- 1. load and fit the new mesh -------------------------------------------------------------
 before = set(bpy.data.objects)
 bpy.ops.import_scene.gltf(filepath=o["low"])
@@ -68,35 +88,50 @@ new.name = NAME
 P = np.array([tuple(v.co) for v in new.data.vertices])
 D0 = ends(body_points())
 N0 = ends(P)
-arm_h = lambda e: (e["handL"][2] + e["handR"][2]) / 2 - e["sole"]
-s = arm_h(D0) / arm_h(N0)
-T = Matrix.Translation((D0["cx"], D0["cy"], D0["sole"])) @ Matrix.Scale(s, 4) @ Matrix.Translation(
-    (-N0["cx"], -N0["cy"], -N0["sole"]))
-new.data.transform(T)
-P = np.array([tuple(v.co) for v in new.data.vertices])
+# The game's animations carry the skeleton's own bone lengths, so the mesh must take the skeleton's
+# proportions, not the other way round. A generated figure is usually stockier (lower shoulders, bigger head).
+# The fit is done in sections:
+#   soles -> shoulders: stretched in height to the skeleton's shoulder joints (the new mesh is in a T-pose, so
+#                       its hands are at shoulder height);
+#   widths and depths : one scale, between the height stretch and a plain whole-height fit;
+#   above the shoulders (neck, head, hat): that same scale in every direction, so the head is not distorted;
+#   arms              : stretched along their length to the skeleton's arm length.
+bone_w = lambda b: arm.matrix_world @ b.head_local
+sh = [b for b in arm.data.bones if b.name.lower().endswith(" upperarm")]
+shoulder_z = float(np.mean([bone_w(b).z for b in sh]))
+shoulder_x = float(np.mean([abs(bone_w(b).x - D0["cx"]) for b in sh]))
+n_arm_z = (N0["handL"][2] + N0["handR"][2]) / 2
+s_z = (shoulder_z - D0["sole"]) / (n_arm_z - N0["sole"])
+s_h = (body_points()[:, 2].max() - D0["sole"]) / (P[:, 2].max() - N0["sole"])
+s = math.sqrt(s_z * s_h)
+Q = np.empty_like(P)
+Q[:, 0] = D0["cx"] + (P[:, 0] - N0["cx"]) * s
+Q[:, 1] = D0["cy"] + (P[:, 1] - N0["cy"]) * s
+low_part = P[:, 2] <= n_arm_z
+Q[:, 2] = np.where(low_part, D0["sole"] + (P[:, 2] - N0["sole"]) * s_z, shoulder_z + (P[:, 2] - n_arm_z) * s)
+# arm length: old = shoulder joint to the hand end (whatever the rest pose), new = shoulder line to the hand end
+old_len = float(np.mean([np.linalg.norm(D0["hand" + sd] - np.array(bone_w(arm.data.bones[bn(f" {sd} UpperArm")]))) for sd in "LR"]))
+dx = Q[:, 0] - D0["cx"]
+new_len = float(np.mean([abs(Q[np.sign(dx) == sg][np.abs(dx[np.sign(dx) == sg]) > 0.86 * np.abs(dx[np.sign(dx) == sg]).max(), 0].mean() - D0["cx"]) for sg in (1, -1)])) - shoulder_x
+k = old_len / new_len
+out_x = np.abs(dx) > shoulder_x
+Q[out_x, 0] = D0["cx"] + np.sign(dx[out_x]) * (shoulder_x + (np.abs(dx[out_x]) - shoulder_x) * k)
+for v, q in zip(new.data.vertices, Q):
+    v.co = q
+P = Q
 N = ends(P)
-print(f"RIG scale {s:.2f}; arm span old {D0['handL'][0] - D0['handR'][0]:.1f} new {N['handL'][0] - N['handR'][0]:.1f}; "
-      f"height old {body_points()[:, 2].max() - D0['sole']:.1f} new {P[:, 2].max() - N['sole']:.1f}")
+print(f"RIG fit: height x{s_z:.1f} below the shoulders, x{s:.1f} elsewhere (plain whole-height fit would be x{s_h:.1f}); "
+      f"arms x{k:.2f} in length; height old {body_points()[:, 2].max() - D0['sole']:.0f} new {P[:, 2].max() - N['sole']:.0f}")
 
 # ---- 2. pose the old skeleton onto the new mesh ------------------------------------------------
 pb = arm.pose.bones
 
 
-def swing(root, tip, delta):
-    """rotate bone `root` about its head so that bone `tip`'s head moves by about `delta` (armature space)"""
-    h = pb[root].head.copy()
-    d0 = (pb[tip].head - h)
-    d1 = d0 + Vector(delta)
-    q = d0.rotation_difference(d1)
-    pb[root].matrix = Matrix.Translation(h) @ q.to_matrix().to_4x4() @ Matrix.Translation(-h) @ pb[root].matrix
-    bpy.context.view_layer.update()
-
-
 for it in range(3):                                  # a few rounds: the ends are measured on the deformed body
     D = ends(body_points())
     for side in "LR":
-        swing(f"Merc {side} UpperArm", f"Merc {side} Hand", N["hand" + side] - D["hand" + side])
-        swing(f"Merc {side} Thigh", f"Merc {side} Foot", (N["foot" + side] - D["foot" + side]) * np.array((1, 1, 0)))
+        swing(bn(f" {side} UpperArm"), bn(f" {side} Hand"), N["hand" + side] - D["hand" + side])
+        swing(bn(f" {side} Thigh"), bn(f" {side} Foot"), (N["foot" + side] - D["foot" + side]) * np.array((1, 1, 0)))
 D = ends(body_points())
 print("RIG pose match, remaining offsets: " + ", ".join(
     f"{k} {np.linalg.norm(N[k] - D[k]):.1f}" for k in ("handL", "handR", "footL", "footR")))
@@ -129,9 +164,9 @@ for i, p in enumerate(P):
 # Hanging cloth (skirt, tabard, coat tails): it is far from the skin and the nearest skin is one thigh or the
 # other, so a stride would tear it down the middle. Between hip and knee, the further a vertex hangs off the
 # body the more it follows the pelvis instead.
-if "Merc Pelvis" in groups:
-    gp = groups.index("Merc Pelvis")
-    hip_z, knee_z = pb["Merc Spine"].head.z, pb["Merc L Calf"].head.z
+if bn(" Pelvis") in groups:
+    gp = groups.index(bn(" Pelvis"))
+    hip_z, knee_z = pb[bn(" Spine")].head.z, pb[bn(" L Calf")].head.z
     Hb = EV[:, 2].max() - EV[:, 2].min()
     for i in np.where((P[:, 2] < hip_z + 0.03 * Hb) & (P[:, 2] > knee_z - 0.06 * Hb))[0]:
         f = float(np.clip((dist[i] - 0.012 * Hb) / (0.045 * Hb), 0, CLOTH))
@@ -244,12 +279,12 @@ if TEST:
         pb[name].matrix = Matrix.Translation(h) @ Matrix.Rotation(math.radians(deg), 4, axis) @ Matrix.Translation(-h) @ pb[name].matrix
         bpy.context.view_layer.update()
 
-    turn("Merc L UpperArm", "Y", 65)                 # arms down
-    turn("Merc R UpperArm", "Y", -65)
-    turn("Merc L Forearm", "X", -40)                 # elbow bent forward
-    turn("Merc L Thigh", "X", 35)                    # a stride
-    turn("Merc L Calf", "X", -45)
-    turn("Merc R Thigh", "X", -25)
-    turn("Merc Head", "Z", 30)                       # look to one side
+    turn(bn(" L UpperArm"), "Y", 65)                 # arms down
+    turn(bn(" R UpperArm"), "Y", -65)
+    turn(bn(" L Forearm"), "X", -40)                 # elbow bent forward
+    turn(bn(" L Thigh"), "X", 35)                    # a stride
+    turn(bn(" L Calf"), "X", -45)
+    turn(bn(" R Thigh"), "X", -25)
+    turn(bn(" Head"), "Z", 30)                       # look to one side
     shots("pose")
 print("RIGGED", out + ".blend")

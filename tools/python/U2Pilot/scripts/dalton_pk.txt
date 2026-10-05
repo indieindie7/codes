@@ -1,0 +1,24 @@
+# The generated Dalton Peacekeeper outfit: wear it, measure its height, look at it from behind, the side and the front, walk.
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+console wardrobe wear Dalton Peacekeeper
+wait 1
+console wardrobe measure
+wait 12
+console wardrobe wear Dalton Peacekeeper
+console wardrobe view
+wait 1
+shot
+turn 90 0 0.5
+wait 0.5
+shot
+turn 90 0 0.5
+wait 0.5
+shot
+move 1 0 1.2
+shots 0.3
+wait 1
+quit
