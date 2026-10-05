@@ -55,6 +55,8 @@ var Material MeatTex, AlienMeatTex;
 
 var ModReact React;
 var ModSever Severer;              // decapitation and limb loss                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
+var config bool bWounds;           // a shot leaves a wound on the body, where it hit
+var config int MaxWounds, WoundsPerBody;
 var config bool bBleedTrail;       // the badly wounded leave drops where they go
 var config float BleedClot;        // seconds a wound takes to stop dripping
 var config int CorpsePulpHits;     // shots into one corpse that pulp it into pieces (0: never)
@@ -85,6 +87,13 @@ struct Pulp
 	var int Hits;
 };
 var array<Pulp> Pulps;
+struct Wound
+{
+	var Pawn P;
+	var ModStump M;
+	var bool bDied;        // the body was dead with it: gone when the game reuses the pawn
+};
+var array<Wound> Wounds;
 var string LastGuns;                // bGoreLog
 var array<Actor> Seen;
 var array<Projectile> Shots;       // projectiles in flight: where they were and how fast,
@@ -227,6 +236,8 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
 	if (bBleedTrail && Victim.Health > Damage && !Victim.IsHumanControlled())
 		Bleed(Victim, Damage);
+	if (bWounds && Damage >= 8 && !Victim.IsHumanControlled())
+		AddWound(Victim, HitLocation);
 	// a pool under a fresh body
 	if (Victim.Health <= 0 || Damage >= Victim.Health)
 	{
@@ -994,6 +1005,7 @@ event Tick(float DeltaTime)
 		CorpseScan = 0.5;
 		ScanCorpses();
 		CheckGibbed();
+		CheckWounds();
 	}
 	TrackShots();
 	if (bBleedTrail)
@@ -1019,6 +1031,98 @@ event Tick(float DeltaTime)
 		}
 		Dying.Remove(i, 1);
 		DyingTime.Remove(i, 1);
+	}
+}
+
+// a wound on the body: a small lump of meat (ModStump's mesh) riding the bone nearest
+// the hit, pulled in to the limb (hits land on the collision cylinder, off the mesh)
+function AddWound(Pawn P, vector Spot)
+{
+	local int i, n, Best, Kind;
+	local float D, BestD;
+	local coords BC;
+	local vector Off, Rel;
+	local Wound W;
+
+	Kind = BloodKind(P);
+	if (Kind == 0 || React == None || P.bHidden)
+		return;
+	for (i = 0; i < Wounds.Length; i++)
+		if (Wounds[i].P == P)
+			n++;
+	if (n >= WoundsPerBody)
+		return;
+	BestD = 1000000;
+	Best = -1;
+	for (i = 0; i < 12; i++)
+	{
+		BC = P.GetBoneCoords(React.Bones[i]);
+		if (BC.Origin == vect(0,0,0))
+			continue;
+		D = VSize(BC.Origin - Spot);
+		if (D < BestD)
+		{
+			BestD = D;
+			Best = i;
+		}
+	}
+	if (Best < 0)
+		return;
+	while (Wounds.Length >= MaxWounds)
+	{
+		if (Wounds[0].M != None)
+			Wounds[0].M.Destroy();
+		Wounds.Remove(0, 1);
+	}
+	BC = P.GetBoneCoords(React.Bones[Best]);
+	Off = Spot - BC.Origin;
+	if (VSize(Off) > 9)
+		Off = Normal(Off) * 9;
+	W.M = Spawn(class'ModStump',,, BC.Origin + Off);
+	if (W.M == None)
+		return;
+	W.M.SetDrawScale(1.5 + 1.3 * FRand());
+	if (Kind == 2)
+		W.M.Skins[0] = AlienMeatTex;
+	else
+		W.M.Skins[0] = MeatTex;
+	if (!P.AttachToBone(W.M, React.Bones[Best]))
+	{
+		W.M.Destroy();
+		return;
+	}
+	Rel.X = Off Dot BC.XAxis;
+	Rel.Y = Off Dot BC.YAxis;
+	Rel.Z = Off Dot BC.ZAxis;
+	W.M.SetRelativeLocation(Rel);
+	W.P = P;
+	Wounds[Wounds.Length] = W;
+}
+
+// wounds go with their body: when it is removed, blown apart or brought back to life
+function CheckWounds()
+{
+	local int i;
+	local Pawn P;
+
+	for (i = Wounds.Length - 1; i >= 0; i--)
+	{
+		P = Wounds[i].P;
+		if (P != None && !P.bDeleteMe && P.Health <= 0)
+			Wounds[i].bDied = true;
+		if (Wounds[i].M == None || P == None || P.bDeleteMe || (Wounds[i].bDied && P.Health > 0))
+		{
+			if (Wounds[i].M != None)
+			{
+				if (P != None)
+					P.DetachFromBone(Wounds[i].M);
+				Wounds[i].M.Destroy();
+			}
+			Wounds.Remove(i, 1);
+			continue;
+		}
+		if (Wounds[i].M.bHidden != P.bHidden)
+			Wounds[i].M.bHidden = P.bHidden;
 	}
 }
 
@@ -1235,6 +1339,9 @@ defaultproperties
      bCasings=True
      MaxClutter=150
      bCorpseShots=True
+     bWounds=True
+     MaxWounds=48
+     WoundsPerBody=5
      bBleedTrail=True
      BleedClot=14.000000
      CorpsePulpHits=10

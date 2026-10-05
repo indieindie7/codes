@@ -25,6 +25,14 @@ var config int MaxRagdolls;
 var config bool bDeathAnims;       // play a death clip first, ragdoll partway through it
 var config float DeathAnimHandoff; // seconds into the clip the body goes limp (a clip without its own time)
 var config bool bDeathAnimRagdoll; // go limp partway through a death clip. Off: the clip plays out and the body lies as it ends (a ragdoll begun from a clip crashed the game twice)
+var config bool bClipFloor;        // a body in a death clip is kept on the floor under it (stairs, slopes)
+struct ClipBody
+{
+	var Pawn P;
+	var vector Pivot;      // its own draw offset, to put back
+};
+var array<ClipBody> ClipBodies;
+var name FloorBones[8];
 var config string TestClip;        // testing: always this clip
 var name ClipName;                 // a name from a string (SetPropertyText)
 
@@ -291,6 +299,8 @@ event Tick(float DeltaTime)
 			if (class'ModSettings'.default.bGoreLog && int(Deaths[i].AnimT * 5) != int((Deaths[i].AnimT + DeltaTime) * 5))
 				class'ModSettings'.static.Note("react: move " $ P $ " t " $ Deaths[i].AnimT $ " actor " $ ((P.Location - Deaths[i].Start) << Deaths[i].Facing) $ " hips " $ ((P.GetBoneCoords('hips').Origin - Deaths[i].Start) << Deaths[i].Facing) $ " physics " $ P.Physics $ " hips over floor " $ OverFloor(P, 'hips') $ " head " $ OverFloor(P, 'head') $ " actor " $ int(P.Location.Z - P.GetBoneCoords('hips').Origin.Z + OverFloor(P, 'hips')) $ " collision " $ P.CollisionHeight);
 			Deaths[i].AnimT += DeltaTime;
+			if (bClipFloor)
+				OnFloor(P, Deaths[i].AnimT > Deaths[i].Length - 0.4, DeltaTime);
 			if (Deaths[i].AnimT < Deaths[i].Handoff)
 				continue;
 			if (!bDeathAnimRagdoll)
@@ -310,6 +320,7 @@ event Tick(float DeltaTime)
 			Deaths[i].Handoff = DeathAnim(P, Deaths[i].Spot, Deaths[i].Dir, Deaths[i].Type, Deaths[i].Length);
 			if (Deaths[i].Handoff > 0)
 			{
+				AddClipBody(P);
 				Deaths[i].Start = P.Location;
 				Deaths[i].Facing = P.Rotation;
 				Deaths[i].AnimT = 0;
@@ -325,6 +336,65 @@ event Tick(float DeltaTime)
 		}
 	}
 	WatchRagdolls(DeltaTime);
+	// a pawn the game brings back gets its own draw offset back
+	for (i = ClipBodies.Length - 1; i >= 0; i--)
+	{
+		P = ClipBodies[i].P;
+		if (P == None || P.bDeleteMe)
+			ClipBodies.Remove(i, 1);
+		else if (P.Health > 0)
+		{
+			P.PrePivot = ClipBodies[i].Pivot;
+			ClipBodies.Remove(i, 1);
+		}
+	}
+}
+
+function AddClipBody(Pawn P)
+{
+	local int i;
+	local ClipBody B;
+
+	for (i = 0; i < ClipBodies.Length; i++)
+		if (ClipBodies[i].P == P)
+			return;
+	B.P = P;
+	B.Pivot = P.PrePivot;
+	ClipBodies[ClipBodies.Length] = B;
+}
+
+// The clip moves the body as on flat ground. On stairs or a slope parts of it would sink
+// in: the body is drawn higher by as much as its lowest part is under the floor there
+// (at once), and once it lies still, lower if all of it hangs in the air (slowly).
+function OnFloor(Pawn P, bool bSettled, float DeltaTime)
+{
+	local int i;
+	local float Low, H;
+	local vector O, HitL, HitN, Pivot;
+
+	Low = 1000;
+	for (i = 0; i < 8; i++)
+	{
+		O = P.GetBoneCoords(FloorBones[i]).Origin;
+		if (O == vect(0,0,0))
+			continue;
+		if (Trace(HitL, HitN, O - vect(0,0,150), O + vect(0,0,60), false) == None)
+			continue;
+		H = O.Z - HitL.Z;
+		if (H < Low)
+			Low = H;
+	}
+	if (Low > 900)
+		return;
+	Pivot = P.PrePivot;
+	// bones are inside the body: a bone 3 over the floor has its flesh on it
+	if (Low < 3)
+		Pivot.Z += FMin(3 - Low, 40);
+	else if (bSettled && Low > 9)
+		Pivot.Z -= FMin(Low - 9, 60 * DeltaTime);
+	else
+		return;
+	P.PrePivot = Pivot;
 }
 
 // how high a bone is over the floor under it
@@ -557,6 +627,15 @@ defaultproperties
      StaggerSlow=0.350000
      StaggerTime=0.450000
      bDeathRagdoll=True
+     bClipFloor=True
+     FloorBones(0)=hips
+     FloorBones(1)=head
+     FloorBones(2)=leftFoot
+     FloorBones(3)=rightFoot
+     FloorBones(4)=leftLeg
+     FloorBones(5)=rightLeg
+     FloorBones(6)=lefthand
+     FloorBones(7)=righthand
      DeathAnimHandoff=0.900000
      MaxRagdolls=8
      Bones(0)=hips
