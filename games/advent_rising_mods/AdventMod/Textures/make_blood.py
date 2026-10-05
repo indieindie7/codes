@@ -122,9 +122,9 @@ def coat(rng, amount):
     """blood on a body (ModBloodCoat projects it onto a character): splats spread over the
     whole square, more and bigger with amount (0, 1, 2), with runs downward (+y)"""
     balls = []
-    for _ in range((4, 9, 16)[amount]):
+    for _ in range((4, 8, 12)[amount]):
         cx, cy = rng.uniform(0.12, 0.88), rng.uniform(0.1, 0.85)
-        r0 = rng.uniform(0.02, 0.035) * (1, 1.3, 1.7)[amount]
+        r0 = rng.uniform(0.02, 0.035) * (1, 1.2, 1.4)[amount]
         for _ in range(rng.randint(2, 5)):
             balls.append((cx + rng.gauss(0, 0.03), cy + rng.gauss(0, 0.03), r0 * rng.uniform(0.6, 1.1), 1, 1))
         for _ in range(rng.randint(6, 14)):
@@ -175,8 +175,9 @@ def dirt(name, rng, kind, size=128):
                 soot = smoothstep(0.46, 0.15, d) * (0.3 + 0.4 * n)
                 dark = min(1.0, 0.8 * pit + 0.35 * soot)
                 tint = (0.9, 0.86, 0.82)
-            g = 0.5 * (1 - dark)
-            px += bytes([int(255 * min(max(g * t, 0), 1) + 0.5) for t in (tint[2], tint[1], tint[0])] + [int(255 * dark + 0.5)])
+            # 50% grey where there is no dirt (the 2x multiply leaves the surface alone: a tint
+            # on the whole square showed as a patch on the wall); the dirt's own colour where there is
+            px += bytes([int(255 * 0.5 * (1 - dark * (1 - 0.35 * t)) + 0.5) for t in (tint[2], tint[1], tint[0])] + [int(255 * dark + 0.5)])
     path = os.path.join(HERE, name + ".tga")
     with open(path, "wb") as fh:
         fh.write(struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, size, size, 32, 8))
