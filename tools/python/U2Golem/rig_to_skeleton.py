@@ -1,7 +1,7 @@
 """Rig a generated T-pose game mesh onto an existing character's skeleton, by borrowing that character's weights.
 
 Run:  blender -b <rigged_character.blend> --python rig_to_skeleton.py -- <out.blend> low=<mesh.glb>
-      [test=1] [smooth=4] [cloth=0.85] [name=Body]
+      [test=1] [smooth=4] [cloth=0.85] [slim=1.25] [name=Body]
 <rigged_character.blend>: an armature with its skinned body (gem2blend.py output, e.g. dalton\\PlayerGame.blend).
 low: the new mesh (retopo_bake.py output), standing upright, facing -Y, arms out to the sides.
 
@@ -27,6 +27,7 @@ a = sys.argv[sys.argv.index("--") + 1:]
 out = os.path.splitext(os.path.abspath(a[0]))[0]
 o = dict(x.split("=", 1) for x in a[1:])
 SMOOTH, TEST, NAME = int(o.get("smooth", 4)), int(o.get("test", 0)), o.get("name", "Body")
+SLIM = float(o.get("slim", 1.25))        # trunk no wider/deeper than this x the original body (0 = off)
 CLOTH = float(o.get("cloth", 0.85))     # how far hanging cloth may go over to the pelvis (0 = off)
 
 arm = [x for x in bpy.data.objects if x.type == "ARMATURE"][0]
@@ -116,6 +117,36 @@ new_len = float(np.mean([abs(Q[np.sign(dx) == sg][np.abs(dx[np.sign(dx) == sg]) 
 k = old_len / new_len
 out_x = np.abs(dx) > shoulder_x
 Q[out_x, 0] = D0["cx"] + np.sign(dx[out_x]) * (shoulder_x + (np.abs(dx[out_x]) - shoulder_x) * k)
+# Slim the trunk to the skeleton's own body. The game's poses put the hands where the ORIGINAL character's hips
+# and thighs leave room; a generated outfit with a puffy skirt or coat is much wider there and swallows the
+# hands and forearms. Between the knees and the armpits, each height is narrowed (width and depth separately)
+# to at most SLIM x the original body's size there; arms are left alone.
+if SLIM:
+    OB = body_points()
+    og = [g.name.lower() for g in body.vertex_groups]
+    arm_ix = {i for i, n in enumerate(og) if any(k in n for k in ("upperarm", "forearm", "hand", "finger", "clavicle"))}
+    not_arm = np.array([sum(g.weight for g in v.groups if g.group in arm_ix) < 0.5 for v in body.data.vertices])
+    OB = OB[not_arm]
+    knee_z = float(bone_w(arm.data.bones[bn(" L Calf")]).z)
+    zs = np.linspace(knee_z, shoulder_z - 0.06 * (shoulder_z - D0["sole"]), 40)
+    band = (zs[1] - zs[0]) * 0.6
+    trunk = np.abs(Q[:, 0] - D0["cx"]) < shoulder_x * 1.6          # the T-pose arms are further out than this
+    fx, fy = np.ones(len(zs)), np.ones(len(zs))
+    for i, z in enumerate(zs):
+        a_ = OB[np.abs(OB[:, 2] - z) < band]
+        b_ = Q[trunk & (np.abs(Q[:, 2] - z) < band)]
+        if len(a_) > 5 and len(b_) > 5:
+            fx[i] = min(1.0, SLIM * np.abs(a_[:, 0] - D0["cx"]).max() / np.abs(b_[:, 0] - D0["cx"]).max())
+            fy[i] = min(1.0, SLIM * (a_[:, 1].max() - a_[:, 1].min()) / (b_[:, 1].max() - b_[:, 1].min()))
+    for f in (fx, fy):
+        f[0] = f[-1] = 1.0                                         # fade in and out, no steps
+        for _ in range(4):
+            f[1:-1] = (f[:-2] + 2 * f[1:-1] + f[2:]) / 4
+    sel = trunk & (Q[:, 2] > zs[0]) & (Q[:, 2] < zs[-1])
+    cyq = float(np.median(Q[trunk, 1]))
+    Q[sel, 0] = D0["cx"] + (Q[sel, 0] - D0["cx"]) * np.interp(Q[sel, 2], zs, fx)
+    Q[sel, 1] = cyq + (Q[sel, 1] - cyq) * np.interp(Q[sel, 2], zs, fy)
+    print(f"RIG slim: narrowest width factor {fx.min():.2f}, depth factor {fy.min():.2f}")
 for v, q in zip(new.data.vertices, Q):
     v.co = q
 P = Q

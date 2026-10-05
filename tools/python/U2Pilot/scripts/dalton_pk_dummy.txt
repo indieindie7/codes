@@ -1,0 +1,39 @@
+# Malcolm and Dalton Peacekeeper as dummies seen from the front, 3/4 and side (turning the player a quarter each time for a fresh spot)
+background
+map HoverTest?Mutator=U2TestHub.HubMutator
+waitcontrol 180
+wait 3
+console hub kill 30000
+console hub clean 31
+wait 1
+console hub dummy GlmMalcolmG.Malcolm 180 210
+wait 1.2
+shot
+turn 60 0 0.4
+wait 0.5
+console hub dummy GlmMalcolmG.Malcolm 135 210
+wait 1.2
+shot
+turn 60 0 0.4
+wait 0.5
+console hub dummy GlmMalcolmG.Malcolm 90 210
+wait 1.2
+shot
+turn 60 0 0.4
+wait 0.5
+console hub dummy GlmDaltonPKG.DaltonPK 180 210
+wait 1.2
+shot
+turn 60 0 0.4
+wait 0.5
+console hub dummy GlmDaltonPKG.DaltonPK 135 210
+wait 1.2
+shot
+turn 60 0 0.4
+wait 0.5
+console hub dummy GlmDaltonPKG.DaltonPK 90 210
+wait 1.2
+shot
+turn 60 0 0.4
+wait 0.5
+quit
