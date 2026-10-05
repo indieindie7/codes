@@ -56,6 +56,16 @@ var Material MeatTex, AlienMeatTex;
 var ModReact React;
 var ModSever Severer;              // decapitation and limb loss
 var ModMelee Melee;                // melee weapons (the energy blade)                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
+var config bool bBloodCoats;       // blood lands on the characters near a hit: they look bloody
+var config int MaxCoats;
+var array<ModBloodCoat> Coats;
+var Material CoatTex[3], AlienCoatTex[3];
+var config bool bDirt;             // dirt and battle damage: grime where the player goes, cracks and craters where things explode
+var config int MaxDirt;
+var config float DirtEvery;        // seconds between grime patches around the player
+var array<ModBloodDecal> Dirt;
+var Material GrimeTex[2], CrackTex[2], RubbleTex, CraterTex;
+var float DirtTimer;
 var config bool bWounds;           // a shot leaves a wound on the body, where it hit
 var config int MaxWounds, WoundsPerBody;
 var config bool bBleedTrail;       // the badly wounded leave drops where they go
@@ -132,6 +142,18 @@ event PostBeginPlay()
 		ClampTex(AlienRemains[i]);
 	}
 	ClampTex(CasingTex);
+	for (i = 0; i < 3; i++)
+	{
+		ClampTex(CoatTex[i]);
+		ClampTex(AlienCoatTex[i]);
+	}
+	for (i = 0; i < 2; i++)
+	{
+		ClampTex(GrimeTex[i]);
+		ClampTex(CrackTex[i]);
+	}
+	ClampTex(RubbleTex);
+	ClampTex(CraterTex);
 	for (i = 0; i < 3; i++)
 		ClampTex(Scorches[i]);
 	React = Spawn(class'ModReact');
@@ -244,6 +266,8 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
 	if (bBleedTrail && Victim.Health > Damage && !Victim.IsHumanControlled())
 		Bleed(Victim, Damage);
+	if (bBloodCoats)
+		Spatter(Victim, HitLocation, 0.2 + Damage / 150.0, 130);
 	if (bWounds && Damage >= 8 && !Victim.IsHumanControlled())
 		AddWound(Victim, HitLocation);
 	// a pool under a fresh body
@@ -349,6 +373,8 @@ function Gib(Pawn P, vector Dir, int Damage)
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: " $ P $ " comes apart (" $ T.default.Sets[Set].Name $ ", scale " $ K $ ")");
 	ScreenSplash(P.Location, Kind, 1.0);
+	if (bBloodCoats)
+		Spatter(P, P.Location, 1.2, 280);
 	Hide(P, true);
 	Gibbed[Gibbed.Length] = P;
 	GibbedTime[GibbedTime.Length] = Level.TimeSeconds;
@@ -1003,6 +1029,8 @@ function Blast(vector Loc, float Radius, int Damage)
 	local EonPlayerController C;
 	local float D, Reach, K, Amp;
 
+	if (bDirt)
+		BlastMarks(Loc, Radius);
 	if (!bBlastShake)
 		return;
 	C = EonPlayerController(Level.GetLocalPlayerController());
@@ -1061,6 +1089,8 @@ event Tick(float DeltaTime)
 	TrackShots();
 	if (bBleedTrail)
 		BleedTrails(DeltaTime);
+	if (bDirt)
+		Grime(DeltaTime);
 	for (i = Dying.Length - 1; i >= 0; i--)
 	{
 		if (Dying[i] != None && !Dying[i].bDeleteMe && Level.TimeSeconds < DyingTime[i])
@@ -1083,6 +1113,161 @@ event Tick(float DeltaTime)
 		Dying.Remove(i, 1);
 		DyingTime.Remove(i, 1);
 	}
+}
+
+// Blood from a hit lands on the bodies around it: the victim's own, and whoever stands
+// within Reach (the player too). Each body has one coat (ModBloodCoat), which gets
+// heavier with more blood; the blood's colour is the first bleeder's.
+function Spatter(Pawn From, vector Spot, float Amount, float Reach)
+{
+	local Pawn P;
+	local int Kind;
+
+	Kind = BloodKind(From);
+	if (Kind == 0 || !bBlood)
+		return;
+	Amount = FMin(Amount, 1.5);
+	AddCoat(From, Amount, Kind);
+	ForEach RadiusActors(class'Pawn', P, Reach, Spot)
+		if (P != From && !P.bHidden && P.Health > 0 && AdventPawn(P) != None)
+			AddCoat(P, Amount * 0.6 * (1 - VSize(P.Location - Spot) / (Reach + P.CollisionRadius + 1)), Kind);
+}
+
+function AddCoat(Pawn P, float Amount, int Kind)
+{
+	local int i, Oldest;
+	local ModBloodCoat C;
+
+	if (Amount <= 0.02 || P == None || P.bHidden || P.IsA('Vehicle'))
+		return;
+	for (i = Coats.Length - 1; i >= 0; i--)
+	{
+		if (Coats[i] == None || Coats[i].bDeleteMe)
+		{
+			Coats.Remove(i, 1);
+			continue;
+		}
+		if (Coats[i].Wearer == P)
+		{
+			Coats[i].More(Amount);
+			return;
+		}
+	}
+	if (Coats.Length >= MaxCoats)
+	{
+		// the lightest coat that isn't the player's makes room
+		Oldest = -1;
+		for (i = 0; i < Coats.Length; i++)
+			if (!Coats[i].Wearer.IsHumanControlled() && (Oldest < 0 || Coats[i].Amount < Coats[Oldest].Amount))
+				Oldest = i;
+		if (Oldest < 0)
+			return;
+		Coats[Oldest].Destroy();
+		Coats.Remove(Oldest, 1);
+	}
+	C = Spawn(class'ModBloodCoat',,, P.Location);
+	if (C == None)
+		return;
+	C.Gore = self;
+	if (!C.Wear(P, Kind, Amount))
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: no blood coat for " $ P $ ": " $ P.Skins.Length $ " skins, mesh " $ P.Mesh);
+		C.Destroy();
+		return;
+	}
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: blood coat on " $ P $ " (kind " $ Kind $ ", amount " $ Amount $ ", skin " $ C.OwnSkin[0] $ ", " $ C.Slots $ " slots, " $ (Coats.Length + 1) $ " coats)");
+	Coats[Coats.Length] = C;
+}
+
+function Material CoatMaterial(int Kind, int Level)
+{
+	if (Kind == 2)
+		return AlienCoatTex[Clamp(Level, 0, 2)];
+	return CoatTex[Clamp(Level, 0, 2)];
+}
+
+// ---- dirt and battle damage --------------------------------------------------------------
+// One pool of marks (MaxDirt, the oldest goes first), the same projectors as the blood:
+//   - grime: now and then a patch on the floor or at the foot of a wall near the player, so
+//     places the player has been through look used;
+//   - an explosion leaves a crater where it went off, cracks on the walls around it, and
+//     rubble on the floor.
+// The d3d layer draws these with its parallax rule where U2Shaders.ini names their textures
+// (decal=HASH decal_parallax.hlsl): darker reads as deeper, so cracks and craters sink in.
+function ModBloodDecal AddDirt(Material T, vector Spot, vector N, float Size, float Life)
+{
+	local ModBloodDecal D;
+
+	while (Dirt.Length > 0 && (Dirt.Length >= MaxDirt || Dirt[0] == None || Dirt[0].bDeleteMe))
+	{
+		if (Dirt[0] != None && !Dirt[0].bDeleteMe)
+			Dirt[0].Destroy();
+		Dirt.Remove(0, 1);
+	}
+	D = Spawn(class'ModBloodDecal',,, Spot + N * 16);
+	if (D == None)
+		return None;
+	D.Place(T, Spot, N, vect(0,0,0), Size);
+	D.LifeSpan = Life;
+	Dirt[Dirt.Length] = D;
+	return D;
+}
+
+function BlastMarks(vector Loc, float Radius)
+{
+	local vector HitL, HitN, Dir;
+	local int i;
+	local float Reach;
+
+	Reach = FClamp(Radius * 0.6, 120, 320);
+	// the crater: on the nearest surface below, or else straight ahead of nothing (in the air: none)
+	if (Trace(HitL, HitN, Loc - vect(0,0,1) * Reach, Loc + vect(0,0,10), false) != None)
+	{
+		AddDirt(CraterTex, HitL, HitN, DecalScale * FClamp(Radius / 260.0, 0.9, 2.2), 600);
+		AddDirt(RubbleTex, HitL + VRand() * vect(1,1,0) * 40, HitN, DecalScale * 1.6, 600);
+	}
+	// cracks where the blast reached a wall or the ceiling
+	for (i = 0; i < 6; i++)
+	{
+		Dir = VRand();
+		Dir.Z = Dir.Z * 0.5 + 0.2;
+		Dir = Normal(Dir);
+		if (Trace(HitL, HitN, Loc + Dir * Reach, Loc, false) != None && HitN.Z < 0.7)
+			AddDirt(CrackTex[Rand(2)], HitL, HitN, DecalScale * (0.9 + 0.8 * FRand()), 600);
+	}
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("dirt: blast marks at " $ Loc $ " (" $ Dirt.Length $ " marks)");
+}
+
+// grime around the player: a patch on the floor nearby, or where a wall meets the floor
+function Grime(float DeltaTime)
+{
+	local PlayerController C;
+	local vector Start, Dir, HitL, HitN, WallL, WallN;
+
+	DirtTimer -= DeltaTime;
+	if (DirtTimer > 0)
+		return;
+	DirtTimer = DirtEvery * (0.6 + 0.8 * FRand());
+	C = Level.GetLocalPlayerController();
+	if (C == None || C.Pawn == None || VSize(C.Pawn.Velocity) < 50)
+		return;                           // only while moving: standing still doesn't pile it up
+	Dir = VRand();
+	Dir.Z = 0;
+	Dir = Normal(Dir);
+	Start = C.Pawn.Location + Dir * (150 + 350 * FRand());
+	if (!FastTrace(Start, C.Pawn.Location))
+	{
+		// a wall that way: its foot
+		if (Trace(WallL, WallN, Start, C.Pawn.Location, false) == None)
+			return;
+		Start = WallL + WallN * 14;
+	}
+	if (Trace(HitL, HitN, Start - vect(0,0,400), Start, false) == None || HitN.Z < 0.6)
+		return;
+	AddDirt(GrimeTex[Rand(2)], HitL, HitN, DecalScale * (1.2 + 1.4 * FRand()), 900);
 }
 
 // a wound on the body: a small lump of meat (ModStump's mesh) riding the bone nearest
@@ -1353,6 +1538,12 @@ event Destroyed()
 		Severer.Destroy();
 	if (Melee != None)
 		Melee.Destroy();
+	for (i = 0; i < Coats.Length; i++)
+		if (Coats[i] != None)
+			Coats[i].Destroy();
+	for (i = 0; i < Dirt.Length; i++)
+		if (Dirt[i] != None)
+			Dirt[i].Destroy();
 	Super.Destroyed();
 }
 
@@ -1392,6 +1583,23 @@ defaultproperties
      bCasings=True
      MaxClutter=150
      bCorpseShots=True
+     bBloodCoats=True
+     MaxCoats=10
+     CoatTex(0)=Texture'AdventMod.Blood.BloodCoat0'
+     CoatTex(1)=Texture'AdventMod.Blood.BloodCoat1'
+     CoatTex(2)=Texture'AdventMod.Blood.BloodCoat2'
+     AlienCoatTex(0)=Texture'AdventMod.Blood.AlienCoat0'
+     AlienCoatTex(1)=Texture'AdventMod.Blood.AlienCoat1'
+     AlienCoatTex(2)=Texture'AdventMod.Blood.AlienCoat2'
+     bDirt=True
+     MaxDirt=60
+     DirtEvery=2.500000
+     GrimeTex(0)=Texture'AdventMod.Dirt.DirtGrime0'
+     GrimeTex(1)=Texture'AdventMod.Dirt.DirtGrime1'
+     CrackTex(0)=Texture'AdventMod.Dirt.DirtCrack0'
+     CrackTex(1)=Texture'AdventMod.Dirt.DirtCrack1'
+     RubbleTex=Texture'AdventMod.Dirt.DirtRubble0'
+     CraterTex=Texture'AdventMod.Dirt.DirtCrater1'
      bWounds=True
      MaxWounds=48
      WoundsPerBody=5

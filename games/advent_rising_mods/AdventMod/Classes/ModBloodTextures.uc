@@ -29,6 +29,18 @@ class ModBloodTextures extends Object;
 #exec TEXTURE IMPORT NAME=Scorch1 FILE=Textures\scorch1.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=Scorch2 FILE=Textures\scorch2.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=Casing0 FILE=Textures\casing0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=BloodCoat0 FILE=Textures\blood_coat0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=BloodCoat1 FILE=Textures\blood_coat1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=BloodCoat2 FILE=Textures\blood_coat2.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=AlienCoat0 FILE=Textures\alien_coat0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=AlienCoat1 FILE=Textures\alien_coat1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=AlienCoat2 FILE=Textures\alien_coat2.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=DirtGrime0 FILE=Textures\dirt_grime0.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=DirtGrime1 FILE=Textures\dirt_grime1.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=DirtCrack0 FILE=Textures\dirt_crack0.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=DirtCrack1 FILE=Textures\dirt_crack1.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=DirtRubble0 FILE=Textures\dirt_rubble0.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=DirtCrater1 FILE=Textures\dirt_crater1.tga GROUP=Dirt MIPS=1 ALPHA=1
 
 defaultproperties
 {

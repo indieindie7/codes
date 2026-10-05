@@ -23,7 +23,8 @@ float4    Setup   : register(c2);   // x: the texture's factor (1, 2, 4), y: num
 float4    Ambient : register(c3);   // rgb: ambient x material ambient + emissive
 float4    Up      : register(c4);   // xyz: world up, in view space
 float4    Use     : register(c5);   // x: 1 = the texture is used, y: 1 = the material map is there,
-                                    // z: 1 = drawn by Advent's skin shader (the layers above), w: debug view
+                                    // z: 1 = drawn by Advent's skin shader (the layers above), 2 = stage 1
+                                    // multiplies a second texture on (factor in c1.w), w: debug view
 float4    Lights[16] : register(c8);  // 4 per light (up to 4), see CharBegin
 
 #define WRAP 0.5      // as char_light.hlsl
@@ -53,7 +54,9 @@ float4 main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD
 	float4 t = Use.x > 0.5 ? tex2D(Tex, uv) : float4(1, 1, 1, 1);
 	float3 own = t.rgb;                       // the texture itself, for the unlit parts
 	float glow = 0;
-	if (Use.z > 0.5)
+	if (Use.z > 1.5)
+		t.rgb *= tex2D(Layer, uv1).rgb * GameC0.w;   // a second texture multiplied on (blood stains)
+	else if (Use.z > 0.5)
 	{
 		t.rgb = (t.rgb + tex2D(Layer, uv1).rgb * dot(tex2D(LayerMask, uv2).rgb, GameC1.rgb)) * GameC0.rgb;
 		glow = saturate(dot(tex2D(Glow, uv3).rgb, GameC2.rgb));

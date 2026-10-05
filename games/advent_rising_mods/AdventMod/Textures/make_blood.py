@@ -118,6 +118,72 @@ def splat(rng, directional=False):
     return balls
 
 
+def coat(rng, amount):
+    """blood on a body (ModBloodCoat projects it onto a character): splats spread over the
+    whole square, more and bigger with amount (0, 1, 2), with runs downward (+y)"""
+    balls = []
+    for _ in range((4, 9, 16)[amount]):
+        cx, cy = rng.uniform(0.12, 0.88), rng.uniform(0.1, 0.85)
+        r0 = rng.uniform(0.02, 0.035) * (1, 1.3, 1.7)[amount]
+        for _ in range(rng.randint(2, 5)):
+            balls.append((cx + rng.gauss(0, 0.03), cy + rng.gauss(0, 0.03), r0 * rng.uniform(0.6, 1.1), 1, 1))
+        for _ in range(rng.randint(6, 14)):
+            ang = rng.uniform(0, 2 * math.pi)
+            dist = rng.uniform(0.03, 0.14)
+            balls.append((cx + math.cos(ang) * dist, cy + math.sin(ang) * dist, 0.004 + 0.008 * rng.random() ** 2, 1, 1))
+        if rng.random() < 0.6:
+            teardrop(balls, cx, cy + rng.uniform(0.05, 0.16), -math.pi / 2, r0 * 0.5, rng.uniform(0.05, 0.14))
+    return balls
+
+
+def dirt(name, rng, kind, size=128):
+    """grime and battle damage for ModDirt's decals, mixed for the projector's 2x multiply
+    (50% grey leaves the surface as it is; darker = dirt; the d3d layer's parallax rule reads
+    darker as deeper, so cracks and craters sink in). kind: grime, crack, rubble, crater"""
+    noise, noise2 = fbm(size, rng), fbm(size, rng)
+    px = bytearray()
+    lines = []
+    if kind == "crack":
+        for _ in range(rng.randint(3, 5)):
+            x, y, ang = 0.5 + rng.gauss(0, 0.05), 0.5 + rng.gauss(0, 0.05), rng.uniform(0, 2 * math.pi)
+            for _ in range(rng.randint(8, 16)):
+                nx, ny = x + math.cos(ang) * 0.035, y + math.sin(ang) * 0.035
+                lines.append((x, y, nx, ny, rng.uniform(0.004, 0.011)))
+                x, y, ang = nx, ny, ang + rng.gauss(0, 0.45)
+    stones = [(rng.uniform(0.15, 0.85), rng.uniform(0.15, 0.85), rng.uniform(0.02, 0.06)) for _ in range(22)] if kind == "rubble" else []
+    for py in range(size):
+        for qx in range(size):
+            u, v = qx / (size - 1), py / (size - 1)
+            d = math.hypot(u - 0.5, v - 0.5)
+            fade = smoothstep(0.5, 0.3, d)                     # nothing at the square's edge
+            dark, tint = 0.0, (1.0, 0.96, 0.9)
+            n = noise[py][qx]
+            if kind == "grime":
+                dark = fade * smoothstep(0.35, 0.75, n) * (0.25 + 0.3 * noise2[py][qx])
+                tint = (0.92, 0.86, 0.74)
+            elif kind == "crack":
+                near = min([abs((y1 - y0) * u - (x1 - x0) * v + x1 * y0 - y1 * x0) / max(math.hypot(x1 - x0, y1 - y0), 1e-5) / w
+                            if min(x0, x1) - w <= u <= max(x0, x1) + w and min(y0, y1) - w <= v <= max(y0, y1) + w else 9.0
+                            for x0, y0, x1, y1, w in lines] or [9.0])
+                dark = fade * (smoothstep(1.0, 0.25, near) * 0.85 + 0.08 * smoothstep(0.4, 0.8, n))
+            elif kind == "rubble":
+                k = max([smoothstep(r, r * 0.55, math.hypot(u - sx, v - sy)) for sx, sy, r in stones] or [0])
+                dark = fade * (0.18 * smoothstep(0.3, 0.7, n) + 0.3 * k * (0.6 + 0.8 * noise2[py][qx]))
+                tint = (0.9, 0.88, 0.84)
+            else:                                              # crater: a burnt pit, a raised rim's shadow, soot
+                pit = smoothstep(0.2 + 0.06 * (n - 0.5), 0.06, d)
+                soot = smoothstep(0.46, 0.15, d) * (0.3 + 0.4 * n)
+                dark = min(1.0, 0.8 * pit + 0.35 * soot)
+                tint = (0.9, 0.86, 0.82)
+            g = 0.5 * (1 - dark)
+            px += bytes([int(255 * min(max(g * t, 0), 1) + 0.5) for t in (tint[2], tint[1], tint[0])] + [int(255 * dark + 0.5)])
+    path = os.path.join(HERE, name + ".tga")
+    with open(path, "wb") as fh:
+        fh.write(struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, size, size, 32, 8))
+        fh.write(px)
+    print(path)
+
+
 def pool(rng):
     balls = [(0.5 + rng.gauss(0, 0.06), 0.5 + rng.gauss(0, 0.06), rng.uniform(0.07, 0.11), 1, 1) for _ in range(6)]
     balls += [(0.5 + rng.gauss(0, 0.16), 0.5 + rng.gauss(0, 0.16), rng.uniform(0.015, 0.03), 1, 1) for _ in range(8)]
@@ -297,3 +363,8 @@ if __name__ == "__main__":
         for i in range(2):
             remains("%s_remains%d" % (prefix, i), random.Random(6000 + i), palette=pal)
         meat("%s_meat" % prefix, random.Random(7000), palette=pal)
+        for i in range(3):
+            rng = random.Random(8000 + i)
+            render(128, coat(rng, i), rng, edge_noise=0.7, name="%s_coat%d" % (prefix, i), palette=pal)
+    for i, kind in enumerate(("grime", "grime", "crack", "crack", "rubble", "crater")):
+        dirt("dirt_%s%d" % (kind, i % 2), random.Random(9000 + i), kind)
