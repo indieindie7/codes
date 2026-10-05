@@ -37,6 +37,27 @@ Result: `Documents\U2Golem\dalton_pk\direct\dalton_c_A_match.*`. Caveats: the mo
 pose (relaxed, arms down, head tilted), not an A-pose; an A-pose sheet "without heavy hallucination" is
 still an open wish. `cpu=1` makes every preview render on the CPU, so the bakes can run while a game has the GPU.
 
+## Update, night of 2026-10-04: FLUX Kontext makes the reference views (best route so far)
+
+An image-EDITING model redraws the concept in a new pose or from a new angle and keeps the character,
+which a text-to-image model (Sana) cannot do.
+
+    cd Documents\Tools\flux-kontext        (run with Downloads\sana-diffusers\venv\Scripts\python)
+    kontext_edit.py concept.png tpose_front.png "Change the pose of this man: he now stands in a T-pose ..." --steps 24 --guidance 4
+    kontext_edit.py tpose_front.png tpose_back.png "Rotate the camera 180 degrees and show this character from directly behind ..."
+    (same for 45 and 135 degrees; always edit FROM tpose_front so the views agree)
+    img2shape_mv.py high.glb front=tpose_front.png back=tpose_back.png octree=384 faces=0
+    paint_mesh.py high.glb paint.glb front back 45 135 faces=40000
+    ... then the low-poly / bake / colour-match commands above.
+
+- About 3 minutes per image, peak 10 GB VRAM. Weak instructions ("stand in an A-pose") return a copy of the
+  input; say exactly what changes.
+- It cannot draw a clean T-pose side profile (twists the body). Leave the side out: front + back is enough
+  for the shape.
+- **Memory:** a run froze the PC once (32 GB RAM). The script now loads the text encoder and the model one
+  after the other and refuses to start when RAM is short. Never run it next to another heavy job.
+- Result: `Documents\U2Golem\dalton_pk\tpose\dalton_t_A_match.*`.
+
 ## Reference views (stage 2)
 
 Wanted set, agreed with the user: **front (0), 45, side (90), 135, back (180)**, plus the mirrored
