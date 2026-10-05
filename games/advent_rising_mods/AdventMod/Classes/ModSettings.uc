@@ -270,15 +270,23 @@ static function ApplyPostPreset(int N)
 
 // global illumination (radiance cascades and a world cache in the Direct3D layer): bounce
 // light and darker corners. It runs in the post pass, so "Post Effects: Off" switches it off too.
-// gifx = bounce strength, corner darkening, reach, debug view
+// gifx = bounce strength, corner darkening, reach, debug view; gilights = how much the
+// game's own lamps light the world cache, how many lamps (measured 2026-10-05: below
+// strength ~2 the bounce can't be told from no GI; lamps above ~0.6 wash the walls out)
 static function ApplyGi(int Level)
 {
 	Level = Clamp(Level, 0, 2);
 	default.GiLevel = Level;
 	if (Level == 2)
-		NativeCall("U2Set:gifx=1 0.7 300 0");
+	{
+		NativeCall("U2Set:gifx=4 0.7 300 0");
+		NativeCall("U2Set:gilights=0.6 16");
+	}
 	else
-		NativeCall("U2Set:gifx=0.6 0.5 300 0");
+	{
+		NativeCall("U2Set:gifx=2.5 0.6 300 0");
+		NativeCall("U2Set:gilights=0.4 16");
+	}
 	NativeCall("U2Set:gi=" $ int(Level > 0));
 	StaticSaveConfig();
 }
