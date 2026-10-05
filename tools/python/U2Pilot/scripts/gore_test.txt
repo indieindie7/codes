@@ -1,0 +1,27 @@
+# gore_test: U2Gore blood marks on a plain floor (M08A1). A merc and an Izarian are spawned close by and killed
+# (hub kill: repeated hits as the player); looks down at the floor for drips, sprays and the growing pools.
+background
+map M08A1?Mutator=U2TestHub.HubMutator,U2Gore.GoreMutator
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console set GoreManager bLog True
+console hub tp -730 5000 6530
+wait 1
+turn 0 -30 0.4
+spawn U2Pawns.U2MercJapLight 200
+wait 0.4
+console hub kill 400
+wait 2.5
+shot
+wait 7
+shot
+turn 70 0 0.4
+spawn U2Pawns.U2Izarian 200
+wait 0.4
+console hub kill 400
+wait 9
+shot
+dump GoreManager Hits Marks
+quit
