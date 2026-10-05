@@ -41,6 +41,11 @@ var config int TreeLook[8];        // which tree picture (0-2)
 // (tools\mesh_bounds.py; tools\make_props.py writes these lines).
 var config string Props[64];
 
+// rough blocking: plain boxes, one per line: "X Y Yaw SizeX SizeY SizeZ Lift Colour" (world units, Yaw in
+// degrees, Colour 0 grey / 1 rust / 2 pale / 3 dark). Each box stands on whatever is under its centre,
+// sunk or raised by Lift. A cube blockout is the guide an image model paints the place over.
+var config string Blocks[128];
+
 var bool bRebuild;
 var array<Actor> Made;
 var Texture TreeTex[3];
@@ -233,6 +238,9 @@ function Build()
 	for (i = 0; i < ArrayCount(Props); i++)
 		if (Props[i] != "")
 			PlaceProp(Props[i]);
+	for (i = 0; i < ArrayCount(Blocks); i++)
+		if (Blocks[i] != "")
+			PlaceBlock(Blocks[i]);
 	Log("Cards: built "$Made.Length$" things on "$MapName());
 }
 
@@ -250,6 +258,26 @@ function string Word(string S, int n)
 	if (InStr(S, " ") >= 0)
 		S = Left(S, InStr(S, " "));
 	return S;
+}
+
+function PlaceBlock(string Line)
+{
+	local vector P, Size, HitL, HitN;
+	local rotator R;
+	local CardMesh M;
+
+	P.X = float(Word(Line, 0));
+	P.Y = float(Word(Line, 1));
+	R.Yaw = int(float(Word(Line, 2)) * 65536.0 / 360.0);
+	Size.X = float(Word(Line, 3));
+	Size.Y = float(Word(Line, 4));
+	Size.Z = float(Word(Line, 5));
+	if (!Ground(P, HitL, HitN))
+		return;
+	P.Z = HitL.Z + Size.Z / 2 + float(Word(Line, 6));
+	M = Spawn(class'CardMesh',,, P, R);
+	if (M != None && M.ShowBlock(Size, int(Word(Line, 7))))
+		Made[Made.Length] = M;
 }
 
 function PlaceProp(string Line)
