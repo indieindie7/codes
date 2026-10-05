@@ -116,3 +116,13 @@ Both of these also happen when the commands are typed into the editor by hand:
 - **`PATHS BUILD` on a T3D-imported copy of a stock map runs for more than
   5 minutes.** The import turns the map's path nodes into "Invalid name"
   warnings. Paths on your own maps are untested.
+
+## Viewport pictures (2026-10-05)
+
+`!screenshot` did not catch the editor's D3D8 device in this setup ("no D3D8 device captured yet"). What works
+instead: `winshot.py <out.png>` (run with a Python that has Pillow) grabs the editor window with PrintWindow
+(PW_RENDERFULLCONTENT reads the D3D viewports too; no mouse, no focus needed). Camera control by command:
+`SET PlayerStart Location (X=..,Y=..,Z=..)`, `ACTOR SELECT OFCLASS CLASS=PlayerStart`, `CAMERA ALIGN`, then
+`SET Camera Rotation (Pitch=..,Yaw=..,Roll=0)` (SET reaches the viewport cameras; any later selection change
+redraws). `ued_tour.py` does a whole tour this way. Never `SET Info bHiddenEd True`: General protection fault
+in AZoneInfo::PostEditChange.
