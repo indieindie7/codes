@@ -1,0 +1,26 @@
+# gore_body: U2Gore blood projected on bodies. A merc is spawned close in the light; shots
+# before, after two hits that leave it alive, and after it is killed.
+background
+map M08A1?Mutator=U2TestHub.HubMutator,U2Gore.GoreMutator
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console set GoreManager bLog True
+console hub tp -730 5000 6530
+wait 1
+spawn U2Pawns.U2MercJapLight 130
+wait 0.5
+shot
+fire 0.4
+wait 0.3
+shot
+wait 1.5
+shot
+console hub kill 400
+wait 3
+turn 0 -20 0.3
+wait 1
+shot
+dump GoreManager Hits Marks BodyCount TrailCount RemainsCount
+quit

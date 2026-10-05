@@ -30,8 +30,13 @@ var config float BleedClot;        // seconds a wound takes to stop dripping
 var config bool bRemains;          // a body the game takes away leaves remains on the floor
 var config int MaxRemains;
 var config float RemainsSize;
-var config bool bCoats;            // blood lands on the characters near a hit
+var config bool bBodyBlood;        // a hit leaves a stain on the body, where it hit (GoreBodyDecal)
+var config int MaxBodyDecals;
+var config float BodySize;         // the biggest stain's width, world units
+var config bool bCoats;            // (the other way: skin x blood combiners, GoreCoat; only bodies that list their skins)
 var config int MaxCoats;
+var config bool bScreenBlood;      // a death close to the player splashes the screen (UIScripts/U2Gore.ui)
+var config float ScreenBloodReach;
 var config bool bLog;
 
 var Texture Splats[4], Sprays[2], Pool, RemainsTex[2], CoatTex[3];
@@ -51,7 +56,11 @@ var array<vector> CorpseLoc;       // kept for when the body is gone
 var array<int> CorpseKind;
 var float CorpseScan;
 var array<GoreCoat> Coats;
-var int Hits, Marks, CoatCount, RemainsCount;
+var array<GoreBodyDecal> BodyDecals;
+var ComponentHandle Screen;        // the splash on screen now
+var float ScreenUntil;
+var int ScreenCount;
+var int Hits, Marks, CoatCount, RemainsCount, BodyCount, TrailCount;
 
 event PostBeginPlay()
 {
@@ -117,7 +126,11 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 		Log("U2Gore: hit "$Victim$" "$Damage$" "$DamageType$" bleeds "$Bleeds(Victim, DamageType));
 	// a body still gets its pool when fire or a blast killed it
 	if (bBlood && BloodKind(Victim) != 0 && Damage >= Victim.Health)
+	{
 		AddDying(Victim);
+		if (bScreenBlood && !Victim.IsRealPlayer())
+			ScreenSplash(Victim);
+	}
 	if (!Bleeds(Victim, DamageType))
 		return;
 	Hits++;
@@ -132,6 +145,8 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	// the bigger the hit, the bigger the mark (a rifle bullet ~10, a shotgun blast or grenade ~100)
 	Size = DecalSize * FClamp(0.35 + Damage / 120.0, 0.35, 1.0);
 
+	if (bBodyBlood)
+		BodyMark(Victim, HitLocation, Dir, Size);
 	// the spray behind the victim, along the shot (a little downward: blood falls)
 	Dir = Normal(Dir + vect(0,0,-0.25));
 	if (Surface(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius))
@@ -177,6 +192,8 @@ event Tick(float DeltaTime)
 	local GoreDecal D;
 	local Texture T;
 
+	if ((~Screen) && Level.TimeSeconds > ScreenUntil)
+		Screen = class'UIConsole'.static.DestroyComponent(Screen);
 	CorpseScan -= DeltaTime;
 	if (CorpseScan <= 0)
 	{
@@ -211,6 +228,45 @@ event Tick(float DeltaTime)
 		Dying.Remove(i, 1);
 		DyingTime.Remove(i, 1);
 	}
+}
+
+// ---- blood on the screen -------------------------------------------------------------------
+// something died within ScreenBloodReach of the player: a few splats near the screen's edges, fading
+// out (one of three layouts per colour in UIScripts/U2Gore.ui; one at a time)
+function ScreenSplash(Pawn Victim)
+{
+	local Controller C;
+	local Pawn Me;
+	local string Layout;
+
+	for (C = Level.ControllerList; C != None; C = C.NextController)
+		if (PlayerController(C) != None && C.Pawn != None)
+			Me = C.Pawn;
+	if (Me == None || VSize(Me.Location - Victim.Location) > ScreenBloodReach)
+		return;
+	if (~Screen)
+		Screen = class'UIConsole'.static.DestroyComponent(Screen);
+	if (BloodKind(Victim) == 2)
+		Layout = "ScreenIchor" $ Rand(3);
+	else
+		Layout = "ScreenBlood" $ Rand(3);
+	Screen = class'UIConsole'.static.LoadComponent("U2Gore", Layout);
+	if (~Screen)
+	{
+		class'UIConsole'.static.SetOwner(Screen, Self);
+		class'UIConsole'.static.AddComponent(Screen);
+		ScreenUntil = Level.TimeSeconds + 4.6;
+		ScreenCount++;
+	}
+	if (bLog)
+		Log("U2Gore: screen "$Layout$" shown "$(~Screen));
+}
+
+event Destroyed()
+{
+	if (~Screen)
+		Screen = class'UIConsole'.static.DestroyComponent(Screen);
+	Super.Destroyed();
 }
 
 // ---- bleeding trails -----------------------------------------------------------------------
@@ -257,7 +313,10 @@ function BleedTrails(float DeltaTime)
 		// a drop every 0.25 s at the worst, every 1.5 s when nearly clotted
 		Bleeders[i].Next = 0.25 + 1.25 * (1 - Bleeders[i].Rate) + 0.2 * FRand();
 		if (Surface(HitL, HitN, P.Location - vect(0,0,1) * (P.CollisionHeight + 120), P.Location))
+		{
+			TrailCount++;
 			Mark(SplatTex(P), HitL + VRand() * vect(1,1,0) * 14, HitN, vect(0,0,0), DecalSize * (0.14 + 0.16 * Bleeders[i].Rate));
+		}
 	}
 }
 
@@ -402,6 +461,27 @@ function AddCoat(Pawn P, float Amount, int Kind)
 	Coats[Coats.Length] = C;
 }
 
+// a stain on the body where the shot went in; the oldest goes when there are too many
+function BodyMark(Pawn P, vector Spot, vector Dir, float Size)
+{
+	local GoreBodyDecal D;
+
+	while (BodyDecals.Length > 0 && (BodyDecals.Length >= MaxBodyDecals || BodyDecals[0] == None || BodyDecals[0].bDeleteMe))
+	{
+		if (BodyDecals[0] != None && !BodyDecals[0].bDeleteMe)
+			BodyDecals[0].Destroy();
+		BodyDecals.Remove(0, 1);
+	}
+	D = Spawn(class'GoreBodyDecal',,, Spot);
+	if (D == None)
+		return;
+	D.Place(SplatTex(P), P, Spot, Dir, BodySize * Size / DecalSize);
+	BodyDecals[BodyDecals.Length] = D;
+	BodyCount++;
+	if (bLog)
+		Log("U2Gore: body stain on "$P$" ("$BodyDecals.Length$")");
+}
+
 function Texture CoatMaterial(int Kind, int Level)
 {
 	if (Kind == 2)
@@ -442,7 +522,12 @@ defaultproperties
 	bRemains=True
 	MaxRemains=12
 	RemainsSize=220.000000
-	bCoats=True
+	bBodyBlood=True
+	MaxBodyDecals=16
+	BodySize=85.000000
+	bCoats=False
+	bScreenBlood=True
+	ScreenBloodReach=320.000000
 	MaxCoats=10
 	Splats(0)=Texture'BloodSplat0'
 	Splats(1)=Texture'BloodSplat1'

@@ -1,0 +1,26 @@
+# gore_screen: U2Gore blood on the screen. A merc killed right in front of the player, then an Izarian.
+# shotp = the frame as presented (the screen splats are UI).
+background
+map M08A1?Mutator=U2TestHub.HubMutator,U2Gore.GoreMutator
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console hub tp -730 5000 6530
+wait 1
+spawn U2Pawns.U2MercJapLight 130
+wait 0.5
+console hub kill 400
+wait 0.5
+shot
+wait 2
+shot
+wait 4
+shot
+spawn U2Pawns.U2Izarian 130
+wait 0.5
+console hub kill 400
+wait 0.6
+shot
+dump GoreManager Hits ScreenCount BodyCount
+quit
