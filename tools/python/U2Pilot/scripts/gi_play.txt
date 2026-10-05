@@ -1,0 +1,26 @@
+# gi_play: global illumination in motion, with the frame rate logged (U2Hover.FrameProbe: one line a second).
+# Walk through the covered hall right of the M08A1 start while turning, then a fight with four enemies.
+background
+map M08A1?Mutator=U2Hover.FrameProbe
+waitcontrol 180
+wait 3
+console god
+mark WALK
+turn 90 -5 0.4
+move 1 0 3
+turn 40 0 1.5
+move 1 0.5 3
+turn -80 0 2
+move -1 0 3
+mark FIGHT
+spawn U2Pawns.U2Izarian 600
+turn 30 0 0.3
+spawn U2Pawns.U2SkaarjLight 800
+turn -60 0 0.3
+spawn U2Pawns.U2Izarian 700
+spawn U2Pawns.U2SkaarjLight 900
+turn 30 0 0.3
+fire 4
+wait 6
+mark END
+quit
