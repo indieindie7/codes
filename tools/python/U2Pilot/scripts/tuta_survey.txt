@@ -1,0 +1,37 @@
+# tuta_survey: the Avalon intro map (Hawkins' command centre) for the imposter-card redo: zones and event
+# wiring (hub zones / hub beats, for zonemap.py and beatgraph.py), and a look all round from the start.
+background
+map TutA
+waitcontrol 240
+wait 2
+console god
+dump U2PlayerSP Location Rotation
+console hub zones
+console hub beats
+wait 1
+shotp
+turn 45 0 0.3
+wait 0.6
+shotp
+turn 45 0 0.3
+wait 0.6
+shotp
+turn 45 0 0.3
+wait 0.6
+shotp
+turn 45 0 0.3
+wait 0.6
+shotp
+turn 45 0 0.3
+wait 0.6
+shotp
+turn 45 0 0.3
+wait 0.6
+shotp
+turn 45 0 0.3
+wait 0.6
+shotp
+turn 45 12 0.3
+wait 0.6
+shotp
+quit
