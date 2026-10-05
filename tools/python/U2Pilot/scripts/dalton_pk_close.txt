@@ -1,5 +1,5 @@
-# Dalton Peacekeeper close-ups: portrait pose from the front (near and far), then as a dummy from the front,
-# then worn in third person while running forward, sideways and back.
+# Dalton Peacekeeper close-ups: Malcolm and Dalton in the same portrait pose, a head close-up,
+# then worn in third person while running forward and sideways.
 background
 map HoverTest
 waitcontrol 180
@@ -8,19 +8,22 @@ console hub kill 30000
 console hub clean 23
 turn 0 1 0.3
 wait 1
-console wardrobe photo 8 430
+console wardrobe photo 1 300
 wait 2
 shot
-console wardrobe photo 8 220
+console wardrobe photo 8 300
 wait 2
 shot
-console wardrobe photo 8 130
+console wardrobe photo 8 110
+turn 0 14 0.4
 wait 2
 shot
+turn 0 -14 0.4
+console wardrobe photo off
 console wardrobe wear Dalton Peacekeeper
-console wardrobe view
-wait 1
-turn 0 -8 0.3
+console behindview 1
+wait 1.5
+shot
 move 1 0 2.0
 shots 0.25
 wait 1.2

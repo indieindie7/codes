@@ -1,0 +1,19 @@
+# Dalton Peacekeeper in third person with the first-person-body feature off: standing, then running.
+background
+map HoverTest
+waitcontrol 180
+wait 3
+console hub kill 30000
+console wardrobe body
+console wardrobe wear Dalton Peacekeeper
+console wardrobe view
+wait 1.5
+shot
+turn 0 -6 0.3
+move 1 0 2.2
+shots 0.2
+wait 1.4
+move 0 1 1.6
+shots 0.2
+wait 1.0
+quit
