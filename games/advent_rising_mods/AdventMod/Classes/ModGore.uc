@@ -64,6 +64,11 @@ var config bool bScreenBlood;      // close kills splash the screen
 var config float ScreenBloodReach;
 var config float BulletScale;      // shots' trails and meshes drawn at this size (the game's are huge)
 var array<byte> ShotScaled;        // per Shots entry: its trail has been scaled
+var array<float> ShotBlast;        // per Shots entry: its blast radius (0: it doesn't explode)
+var array<int> ShotDamage;
+var config bool bBlastShake;       // explosions near the player shake the view and the gamepad
+var config float BlastShake;       // how hard (1 = as tuned)
+var float LastShake;
 
 var Material Splats[4], Sprays[2], Pool, Scorches[3], CasingTex;   // the textures, referenced so the package keeps them
 var Material RemainsTex[2];
@@ -558,6 +563,10 @@ function TrackShots()
 		if (Shots[i] == None || Shots[i].bDeleteMe)
 		{
 			ShotGone(ShotLoc[i], ShotVel[i]);
+			if (ShotBlast[i] > 0)
+				Blast(ShotLoc[i], ShotBlast[i], ShotDamage[i]);
+			ShotBlast.Remove(i, 1);
+			ShotDamage.Remove(i, 1);
 			Shots.Remove(i, 1);
 			ShotLoc.Remove(i, 1);
 			ShotVel.Remove(i, 1);
@@ -591,6 +600,8 @@ function TrackShots()
 		ShotLoc[ShotLoc.Length] = P.Location;
 		ShotVel[ShotVel.Length] = P.Velocity;
 		ShotScaled[ShotScaled.Length] = 0;
+		ShotBlast[ShotBlast.Length] = P.DamageInfo.fDamageRadius;
+		ShotDamage[ShotDamage.Length] = P.DamageInfo.iDamage;
 		ShrinkShot(Shots.Length - 1);
 		if (class'ModSettings'.default.bGoreLog)
 			class'ModSettings'.static.Note("gore: shot " $ P.Class $ " owner " $ P.Owner $ " instigator " $ P.Instigator $ " speed " $ int(VSize(P.Velocity)));
@@ -978,6 +989,40 @@ function LogNewActors(Pawn P)
 	}
 }
 
+// An explosion (a shot with a blast radius went off): near the player the view shakes,
+// harder the closer and the bigger, through the game's own camera shake (which its weapon
+// explosions leave unused), and the gamepad rumbles.
+function Blast(vector Loc, float Radius, int Damage)
+{
+	local EonPlayerController C;
+	local float D, Reach, K, Amp;
+
+	if (!bBlastShake)
+		return;
+	C = EonPlayerController(Level.GetLocalPlayerController());
+	if (C == None || C.Pawn == None || C.Camera == None)
+		return;
+	Reach = FMax(Radius * 4, 1200);
+	D = VSize(C.Pawn.Location - Loc);
+	if (D >= Reach)
+		return;
+	K = 1 - D / Reach;
+	Amp = BlastShake * (220 + 480 * FClamp(Damage / 150.0, 0, 1)) * K * K;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: blast (radius " $ int(Radius) $ ", damage " $ Damage $ ") " $ int(D) $ " from the player: shake " $ int(Amp));
+	// (blasts in a burst don't stack into a seizure)
+	if (Amp < 25 || Level.TimeSeconds - LastShake < 0.12)
+		return;
+	LastShake = Level.TimeSeconds;
+	C.Camera.Shake(Amp, Amp, Amp, D / 14490.67, 0.3 + 0.6 * K);
+	if (K > 0.6)
+		Level.GetRumbleProperties().PlayFeedbackEffect(EERE_ExplosionLarge);
+	else if (K > 0.3)
+		Level.GetRumbleProperties().PlayFeedbackEffect(EERE_ExplosionMedium);
+	else
+		Level.GetRumbleProperties().PlayFeedbackEffect(EERE_ExplosionSmall);
+}
+
 function ShotGone(vector Loc, vector Vel)
 {
 	local vector HitL, HitN;
@@ -1342,6 +1387,8 @@ defaultproperties
      bWounds=True
      MaxWounds=48
      WoundsPerBody=5
+     bBlastShake=True
+     BlastShake=1.000000
      bBleedTrail=True
      BleedClot=14.000000
      CorpsePulpHits=10

@@ -29,6 +29,31 @@ PRESETS = {
 }
 
 
+# Hand corrections per texture: (x0, y0, x1, y1 in the texture's pixels at 512 wide, test,
+# roughness, metalness), applied in order after the colour rules. Read off the texture with a
+# grid over it (the atlas's parts: jacket, gear, vest, skin, gloves and boots, trousers).
+ANY = lambda v, s, r, g, b: v >= 0
+REGIONS = {
+    "gideon_uniform": [
+        ((0, 0, 212, 262),     ANY,                                         0.90, 0.0),   # the white jacket: matt cloth
+        ((0, 0, 212, 262),     lambda v, s, r, g, b: v < 0.35,              0.50, 0.0),   # its loops and trim
+        ((158, 4, 192, 46),    lambda v, s, r, g, b: v < 0.78,              0.28, 1.0),   # rank bars: metal
+        ((150, 160, 190, 262), lambda v, s, r, g, b: v < 0.4,               0.60, 0.0),   # quilted band
+        ((212, 0, 392, 130),   lambda v, s, r, g, b: v <= 0.3,              0.45, 0.0),   # gear: dark plastic
+        ((212, 0, 392, 130),   lambda v, s, r, g, b: (v > 0.3) & (s < 0.3), 0.30, 0.9),   # gear: its metal
+        ((392, 0, 512, 130),   ANY,                                         0.72, 0.0),   # dark cloth
+        ((424, 40, 466, 80),   lambda v, s, r, g, b: (r > g * 1.15) & (v > 0.5), 0.22, 1.0),   # the gold emblem
+        ((212, 130, 512, 262), ANY,                                         0.72, 0.0),   # the vest
+        ((0, 262, 112, 512),   ANY,                                         0.50, 0.0),   # skin
+        ((0, 262, 112, 316),   lambda v, s, r, g, b: v < 0.7,               0.65, 0.0),   # hair
+        ((112, 262, 215, 512), ANY,                                         0.33, 0.0),   # gloves and boots: polished leather
+        ((215, 262, 512, 512), ANY,                                         0.80, 0.0),   # trousers
+        ((215, 262, 512, 512), lambda v, s, r, g, b: (v > 0.42) & (s < 0.25), 0.28, 1.0), # their buckle, studs, zip pull
+        ((250, 266, 282, 326), lambda v, s, r, g, b: v > 0.22,              0.35, 0.9),   # the zip
+    ],
+}
+
+
 def blur(a, radius):
     im = Image.fromarray(np.uint8(np.clip(a, 0, 1) * 255))
     return np.asarray(im.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32) / 255
@@ -41,12 +66,19 @@ def make(texture, preset="uniform", bump=2.5):
     s = (v - rgb.min(axis=2)) / np.maximum(v, 1e-4)
     rough = np.zeros_like(v)
     metal = np.zeros_like(v)
-    for name, test, ro, me in PRESETS[preset]:
+    for name, test, ro, me in PRESETS.get(preset, PRESETS["uniform"]):
         mask = test(v, s, r, g, b)
         rough[mask] = ro
         metal[mask] = me
         print("  %-10s %5.1f%%  roughness %.2f metal %.1f" % (name, 100 * mask.mean(), ro, me))
-    rough, metal = blur(rough, 1.5), blur(metal, 1.5)
+    k = rgb.shape[1] / 512.0
+    for (x0, y0, x1, y1), test, ro, me in REGIONS.get(preset, []):
+        mask = np.zeros(v.shape, dtype=bool)
+        mask[int(y0 * k):int(y1 * k), int(x0 * k):int(x1 * k)] = True
+        mask &= test(v, s, r, g, b)
+        rough[mask] = ro
+        metal[mask] = me
+    rough, metal = blur(rough, 1.0), blur(metal, 0.8)
     # the painting's fine light and dark as a little extra roughness in the dark lines
     lum = 0.299 * r + 0.587 * g + 0.114 * b
     fine = lum - blur(lum, 3)

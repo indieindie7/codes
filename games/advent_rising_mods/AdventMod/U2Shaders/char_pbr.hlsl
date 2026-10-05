@@ -18,7 +18,8 @@ sampler2D Maps    : register(s4);
 float4    GameC0  : register(c1);   // that shader's constants: the colour everything is times,
 float4    GameC1  : register(c6);   // the mask's channel,
 float4    GameC2  : register(c7);   // the glow's channel
-float4    Setup   : register(c2);   // x: the texture's factor (1, 2, 4), y: number of lights (0-4)
+float4    Setup   : register(c2);   // x: the texture's factor (1, 2, 4), y: number of lights (0-4),
+                                    // z: highlight strength, w: normal map strength
 float4    Ambient : register(c3);   // rgb: ambient x material ambient + emissive
 float4    Up      : register(c4);   // xyz: world up, in view space
 float4    Use     : register(c5);   // x: 1 = the texture is used, y: 1 = the material map is there,
@@ -27,8 +28,8 @@ float4    Lights[16] : register(c8);  // 4 per light (up to 4), see CharBegin
 
 #define WRAP 0.5      // as char_light.hlsl
 #define HEMI 0.4
-#define SPEC 1.0      // highlight strength
-#define BUMP 1.0      // normal map strength
+#define SPEC Setup.z  // highlight strength (the rule's third value, 1 if left out)
+#define BUMP Setup.w  // normal map strength (its fourth)
 
 float4 main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD2, float2 uv3 : TEXCOORD3,
 	float3 normal : TEXCOORD4, float3 pos : TEXCOORD5) : COLOR
