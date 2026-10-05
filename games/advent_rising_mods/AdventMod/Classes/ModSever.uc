@@ -23,6 +23,7 @@ var config bool bStumps;           // a meat cap on the body where the part came
 var name AboveName;                // a name from a string (SetPropertyText)
 
 var ModGore Gore;
+var bool bForce;                   // the next killing blow cuts for certain (a blade's strike, ModMelee)
 
 // a joint that can be cut: the bone hidden, and the gib pieces that fly ("upper,lower")
 struct Cut
@@ -92,13 +93,25 @@ function bool IsSevered(Pawn P, name Bone)
 function Kill(Pawn P, vector Spot, vector Dir, int Damage)
 {
 	local int c;
+	local bool bSure;
 
-	if (!bSever || P == None || P.bHidden || Damage < SeverDamage || Gore.GibSet(P) < 0)
+	bSure = bForce;
+	bForce = false;
+	if (!bSever || P == None || P.bHidden || (Damage < SeverDamage && !bSure) || Gore.GibSet(P) < 0)
 		return;
 	c = NearestCut(P, Spot);
+	if (c < 0 && bSure)
+	{
+		// a blade always finds something: the head
+		for (c = 0; c < Cuts.Length; c++)
+			if (Cuts[c].bHead)
+				break;
+		if (c == Cuts.Length)
+			c = -1;
+	}
 	if (c < 0 || IsSevered(P, Cuts[c].Bone))
 		return;
-	if (FRand() > (Cuts[c].bHead ? DecapChance : LimbChance))
+	if (!bSure && FRand() > (Cuts[c].bHead ? DecapChance : LimbChance))
 		return;
 	Sever(P, c, Dir);
 }

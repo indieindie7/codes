@@ -54,7 +54,8 @@ var array<Material> SetSkins;      // ModGibParts.Sets' skins, loaded once (thei
 var Material MeatTex, AlienMeatTex;
 
 var ModReact React;
-var ModSever Severer;              // decapitation and limb loss                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
+var ModSever Severer;              // decapitation and limb loss
+var ModMelee Melee;                // melee weapons (the energy blade)                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
 var config bool bWounds;           // a shot leaves a wound on the body, where it hit
 var config int MaxWounds, WoundsPerBody;
 var config bool bBleedTrail;       // the badly wounded leave drops where they go
@@ -137,6 +138,8 @@ event PostBeginPlay()
 	React.Gore = self;
 	Severer = Spawn(class'ModSever');
 	Severer.Gore = self;
+	Melee = Spawn(class'ModMelee');
+	Melee.Gore = self;
 	R = Spawn(class'ModGoreRules');
 	R.Gore = self;
 	if (Level.Game.GameRulesModifiers == None)
@@ -247,8 +250,11 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	if (Victim.Health <= 0 || Damage >= Victim.Health)
 	{
 		ScreenSplash(Victim.Location, BloodKind(Victim), 0.3 + FClamp(Damage / 150.0, 0, 0.4));
+		if (Melee != None && class'ModTargeting'.static.IsHostile(Victim) && FRand() < Melee.BladeDropChance)
+			Melee.Drop(Victim.Location);
 		AddDying(Victim);
-		if (bGibs && WantsGib(Victim, Damage, DamageType))
+		// (a blade's kill cuts: it doesn't blow the body apart)
+		if (bGibs && !(Severer != None && Severer.bForce) && WantsGib(Victim, Damage, DamageType))
 			Gib(Victim, Dir, Damage);
 		else if (Severer != None)
 			Severer.Kill(Victim, HitLocation, Dir, Damage);
@@ -1345,6 +1351,8 @@ event Destroyed()
 			Gibs[i].Destroy();
 	if (Severer != None)
 		Severer.Destroy();
+	if (Melee != None)
+		Melee.Destroy();
 	Super.Destroyed();
 }
 

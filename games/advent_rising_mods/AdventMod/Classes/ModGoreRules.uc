@@ -11,6 +11,9 @@ function int NetDamage(int OriginalDamage, int Damage, Pawn Injured, Pawn Instig
 {
 	if (NextGameRules != None)
 		Damage = NextGameRules.NetDamage(OriginalDamage, Damage, Injured, InstigatedBy, HitLocation, Momentum, DamageType);
+	// (a melee hit with the energy blade does more, and cuts)
+	if (Gore != None && Gore.Melee != None)
+		Damage = Gore.Melee.Strike(Damage, Injured, InstigatedBy, HitLocation, DamageType);
 	if (Gore != None && Gore.React != None)
 	{
 		if (InstigatedBy != None)

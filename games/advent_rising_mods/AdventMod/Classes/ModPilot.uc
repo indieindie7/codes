@@ -456,6 +456,24 @@ function GibList()
 	Note("giblist: " $ n $ " gibs, player at " $ PC().Pawn.Location);
 }
 
+function Blade(bool bDrop, float Dist)
+{
+	local ModGore G;
+
+	ForEach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None || G.Melee == None || PC() == None || PC().Pawn == None)
+	{
+		Note("blade: no ModMelee or no player");
+		return;
+	}
+	if (bDrop)
+		G.Melee.Drop(PC().Pawn.Location + vector(PC().Pawn.Rotation) * Dist);
+	else
+		G.Melee.Equip(PC().Pawn, G.Melee.BladeCharges);
+	Note("blade: " $ G.Melee.Carried $ " charges " $ G.Melee.Charges $ " pickups " $ G.Melee.Pickups.Length);
+}
+
 function GibAhead(float Dist, string SetName)
 {
 	local ModGore G;
@@ -701,6 +719,10 @@ function StartStep()
 		break;
 	case "GIBLIST":
 		GibList();
+		break;
+	case "BLADE":
+		// BLADE: the energy blade in the player's hands; BLADE DROP [distance]: one lying ahead
+		Blade(Args.Length > 1 && Args[1] ~= "DROP", ArgF(2, 200));
 		break;
 	case "GIBAHEAD":
 		// GIBAHEAD [distance] [set]: a set of gib parts thrown apart that far in front of the player

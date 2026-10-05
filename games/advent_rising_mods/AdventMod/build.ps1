@@ -30,6 +30,8 @@ foreach ($set in (Select-String -Path "$Here\Classes\ModGibParts.uc" -Pattern 'F
   & python (Join-Path (Split-Path -Parent $Here) 'tools\ase_flip.py') $src "$Game\AdventMod\Gibs\$f"
   if ($LASTEXITCODE -ne 0) { throw "ase_flip failed on $f" }
 }
+# the energy blade (ModBlade), our own mesh
+Copy-Item "$Here\Meshes\blade.ase" "$Game\AdventMod\Gibs\blade.ase" -Force
 # the stump cap (ModStump), our own mesh
 Copy-Item "$Here\Meshes\stump.ase" "$Game\AdventMod\Gibs\stump.ase" -Force
 # ragdoll skeletons (tools/make_ka.py): the engine reads <game>\KarmaData\*.ka
