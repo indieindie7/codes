@@ -1,6 +1,6 @@
 # Character creation pipeline (concept image -> textured low-poly game mesh)
 
-Internal working doc, state of 2026-10-04. Written so another chat can pick the pipeline up without
+Internal working doc, state of 2026-10-05. Written so another chat can pick the pipeline up without
 the history. Benchmark character: the green "hardsuit" (`Documents\U2Golem\hardsuit\hf`).
 All scripts named here are in this folder unless a path is given.
 
@@ -15,7 +15,13 @@ All scripts named here are in this folder unless a path is given.
 | 5 | Paint | Hunyuan3D-Paint (`Tools\Hunyuan3D-2\paint_mesh.py`) with front + back + side references | 3-4 min | 7 GB | works |
 | 6 | Colour-correct the paint to the references | `project_views.py` + `retopo_bake.py extra=Trust` + `blend_paint.py mix=0` | 2 min | no | works |
 | 7 | Low-poly + bakes | `retopo_bake.py method=decimate tris=3000` (colour, AO, normal; diffuse = colour x AO) | 1 min | no | works |
-| 8 | Rig onto the game skeleton, export, import | `fit_pieces.py` / U2Golem importer | - | no | NOT DONE for this pipeline yet |
+| 8 | Separate head (optional) | Hunyuan on a head crop + `attach_head.py` | 10 min | yes | works |
+| 9 | Rig onto a game skeleton | `rig_to_skeleton.py` + `blend2psk.py` + `psk_keep_bones.py` | 2 min | no | works |
+| 10 | Import as a wardrobe outfit | `u2import.py` (drives the real mouse) + `U2Wardrobe.ini` | 5 min | game | works |
+| 11 | Normal map + PBR highlights in game | `make_pbr_map.py` + the d3d8to9 fork's `pbr=` rule | 1 min | game | works, one level tested |
+
+Stages 8-11 were added on 2026-10-05; see "From the low-poly into the game" below. First character through
+the whole pipeline: wardrobe outfit "Dalton Peacekeeper" (`Documents\U2Golem\dalton_pk`).
 
 ## Update, evening of 2026-10-04: the route for a character with ONE concept image
 
@@ -57,6 +63,76 @@ which a text-to-image model (Sana) cannot do.
 - **Memory:** a run froze the PC once (32 GB RAM). The script now loads the text encoder and the model one
   after the other and refuses to start when RAM is short. Never run it next to another heavy job.
 - Result: `Documents\U2Golem\dalton_pk\tpose\dalton_t_A_match.*`.
+
+## From the low-poly into the game (stages 8-11, done on Dalton Peacekeeper 2026-10-05)
+
+### 8. A separate head (optional)
+
+The body model's face is a few hundred pixels. Generate the head on its own from a crop of the concept
+(`img2shape.py` + `paint_mesh.py` on the crop: a bust with hat and collar), then:
+
+    blender -b --python attach_head.py -- out body=body_paint.glb head=bust_paint.glb body_high=body_high.glb head_high=bust_high.glb collar=0.80 depth=1.5 scale=1.05
+
+It scales the bust by HAT WIDTH (the collar hides the jaw, so heights are unusable), removes the body's
+head column and keeps the bust's collar so the collar hides the join. Then stage 7 on `out_high.glb` /
+`out_paint.glb` (Dalton: 3,200 triangles, `tpose\dalton_th_game.*`).
+
+### 9. Rig
+
+The mesh must be in a T-pose (the FLUX Kontext route). The skeleton is borrowed from a UT2004 character
+that the importer already handles; the marines' animations then just work.
+
+    blender -b --python psk2blend.py -- MercDonor.blend MercMaleD.psk
+    blender -b MercDonor.blend --python rig_to_skeleton.py -- DaltonPK.blend low=dalton_th_game.glb test=1 smooth=4 cloth=0.6 slim=1.2
+    blender -b DaltonPK.blend --python blend2psk.py -- DaltonPK_raw.psk
+    python psk_keep_bones.py DaltonPK_raw.psk MercMaleD.psk DaltonPK.psk
+
+- `psk_keep_bones.py` is REQUIRED. Blender does not keep bone roll, so the exported bones have other axes;
+  the game's animations then lean the body about 45 degrees and splay the limbs. The step puts the donor's
+  own bone records back.
+- Do not rig on the game's own Dalton skeleton (gem2blend): same splayed limbs, and no fix for it.
+- `rig_to_skeleton.py` takes weights from the nearest point on the donor's surface PER POINT (per corner
+  tears the mesh along UV seams). `cloth=` sends skirts and tabards to the pelvis so they do not split
+  between the legs; `slim=` narrows the trunk toward the donor's body. Look at `_rest.png` / `_pose.png`.
+- Known limits: the fingers move as one block; the pose matcher wants hands and feet clearly visible.
+
+### 10. Import and wardrobe
+
+    (move <game>\Meshes\DaltonPK away first: the importer refuses when the gem already exists)
+    set PYTHONUTF8=1
+    py -3.13 u2import.py DaltonPK --psk DaltonPK.psk --tex DaltonPKSkin.png
+
+`DaltonPKSkin.png` is the `_diffuse` bake (albedo x AO). **The importer drives the real mouse in Golem
+Studio: ask the user first and tell the other chat.** Then in `System\U2Wardrobe.ini` add `Labels=<name>`,
+`Meshes=Glm<Name>G.<Name>` and `CalMeshes=...` (height calibration). The F6 portrait atlas holds 8 pictures
+and is full.
+
+Looking at the result (U2Pilot, `scripts\dalton_pk_dummy.txt`): use `hub dummy Glm<Name>G.<Name> <yaw> <dist>`,
+an armed, lit marine. `wardrobe photo` shows an UNARMED pawn standing at ease with its hands behind the back,
+which looks like broken arms on a wide character. In scripts use `wardrobe view` after `wear`, not
+`behindview 1`. The big gun "slabs" in the debug behind view are most likely the game's first-person weapon
+overlay (read from the code, not tested), not a fault of the outfit.
+
+### 11. Normal map and PBR
+
+Unreal II has no normal maps; the d3d8to9 fork does it in the wrapper (branch gi-cascades, commit 6f37ee7,
+worktree `Documents\github\d3d8to9-gi`, owned by the Advent chat: copy from it, never edit or commit there).
+
+    python make_pbr_map.py dalton_th_game_normal.png dalton_th_game_albedo.png DaltonPK_pbr.dds preview=check.png
+
+Install in `<game>\System`: the fork's `d3d8.dll`, `U2Shaders\char_pbr.hlsl`, the `.dds` in `U2Shaders\`,
+and as the first line under `[U2Shaders]` in `U2Shaders.ini`:
+
+    pbr=c99a529e DaltonPK_pbr.dds 1.6 1.5        (texture hash, map, highlight strength, normal strength)
+
+- The hash is the fork's hash of the skin texture: run once with `log=2` and find the skin in
+  `U2Shaders\dump`. It changes when the skin changes. The rule is read at startup only.
+- The baked normal's green channel must be flipped for the game (the tool does it). Without it relief reads
+  as dents; `pbrdebug=1..4` shows the channels.
+- Roughness and metal are guessed from the albedo's colours (gold trim = metal, white plates = smooth,
+  cloth = rough). They are guesses; tune the numbers per character.
+- Do not put a `surface=` rule on the same hash. Tested only in HoverTest under one light.
+- Backups made: `d3d8.dll.before-pbr`, `U2Shaders.ini.before-pbr`, `U2Wardrobe.ini.before-daltonpk`.
 
 ## Reference views (stage 2)
 
@@ -148,7 +224,8 @@ chat's D3D app is starting (device-lost crashes). While the user is playing a ga
 
 ## Open items
 
-- Rigging the Decimate mesh onto Dalton's skeleton and importing it as a wardrobe outfit (joint bending untested).
+- Dalton Peacekeeper: the single big pauldron came out as a matching pair; fingers move as a block; PBR values
+  are guesses and tested in one level; no first-person check of the outfit yet.
 - 135-degree reference view: no generator for it yet (see "Reference views").
 - Details that exist only in the side drawing (elbow disc, pauldron face) are not reproduced.
 - UT2004 / UT3 extracts and anything derived from them stay private: never upload.
