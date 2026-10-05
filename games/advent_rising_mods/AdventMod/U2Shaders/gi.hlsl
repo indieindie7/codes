@@ -7,6 +7,8 @@
 //   3 GatherPS   the nearest cascade gathered per pixel
 //   4 CachePS    the world cache brought up to date from this frame
 //   5 ResolvePS  the gathered light smoothed along surfaces: bounce light added, corners darkened
+//   6 CacheNormalPS  the cache's second half: which way the surfaces in each cell face
+//   7 LightPS    the cache's light with the game's own lights added: what the cascades read
 //
 // The world cache (gicache=1) is what the screen can't give: a coarse grid of cells around
 // the camera (64 x 64 x 32, slices side by side in one texture) that remembers the light
@@ -14,7 +16,13 @@
 // frame's colour where the depth buffer says a surface is in it, empties where it is seen
 // to be air, and keeps what it had while hidden or off screen. The farthest cascade ends
 // its directions in the cache, so light from behind the camera or behind a pillar still
-// arrives, for as long as the cache remembers it.
+// arrives, for as long as the cache remembers it. A cell remembers until it is seen to be
+// empty: the grid fills in as the camera looks around, a voxel copy of the world built
+// from the depth buffer.
+//
+// The game's own lights (the fixed-function lights of the frame's lit draws, world space)
+// light the cells again in LightPS, by the surfaces' facing, with the cell's hue for the
+// surface's colour: light reaches the cache for surfaces the screen shows dark or not at all.
 //
 // Radiance cascades (Sannikov, Path of Exile 2): light from near needs many probes but few
 // directions, light from far few probes but many directions. Cascade c has probes every
@@ -39,6 +47,10 @@ float4 Mat1 : register(c6);     // camera's inverse view in the cascade and reso
 float4 Mat2 : register(c7);     // the cache pass
 float4 Grid : register(c8);     // the cache's lowest corner (world), its cell size
 float4 GridOld : register(c9);  // last frame's corner, 1 = the cache is on
+float4 Lights : register(c10);  // gain, count
+float4 LightPos[32] : register(c11);    // per light: position + range,
+float4 LightCol[32] : register(c43);    // colour + 1 if directional,
+float4 LightDir[32] : register(c75);    // direction
 
 static const float3 GridN = float3(64, 64, 32);
 static const float2 GridTiles = float2(8, 4);
@@ -305,9 +317,100 @@ float4 CachePS(float2 uv : TEXCOORD0) : COLOR
 			if (abs(dz) < Grid.w * 0.75)
 				return lerp(old, float4(pow(max(tex2Dlod(S1, float4(suv, 0, 0)).rgb, 0), 2.2), 1), 0.12);
 			if (dz < 0)
-				return old * 0.85;              // seen to be air
+				return old * 0.7;               // seen to be air
 		}
 	}
-	return old * 0.999;                         // hidden or off screen: remembered
+	return old;                                 // hidden or off screen: remembered
+}
+#endif
+
+// this texel's cell middle in the world, and what the cell held last frame (S2)
+float3 CellWorld(float2 uv)
+{
+	float2 t = uv * GridTiles;
+	float2 tile = floor(t);
+	float3 cellIndex = float3(floor(frac(t) * GridN.xy), tile.y * GridTiles.x + tile.x);
+	return Grid.xyz + (cellIndex + 0.5) * Grid.w;
+}
+
+float4 CellOld(float3 world)
+{
+	float3 go = (world - GridOld.xyz) / Grid.w;
+	if (all(go > 0) && all(go < GridN))
+	{
+		float3 ci = floor(go);
+		return tex2Dlod(S2, float4((float2(fmod(ci.z, GridTiles.x), floor(ci.z / GridTiles.x)) + (ci.xy + 0.5) / GridN.xy) / GridTiles, 0, 0));
+	}
+	return 0;
+}
+
+#if GI_PASS == 6
+// S0 = depth + normal, S2 = the facing as it was: rgb the surface normal (world), a how sure
+float4 CacheNormalPS(float2 uv : TEXCOORD0) : COLOR
+{
+	float3 world = CellWorld(uv);
+	float4 old = CellOld(world);
+	float3 v = Xform(world);
+	if (v.z > 4)
+	{
+		float2 suv = float2(0.5 + 0.5 * v.x * Proj.x / v.z, 0.5 - 0.5 * v.y * Proj.y / v.z);
+		if (suv.x > 0 && suv.x < 1 && suv.y > 0 && suv.y < 1)
+		{
+			float4 g = tex2Dlod(S0, float4(suv, 0, 0));
+			float dz = g.a < 0.5 ? -1e6 : v.z - g.x;
+			if (abs(dz) < Grid.w * 0.75)
+			{
+				// view space to world: the view's rotation transposed
+				float3 n = Normal(g);
+				float3 nw = normalize(n.x * Mat0.xyz + n.y * Mat1.xyz + n.z * Mat2.xyz);
+				return lerp(old, float4(nw, 1), 0.2);
+			}
+			if (dz < 0)
+				return old * 0.7;
+		}
+	}
+	return old;
+}
+#endif
+
+#if GI_PASS == 7
+// S0 = the cache (light + how full), S1 = its facing
+float4 LightPS(float2 uv : TEXCOORD0) : COLOR
+{
+	float4 c = tex2Dlod(S0, float4(uv, 0, 0));
+	if (c.a < 0.02 || Lights.y < 0.5)
+		return c;
+	float4 f = tex2Dlod(S1, float4(uv, 0, 0));
+	float3 world = CellWorld(uv);
+	float sure = saturate(f.a * 2);
+	float3 n = f.a > 0.05 ? f.rgb / max(length(f.rgb), 0.001) : 0;
+	float3 direct = 0;
+	[loop] for (int i = 0; i < 32; i++)
+	{
+		if (i >= Lights.y)
+			break;
+		float4 a = LightPos[i], b = LightCol[i], d = LightDir[i];
+		float3 l;
+		float atten;
+		if (b.w > 0.5)
+		{
+			l = -d.xyz;
+			atten = 1;
+		}
+		else
+		{
+			float3 to = a.xyz - world;
+			float dist = length(to);
+			l = to / max(dist, 0.001);
+			atten = saturate(1 - dist / max(a.w, 1));
+			atten *= atten;
+		}
+		// facing unknown: half, as if lit from the side
+		float ndl = lerp(0.5, saturate(dot(n, l)), sure);
+		direct += b.rgb * atten * ndl;
+	}
+	// the surface's colour: the cell's hue, at a middling reflectance
+	float3 albedo = 0.4 * (c.rgb + 0.02) / (max(c.r, max(c.g, c.b)) + 0.02);
+	return float4(c.rgb + Lights.x * albedo * direct * c.a, c.a);
 }
 #endif
