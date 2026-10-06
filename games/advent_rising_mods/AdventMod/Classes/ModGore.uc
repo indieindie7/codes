@@ -58,7 +58,8 @@ var Material MeatTex, AlienMeatTex;
 
 var ModReact React;
 var ModSever Severer;              // decapitation and limb loss
-var ModMelee Melee;                // melee weapons (the energy blade)                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
+var ModMelee Melee;                // melee weapons (the energy blade)
+var ModArmor Armor;                // destructible plates on the Seeker soldiers                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
 var config bool bBloodCoats;       // blood lands on the characters near a hit: they look bloody
 var config int MaxCoats;
 var array<ModBloodCoat> Coats;
@@ -187,6 +188,8 @@ event PostBeginPlay()
 	Severer = Spawn(class'ModSever');
 	Severer.Gore = self;
 	Melee = Spawn(class'ModMelee');
+	Armor = Spawn(class'ModArmor');
+	Armor.Gore = self;
 	Melee.Gore = self;
 	R = Spawn(class'ModGoreRules');
 	R.Gore = self;
