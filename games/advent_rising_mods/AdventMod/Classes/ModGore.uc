@@ -89,7 +89,12 @@ var float LastShake;
 var Material Splats[4], Sprays[2], Pool, Scorches[3], CasingTex;   // the textures, referenced so the package keeps them
 var Material RemainsTex[2];
 var Material AlienSplats[4], AlienSprays[2], AlienPool, AlienRemains[2];
-var Material PoolFrames[12], AlienPoolFrames[12];   // a pool spreading: frames of an offline fluid run (tools/make_blood_pool.py)   // the same in the Seekers' purple
+var Material PoolFrames[12], AlienPoolFrames[12];   // a pool spreading: frames of an offline fluid run (tools/make_blood_pool.py)
+var Material PoolLive[8];                            // live pools: placeholders the d3d8 layer simulates (tools/make_blood_live.py)
+var ModBloodDecal LiveOwner[8];
+var int NextLive;
+var config bool bLivePools;
+var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long   // the same in the Seekers' purple
 var array<ModBloodDecal> Decals, Holes, Clutter;
 var StaticMesh ShellMesh;          // the game's own shell, taken from its shell particles
 var float ShellScale;              // ...and the size those particles draw it at
@@ -230,6 +235,19 @@ function Material SprayTex(Pawn P)
 	if (BloodKind(P) == 2)
 		return AlienSprays[Rand(2)];
 	return Sprays[Rand(2)];
+}
+
+// a pool takes the next live slot (the pool that had it keeps a baked frame)
+function GoLive(ModBloodDecal D, float Size)
+{
+	local int K;
+
+	K = NextLive;
+	NextLive = (NextLive + 1) % 8;
+	if (LiveOwner[K] != None && !LiveOwner[K].bDeleteMe)
+		LiveOwner[K].EndLive();
+	LiveOwner[K] = D;
+	D.GoLive(K, PoolLive[K], Size, LivePour, LivePourSecs);
 }
 
 function Material PoolTex(Pawn P)
@@ -1140,6 +1158,9 @@ event Tick(float DeltaTime)
 							D.Frames[j] = PoolFrames[j];
 					}
 					D.Grow(DecalScale * 0.2, DecalScale * (0.9 + FRand() * 0.4), 5 + FRand() * 3);
+					// or, with the d3d8 layer's live pools, simulated for real (human blood only: one colour so far)
+					if (bLivePools && BloodKind(Dying[i]) != 2)
+						GoLive(D, DecalScale * 128.0 * (0.9 + FRand() * 0.4));
 					D.LifeSpan = 300;
 				}
 			}
@@ -1633,6 +1654,17 @@ defaultproperties
      AlienSprays(0)=Texture'AdventMod.Blood.AlienSpray0'
      AlienSprays(1)=Texture'AdventMod.Blood.AlienSpray1'
      AlienPool=Texture'AdventMod.Blood.AlienPool0'
+     PoolLive(0)=Texture'AdventMod.Blood.BloodLive0'
+     PoolLive(1)=Texture'AdventMod.Blood.BloodLive1'
+     PoolLive(2)=Texture'AdventMod.Blood.BloodLive2'
+     PoolLive(3)=Texture'AdventMod.Blood.BloodLive3'
+     PoolLive(4)=Texture'AdventMod.Blood.BloodLive4'
+     PoolLive(5)=Texture'AdventMod.Blood.BloodLive5'
+     PoolLive(6)=Texture'AdventMod.Blood.BloodLive6'
+     PoolLive(7)=Texture'AdventMod.Blood.BloodLive7'
+     bLivePools=True
+     LivePour=3.000000
+     LivePourSecs=2.600000
      PoolFrames(0)=Texture'AdventMod.Blood.BloodPoolF0'
      PoolFrames(1)=Texture'AdventMod.Blood.BloodPoolF1'
      PoolFrames(2)=Texture'AdventMod.Blood.BloodPoolF2'

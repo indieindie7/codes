@@ -98,6 +98,27 @@ static int SetPcss(int On)
 	return 1;
 }
 
+/* NativeCall("Blood:<command>"): a live blood pool command for the d3d8 layer (its blood.hpp;
+   the export U2BloodCommand), e.g. "pool 0 120 0.02 0" or "stamp 0 0.5 0.5 1.2 0 0.08". */
+typedef int (__cdecl *U2BloodCommand_t)(const char*);
+static int BloodCommand(const wchar_t* Arg)
+{
+	static U2BloodCommand_t Fn;
+	static int Tried;
+	char Cmd[256];
+	if (!Tried)
+	{
+		HMODULE D3D = GetModuleHandleW(L"d3d8.dll");
+		Tried = 1;
+		if (D3D) Fn = (U2BloodCommand_t)GetProcAddress(D3D, "U2BloodCommand");
+		Note(L"blood: the d3d8 layer's live pools are %ls", Fn ? L"available" : L"not in this d3d8.dll (pools stay baked)");
+	}
+	if (!Fn) return 0;
+	WideCharToMultiByte(CP_ACP, 0, Arg, -1, Cmd, sizeof(Cmd), 0, 0);
+	Cmd[sizeof(Cmd) - 1] = 0;
+	return Fn(Cmd);
+}
+
 /* NativeCall("U2Set:key=value"): one U2Shaders.ini setting ("U2Set:key=" removes the line) */
 static int U2SetCommand(const wchar_t* Arg)
 {
@@ -192,6 +213,7 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsicmp(Cmd, L"D3DZAlways")) { D3DZAlways = 1; Note(L"d3dtrace: projected draws now always pass the depth test"); return 1; }
 	if (!_wcsnicmp(Cmd, L"Pcss:", 5)) return SetPcss(Cmd[5] == L'1');
 	if (!_wcsnicmp(Cmd, L"U2Set:", 6)) return U2SetCommand(Cmd + 6);
+	if (!_wcsnicmp(Cmd, L"Blood:", 6)) return BloodCommand(Cmd + 6);
 	if (!_wcsnicmp(Cmd, L"Fits:", 5))
 	{
 		/* does WxH fit on the screen the game is on? */

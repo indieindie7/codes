@@ -13,7 +13,25 @@ gibs as unique high-detail ("Rage megatexture"-style) textures. Steps:
    Only 9 distinct hashes: the fork hashes the top rows, grey in the early frames.
    Shots: research/img/blood_pool_frames.png (frames 1/4/7/11), blood_pool_ingame.png.
    Tuning knobs: G, DAMP, POUR_RATE/POUR_UNTIL, bed amplitude, T_END.
-2. NEXT: a live version. The baked sequence can't react to slopes or to walking through it.
+2. DONE (v1, 2026-10-06): the live version, in the d3d8 layer (fork gi-cascades, source/blood.hpp).
+   The mod draws a pool with one of 8 placeholder textures (Textures/blood_live0..7.tga,
+   tools/make_blood_live.py writes them and the `bloodlive=HASH` slot lines into U2Shaders.ini);
+   the layer swaps in a 64x64 texture it fills from a CPU shallow-water sheet (the Hydrophobia
+   scheme: HLL + hydrostatic reconstruction, CFL sub-steps, friction 0.9/s, speed cap 20 h,
+   one frame per step). Commands go UnrealScript -> NativeCall("Blood:...") -> AdventNative ->
+   the layer's exported U2BloodCommand: `pool K size gx gy` (floor slope along the texture
+   axes = the decal axes' Z), `pour K u v rate secs`, `stamp K u v du dv r` (a pawn moving
+   through: velocity blend + half the blood under it pushed to the ring), `stop K`. ModGore
+   gives each dying human's pool the next slot (bLivePools, LivePour 3 over 2.6 s); the pool
+   that loses its slot keeps the baked final frame. ModBloodDecal.Stamps sends pawns within
+   the pool every 80 ms. Verified: research/img/blood_live_pool.png (1.5 / 3.5 / 5.5 s).
+   GOTCHA found on the way: the game's TGA importer reads rows bottom-up whatever the
+   orientation flag says, so generated TGAs must be written bottom-up (descriptor 8) for
+   tools/tex_hash.py's hashes to match the layer's (the baked frame rules were wrong before).
+   Open: alien (purple) colour for live pools, stamps verified by log only (the pilot walked
+   into a wall), slot count 8, no sleep/early-out yet (8 x 4096 cells x ~2 faces per frame is
+   still well under 0.1 ms).
+2b. NEXT for the live version: The baked sequence can't react to slopes or to walking through it.
    A real-time 2D sim per pool (32x32 cells) needs a dynamic texture: UE2 has no script-side
    texture writes, so the fork would own the sheet (CPU sim in the d3d layer, UpdateTexture
    each frame, keyed by projector texture hash + position passed through NativeCall). Also

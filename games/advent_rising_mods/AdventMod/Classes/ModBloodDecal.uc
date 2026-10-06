@@ -12,6 +12,13 @@ class ModBloodDecal extends Projector;
 var float GrowFrom, GrowTo, GrowTime, GrowAge;   // a pool spreading out (GrowTime 0 = no growth)
 var Material Frames[12];                         // a spreading pool's texture over time (None = keep the one it has)
 var int Frame;
+// a LIVE pool: the texture is a placeholder the d3d8 layer swaps for a sheet it simulates
+// (blood.hpp; commands through AdventNative "Blood:..."): the blood spreads for real, runs
+// down the floor's slope and is kicked about by whoever steps in it
+var int LiveSlot;                                // -1: not live
+var float LiveSize;                              // the pool's width in world units
+var vector AxU, AxV;                             // the texture's axes in the world
+var float LiveAge, LastStampT;
 
 // Projector attaches itself at spawn (before it has a texture or a place): not yet
 simulated event PostBeginPlay()
@@ -40,6 +47,73 @@ function Place(Material Tex, vector Spot, vector N, vector Along, float Size)
 	AttachProjector();
 }
 
+// this pool goes live in slot Slot (the d3d8 layer simulates it): Size world units across
+function GoLive(int Slot, Material Placeholder, float Size, float Pour, float PourSecs)
+{
+	local vector X, Y, Z;
+
+	LiveSlot = Slot;
+	LiveSize = Size;
+	ProjTexture = Placeholder;
+	GrowTime = 0;
+	// the placeholder is 64 px; the projector's size is the texture's times DrawScale
+	SetDrawScale(Size / 64.0);
+	GetAxes(Rotation, X, Y, Z);
+	AxU = Y;
+	AxV = Z;
+	// the floor's slope along the texture axes: the axes lie in the floor, so their Z is the rise
+	class'ModSettings'.static.NativeCall("Blood:pool " $ Slot $ " " $ Size $ " " $ AxU.Z $ " " $ AxV.Z);
+	class'ModSettings'.static.NativeCall("Blood:pour " $ Slot $ " 0.5 0.5 " $ Pour $ " " $ PourSecs);
+	DetachProjector(true);
+	AttachProjector();
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: live pool slot " $ Slot $ " at " $ Location $ " size " $ Size $ " slope " $ AxU.Z $ " " $ AxV.Z);
+}
+
+// the slot is wanted elsewhere: the pool keeps a baked final frame instead
+function EndLive()
+{
+	if (LiveSlot < 0)
+		return;
+	class'ModSettings'.static.NativeCall("Blood:stop " $ LiveSlot);
+	LiveSlot = -1;
+	if (Frames[11] != None)
+	{
+		ProjTexture = Frames[11];
+		SetDrawScale(LiveSize / 128.0);
+		DetachProjector(true);
+		AttachProjector();
+	}
+}
+
+// whoever moves through the pool pushes the blood about
+function Stamps(float DeltaTime)
+{
+	local Pawn P;
+	local vector D, V;
+	local float U, W, R;
+
+	LiveAge += DeltaTime;
+	if (LiveAge - LastStampT < 0.08)
+		return;
+	LastStampT = LiveAge;
+	foreach DynamicActors(class'Pawn', P)
+	{
+		if (P.Physics != PHYS_Walking && P.Physics != PHYS_Falling)
+			continue;
+		D = P.Location - vect(0,0,1) * P.CollisionHeight - Location;
+		if (Abs(D.Z) > 40 || VSize(P.Velocity) < 15)
+			continue;
+		U = 0.5 + (D Dot AxU) / LiveSize;
+		W = 0.5 + (D Dot AxV) / LiveSize;
+		if (U < -0.1 || U > 1.1 || W < -0.1 || W > 1.1)
+			continue;
+		V = P.Velocity;
+		R = P.CollisionRadius * 0.6 / LiveSize;
+		class'ModSettings'.static.NativeCall("Blood:stamp " $ LiveSlot $ " " $ U $ " " $ W $ " " $ ((V Dot AxU) / LiveSize) $ " " $ ((V Dot AxV) / LiveSize) $ " " $ R);
+	}
+}
+
 // a pool: from Size*From to Size*To over Seconds
 function Grow(float From, float To, float Seconds)
 {
@@ -57,10 +131,19 @@ function Grow(float From, float To, float Seconds)
 	AttachProjector();
 }
 
+event Destroyed()
+{
+	if (LiveSlot >= 0)
+		class'ModSettings'.static.NativeCall("Blood:stop " $ LiveSlot);
+	Super.Destroyed();
+}
+
 event Tick(float DeltaTime)
 {
 	local float T;
 
+	if (LiveSlot >= 0)
+		Stamps(DeltaTime);
 	if (GrowTime <= 0)
 		return;
 	GrowAge += DeltaTime;
@@ -84,6 +167,7 @@ event Tick(float DeltaTime)
 
 defaultproperties
 {
+     LiveSlot=-1
      FrameBufferBlendingOp=PB_Modulate
      FOV=0
      MaxTraceDistance=40

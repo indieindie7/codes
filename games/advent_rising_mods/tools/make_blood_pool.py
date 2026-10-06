@@ -136,10 +136,13 @@ def sample(h, fx, fy):
 
 def write_tga(path, pixels):
     """pixels: TEX*TEX list of (r,g,b,a), top row first"""
-    hdr = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, TEX, TEX, 32, 0x28)
+    # bottom row first (descriptor 8): the game's importer reads TGAs bottom-up whatever the
+    # orientation flag says, and the d3d8 layer's texture hash must match tools/tex_hash.py
+    hdr = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, TEX, TEX, 32, 0x08)
     body = bytearray()
-    for r, g, b, a in pixels:
-        body += bytes((b, g, r, a))
+    for y in range(TEX - 1, -1, -1):
+        for r, g, b, a in pixels[y * TEX:(y + 1) * TEX]:
+            body += bytes((b, g, r, a))
     with open(path, "wb") as f:
         f.write(hdr + body)
 
