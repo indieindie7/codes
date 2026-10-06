@@ -22,15 +22,20 @@ TILES = 8
 BUILDINGS = ["CoolingTower", "ProcessingHall", "StorageTank", "OreTank", "DockCrane", "DrillingRig", "DeadRig",
              "CargoDropship", "Pylon", "RadioMast"]
 
+def manifest():
+    """make_avalon.py's Models/ase/manifest.txt: 'name group texture' per mesh"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    rows = []
+    for line in open(os.path.join(here, "Models", "ase", "manifest.txt")):
+        w = line.split(None, 2)
+        if w:
+            rows.append((w[0], w[1]))
+    return rows
+
+
 ASSETS = [
-    r'NEW StaticMeshFactory PACKAGE="AvalonSM" GROUP="Ground" NAME="Ground%d%d" FILE="{A}\Models\ase\Ground%d%d.ase"'
-    % (i, j, i, j) for i in range(TILES) for j in range(TILES)
-] + [
-    r'NEW StaticMeshFactory PACKAGE="AvalonSM" GROUP="Ground" NAME="Sea" FILE="{A}\Models\ase\Sea.ase"',
-    r'NEW StaticMeshFactory PACKAGE="AvalonSM" GROUP="Tower" NAME="Tower" FILE="{A}\Models\ase\Tower.ase"',
-] + [
-    r'NEW StaticMeshFactory PACKAGE="AvalonSM" GROUP="Liandri" NAME="%s" FILE="{A}\Models\ase\%s.ase"' % (b, b)
-    for b in BUILDINGS
+    r'NEW StaticMeshFactory PACKAGE="AvalonSM" GROUP="%s" NAME="%s" FILE="{A}\Models\ase\%s.ase"' % (g, n, n)
+    for n, g in manifest()
 ] + [
     r'TEXTURE IMPORT FILE="{A}\Models\ase\Pal.tga" NAME="Pal" PACKAGE="AvalonSM" GROUP="Pal" MIPS=0',
     r'OBJ SAVEPACKAGE PACKAGE="AvalonSM" FILE="{SM}\AvalonSM.usx"',
@@ -48,8 +53,12 @@ ROOM = [
 MAP = [
     r'OBJ LOAD FILE="{SM}\AvalonSM.usx"',
     r'OBJ LOAD FILE="{SM}\HoverTestSM.usx"',
+    r'OBJ LOAD FILE="{SM}\Flora_M.usx"',
+    r'OBJ LOAD FILE="{SM}\Terran_DecoM.usx"',
+    r'OBJ LOAD FILE="{SM}\Mission_SulferonM.usx"',
     r'OBJ LOAD FILE="{GAME}\Textures\Mission_10T.utx"',
     r'OBJ LOAD FILE="{GAME}\Textures\JungleT.utx"',
+    r'OBJ LOAD FILE="{GAME}\Textures\ScottT.utx"',
     r'BRUSH LOAD FILE="{A}\brushes\room.u3d"',
     r'BRUSH MOVETO X=0 Y=0 Z=0',
     r'BRUSH SUBTRACT',

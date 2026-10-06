@@ -1,23 +1,25 @@
-"""Avalon, remade: the Liandri plant seen from the Authority's tower, as a real map.
+"""Avalon, remade: the Liandri plant seen from the Authority's tower, as a real map, laid out from the binder.
 
-    python make_avalon.py           meshes (terrain tiles, sea, tower) + avalon_actors.t3d
-    python build_avalon.py assets   -> StaticMeshes/AvalonSM.usx (buildings, palette, terrain, tower)
+    python make_avalon.py           meshes (terrain tiles, sea, tower, room, quay, pipeline) + avalon_actors.t3d
+    python build_avalon.py assets   -> StaticMeshes/AvalonSM.usx (everything in Models/ase/manifest.txt)
     python build_avalon.py map      -> Maps/Avalon.un2 (+ paths)
 
-Stage 1 = the outside world, in TutA's coordinates so the U2AvalonCards layouts carry over:
-  sea level Z = -4967 (TutA's sea surface), the tower at (0,0) with its command room ~9200 above the sea,
-  the player on a balcony at (-250,1100) looking ~300 degrees out over the plant.
-  land: a hill under the tower falling to a shore to the north-west (+X,-Y), high ground to the south-west
-  (-X,-Y: the radio mast's hill) and east; sea beyond the shore line.
-World is -WORLD..WORLD (the engine's limit); the dead rig moves in from 30000 to 26000.
-Buildings: tools\\glb_to_ase.py's ASE meshes, scaled by DrawScale to the heights of the cube blockout
-(U2AvalonCards/layout_liandri_blocks.txt). Same ASE conventions as U2Hover/make_map.py.
+Coordinates: the tower at (0,0); the LOOK is 300 degrees (the window's direction); the binder's building
+sheets give positions as (along, across) in that frame, in world units, plus the yaw their front faces.
+Scale: 1 m = 50 units (the parts and the scripted buildings are modelled in metres and placed with
+DrawScale 50). Sea level Z = -4967 (TutA's); the command room's floor is 5200 above it, ~2400 above the
+tower's hill, so the plant (along 12000..17500) sits ~19 degrees below the window's horizon.
+Terrain tiles are split in three materials by slope and height (grass / rock / shore sand).
+Buildings come from the binder (binder/buildings/*.md): kinds hall/office/dorm/house/pump/jetty/pad are
+assembled from parts (tools/build_parts.py -> B_<id>); tank/silo/cooling/rig/mast/dock keep the scripted
+meshes (U2AvalonCards/tools/build_buildings.py). Same ASE conventions as U2Hover/make_map.py.
 """
 import json, math, os, random, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 from ase import write_ase, tri_facing  # noqa
+import binder  # noqa
 
 WORLD = 30720
 N = 240                 # heightfield cells per side (256 units)
@@ -26,11 +28,14 @@ SEA_Z = -4967.0         # world Z of the sea surface
 SKY_Z = 20000           # centre of the sky room: the big room brush again, stacked above the main room (build_avalon.py)
 UV_TILE = 1024.0
 TOWER = (0.0, 0.0)
-ROOM_Z = SEA_Z + 9200   # the command room's floor
-LOOK_YAW = 300          # degrees
-# the player stands at the balcony's rim on the look side (standing in the middle of a 1700-unit disc,
-# the floor hides everything below 4 degrees); the real room (stage 2) puts the window at (-250,1100)
-BALCONY = (1550 * math.cos(math.radians(LOOK_YAW)), 1550 * math.sin(math.radians(LOOK_YAW)))
+LOOK_YAW = 300          # degrees, the window's direction
+ROOM_Z = SEA_Z + 5200   # the command room's floor
+M = 50.0                # units per metre
+SHORE = 17500.0         # where the land meets the sea along the look (the binder's shore buildings sit at ~17000)
+PLANT_AT = (14500.0, 0.0)   # the plant's shelf (along, across)
+# the command room: a box on top of the tower, its window wall facing LOOK_YAW; the player stands inside it
+ROOM_LEN, ROOM_WID, ROOM_HI = 2400.0, 2000.0, 520.0
+PLAYER_FROM_GLASS = 200.0
 
 random.seed(11)
 HILLS = [(random.uniform(-WORLD, WORLD), random.uniform(-WORLD, WORLD), random.uniform(1500, 4000),
@@ -42,24 +47,43 @@ def smooth(t):
     return t * t * (3 - 2 * t)
 
 
+def look_frame(x, y):
+    """(along the look direction, across it) of a world point, from the tower"""
+    dx, dy = x - TOWER[0], y - TOWER[1]
+    a = math.radians(LOOK_YAW)
+    return dx * math.cos(a) + dy * math.sin(a), -dx * math.sin(a) + dy * math.cos(a)
+
+
+def from_frame(along, across):
+    a = math.radians(LOOK_YAW)
+    return (TOWER[0] + along * math.cos(a) - across * math.sin(a), TOWER[1] + along * math.sin(a) + across * math.cos(a))
+
+
+def shore_at(across):
+    return SHORE + 1500 * math.sin(across / 4000.0) + 600 * math.sin(across / 1300.0 + 1)
+
+
 def height(x, y):
     """land height above the sea (negative = sea floor)"""
-    # the base slope: from +2200 at the tower's hill down to the shore line, which runs from the
-    # north (y>0, x~-6000) round to the east (x~9000, y<0); everything beyond is sea
     dx, dy = x - TOWER[0], y - TOWER[1]
-    along = dx * math.cos(math.radians(LOOK_YAW)) + dy * math.sin(math.radians(LOOK_YAW))   # toward the sea
-    across = -dx * math.sin(math.radians(LOOK_YAW)) + dy * math.cos(math.radians(LOOK_YAW))
-    shore = 7000 + 1500 * math.sin(across / 4000.0) + 600 * math.sin(across / 1300.0 + 1)
-    h = 2200 * smooth((shore - along) / 9000.0) - 20
-    # the plant's shelf: flat ground at +250 where the plant stands (x 2000..7000, y -11500..-4500)
-    shelf = smooth((4500 - math.hypot((x - 4500) / 1.0, (y - -8000) / 1.4)) / 1500.0)
-    h = h * (1 - shelf) + shelf * 250
-    # hills on the land only, the big one under the radio mast
+    along, across = look_frame(x, y)
+    shore = shore_at(across)
+    # the base slope: from +2200 at the tower's hill down to the shore line; everything beyond is sea
+    h = 2200 * smooth((shore - along) / (SHORE - 1500.0)) - 20
+    # the plant's shelf: flat ground at +400
+    # (an ellipse in the look frame: along 11500..17500, across +-5100, so it stops at the shore)
+    shelf = smooth((3000 - math.hypot(along - PLANT_AT[0], (across - PLANT_AT[1]) / 1.7)) / 1200.0)
+    h = h * (1 - shelf) + shelf * 400
+    # hills on the land only, the big one under the company mast
     land = smooth((shore - along + 2000) / 3000.0)
     for cx, cy, r, amp in HILLS:
         h += amp * math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (r * r)) * land * (1 - shelf)
-    h += 3200 * math.exp(-((x + 12849) ** 2 + (y + 8612) ** 2) / (5000.0 ** 2))
-    h += 2600 * math.exp(-(dx * dx + dy * dy) / (2600.0 ** 2))          # the tower's own hill
+    mx, my = from_frame(1000, -15400)
+    h += 3200 * math.exp(-((x - mx) ** 2 + (y - my) ** 2) / (5000.0 ** 2))
+    h += 600 * math.exp(-(dx * dx + dy * dy) / (2600.0 ** 2))           # the tower's own hill
+    # the director's green hill
+    gx, gy = from_frame(10600, -4200)
+    h += 500 * math.exp(-((x - gx) ** 2 + (y - gy) ** 2) / (1800.0 ** 2)) * (1 - shelf)
     # the sea floor falls away gently
     if along > shore:
         h -= 600 * smooth((along - shore) / 6000.0)
@@ -70,20 +94,53 @@ def height(x, y):
     return h
 
 
+def slope(x, y, d=64.0):
+    hx = (height(x + d, y) - height(x - d, y)) / (2 * d)
+    hy = (height(x, y + d) - height(x, y - d)) / (2 * d)
+    return math.hypot(hx, hy)
+
+
+def material_at(x, y):
+    """0 grass, 1 rock (steep), 2 sand (the shore band)"""
+    h = height(x, y)
+    if -300 < h < 160:
+        return 2
+    if slope(x, y) > 0.8 or h > 4200:
+        return 1
+    return 0
+
+
+MAT_NAMES = ("Grass", "Rock", "Sand")
+MAT_TEX = ("Texture'Mission_10T.Terrain.BryoTerr_U10B740_'", "Texture'Mission_10T.Terrain.rockterr_u10a741_'",
+           "Texture'ScottT.Generic.SandFlor_U06S667'")
+
+
 def tile(ti, tj):
+    """three (verts, uvs, tris) sets, one per material (empty ones are skipped by the caller)"""
     T = N // TILES
     step = 2 * WORLD / N
-    verts, uvs, tris = [], [], []
+    verts, uvs = [], []
     for j in range(tj * T, tj * T + T + 1):
         for i in range(ti * T, ti * T + T + 1):
             x, y = -WORLD + i * step, -WORLD + j * step
             verts.append((x, y, height(x, y)))
             uvs.append((x / UV_TILE, -y / UV_TILE))
+    sets = [[], [], []]
     for j in range(T):
         for i in range(T):
             a = j * (T + 1) + i; b = a + 1; c = a + T + 1; d = c + 1
-            tris += [tri_facing(verts, (a, b, d), (0, 0, 1)), tri_facing(verts, (a, d, c), (0, 0, 1))]
-    return verts, uvs, tris
+            cx, cy = -WORLD + (ti * T + i + 0.5) * step, -WORLD + (tj * T + j + 0.5) * step
+            m = material_at(cx, cy)
+            sets[m] += [tri_facing(verts, (a, b, d), (0, 0, 1)), tri_facing(verts, (a, d, c), (0, 0, 1))]
+    outs = []
+    for tris in sets:
+        if not tris:
+            outs.append(None)
+            continue
+        used = sorted({k for t in tris for k in t})
+        idx = {k: n for n, k in enumerate(used)}
+        outs.append(([verts[k] for k in used], [uvs[k] for k in used], [tuple(idx[k] for k in t) for t in tris]))
+    return outs
 
 
 def sea():
@@ -113,53 +170,127 @@ def cylinder(verts, uvs, tris, cx, cy, z0, z1, r0, r1, n=24, uv=(0.5, 0.5), cap=
             tris.append(tri_facing(verts, (a, b, c), (0, 0, 1)))
 
 
-# palette swatches (tools\glb_to_ase.py's Pal.tga, 8x8 cells): the order the buildings' materials came in
-def sw(i):
-    return ((i % 8 + 0.5) / 8.0, (i // 8 + 0.5) / 8.0)
+def rot_z(p, deg):
+    a = math.radians(deg)
+    return (p[0] * math.cos(a) - p[1] * math.sin(a), p[0] * math.sin(a) + p[1] * math.cos(a), p[2])
+
+
+def box(verts, uvs, tris, cx, cy, cz, sx, sy, sz, yaw=0.0, uv=(0.5, 0.5), skip=()):
+    """an axis box of full sizes sx sy sz centred at (cx,cy,cz), turned by yaw"""
+    hx, hy, hz = sx / 2, sy / 2, sz / 2
+    faces = {"-x": ((-1, 0, 0), [(-hx, -hy, -hz), (-hx, -hy, hz), (-hx, hy, hz), (-hx, hy, -hz)]),
+             "+y": ((0, 1, 0), [(-hx, hy, -hz), (-hx, hy, hz), (hx, hy, hz), (hx, hy, -hz)]),
+             "+x": ((1, 0, 0), [(hx, hy, -hz), (hx, hy, hz), (hx, -hy, hz), (hx, -hy, -hz)]),
+             "-y": ((0, -1, 0), [(hx, -hy, -hz), (hx, -hy, hz), (-hx, -hy, hz), (-hx, -hy, -hz)]),
+             "+z": ((0, 0, 1), [(-hx, hy, hz), (-hx, -hy, hz), (hx, -hy, hz), (hx, hy, hz)]),
+             "-z": ((0, 0, -1), [(-hx, -hy, -hz), (-hx, hy, -hz), (hx, hy, -hz), (hx, -hy, -hz)])}
+    for key, (n, vs) in faces.items():
+        if key in skip:
+            continue
+        base = len(verts)
+        for v in vs:
+            r = rot_z(v, yaw)
+            verts.append((cx + r[0], cy + r[1], cz + r[2])); uvs.append(uv)
+        nw = rot_z(n, yaw)
+        tris.append(tri_facing(verts, (base, base + 1, base + 2), nw))
+        tris.append(tri_facing(verts, (base, base + 2, base + 3), nw))
+
+
+# palette swatches: tools\glb_to_ase.py's Pal.tga is 8 column stripes, palette.json lists their colours in order;
+# look a stripe up by the colour name the buildings use (build_parts.py's COLOURS)
+SW_COLOURS = {"concrete": (0.58, 0.58, 0.56), "pale": (0.70, 0.70, 0.68), "orange": (0.85, 0.34, 0.07),
+              "dark": (0.18, 0.19, 0.21), "rust": (0.42, 0.22, 0.12), "glow": (1.0, 0.45, 0.1)}
+_PAL = None
+
+
+def sw(name):
+    global _PAL
+    if _PAL is None:
+        _PAL = json.load(open(os.path.join(HERE, "Models", "ase", "palette.json")))
+    want = SW_COLOURS[name]
+    best = min(range(len(_PAL)), key=lambda i: sum((a - b) ** 2 for a, b in zip(_PAL[i], want)))
+    return ((best + 0.5) / 8.0, 0.5)
 
 
 def tower():
-    """the Authority's tower as a shell: a tapering shaft, the command-room drum near the top, a balcony
-    ring at the room's floor (where the player stands for now), a cap and a mast. Heights relative to SEA_Z."""
+    """the Authority's tower as a shell: a tapering shaft, a flared head carrying the command room's deck, a
+    cap and a mast. Heights relative to SEA_Z (the actor stands at SEA_Z)."""
     verts, uvs, tris = [], [], []
     ground = height(*TOWER)
     room = ROOM_Z - SEA_Z
-    cylinder(verts, uvs, tris, 0, 0, ground - 400, room - 600, 1400, 900, uv=sw(0), cap=False)
-    cylinder(verts, uvs, tris, 0, 0, room - 600, room - 100, 900, 1700, uv=sw(0), cap=False)
-    cylinder(verts, uvs, tris, 0, 0, room - 100, room, 1700, 1700, uv=sw(1), cap=True)    # the balcony floor
-    cylinder(verts, uvs, tris, 0, 0, room, room + 700, 1250, 1250, uv=sw(3), cap=False)   # the room (dark glass band)
-    cylinder(verts, uvs, tris, 0, 0, room + 700, room + 1500, 1300, 500, uv=sw(0), cap=True)
-    cylinder(verts, uvs, tris, 0, 0, room + 1500, room + 3200, 60, 60, n=8, uv=sw(3), cap=True)   # the mast
+    cylinder(verts, uvs, tris, 0, 0, ground - 400, room - 700, 1400, 900, uv=sw("concrete"), cap=False)
+    # the head ends at the room's glass (half-length 1200): a deck in front of the glass hid the whole view down
+    cylinder(verts, uvs, tris, 0, 0, room - 700, room - 60, 900, 1250, uv=sw("concrete"), cap=False)      # the flared head
+    cylinder(verts, uvs, tris, 0, 0, room - 60, room, 1250, 1250, uv=sw("dark"), cap=True)            # the deck
+    cylinder(verts, uvs, tris, 0, 0, room + ROOM_HI, room + ROOM_HI + 500, 1500, 500, uv=sw("concrete"), cap=True)   # the cap
+    cylinder(verts, uvs, tris, 0, 0, room + ROOM_HI + 500, room + ROOM_HI + 2400, 60, 60, n=8, uv=sw("dark"), cap=True)
     return verts, uvs, tris
 
 
-def cube_brush(name, z, half=256, csg="CSG_Subtract"):
-    """a cube brush actor for the T3D (the sky room): built from the subtractive-brush format UnrealEd exports.
-    MAP IMPORTADD takes it and MAP REBUILD carves it; this avoids BRUSH LOAD, which keeps the builder brush's
-    MainScale from the last loaded file (so a 'small' sky cube came out room-sized and merged the two zones)."""
-    h = half
-    faces = [  # (normal, four vertices counter-clockwise seen from outside)
-        ((-1, 0, 0), [(-h, -h, -h), (-h, -h, h), (-h, h, h), (-h, h, -h)]),
-        ((0, 1, 0), [(-h, h, -h), (-h, h, h), (h, h, h), (h, h, -h)]),
-        ((1, 0, 0), [(h, h, -h), (h, h, h), (h, -h, h), (h, -h, -h)]),
-        ((0, -1, 0), [(h, -h, -h), (h, -h, h), (-h, -h, h), (-h, -h, -h)]),
-        ((0, 0, 1), [(-h, h, h), (-h, -h, h), (h, -h, h), (h, h, h)]),
-        ((0, 0, -1), [(-h, -h, -h), (-h, h, -h), (h, h, -h), (h, -h, -h)]),
-    ]
-    L = [f"Begin Actor Class=Brush Name={name}", f"    CsgOper={csg}", f"    Location=(X=0.0,Y=0.0,Z={z:.1f})",
-         f"    Begin Brush Name={name}Model", "       Begin PolyList"]
-    for n, vs in faces:
-        u = (0, 1, 0) if n[0] else (1, 0, 0)
-        v = (0, 0, -1) if n[2] == 0 else (0, 1, 0)
-        L += ["          Begin Polygon",
-              "             Origin   %+013.6f,%+013.6f,%+013.6f" % vs[0],
-              "             Normal   %+013.6f,%+013.6f,%+013.6f" % n,
-              "             TextureU %+013.6f,%+013.6f,%+013.6f" % tuple(c / 128.0 for c in u),
-              "             TextureV %+013.6f,%+013.6f,%+013.6f" % tuple(c / 128.0 for c in v)]
-        L += ["             Vertex   %+013.6f,%+013.6f,%+013.6f" % p for p in vs]
-        L.append("          End Polygon")
-    L += ["       End PolyList", "    End Brush", "End Actor"]   # no Brush= line: the importer binds the model itself
-    return "\n".join(L) + "\n"
+def room():
+    """the command room on the deck: floor, ceiling, three walls, and the window wall as a frame (a low sill, a
+    lintel and mullions) so the glass side is open to the view. Built along +X then turned to LOOK_YAW; Z 0 =
+    the room's floor (actor at ROOM_Z)."""
+    verts, uvs, tris = [], [], []
+    L, W, H = ROOM_LEN, ROOM_WID, ROOM_HI
+    t = 40.0
+    box(verts, uvs, tris, 0, 0, -t / 2, L + 2 * t, W + 2 * t, t, LOOK_YAW, uv=sw("dark"))                     # floor slab
+    box(verts, uvs, tris, 0, 0, H + t / 2, L + 2 * t, W + 2 * t, t, LOOK_YAW, uv=sw("dark"))                  # ceiling
+    box(verts, uvs, tris, -L / 2 - t / 2, 0, H / 2, t, W + 2 * t, H, LOOK_YAW, uv=sw("concrete"))                  # back wall
+    box(verts, uvs, tris, 0, W / 2 + t / 2, H / 2, L, t, H, LOOK_YAW, uv=sw("concrete"))                           # side walls
+    box(verts, uvs, tris, 0, -W / 2 - t / 2, H / 2, L, t, H, LOOK_YAW, uv=sw("concrete"))
+    gx = L / 2 + t / 2
+    box(verts, uvs, tris, gx, 0, 15, t, W + 2 * t, 30, LOOK_YAW, uv=sw("dark"))                                # sill
+    box(verts, uvs, tris, gx, 0, H - 35, t, W + 2 * t, 70, LOOK_YAW, uv=sw("dark"))                            # lintel
+    k = -W / 2
+    while k <= W / 2 + 1:
+        box(verts, uvs, tris, gx, k, H / 2, t, 24, H, LOOK_YAW, uv=sw("dark"))                                 # mullions
+        k += 500
+    box(verts, uvs, tris, L / 2 - 420, 0, 40, 200, W * 0.7, 80, LOOK_YAW, uv=sw("dark"))                        # the console
+    box(verts, uvs, tris, L / 2 - 420, 0, 84, 180, W * 0.68, 8, LOOK_YAW, uv=sw("glow"))
+    for k in (-600, -200, 200, 600):                                                                     # cabinets
+        box(verts, uvs, tris, -L / 2 + 120, k, 140, 240, 300, 280, LOOK_YAW, uv=sw("dark"))
+    return verts, uvs, tris
+
+
+def quay(b):
+    """the dock: a long concrete slab into the sea with bollards (Z 0 = its bottom; the actor stands at SEA_Z - 80)"""
+    verts, uvs, tris = [], [], []
+    Lq, Wq = b["size"][0] * M, b["size"][1] * M
+    box(verts, uvs, tris, 0, 0, 150, Lq, Wq, 300, 0, uv=sw("concrete"))
+    k = -Lq / 2 + 400
+    while k < Lq / 2 - 300:
+        box(verts, uvs, tris, k, Wq / 2 - 70, 360, 80, 80, 120, 0, uv=sw("dark"))
+        k += 750
+    return verts, uvs, tris
+
+
+def pipeline(pts, z_of):
+    """a rust pipe on posts through the given world points; z_of(x, y) = the pipe's height above SEA_Z"""
+    verts, uvs, tris = [], [], []
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        z0, z1 = z_of(x0, y0), z_of(x1, y1)
+        n = 10
+        base = len(verts)
+        dx, dy = x1 - x0, y1 - y0
+        ln = math.hypot(dx, dy)
+        px, py = -dy / ln, dx / ln
+        for k in range(n):
+            a = 2 * math.pi * k / n
+            ox, oy, oz = px * 60 * math.cos(a), py * 60 * math.cos(a), 60 * math.sin(a)
+            verts.append((x0 + ox, y0 + oy, z0 + oz)); uvs.append(sw("rust"))
+            verts.append((x1 + ox, y1 + oy, z1 + oz)); uvs.append(sw("rust"))
+        for k in range(n):
+            a, b = base + 2 * k, base + 2 * ((k + 1) % n)
+            ang = 2 * math.pi * (k + 0.5) / n
+            out = (px * math.cos(ang), py * math.cos(ang), math.sin(ang))
+            tris += [tri_facing(verts, (a, b, b + 1), out), tri_facing(verts, (a, b + 1, a + 1), out)]
+        for s in (0.25, 0.5, 0.75):
+            x, y = x0 + dx * s, y0 + dy * s
+            g = max(height(x, y), -600)
+            top = z0 + (z1 - z0) * s - 50
+            box(verts, uvs, tris, x, y, (g + top) / 2, 50, 50, max(10, top - g), 0, uv=sw("dark"))
+    return verts, uvs, tris
 
 
 def actor(cls, name, loc, props="", rot=None):
@@ -173,73 +304,209 @@ def yaw(deg):
     return int(deg * 65536 / 360.0) & 65535
 
 
-# the plant: (mesh, x, y, yaw degrees, target height in world units)  from layout_liandri_blocks.txt
-PLANT = [
-    ("CoolingTower", 6300, -6000, 45, 2600), ("CoolingTower", 6500, -7600, 45, 2400),
-    ("ProcessingHall", 3000, -6200, 30, 900), ("ProcessingHall", 2600, -8400, 30, 1100), ("ProcessingHall", 4300, -9700, 30, 700),
-    ("StorageTank", 4700, -5400, 0, 800), ("StorageTank", 5500, -5000, 0, 800), ("StorageTank", 4900, -6600, 0, 800), ("StorageTank", 5700, -6400, 0, 800),
-    ("OreTank", 5000, -8000, 0, 900), ("OreTank", 5700, -8500, 0, 900), ("OreTank", 5200, -9100, 0, 900),
-    ("CargoDropship", 3900, -11200, 20, 600),
-    ("DockCrane", 12300, -5800, 345, 1900),
-    ("DrillingRig", 17151, -16112, 0, 4000), ("DeadRig", 26000, -11000, 20, 3400),
-    ("Pylon", 4200, -5000, 0, 1500), ("Pylon", 3000, -3600, 0, 1500), ("Pylon", 1800, -2200, 0, 1500),
-    ("RadioMast", -12849, -8612, 0, 4200),
-]
-TERRAIN_TEX = "Texture'Mission_10T.Terrain.BryoTerr_U10B740_'"
 SEA_SHADER = "Shader'JungleT.Water.WaterSurfaceM081'"
 NO_COLLISION = "    bCollideActors=False\n    bBlockActors=False\n    bBlockPlayers=False\n"
+PAL = "    Skins(0)=Texture'AvalonSM.Pal.Pal'\n"
+TREES = ["Flora_M.Tree.Tree3", "Flora_M.Tree.Tree1_clump1"]
+CRATES = ["Terran_DecoM.Crates.Crate1Low", "Terran_DecoM.Crates.Crate1Medium", "Terran_DecoM.Crates.crate_pallet_01"]
+BARRELS = ["Terran_DecoM.Barrels.Metal_Barrel_01", "Terran_DecoM.Barrels.Metal_Barrel_Broken_01"]
+# the binder's kinds that keep a scripted mesh (metres, DrawScale M), by kind or by id
+SCRIPTED = {"tank": "StorageTank", "silo": "OreTank", "cooling": "CoolingTower", "mast": "RadioMast",
+            "new_rig": "DrillingRig", "dead_rig": "DeadRig"}
+ASSEMBLED = ("hall", "office", "dorm", "house", "pump", "jetty", "pad")
 
 
-def write_actors(path, bounds):
-    # (cube_brush("SkyRoom", SKY_Z) is NOT used: an imported Brush actor is ignored by MAP REBUILD, and without
-    # a Brush= line the importer crashes in PrepBrush; the sky room is carved by build_avalon.py instead)
+def land_z(x, y):
+    return SEA_Z + height(x, y)
+
+
+def instances(b):
+    """the (x, y, yaw) of each copy of a building: 'count: 3 across' / '2 along' / '2x2' in the look frame"""
+    along, across, deg = b["at"]
+    w, d = b["size"][0] * M, b["size"][1] * M
+    gap = max(w, d) * 1.5
+    spec = b.get("count", "1").split()
+    pts = [(0, 0)]
+    if spec[0].lower() == "2x2":
+        pts = [(-gap / 2, -gap / 2), (gap / 2, -gap / 2), (-gap / 2, gap / 2), (gap / 2, gap / 2)]
+    elif len(spec) == 2:
+        n = int(spec[0])
+        pts = [((k - (n - 1) / 2) * gap, 0) if spec[1] == "along" else (0, (k - (n - 1) / 2) * gap) for k in range(n)]
+    out = []
+    for da, dc in pts:
+        x, y = from_frame(along + da, across + dc)
+        out.append((x, y, deg))
+    return out
+
+
+def write_actors(path, bounds, manifest, buildings):
     out = ["Begin Map\n"]
-    for ti in range(TILES):
-        for tj in range(TILES):
-            out.append(actor("StaticMeshActor", f"Ground{ti}{tj}", (0, 0, SEA_Z),
-                             f"    StaticMesh=StaticMesh'AvalonSM.Ground.Ground{ti}{tj}'\n    Skins(0)={TERRAIN_TEX}\n"))
+    k = 0
+    for name, group, tex in manifest:
+        if group != "Ground":
+            continue
+        out.append(actor("StaticMeshActor", name, (0, 0, SEA_Z),
+                         f"    StaticMesh=StaticMesh'AvalonSM.Ground.{name}'\n    Skins(0)={tex}\n"))
     out.append(actor("StaticMeshActor", "Sea", (0, 0, SEA_Z),
                      f"    StaticMesh=StaticMesh'AvalonSM.Ground.Sea'\n    Skins(0)={SEA_SHADER}\n"
                      "    bBlockActors=False\n    bBlockPlayers=False\n    bBlockNonZeroExtentTraces=False\n"))
-    out.append(actor("StaticMeshActor", "Tower", (0, 0, SEA_Z),
-                     "    StaticMesh=StaticMesh'AvalonSM.Tower.Tower'\n    Skins(0)=Texture'AvalonSM.Pal.Pal'\n"))
-    for k, (mesh, x, y, deg, h) in enumerate(PLANT):
-        b = bounds[mesh]
-        s = h / b["h"]
-        # rigs stand on the sea (legs a little under it); everything else on the land (the ASE's origin is its bottom)
-        z = SEA_Z + max(0.0, height(x, y)) if "Rig" not in mesh else SEA_Z - 0.12 * h
-        out.append(actor("StaticMeshActor", f"{mesh}{k}", (x, y, z),
-                         f"    StaticMesh=StaticMesh'AvalonSM.Liandri.{mesh}'\n    Skins(0)=Texture'AvalonSM.Pal.Pal'\n"
-                         f"    DrawScale={s:.3f}\n", (0, yaw(deg), 0)))
-    # sky, sun, ambient, start on the balcony
+    out.append(actor("StaticMeshActor", "Tower", (0, 0, SEA_Z), "    StaticMesh=StaticMesh'AvalonSM.Tower.Tower'\n" + PAL))
+    out.append(actor("StaticMeshActor", "Room", (0, 0, ROOM_Z), "    StaticMesh=StaticMesh'AvalonSM.Tower.Room'\n" + PAL))
+
+    def mesh_actor(mesh, x, y, z, deg, scale=1.0, extra=""):
+        nonlocal k
+        out.append(actor("StaticMeshActor", f"A{k}_{mesh}", (x, y, z),
+                         f"    StaticMesh=StaticMesh'AvalonSM.Liandri.{mesh}'\n" + PAL + f"    DrawScale={scale:.3f}\n" + extra,
+                         (0, yaw(deg), 0)))
+        k += 1
+
+    def prop(mesh, x, y, s=1.0, bottom=0.0, yaw_deg=None, sink=0.0, collide=True, z=None):
+        nonlocal k
+        yd = random.uniform(0, 360) if yaw_deg is None else yaw_deg
+        zz = land_z(x, y) if z is None else z
+        out.append(actor("StaticMeshActor", f"P{k}", (x, y, zz - bottom * s - sink),
+                         f"    StaticMesh=StaticMesh'{mesh}'\n    DrawScale={s:.2f}\n" + ("" if collide else NO_COLLISION),
+                         (0, yaw(yd), 0)))
+        k += 1
+
+    # --- the binder's buildings ---
+    placed = {}            # id -> [(x, y)] for props, pylons, pipeline
+    for bid, b in buildings.items():
+        if "at" not in b:
+            continue
+        pts = instances(b)
+        placed[bid] = [(x, y) for x, y, _ in pts]
+        kind = b["kind"]
+        if bid == "tower":
+            continue                                    # tower() above
+        if kind == "dock":
+            x, y, deg = pts[0]
+            out.append(actor("StaticMeshActor", "Quay", (x, y, SEA_Z - 80), "    StaticMesh=StaticMesh'AvalonSM.Liandri.Quay'\n" + PAL, (0, yaw(deg), 0)))
+            # the crane near the sea end, containers along the quay
+            a = math.radians(deg)
+            Lq = b["size"][0] * M
+            mesh_actor("DockCrane", x + math.cos(a) * Lq * 0.3, y + math.sin(a) * Lq * 0.3, SEA_Z - 80 + 300, deg + 90)
+            for kx in range(int(-Lq / 2 + 500), int(Lq / 2 - 1500), 650):
+                if random.random() < 0.7:
+                    prop(random.choice(CRATES), x + kx * math.cos(a) - 250 * math.sin(a), y + kx * math.sin(a) + 250 * math.cos(a),
+                         1.0, bottom=-130, yaw_deg=deg + random.choice((0, 90)), z=SEA_Z - 80 + 300)
+            continue
+        mesh = f"B_{bid}" if kind in ASSEMBLED else SCRIPTED.get(bid, SCRIPTED.get(kind))
+        if mesh is None:
+            print("no mesh for", bid, kind)
+            continue
+        for x, y, deg in pts:
+            if kind == "rig":
+                z = SEA_Z - 0.12 * b["size"][2] * M          # legs a little under the sea
+            elif kind == "jetty":
+                z = SEA_Z - 60
+            else:
+                z = SEA_Z + max(0.0, height(x, y))
+            mesh_actor(mesh, x, y, z, deg)
+        # usage dressing
+        if kind == "pad" and bid == "cargo_pad":
+            x, y, deg = pts[0]
+            mesh_actor("CargoDropship", x, y, SEA_Z + max(0.0, height(x, y)) + 1.0 * M, deg + 20, 0.5)
+        if kind == "pad" and bid == "authority_pad":
+            x, y, deg = pts[0]
+            prop("Terran_DecoM.Vehicles.Terran_Dropship_01", x, y, 1.6, bottom=-74, yaw_deg=deg + 160, z=land_z(x, y) + 1.0 * M)
+        if kind in ("hall", "dorm") and not b["abandoned"]:
+            for x, y, deg in pts:
+                for _ in range(5):
+                    a2, d2 = random.uniform(0, 2 * math.pi), random.uniform(max(b["size"][:2]) * M * 0.7, max(b["size"][:2]) * M * 1.1)
+                    px_, py_ = x + d2 * math.cos(a2), y + d2 * math.sin(a2)
+                    if height(px_, py_) > 0:
+                        prop(random.choice(CRATES if random.random() < 0.6 else BARRELS), px_, py_, random.uniform(0.8, 1.2), bottom=-130)
+        if b["abandoned"] and kind == "hall":
+            for x, y, deg in pts:
+                for _ in range(6):
+                    a2, d2 = random.uniform(0, 2 * math.pi), random.uniform(600, 1200)
+                    prop(random.choice(BARRELS), x + d2 * math.cos(a2), y + d2 * math.sin(a2), 1.0, bottom=-30)
+
+    # the pipeline: tank farm -> generator house side -> shore -> the new rig; the pylon line: generator house -> tower
+    def along_pts(ids, extra=()):
+        pts = [placed[i][0] for i in ids if i in placed] + list(extra)
+        return pts
+    pipe_pts = along_pts(["tank_farm", "hall_b", "generator_house"]) + [from_frame(SHORE + 300, 3800)]
+    if "new_rig" in placed:
+        rx, ry = placed["new_rig"][0]
+        lx, ly = pipe_pts[-1]
+        pipe_pts += [(lx + (rx - lx) * 0.5, ly + (ry - ly) * 0.5), (lx + (rx - lx) * 0.94, ly + (ry - ly) * 0.94)]
+    pipe = pipeline(pipe_pts, lambda x, y: max(height(x, y), 0) + 180)
+    write_ase(os.path.join(HERE, "Models", "ase", "Pipeline.ase"), "Pipeline", *pipe)
+    out.append(actor("StaticMeshActor", "Pipeline", (0, 0, SEA_Z), "    StaticMesh=StaticMesh'AvalonSM.Liandri.Pipeline'\n" + PAL))
+    if "generator_house" in placed:
+        gx, gy = placed["generator_house"][0]
+        for f in (0.85, 0.65, 0.45, 0.25):
+            x, y = gx * f, gy * f
+            mesh_actor("Pylon", x, y, SEA_Z + max(0.0, height(x, y)), LOOK_YAW + 90)
+
+    # trees on the land, away from the buildings, the tower and the sea
+    random.seed(21)
+    n = 0
+    spots = [p for pts in placed.values() for p in pts]
+    while n < 170:
+        x, y = random.uniform(-WORLD + 3000, WORLD - 3000), random.uniform(-WORLD + 3000, WORLD - 3000)
+        h = height(x, y)
+        along, across = look_frame(x, y)
+        if h < 250 or along > shore_at(across) - 1200 or math.hypot(x, y) < 2300:
+            continue
+        if any(math.hypot(x - sx, y - sy) < 1500 for sx, sy in spots):
+            continue
+        prop(random.choice(TREES), x, y, random.uniform(0.9, 1.5), sink=20)
+        n += 1
+
+    # sky, sun, ambient
     out.append(actor("SkyZoneInfo", "SkyZoneInfo0", (0, 0, SKY_Z)))
     out.append(actor("StaticMeshActor", "SkyBox", (0, 0, SKY_Z),
                      "    StaticMesh=StaticMesh'HoverTestSM.SkyBox'\n    Skins(0)=Texture'HoverTestSM.SkyAtlas'\n    bUnlit=True\n" + NO_COLLISION))
-    # a late-afternoon sun from the north-east, 30 degrees up: side light across the plant as seen from the
-    # tower (a sun out over the sea backlights everything and the hills shade the plant)
-    # the sun actor must stand in open air: actors are sunlit only if the trace toward it is clear, and
-    # above the tower it was inside the tower mesh. 20000 units out, in the direction the light comes from.
     sf = math.radians(LOOK_YAW - 60 + 180)
-    sun_at = (14000 * math.cos(sf) * math.cos(math.radians(30)), 14000 * math.sin(sf) * math.cos(math.radians(30)), 7000)
+    sun_at = (14000 * math.cos(sf) * math.cos(math.radians(45)), 14000 * math.sin(sf) * math.cos(math.radians(45)), 7500)
     out.append(actor("SunLight", "Sun0", sun_at,
-                     "    LightBrightness=220.0\n    LightHue=24\n    LightSaturation=110\n", (-5461, yaw(LOOK_YAW - 60), 0)))
-    out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=60\n    AmbientHue=160\n    AmbientSaturation=170\n"))
-    bx, by = BALCONY
-    out.append(actor("PlayerStart", "PlayerStart0", (bx, by, ROOM_Z + 120), "", (0, yaw(LOOK_YAW), 0)))
+                     "    LightBrightness=240.0\n    LightHue=24\n    LightSaturation=100\n", (-8192, yaw(LOOK_YAW - 60), 0)))
+    out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=110\n    AmbientHue=28\n    AmbientSaturation=120\n"))
+    a = math.radians(LOOK_YAW)
+    for d in (-600, 300):
+        lx, ly = d * math.cos(a), d * math.sin(a)
+        out.append(actor("Light", f"RoomLight{d}", (lx, ly, ROOM_Z + ROOM_HI - 60),
+                         "    LightBrightness=150.0\n    LightHue=28\n    LightSaturation=120\n    LightRadius=100\n"))
+    d = ROOM_LEN / 2 - PLAYER_FROM_GLASS
+    out.append(actor("PlayerStart", "PlayerStart0", (d * math.cos(a), d * math.sin(a), ROOM_Z + 100), "", (0, yaw(LOOK_YAW), 0)))
     out.append("End Map\n")
     open(path, "w").write("".join(out))
 
 
 if __name__ == "__main__":
+    citizens, buildings = binder.load()
+    problems, _ = binder.check(citizens, buildings, verbose=False)
+    if problems:
+        print("the binder has problems (python tools/binder.py); building anyway:")
+        for p in problems:
+            print("  ", p)
     ase = os.path.join(HERE, "Models", "ase")
     os.makedirs(ase, exist_ok=True)
+    manifest = []           # (mesh name, group, texture for the actor or "")
     for ti in range(TILES):
         for tj in range(TILES):
-            write_ase(os.path.join(ase, f"Ground{ti}{tj}.ase"), f"Ground{ti}{tj}", *tile(ti, tj))
-    write_ase(os.path.join(ase, "Sea.ase"), "Sea", *sea())
-    write_ase(os.path.join(ase, "Tower.ase"), "Tower", *tower())
+            for m, part in enumerate(tile(ti, tj)):
+                if part is None:
+                    continue
+                name = f"Ground{ti}{tj}{MAT_NAMES[m]}"
+                write_ase(os.path.join(ase, name + ".ase"), name, *part)
+                manifest.append((name, "Ground", MAT_TEX[m]))
+    write_ase(os.path.join(ase, "Sea.ase"), "Sea", *sea()); manifest.append(("Sea", "Ground", SEA_SHADER))
+    write_ase(os.path.join(ase, "Tower.ase"), "Tower", *tower()); manifest.append(("Tower", "Tower", ""))
+    write_ase(os.path.join(ase, "Room.ase"), "Room", *room()); manifest.append(("Room", "Tower", ""))
+    write_ase(os.path.join(ase, "Quay.ase"), "Quay", *quay(buildings["dock"])); manifest.append(("Quay", "Liandri", ""))
+    manifest.append(("Pipeline", "Liandri", ""))
     bounds = json.load(open(os.path.join(ase, "bounds.json")))
-    write_actors(os.path.join(HERE, "avalon_actors.t3d"), bounds)
-    print("tower hill %.0f  plant shelf %.0f  mast hill %.0f  shore(8000,-8000) %.0f  rig %.0f  balcony %.0f" % (
-        height(0, 0), height(4500, -8000), height(-12849, -8612), height(8000, -8000), height(17151, -16112),
-        height(*BALCONY)))
+    for b in sorted(bounds):
+        manifest.append((b, "Liandri", ""))
+    with open(os.path.join(ase, "manifest.txt"), "w") as f:
+        for name, group, tex in manifest:
+            f.write(f"{name} {group} {tex}\n")
+    write_actors(os.path.join(HERE, "avalon_actors.t3d"), bounds, [m for m in manifest if m[0] != "Sea"], buildings)
+    counts = {g: sum(1 for m in manifest if m[1] == g) for g in ("Ground", "Tower", "Liandri")}
+    px, py = from_frame(*PLANT_AT)
+    print("meshes", counts, " tower hill %.0f  plant shelf %.0f  shore(%.0f) at %.0f  rig %.0f" % (
+        height(0, 0), height(px, py), SHORE, height(*from_frame(SHORE, 0)), height(*from_frame(22500, 6800))))

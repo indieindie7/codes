@@ -1,0 +1,128 @@
+Ground00Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground00Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground01Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground01Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground02Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground02Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground03Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground03Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground04Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground04Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground05Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground05Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground06Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground06Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground07Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground07Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground10Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground10Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground10Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground11Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground12Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground12Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground13Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground13Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground14Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground15Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground16Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground17Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground17Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground20Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground20Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground21Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground21Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground22Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground22Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground23Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground23Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground24Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground25Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground26Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground27Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground27Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground30Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground30Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground31Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground31Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground32Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground33Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground34Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground35Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground36Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground37Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground37Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground40Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground41Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground41Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground42Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground42Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground43Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground44Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground45Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground46Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground47Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground47Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground50Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground51Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground51Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground52Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground52Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground53Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground54Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground55Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground56Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground57Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground57Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground60Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground61Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground61Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground62Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground62Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground63Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground63Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground64Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground65Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground66Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground67Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground67Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground70Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground71Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground72Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground72Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground73Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground73Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground73Sand Ground Texture'ScottT.Generic.SandFlor_U06S667'
+Ground74Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground74Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground75Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground75Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground76Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground76Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Ground77Grass Ground Texture'Mission_10T.Terrain.BryoTerr_U10B740_'
+Ground77Rock Ground Texture'Mission_10T.Terrain.rockterr_u10a741_'
+Sea Ground Shader'JungleT.Water.WaterSurfaceM081'
+Tower Tower 
+Room Tower 
+Quay Liandri 
+Pipeline Liandri 
+B_authority_pad Liandri 
+B_boat_landing Liandri 
+B_cargo_pad Liandri 
+B_directors_house Liandri 
+B_dorm Liandri 
+B_generator_house Liandri 
+B_hall_a Liandri 
+B_hall_b Liandri 
+B_hall_c Liandri 
+B_plant_office Liandri 
+B_pump_house Liandri 
+CargoDropship Liandri 
+CoolingTower Liandri 
+DeadRig Liandri 
+DockCrane Liandri 
+DrillingRig Liandri 
+OreTank Liandri 
+ProcessingHall Liandri 
+Pylon Liandri 
+RadioMast Liandri 
+StorageTank Liandri 

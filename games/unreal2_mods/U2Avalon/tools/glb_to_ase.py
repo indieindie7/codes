@@ -20,6 +20,7 @@ a = sys.argv[sys.argv.index("--") + 1:]
 src, out = a[0], os.path.abspath(a[1])
 o = dict(x.split("=", 1) for x in a[2:])
 os.makedirs(out, exist_ok=True)
+SCALE = float(o.get("scale", 1))     # 50 = metres -> Unreal units, so the actors sit at DrawScale 1
 palette = []          # list of (r,g,b)
 
 
@@ -28,8 +29,11 @@ def swatch(rgb):
     if key not in palette:
         palette.append(key)
     i = palette.index(key)
-    # 8x8 grid of 8px cells on a 64px texture; UV of the cell middle (V down in Unreal)
-    return ((i % 8 + 0.5) / 8.0, (i // 8 + 0.5) / 8.0)
+    if i >= 8:
+        raise SystemExit("more than 8 palette colours: widen Pal.tga")
+    # 8 full-height column stripes on a 64px texture, so the TGA's row order (Blender writes bottom-up and
+    # UnrealEd does not flip) cannot matter; UV = the stripe's middle
+    return ((i + 0.5) / 8.0, 0.5)
 
 
 def mat_colour(m):
@@ -49,7 +53,9 @@ def mat_colour(m):
 
 bounds = {}
 for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
-    name = "".join(w.capitalize() for w in os.path.basename(f).replace("_script.glb", "").split("_"))
+    stem = os.path.basename(f)[:-4]
+    # scripted buildings: cooling_tower_script -> CoolingTower; binder buildings keep their id: B_hall_a
+    name = "".join(w.capitalize() for w in stem[:-7].split("_")) if stem.endswith("_script") else stem
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=f)
     meshes = [x for x in bpy.context.scene.objects if x.type == "MESH"]
@@ -70,26 +76,26 @@ for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
             for vi in t.vertices:
                 x, y, z = M @ me.vertices[vi].co
                 x, y = x - cx, y - cy
-                # glTF front (-Y) -> Unreal +X: turn +90 degrees about Z
-                verts.append((-y, x, z - z0))
+                # glTF front (-Y) -> Unreal +X: turn +90 degrees about Z; scale= bakes metres into units
+                verts.append((-y * SCALE, x * SCALE, (z - z0) * SCALE))
                 uvs.append(uv)
                 idx.append(len(verts) - 1)
             want = (-n.y, n.x, n.z)
             tris.append(tri_facing(verts, tuple(idx), want))
     write_ase(os.path.join(out, name + ".ase"), name, verts, uvs, tris)
-    bounds[name] = {"w": float(hi[1] - lo[1]), "d": float(hi[0] - lo[0]), "h": float(hi[2] - lo[2])}
+    bounds[name] = {"w": float(hi[1] - lo[1]) * SCALE, "d": float(hi[0] - lo[0]) * SCALE, "h": float(hi[2] - lo[2]) * SCALE}
     print("ASE", name, len(tris), "tris", bounds[name])
 
 # the palette texture (row 0 at the top = V 0)
 img = np.zeros((64, 64, 4), np.float32)
 img[..., 3] = 1
 for i, c in enumerate(palette):
-    r, cI = i // 8, i % 8
-    img[r * 8:(r + 1) * 8, cI * 8:(cI + 1) * 8, :3] = c
+    img[:, i * 8:(i + 1) * 8, :3] = c
 tex = bpy.data.images.new("Pal", 64, 64, alpha=True)
 tex.pixels = img[::-1].ravel()
 tex.filepath_raw = os.path.join(out, "Pal.tga")
 tex.file_format = "TARGA_RAW"   # UnrealEd rejects RLE-compressed TGA ("Bad image format")
 tex.save()
 json.dump(bounds, open(os.path.join(out, "bounds.json"), "w"), indent=1)
+json.dump([list(c) for c in palette], open(os.path.join(out, "palette.json"), "w"))   # stripe i = colour i
 print("PALETTE", len(palette), "colours;", len(bounds), "meshes ->", out)
