@@ -9,7 +9,7 @@ class ModGraphicsOptions extends MenuPauseOptionsBase;
 
 var localized string LstrPost, LstrSoftShadows, LstrGi, LstrAA, LstrShadowDark, LstrSharpen, LstrFOV;
 var localized string ShadowNames[3];      // soft shadows: off, the player's, everyone's
-var localized string GiNames[3];
+var localized string GiNames[4];   // the ambient light row: off, occlusion, illumination (+occlusion), strong
 var localized string PresetNames[5];
 
 function PlayerController GetPC()
@@ -81,7 +81,7 @@ function SetLocalGuiOptions(bool Reset)
 function Refresh()
 {
 	Button0.Caption = ShadowNames[ShadowLevel()];
-	Button1.Caption = GiNames[Clamp(class'ModSettings'.default.GiLevel, 0, 2)];
+	Button1.Caption = GiNames[AmbientState()];
 	Button2.Caption = PresetNames[Clamp(class'ModSettings'.default.PostPreset, 0, 4)];
 	Button3.SetValueB(class'ModSettings'.default.bSMAA);
 	Labels[4].Caption = LstrShadowDark $ ": " $ int(Slider0.Value) $ "%";
@@ -122,9 +122,23 @@ function bool SoftShadowsClick(GUIComponent Sender)
 	return false;
 }
 
+// the ambient light row: 0 off, 1 occlusion only, 2 illumination with occlusion, 3 strong
+function int AmbientState()
+{
+	if (class'ModSettings'.default.GiLevel > 0)
+		return Clamp(class'ModSettings'.default.GiLevel, 1, 2) + 1;
+	if (class'ModSettings'.default.bAmbientOcclusion)
+		return 1;
+	return 0;
+}
+
 function bool GiClick(GUIComponent Sender)
 {
-	class'ModSettings'.static.ApplyGi((class'ModSettings'.default.GiLevel + 1) % 3);
+	local int S;
+
+	S = (AmbientState() + 1) % 4;
+	class'ModSettings'.static.ApplyAo(S > 0);
+	class'ModSettings'.static.ApplyGi(Max(S - 1, 0));
 	Refresh();
 	return false;
 }

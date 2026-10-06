@@ -46,6 +46,7 @@ var config int PostPreset;            // post-processing look (ModGraphicsOption
 var config float Sharpen;             // CAS sharpening 0..1 (the preset sets it; the Graphics page slider changes it)
 var config bool bSMAA;                // the layer's SMAA anti-aliasing
 var config int GiLevel;               // the layer's global illumination (gi.hlsl): 0 off, 1 on, 2 strong
+var config bool bAmbientOcclusion;    // the layer's screen-space ambient occlusion (ssao.hlsl)
 var config int Colorblind;            // colourblind correction in the U2Shaders layer: 0 off, 1 protanopia, 2 deuteranopia, 3 tritanopia
 var config float ColorblindStrength;  // 0..1
 var config int MaxFps;                // frame cap: -1 = the monitor's refresh rate, 0 = none (uncapped the GPU draws ~300 fps nobody sees)
@@ -295,6 +296,16 @@ static function ApplyGi(int Level)
 }
 
 // colourblind mode: the type (0 off) and the correction's strength (0..1)
+// ambient occlusion (ssao.hlsl): radius 150 units and intensity 3 suit Advent's scale (the
+// layer's own defaults, 40 and 1, are for Unreal II's smaller rooms and barely showed here)
+static function ApplyAo(bool bOn)
+{
+	default.bAmbientOcclusion = bOn;
+	NativeCall("U2Set:ssaofx=0.8 150 3 0");
+	NativeCall("U2Set:ssao=" $ int(bOn));
+	StaticSaveConfig();
+}
+
 static function ApplyColorblind(int Type, float Strength)
 {
 	local bool bWasOn;
