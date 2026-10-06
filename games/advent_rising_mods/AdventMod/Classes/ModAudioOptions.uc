@@ -1,9 +1,12 @@
 //=============================================================================
 // ModAudioOptions - the Audio Options page with the Dialogue Volume slider the
 // game has a saved setting and a caption for, but never showed (the stock page
-// always passes 1.0).
+// always passes 1.0), and the controller's Vibration switch (from the stock Game Options
+// page; it belongs with feedback).
 //=============================================================================
 class ModAudioOptions extends MenuPauseOptionsAudio;
+
+var localized string LstrVibration;
 
 function ApplyVolumes()
 {
@@ -13,8 +16,13 @@ function ApplyVolumes()
 function PreSetInitalPositions()
 {
 	Super.PreSetInitalPositions();
+	NumBools = 2;
 	NumSliders = 3;
-	Labels[3].Caption = LstrDialogueVolume;
+	// rows are toggles first, then sliders: the stock slider captions move down one
+	Labels[4].Caption = LstrDialogueVolume;
+	Labels[3].Caption = LstrMusicVolume;
+	Labels[2].Caption = LstrSoundFXVolume;
+	Labels[1].Caption = LstrVibration;
 	Slider2.OnChange = RealTimeAudioUpdateDialog;
 }
 
@@ -31,9 +39,15 @@ function SetupInitalPositions()
 function SetLocalGuiOptions(bool Reset)
 {
 	if (Reset)
+	{
 		Slider2.SetValue(1.0);
+		Button1.SetValueB(false);
+	}
 	else
+	{
 		Slider2.SetValue(Controller.OptionsData.DialogueVolume);
+		Button1.SetValue(Controller.OptionsData.Rumble);
+	}
 	Super.SetLocalGuiOptions(Reset);
 	if (!MyPlayerController.Level.Game.IsInFrontEnd)
 		ApplyVolumes();
@@ -48,6 +62,7 @@ function UpdateLocalGameOptions()
 {
 	Super.UpdateLocalGameOptions();
 	Controller.OptionsData.DialogueVolume = Slider2.Value;
+	Controller.OptionsData.Rumble = Button1.GetValue();
 	ApplyVolumes();
 }
 
@@ -76,4 +91,5 @@ function SliderImage2PreFocus()
 
 defaultproperties
 {
+     LstrVibration="Controller Vibration"
 }

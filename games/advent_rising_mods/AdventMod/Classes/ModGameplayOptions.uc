@@ -1,13 +1,17 @@
 //=============================================================================
-// ModGameplayOptions - "Gameplay", opened from Game Options: a finer difficulty
-// than Easy/Normal/Hard, boss tuning on top of it, and a faster run while no
-// enemy is near (the slow opening hours). ModTargeting applies the damage
-// settings to each level twice a second; ModInput applies the exploring speed.
+// ModGameplayOptions - "Gameplay" (one press from Options): difficulty (the stock page's
+// choice, as one cycling row), a finer difficulty on top of it (damage dealt and taken),
+// boss tuning, a faster run while no enemy is near (the slow opening hours), and the
+// game's own Levitate Objects switch. ModTargeting applies the damage settings to each
+// level twice a second; ModInput applies the exploring speed. Difficulty and Levitate are
+// the game's own saved options (Controller.OptionsData, saved when Options closes).
 //=============================================================================
 class ModGameplayOptions extends MenuPauseOptionsBase;
 
-var localized string LstrBossDealt, LstrBossTaken, LstrExplore, LstrBlood, LstrDealt, LstrTaken;
+var localized string LstrDifficulty, LstrBossDealt, LstrBossTaken, LstrExplore, LstrLevitate, LstrDealt, LstrTaken;
+var localized string DifficultyNames[4];
 var float BossSteps[6], ExploreSteps[4];
+var int Difficulty;
 
 function PlayerController GetPC()
 {
@@ -16,22 +20,23 @@ function PlayerController GetPC()
 
 function PreSetInitalPositions()
 {
-	NumBools = 4;
+	NumBools = 5;
 	NumSliders = 2;
-	Labels[0].Caption = LstrBossDealt;
-	Labels[1].Caption = LstrBossTaken;
-	Labels[2].Caption = LstrExplore;
-	Labels[3].Caption = LstrBlood;
-	Labels[4].Caption = LstrDealt;
-	Labels[5].Caption = LstrTaken;
+	Labels[0].Caption = LstrDifficulty;
+	Labels[1].Caption = LstrBossDealt;
+	Labels[2].Caption = LstrBossTaken;
+	Labels[3].Caption = LstrExplore;
+	Labels[4].Caption = LstrLevitate;
+	Labels[5].Caption = LstrDealt;
+	Labels[6].Caption = LstrTaken;
 	Button0.bActNormal = true;
-	Button0.OnClick = BossDealtClick;
+	Button0.OnClick = DifficultyClick;
 	Button1.bActNormal = true;
-	Button1.OnClick = BossTakenClick;
+	Button1.OnClick = BossDealtClick;
 	Button2.bActNormal = true;
-	Button2.OnClick = ExploreClick;
+	Button2.OnClick = BossTakenClick;
 	Button3.bActNormal = true;
-	Button3.OnClick = BloodClick;
+	Button3.OnClick = ExploreClick;
 	Slider0.MinValue = 25;
 	Slider0.MaxValue = 300;
 	Slider0.bIntSlider = true;
@@ -45,8 +50,8 @@ function PreSetInitalPositions()
 function SetupInitalPositions()
 {
 	Super.SetupInitalPositions();
-	Slider0.SetAssociatedLabel(Labels[4]);
-	Slider1.SetAssociatedLabel(Labels[5]);
+	Slider0.SetAssociatedLabel(Labels[5]);
+	Slider1.SetAssociatedLabel(Labels[6]);
 	class'ModPanel'.static.AddTo(self);
 }
 
@@ -60,12 +65,23 @@ function SetLocalGuiOptions(bool Reset)
 		class'ModSettings'.default.BossDamageTaken = 1;
 		class'ModSettings'.default.ExploreSpeed = 1.25;
 		class'ModSettings'.static.StaticSaveConfig();
-		class'ModGore'.default.bBlood = true;
-		class'ModGore'.static.StaticSaveConfig();
+		Difficulty = 1;
+		Button4.SetValueB(true);
+	}
+	else
+	{
+		Difficulty = Clamp(Controller.OptionsData.Difficulty, 0, 3);
+		Button4.SetValue(Controller.OptionsData.LevitateObjects);
 	}
 	Slider0.SetValue(int(class'ModSettings'.default.DamageDealt * 100 + 0.5));
 	Slider1.SetValue(int(class'ModSettings'.default.DamageTaken * 100 + 0.5));
 	Refresh();
+}
+
+function UpdateLocalGameOptions()
+{
+	Controller.OptionsData.Difficulty = Difficulty;
+	Controller.OptionsData.LevitateObjects = Button4.GetValue();
 }
 
 static function string Pct(float F)
@@ -76,12 +92,12 @@ static function string Pct(float F)
 // the buttons that cycle through values show the value instead of On/Off
 function Refresh()
 {
-	Button0.Caption = Pct(class'ModSettings'.default.BossDamageDealt);
-	Button1.Caption = Pct(class'ModSettings'.default.BossDamageTaken);
-	Button2.Caption = Pct(class'ModSettings'.default.ExploreSpeed);
-	Button3.SetValueB(class'ModGore'.default.bBlood);
-	Labels[4].Caption = LstrDealt $ ": " $ int(Slider0.Value) $ "%";
-	Labels[5].Caption = LstrTaken $ ": " $ int(Slider1.Value) $ "%";
+	Button0.Caption = DifficultyNames[Difficulty];
+	Button1.Caption = Pct(class'ModSettings'.default.BossDamageDealt);
+	Button2.Caption = Pct(class'ModSettings'.default.BossDamageTaken);
+	Button3.Caption = Pct(class'ModSettings'.default.ExploreSpeed);
+	Labels[5].Caption = LstrDealt $ ": " $ int(Slider0.Value) $ "%";
+	Labels[6].Caption = LstrTaken $ ": " $ int(Slider1.Value) $ "%";
 }
 
 // the next value of a cycle after Cur (the first one if Cur isn't in it)
@@ -95,6 +111,20 @@ static function float NextStep(float Cur, float S0, float S1, float S2, float S3
 		if (Abs(S[i] - Cur) < 0.01)
 			return S[(i + 1) % Count];
 	return S[0];
+}
+
+// Easy, Normal, Hard, and Ultra once the game has been finished (as the stock page)
+function bool DifficultyClick(GUIComponent Sender)
+{
+	local int n;
+
+	n = 3;
+	if (Controller.OptionsData.FinishedGame == 1)
+		n = 4;
+	Difficulty = (Difficulty + 1) % n;
+	Controller.OptionsData.Difficulty = Difficulty;
+	Refresh();
+	return false;
 }
 
 function bool BossDealtClick(GUIComponent Sender)
@@ -121,19 +151,6 @@ function bool ExploreClick(GUIComponent Sender)
 	return false;
 }
 
-// blood decals on walls and floors (ModGore); marks already made stay until they fade
-function bool BloodClick(GUIComponent Sender)
-{
-	local ModGore G;
-
-	class'ModGore'.default.bBlood = !class'ModGore'.default.bBlood;
-	class'ModGore'.static.StaticSaveConfig();
-	foreach GetPC().DynamicActors(class'ModGore', G)
-		G.bBlood = class'ModGore'.default.bBlood;
-	Refresh();
-	return false;
-}
-
 function DealtChange(GUIComponent Sender)
 {
 	class'ModSettings'.default.DamageDealt = Slider0.Value / 100.0;
@@ -151,12 +168,17 @@ function TakenChange(GUIComponent Sender)
 defaultproperties
 {
      LstrLabelTitle="Gameplay"
+     LstrDifficulty="Difficulty"
      LstrBossDealt="Damage You Deal to Bosses"
      LstrBossTaken="Damage Bosses Deal to You"
      LstrExplore="Running Speed (no enemies near)"
-     LstrBlood="Blood"
+     LstrLevitate="Levitate Objects"
      LstrDealt="Damage You Deal"
      LstrTaken="Damage You Take"
+     DifficultyNames(0)="Easy"
+     DifficultyNames(1)="Normal"
+     DifficultyNames(2)="Hard"
+     DifficultyNames(3)="Ultra"
      BossSteps(0)=0.5
      BossSteps(1)=0.75
      BossSteps(2)=1.0

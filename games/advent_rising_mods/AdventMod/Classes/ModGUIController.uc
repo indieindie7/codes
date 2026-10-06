@@ -20,14 +20,18 @@ event bool OpenMenu(string NewMenuName, optional string Param1, optional string 
 	// the pages alive for as long as this controller is.
 	if (NewMenuName ~= "ini:Engine.GameEngine.InitialMenuClass" || NewMenuName ~= "Interface.MenuTitle_pc")
 		NewMenuName = string(class'ModTitle');
+	else if (NewMenuName ~= "Interface.MenuPauseOptions")
+		NewMenuName = string(class'ModOptionsHub');
 	else if (NewMenuName ~= "Interface.MenuPauseOptionsVideo")
-		NewMenuName = string(class'ModVideoOptions');
+		NewMenuName = string(class'ModScreenOptions');
 	else if (NewMenuName ~= "Interface.MenuPCOptions")
-		NewMenuName = string(class'ModPCOptions');
+		NewMenuName = string(class'ModQualityOptions');
 	else if (NewMenuName ~= "Interface.MenuPauseOptionsAudio")
 		NewMenuName = string(class'ModAudioOptions');
 	else if (NewMenuName ~= "Interface.MenuPauseOptionsGame")
-		NewMenuName = string(class'ModGameOptions');
+		NewMenuName = string(class'ModGameplayOptions');
+	else if (NewMenuName ~= "Interface.MenuPauseOptionsDifficulty")
+		NewMenuName = string(class'ModGameplayOptions');
 	if (!Super.OpenMenu(NewMenuName, Param1, Param2, Param3, bHide))
 		return false;
 	if (!bDebugOpened)

@@ -1,18 +1,16 @@
 //=============================================================================
-// ModGraphicsOptions - "Graphics", opened from the Display Options page: the
-// look the U2Shaders Direct3D layer adds (post-processing presets, anti-aliasing)
-// and AdventMod's shadows and frame cap. Everything applies at once: the layer
-// re-reads System\U2Shaders.ini while the game runs (written through AdventNative),
-// and the shadow settings are picked up by ModMutator / ModShadowManager.
+// ModGraphicsOptions - "Graphics" (one press from Options): the look the U2Shaders Direct3D
+// layer adds (post-processing presets, global illumination, anti-aliasing, sharpening) and
+// AdventMod's shadows, plus the field of view. Everything applies at once: the layer
+// re-reads System\U2Shaders.ini while the game runs (written through AdventNative), and the
+// shadow settings are picked up by ModMutator / ModShadowManager.
 //=============================================================================
 class ModGraphicsOptions extends MenuPauseOptionsBase;
 
-var localized string LstrPost, LstrSoftShadows, LstrGi, LstrAA, LstrFrameCap, LstrShadowDark, LstrSharpen;
-var localized string LstrMonitor, LstrNoCap;
+var localized string LstrPost, LstrSoftShadows, LstrGi, LstrAA, LstrShadowDark, LstrSharpen, LstrFOV;
 var localized string ShadowNames[3];      // soft shadows: off, the player's, everyone's
 var localized string GiNames[3];
 var localized string PresetNames[5];
-var int FrameCaps[6];
 
 function PlayerController GetPC()
 {
@@ -21,25 +19,23 @@ function PlayerController GetPC()
 
 function PreSetInitalPositions()
 {
-	NumBools = 5;
-	NumSliders = 2;
-	Labels[0].Caption = LstrPost;
-	Labels[1].Caption = LstrSoftShadows;
-	Labels[2].Caption = LstrGi;
+	NumBools = 4;
+	NumSliders = 3;
+	Labels[0].Caption = LstrSoftShadows;
+	Labels[1].Caption = LstrGi;
+	Labels[2].Caption = LstrPost;
 	Labels[3].Caption = LstrAA;
-	Labels[4].Caption = LstrFrameCap;
-	Labels[5].Caption = LstrShadowDark;
-	Labels[6].Caption = LstrSharpen;
+	Labels[4].Caption = LstrShadowDark;
+	Labels[5].Caption = LstrSharpen;
+	Labels[6].Caption = LstrFOV;
 	Button0.bActNormal = true;
-	Button0.OnClick = PostClick;
+	Button0.OnClick = SoftShadowsClick;
 	Button1.bActNormal = true;
-	Button1.OnClick = SoftShadowsClick;
+	Button1.OnClick = GiClick;
 	Button2.bActNormal = true;
-	Button2.OnClick = GiClick;
+	Button2.OnClick = PostClick;
 	Button3.bActNormal = true;
 	Button3.OnClick = AAClick;
-	Button4.bActNormal = true;
-	Button4.OnClick = FrameCapClick;
 	Slider0.MinValue = 0;
 	Slider0.MaxValue = 100;
 	Slider0.bIntSlider = true;
@@ -48,13 +44,18 @@ function PreSetInitalPositions()
 	Slider1.MaxValue = 100;
 	Slider1.bIntSlider = true;
 	Slider1.OnChange = SharpenChange;
+	Slider2.MinValue = 60;
+	Slider2.MaxValue = 120;
+	Slider2.bIntSlider = true;
+	Slider2.OnChange = FOVChange;
 }
 
 function SetupInitalPositions()
 {
 	Super.SetupInitalPositions();
-	Slider0.SetAssociatedLabel(Labels[5]);
-	Slider1.SetAssociatedLabel(Labels[6]);
+	Slider0.SetAssociatedLabel(Labels[4]);
+	Slider1.SetAssociatedLabel(Labels[5]);
+	Slider2.SetAssociatedLabel(Labels[6]);
 	class'ModPanel'.static.AddTo(self);
 }
 
@@ -66,33 +67,26 @@ function SetLocalGuiOptions(bool Reset)
 		SetShadows(2);
 		class'ModSettings'.static.ApplyGi(0);
 		SetAA(true);
-		class'ModSettings'.default.MaxFps = -1;
-		class'ModSettings'.static.StaticSaveConfig();
 		SetShadowDark(70);
+		Slider2.SetValue(75);
+		FOVChange(self);
 	}
 	Slider0.SetValue(int(class'ModShadowController'.default.ShadowStrength * 100.0 / 255.0 + 0.5));
 	Slider1.SetValue(int(class'ModSettings'.default.Sharpen * 100.0 + 0.5));
+	Slider2.SetValue(class'ModSettings'.default.FOV);
 	Refresh();
 }
 
 // the buttons that cycle through values show the value instead of On/Off
 function Refresh()
 {
-	local int i;
-
-	Button0.Caption = PresetNames[Clamp(class'ModSettings'.default.PostPreset, 0, 4)];
-	Button1.Caption = ShadowNames[ShadowLevel()];
-	Button2.Caption = GiNames[Clamp(class'ModSettings'.default.GiLevel, 0, 2)];
+	Button0.Caption = ShadowNames[ShadowLevel()];
+	Button1.Caption = GiNames[Clamp(class'ModSettings'.default.GiLevel, 0, 2)];
+	Button2.Caption = PresetNames[Clamp(class'ModSettings'.default.PostPreset, 0, 4)];
 	Button3.SetValueB(class'ModSettings'.default.bSMAA);
-	i = class'ModSettings'.default.MaxFps;
-	if (i < 0)
-		Button4.Caption = LstrMonitor;
-	else if (i == 0)
-		Button4.Caption = LstrNoCap;
-	else
-		Button4.Caption = string(i);
-	Labels[5].Caption = LstrShadowDark $ ": " $ int(Slider0.Value) $ "%";
-	Labels[6].Caption = LstrSharpen $ ": " $ int(Slider1.Value) $ "%";
+	Labels[4].Caption = LstrShadowDark $ ": " $ int(Slider0.Value) $ "%";
+	Labels[5].Caption = LstrSharpen $ ": " $ int(Slider1.Value) $ "%";
+	Labels[6].Caption = LstrFOV $ ": " $ int(Slider2.Value);
 }
 
 function bool PostClick(GUIComponent Sender)
@@ -149,21 +143,6 @@ function bool AAClick(GUIComponent Sender)
 	return false;
 }
 
-// monitor refresh rate, 30, 60, 120, 144, no cap (ModMutator applies it)
-function bool FrameCapClick(GUIComponent Sender)
-{
-	local int i;
-
-	for (i = 0; i < 6; i++)
-		if (FrameCaps[i] == class'ModSettings'.default.MaxFps)
-			break;
-	class'ModSettings'.default.MaxFps = FrameCaps[(i + 1) % 6];
-	class'ModSettings'.static.StaticSaveConfig();
-	class'ModSettings'.static.NativeCall("MaxFps:" $ class'ModSettings'.default.MaxFps);
-	Refresh();
-	return false;
-}
-
 // darkness of the characters' shadows; shadows already in the level follow at once
 function SetShadowDark(int Pct)
 {
@@ -190,33 +169,34 @@ function SharpenChange(GUIComponent Sender)
 	Refresh();
 }
 
+// applies at once (the game is paused here, so ModMutator's timer isn't running)
+function FOVChange(GUIComponent Sender)
+{
+	class'ModSettings'.default.FOV = int(Slider2.Value);
+	class'ModSettings'.static.StaticSaveConfig();
+	class'ModSettings'.static.ApplyFOV(GetPC());
+	Refresh();
+}
+
 defaultproperties
 {
      LstrLabelTitle="Graphics"
      LstrPost="Post Effects"
      LstrSoftShadows="Soft Shadows"
      LstrGi="Global Illumination"
+     LstrAA="Anti-Aliasing (SMAA)"
+     LstrShadowDark="Shadow Darkness"
+     LstrSharpen="Sharpening"
+     LstrFOV="Field of View"
      ShadowNames(0)="Off"
      ShadowNames(1)="Yours"
      ShadowNames(2)="Everyone's"
      GiNames(0)="Off"
      GiNames(1)="On"
      GiNames(2)="Strong"
-     LstrAA="Anti-Aliasing (SMAA)"
-     LstrFrameCap="Frame Cap"
-     LstrShadowDark="Shadow Darkness"
-     LstrSharpen="Sharpening"
-     LstrMonitor="Monitor"
-     LstrNoCap="None"
      PresetNames(0)="Off"
      PresetNames(1)="Natural"
      PresetNames(2)="Cinematic"
      PresetNames(3)="Gritty"
      PresetNames(4)="Clean"
-     FrameCaps(0)=-1
-     FrameCaps(1)=30
-     FrameCaps(2)=60
-     FrameCaps(3)=120
-     FrameCaps(4)=144
-     FrameCaps(5)=0
 }
