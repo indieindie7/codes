@@ -1,7 +1,7 @@
 //=============================================================================
 // ModOptionsHub - the Options screen (in place of Interface.MenuPauseOptions): every page
-// one press away, grouped by what a player is looking for, and each row showing the page's
-// main settings as they are (menu UX pass, research/menu-ux-pass.md). The base page holds
+// one press away, grouped by what a player is looking for (menu UX pass,
+// research/menu-ux-pass.md). The base page holds
 // seven rows; the eighth, Controls, takes the Reset button's place at the bottom.
 //=============================================================================
 class ModOptionsHub extends MenuPauseOptionsBase;
@@ -21,13 +21,6 @@ function PreSetInitalPositions()
 	NumBools = 7;
 	NumSliders = 0;
 	GetGameOptions();
-	Labels[0].Caption = LstrGameplay;
-	Labels[1].Caption = LstrCamera;
-	Labels[2].Caption = LstrAudio;
-	Labels[3].Caption = LstrScreen;
-	Labels[4].Caption = LstrGraphics;
-	Labels[5].Caption = LstrQuality;
-	Labels[6].Caption = LstrAccessibility;
 	Button0.bActNormal = true;
 	Button0.OnClick = OpenGameplay;
 	Button1.bActNormal = true;
@@ -69,30 +62,17 @@ function MenuOnShow()
 	Refresh();
 }
 
-// each row's button shows where its page stands
+// the page names sit on the buttons, as on the game's own Options screen (a first version
+// showed each page's main settings on the button: it read as a cycling control)
 function Refresh()
 {
-	local string S;
-	local int i;
-
-	Button0.Caption = DifficultyNames[Clamp(Controller.OptionsData.Difficulty, 0, 3)] $ ", " $ int(class'ModSettings'.default.DamageTaken * 100 + 0.5) $ "%";
-	Button1.Caption = Either(Controller.OptionsData.InvertVerticle != 0, LstrInverted, LstrNormal);
-	Button2.Caption = LstrSubtitles $ " " $ Either(Controller.OptionsData.Subtitles != 0, LstrOn, LstrOff);
-	i = 0;
-	if (class'ModSettings'.static.IsFullscreen(GetPC()))
-		i = 2;
-	else if (class'ModSettings'.static.NativeCall("IsBorderless"))
-		i = 1;
-	Button3.Caption = GetPC().ConsoleCommand("GETCURRENTRES");
-	i = 0;
-	if (class'ModSettings'.default.bSoftShadows)
-		i = 1 + int(class'ModShadowManager'.default.NpcShadows > 0);
-	Button4.Caption = ShadowNames[i] $ ", GI " $ GiNames[Clamp(class'ModSettings'.default.GiLevel, 0, 2)];
-	Button5.Caption = "Draw " $ int((Controller.PCOptionsData.ClipPlane - 0.5) / 3.5 * 100 + 0.5) $ "%";
-	S = ColorblindNames[Clamp(class'ModSettings'.default.Colorblind, 0, 3)];
-	if (!class'ModGore'.default.bBlood)
-		S = S $ ", no blood";
-	Button6.Caption = S;
+	Button0.Caption = LstrGameplay;
+	Button1.Caption = LstrCamera;
+	Button2.Caption = LstrAudio;
+	Button3.Caption = LstrScreen;
+	Button4.Caption = LstrGraphics;
+	Button5.Caption = LstrQuality;
+	Button6.Caption = LstrAccessibility;
 }
 
 static function string Either(bool B, string T, string F)
