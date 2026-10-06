@@ -99,8 +99,26 @@ drop from a throwaway D3D device.
   referencing `.hull`, `.ght` and `.tga` paths under `hydrophobia\models\...`. A Scaleform-style UI
   with translations, and a 44 MB Havok container. Not decoded yet: the model chunks, the `02 11`
   files (31, 69 MB), `BSF` files (15; one holds pool-game strings from the studio's earlier games).
-- **Not found yet:** the water simulation's data or code; that lives in the exe (Ghidra project
-  made, not yet read).
+- **The exe is Steam-wrapped (SteamStub, `.bind` section, encrypted `.text`):** Ghidra saw 322
+  functions until Steamless 3.1.0.5 (`Documents\Tools\steamless`) unpacked a copy
+  (`Documents\Hydrophobia_research\exe\HydroPC.exe.unpacked.exe`): 26,136 functions, 2.76 M
+  instructions, full analysis ~25 min headless. The exe embeds Lua.
+- **Water simulation, first reading (Ghidra, names + allocations; code not yet followed):**
+  1,484 RTTI classes; water ones: `HydWaterVisuals`, `HydWaterVisualsMesh`,
+  `HydWaterReflectionRender`, `HydWaterRefractionRender`, `WaterRenderCompiler`,
+  `HydWaterGridManager`, `HydWaterThreads`, plus Havok glue (`hkABIWaterForceModifier`,
+  `hkABIWaterLevelPredicate`, `hkABIWaterRBInteractListener`: buoyancy and "picked up by water"
+  for rigid bodies). Its init (`FUN_00c10040`) allocates two 160,000-byte buffers (= a 200 x 200
+  float grid, double-buffered: the flow field; console `hydro.dumpflowfield`), a 0x400 table and a
+  0x2D80 block. Level data carries "Region Water Vol" entries made of rectangles ("Add Rect %x to
+  Region Water Vol %d"), with `Game_GetRegionWaterHeight` / `script_WaterLevelAtDoor` for the
+  game script: so it is a Barotrauma-style room (region) model, with a 2D grid for the flow and
+  surface, run on its own threads ("Havok Safe Window & Water Updates"). Rendering: planar
+  reflection + refraction maps (sizes in ded.ini), shader fragments `reflectRefract.frg`,
+  `reflectRefractPlanar.frg`, `wetbump.frg` (wet surfaces: `hydro.wetbump*` vars),
+  `ripple_texcoord.frg`, caustic lights (`caustic_omnilight.frg`, `bladegl.causticdepthfactor`),
+  `hydro.godraysoverwater`, "Render_WaterParticulates". Scripts: `Documents\Hydrophobia_research  ghidra_scripts\FindWaterCode.java` (regex over strings -> using functions, including pointer
+  tables -> decompiled C into `water_code2\`).
 
 ## 4. Rules we keep
 - Decompiled sources, extracted meshes/textures and other game assets stay out of git.
