@@ -332,6 +332,9 @@ for bid, b in buildings.items():
     elif b["kind"] == "wreck":
         p = water_site(bid, 30, 250)
         if p: place(bid, p[0], p[1], rng.uniform(0, 360))
+    elif b["kind"] == "islet":                                      # far scenery: out at sea, deep, far from land
+        p = water_site(bid, 450, 2000)
+        if p: place(bid, p[0], p[1], rng.uniform(0, 360))
 
 # --- 4. plots along the roads, in binder layer order, providers before consumers --------------------------------
 LAYERS = {"core": 0, "boom": 1, "decline": 2}

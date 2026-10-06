@@ -47,7 +47,8 @@ BY_ID = {
     "plant_office": (set(), {"power", "comms", "workers"}), "company_mast": ({"comms"}, {"power"}), "beacon": ({"comms"}, {"power"}),
     "dock": ({"supply"}, {"goods"}), "cargo_pad": ({"supply"}, set()), "boat_landing": (set(), set()),
     "checkpoint": (set(), {"power"}), "shed_a": (set(), set()), "shed_b": (set(), set()),
-    "tower": ({"comms"}, set()), "authority_pad": ({"supply"}, set()), "barge": (set(), set()), "wreck": (set(), set()),
+    "tower": ({"comms"}, set()), "mess": ({"workers"}, {"power", "water"}), "memorial": (set(), set()),
+    "water_tower": ({"water"}, {"water"}), "far_islands": (set(), set()), "authority_pad": ({"supply"}, set()), "barge": (set(), set()), "wreck": (set(), set()),
 }
 CORE = {"ore", "power", "water", "workers"}      # unmet core needs fail the layout
 

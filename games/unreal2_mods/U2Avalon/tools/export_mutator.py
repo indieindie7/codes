@@ -100,7 +100,7 @@ for bid, b in buildings.items():
             cw = b["card"].split()
             csize = float(cw[1]) if len(cw) > 1 else b["size"][2] * M / 0.92
             cards.append("AvalonSM.Cards.%s %.0f %.0f %.0f %.0f 8 0" % (cw[0], x, y, deg, csize))
-            if kind in ("rig", "cooling"):
+            if kind in ("rig", "cooling", "islet") or b.get("mesh", "").lower() == "none":
                 continue
         if kind in ("wreck",):
             props.append("Mission_05M.debris_sheet_003.Crashed_Transport %.0f %.0f %.0f 2.6 -60 0 0 -74" % (x, y, deg))

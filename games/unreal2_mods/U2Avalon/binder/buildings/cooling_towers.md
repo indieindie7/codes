@@ -11,7 +11,7 @@ doors: front:personnel
 roof: none
 wear: 0.1
 lit: yes
-card: CoolingTowerHY 1900
 ref: cooling_tower
+card: TwinTowersHY 2600
 
 The tallest things in the plant, still far below the Authority's tower. Steam when the line runs.
