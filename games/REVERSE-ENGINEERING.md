@@ -119,6 +119,41 @@ drop from a throwaway D3D device.
   `ripple_texcoord.frg`, caustic lights (`caustic_omnilight.frg`, `bladegl.causticdepthfactor`),
   `hydro.godraysoverwater`, "Render_WaterParticulates". Scripts: `Documents\Hydrophobia_research  ghidra_scripts\FindWaterCode.java` (regex over strings -> using functions, including pointer
   tables -> decompiled C into `water_code2\`).
+- **Water, second reading (2026-10-05 night, Ghidra scripts DataRefs / RangeDump / CallersOf /
+  DecompAt / InstrDump in `ghidra_scripts`):**
+  - Frame order in the main update (`FUN_00d0e9d0`, profiler sections): `Update:WaitForWater`
+    (`FUN_00bf4130`, waits on an event) -> `CycleSprayBfrs` -> `ResetRgnWtrH` (region water
+    heights) -> `ConstructWG` (`FUN_00c148f0`: rebuilds the water sheets from the regions'
+    rectangles, splits rects over 1200 cells, builds a 100-unit spatial index of up to 8 sheets
+    per cell) -> `Update2` -> `FUN_00c0d470` -> `Update:StartWater` (`FUN_00c16df0` ->
+    `FUN_00bf42e0`: queues jobs on the job system `FUN_009d8e20`; three events signal done).
+  - The queued "water" jobs are RENDERING jobs: `job_00bf2460` -> `FUN_00bf0e20` builds each
+    sheet's visual mesh (36-byte vertices, heights clamped at sheet edges, fog/alpha), and
+    `FUN_00bf2440` -> `FUN_00bf00f0` builds the spray/particulate quads (28-byte vertices).
+  - Data: 32 regions x 364 bytes (`DAT_01cb6984`), a table of up to 256 sheet pointers
+    (`DAT_01cb6990`). A sheet (water surface grid) has: +4 cells wide, +0xc cells high, +8 stride
+    base (row stride = width + 4: a 2-cell border), +0x10 cell size (20 units), +0x1c 1/cell,
+    +0x7c/+0x80 world origin, +0x14 and +0x48/+0x50/+0x30/+0x54 float grids (height, velocity u/v,
+    momentum = height x velocity at +0x34/+0x3c), +0xf8 dirty flag, +0x1ac next-sheet link,
+    +0x1b0..+0x1bc boundary values, +0x1c8 region water volume, +0x6b "flat" flag with +0x6c..0x6f
+    constant values for sheets without grids.
+  - `FUN_00c12880` (per region, each frame): resets per-sheet accumulators, sums volumes over
+    4-cell blocks (`FUN_00c0a540`), then for every character/object with radius r at (x,y)
+    stamps its velocity into the sheets' u/v grids within r, weighted (1 - d^2/r^2), and the
+    momentum grids = height x velocity: this is how walking, swimming and explosions push the
+    water. `FUN_00c10560`: finite differences of neighbouring cells (slope / normals, spawns
+    spray particles where the slope is steep). `FUN_00c0e5b0`: per-region bookkeeping.
+  - NOT FOUND YET: the integration step that advances height/velocity (shallow-water or
+    spring-mesh). Candidates by size and grid access, in the water module 0xbec000-0xc22000:
+    `FUN_00c0cb70` (2280 B), `FUN_00c0dd30` (1849 B), `FUN_00c08330` (reads cell neighbours with
+    +0x1b8/+0x1bc boundary fallbacks), `FUN_00bf5dd0`, `FUN_00bf52d0`; or it runs inside the
+    Havok "safe window" through the `hkABIWater*` modifiers. The 200 x 200 float pair at
+    `DAT_01cb6ac4/ac8` is only allocated and freed in the code seen so far (likely the
+    `hydro.dumpflowfield` scratch).
+  - Design conclusion so far: regions carry a water level (set by level logic / script, e.g.
+    `script_WaterLevelAtDoor`), each region's surface is a height+velocity grid at 20-unit
+    cells that objects disturb; rendering is planar reflection/refraction + a per-sheet mesh +
+    spray particles. Closer to Barotrauma's rooms-with-a-wave-surface than to a full fluid grid.
 
 ## 4. Rules we keep
 - Decompiled sources, extracted meshes/textures and other game assets stay out of git.
