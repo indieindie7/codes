@@ -344,10 +344,10 @@ defaultproperties
      bSwingAnims=True
      SwingChannel=9
      SwingRate=1.250000
-     SwingBone=Spine3
+     SwingBone=spine1
      Clips(0)=BladeSlashR
      Clips(1)=BladeSlashL
      Clips(2)=BladeOverhead
-     Clips(3)=BladeThrust
-     Clips(4)=BladeDiagonal
+
+
 }
