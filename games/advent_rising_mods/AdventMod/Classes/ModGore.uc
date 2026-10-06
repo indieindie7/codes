@@ -88,7 +88,8 @@ var float LastShake;
 
 var Material Splats[4], Sprays[2], Pool, Scorches[3], CasingTex;   // the textures, referenced so the package keeps them
 var Material RemainsTex[2];
-var Material AlienSplats[4], AlienSprays[2], AlienPool, AlienRemains[2];   // the same in the Seekers' purple
+var Material AlienSplats[4], AlienSprays[2], AlienPool, AlienRemains[2];
+var Material PoolFrames[12], AlienPoolFrames[12];   // a pool spreading: frames of an offline fluid run (tools/make_blood_pool.py)   // the same in the Seekers' purple
 var array<ModBloodDecal> Decals, Holes, Clutter;
 var StaticMesh ShellMesh;          // the game's own shell, taken from its shell particles
 var float ShellScale;              // ...and the size those particles draw it at
@@ -1099,6 +1100,7 @@ function ShotGone(vector Loc, vector Vel)
 event Tick(float DeltaTime)
 {
 	local int i;
+	local int j;
 	local vector HitL, HitN, Spot;
 	local ModBloodDecal D;
 
@@ -1129,6 +1131,14 @@ event Tick(float DeltaTime)
 				D = Mark(PoolTex(Dying[i]), HitL, HitN, vect(0,0,0), DecalScale * 0.6);
 				if (D != None)
 				{
+					// the pool spreads like a liquid: the frames of the fluid run, as it grows
+					for (j = 0; j < 12; j++)
+					{
+						if (BloodKind(Dying[i]) == 2)
+							D.Frames[j] = AlienPoolFrames[j];
+						else
+							D.Frames[j] = PoolFrames[j];
+					}
 					D.Grow(DecalScale * 0.2, DecalScale * (0.9 + FRand() * 0.4), 5 + FRand() * 3);
 					D.LifeSpan = 300;
 				}
@@ -1623,6 +1633,30 @@ defaultproperties
      AlienSprays(0)=Texture'AdventMod.Blood.AlienSpray0'
      AlienSprays(1)=Texture'AdventMod.Blood.AlienSpray1'
      AlienPool=Texture'AdventMod.Blood.AlienPool0'
+     PoolFrames(0)=Texture'AdventMod.Blood.BloodPoolF0'
+     PoolFrames(1)=Texture'AdventMod.Blood.BloodPoolF1'
+     PoolFrames(2)=Texture'AdventMod.Blood.BloodPoolF2'
+     PoolFrames(3)=Texture'AdventMod.Blood.BloodPoolF3'
+     PoolFrames(4)=Texture'AdventMod.Blood.BloodPoolF4'
+     PoolFrames(5)=Texture'AdventMod.Blood.BloodPoolF5'
+     PoolFrames(6)=Texture'AdventMod.Blood.BloodPoolF6'
+     PoolFrames(7)=Texture'AdventMod.Blood.BloodPoolF7'
+     PoolFrames(8)=Texture'AdventMod.Blood.BloodPoolF8'
+     PoolFrames(9)=Texture'AdventMod.Blood.BloodPoolF9'
+     PoolFrames(10)=Texture'AdventMod.Blood.BloodPoolF10'
+     PoolFrames(11)=Texture'AdventMod.Blood.BloodPoolF11'
+     AlienPoolFrames(0)=Texture'AdventMod.Blood.AlienPoolF0'
+     AlienPoolFrames(1)=Texture'AdventMod.Blood.AlienPoolF1'
+     AlienPoolFrames(2)=Texture'AdventMod.Blood.AlienPoolF2'
+     AlienPoolFrames(3)=Texture'AdventMod.Blood.AlienPoolF3'
+     AlienPoolFrames(4)=Texture'AdventMod.Blood.AlienPoolF4'
+     AlienPoolFrames(5)=Texture'AdventMod.Blood.AlienPoolF5'
+     AlienPoolFrames(6)=Texture'AdventMod.Blood.AlienPoolF6'
+     AlienPoolFrames(7)=Texture'AdventMod.Blood.AlienPoolF7'
+     AlienPoolFrames(8)=Texture'AdventMod.Blood.AlienPoolF8'
+     AlienPoolFrames(9)=Texture'AdventMod.Blood.AlienPoolF9'
+     AlienPoolFrames(10)=Texture'AdventMod.Blood.AlienPoolF10'
+     AlienPoolFrames(11)=Texture'AdventMod.Blood.AlienPoolF11'
      RemainsTex(0)=Texture'AdventMod.Blood.BloodRemains0'
      RemainsTex(1)=Texture'AdventMod.Blood.BloodRemains1'
      AlienRemains(0)=Texture'AdventMod.Blood.AlienRemains0'

@@ -10,6 +10,8 @@
 class ModBloodDecal extends Projector;
 
 var float GrowFrom, GrowTo, GrowTime, GrowAge;   // a pool spreading out (GrowTime 0 = no growth)
+var Material Frames[12];                         // a spreading pool's texture over time (None = keep the one it has)
+var int Frame;
 
 // Projector attaches itself at spawn (before it has a texture or a place): not yet
 simulated event PostBeginPlay()
@@ -45,6 +47,11 @@ function Grow(float From, float To, float Seconds)
 	GrowTo = To;
 	GrowTime = Seconds;
 	GrowAge = 0;
+	if (Frames[0] != None)
+	{
+		Frame = 0;
+		ProjTexture = Frames[0];
+	}
 	SetDrawScale(From);
 	DetachProjector(true);
 	AttachProjector();
@@ -63,6 +70,12 @@ event Tick(float DeltaTime)
 	T = FMin(GrowAge / GrowTime, 1);
 	T = 1 - (1 - T) * (1 - T);     // fast at first, settling
 	SetDrawScale(GrowFrom + (GrowTo - GrowFrom) * T);
+	// the fluid run's frames: the pool's shape spreads, not just its size
+	if (Frames[int(T * 11)] != None && int(T * 11) != Frame)
+	{
+		Frame = int(T * 11);
+		ProjTexture = Frames[Frame];
+	}
 	DetachProjector(true);
 	AttachProjector();
 	if (GrowAge >= GrowTime)
