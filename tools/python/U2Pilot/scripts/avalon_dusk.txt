@@ -1,0 +1,31 @@
+# avalon_dusk: the brief's one frame (AvalonDusk): the plant lit at sunset from the dark command room, then
+# the lit plant from the back road and the sea side, and the dead rig's one light from the shore
+background
+map AvalonDusk
+waitcontrol 240
+wait 2
+console god
+console hub face 300
+turn 0 -18 0.3
+wait 0.8
+shot
+console hub face 318
+turn 0 -14 0.3
+wait 0.6
+shot
+console hub tp 4960 -11800 0
+console hub face 320
+turn 0 -4 0.3
+wait 1
+shot
+console hub tp 9750 -16900 0
+console hub face 120
+turn 0 -4 0.3
+wait 1
+shot
+console hub tp 13500 -14200 0
+console hub face 20
+turn 0 -2 0.3
+wait 1
+shot
+quit

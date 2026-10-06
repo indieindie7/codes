@@ -102,6 +102,11 @@ if __name__ == "__main__":
         ok = go(ROOM)
     elif step == "map":
         ok = go(MAP) and go(PATHS)
+    elif step == "map-dusk":
+        # the brief's one frame, from avalon_actors_dusk.t3d (py make_avalon.py dusk) -> Maps/AvalonDusk.un2
+        dusk = [c.replace("avalon_actors.t3d", "avalon_actors_dusk.t3d").replace("Avalon.un2", "AvalonDusk.un2") for c in MAP]
+        paths = [c.replace("Avalon.un2", "AvalonDusk.un2") for c in PATHS]
+        ok = go(dusk) and go(paths)
     else:
         ok = go(PATHS)
     sys.exit(0 if ok else 1)

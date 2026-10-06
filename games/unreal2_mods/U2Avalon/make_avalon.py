@@ -35,6 +35,7 @@ SHORE = 17500.0         # where the land meets the sea along the look (the binde
 PLANT_AT = (14500.0, 0.0)   # the plant's shelf (along, across)
 # the command room: a box on top of the tower, its window wall facing LOOK_YAW; the player stands inside it
 ROOM_LEN, ROOM_WID, ROOM_HI = 2400.0, 2000.0, 520.0
+DUSK = "dusk" in sys.argv[1:]    # the brief's one frame: low sun out over the sea, the plant lit, the tower dark
 PLAYER_FROM_GLASS = 200.0
 
 random.seed(11)
@@ -135,7 +136,7 @@ def material_at(x, y):
         t = 0.0 if L2 == 0 else max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / L2))
         if math.hypot(x - (x0 + t * dx), y - (y0 + t * dy)) < w:
             return 2
-    if slope(x, y) > 0.8 or h > 4200:
+    if slope(x, y) > 1.1 or h > 4200:
         return 1
     return 0
 
@@ -275,7 +276,7 @@ def room():
     k = -W / 2
     while k <= W / 2 + 1:
         box(verts, uvs, tris, gx, k, H / 2, t, 24, H, LOOK_YAW, uv=sw("dark"))                                 # mullions
-        k += 500
+        k += 1000
     box(verts, uvs, tris, L / 2 - 420, 0, 40, 200, W * 0.7, 80, LOOK_YAW, uv=sw("dark"))                        # the console
     box(verts, uvs, tris, L / 2 - 420, 0, 84, 180, W * 0.68, 8, LOOK_YAW, uv=sw("glow"))
     for k in (-600, -200, 200, 600):                                                                     # cabinets
@@ -490,16 +491,44 @@ def write_actors(path, bounds, manifest, buildings):
     out.append(actor("SkyZoneInfo", "SkyZoneInfo0", (0, 0, SKY_Z)))
     out.append(actor("StaticMeshActor", "SkyBox", (0, 0, SKY_Z),
                      "    StaticMesh=StaticMesh'HoverTestSM.SkyBox'\n    Skins(0)=Texture'HoverTestSM.SkyAtlas'\n    bUnlit=True\n" + NO_COLLISION))
-    sf = math.radians(LOOK_YAW - 60 + 180)
-    sun_at = (14000 * math.cos(sf) * math.cos(math.radians(45)), 14000 * math.sin(sf) * math.cos(math.radians(45)), 7500)
-    out.append(actor("SunLight", "Sun0", sun_at,
-                     "    LightBrightness=240.0\n    LightHue=24\n    LightSaturation=100\n", (-8192, yaw(LOOK_YAW - 60), 0)))
-    out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=110\n    AmbientHue=28\n    AmbientSaturation=120\n"))
-    a = math.radians(LOOK_YAW)
-    for d in (-600, 300):
-        lx, ly = d * math.cos(a), d * math.sin(a)
-        out.append(actor("Light", f"RoomLight{d}", (lx, ly, ROOM_Z + ROOM_HI - 60),
-                         "    LightBrightness=150.0\n    LightHue=28\n    LightSaturation=120\n    LightRadius=100\n"))
+    if not DUSK:
+        # a late-afternoon sun from the north-east, 45 degrees up: side light across the plant as seen from the
+        # tower. The sun actor must stand in open air (actors are sunlit only if the trace toward it is clear).
+        sf = math.radians(LOOK_YAW - 60 + 180)
+        sun_at = (14000 * math.cos(sf) * math.cos(math.radians(45)), 14000 * math.sin(sf) * math.cos(math.radians(45)), 7500)
+        out.append(actor("SunLight", "Sun0", sun_at,
+                         "    LightBrightness=240.0\n    LightHue=24\n    LightSaturation=100\n", (-8192, yaw(LOOK_YAW - 60), 0)))
+        out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=110\n    AmbientHue=28\n    AmbientSaturation=120\n"))
+        a = math.radians(LOOK_YAW)
+        for dd in (-600, 300):
+            lx, ly = dd * math.cos(a), dd * math.sin(a)
+            out.append(actor("Light", f"RoomLight{dd}", (lx, ly, ROOM_Z + ROOM_HI - 60),
+                             "    LightBrightness=150.0\n    LightHue=28\n    LightSaturation=120\n    LightRadius=100\n"))
+    else:
+        # the one frame: the sun setting out over the sea in the look direction (it travels toward the tower),
+        # a cold blue ambient, every lit building with its own warm lamp, the tower's room dark, and one light
+        # on the dead rig where there should be none
+        sf = math.radians(LOOK_YAW)
+        sun_at = (22000 * math.cos(sf) * math.cos(math.radians(8)), 22000 * math.sin(sf) * math.cos(math.radians(8)), 3200)
+        out.append(actor("SunLight", "Sun0", sun_at,
+                         "    LightBrightness=170.0\n    LightHue=18\n    LightSaturation=60\n", (-1400, yaw(LOOK_YAW + 180), 0)))
+        out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=55\n    AmbientHue=150\n    AmbientSaturation=110\n"))
+        n = 0
+        for bid, b in buildings.items():
+            if "at" not in b or bid == "tower":
+                continue
+            lamps = []
+            if b["lit"]:
+                lamps = [(x, y, 7.0 * M) for x, y, _ in instances(b)]
+            elif bid == "dead_rig":
+                x, y, _ = instances(b)[0]
+                lamps = [(x, y, 30.0 * M)]
+            for x, y, dz in lamps:
+                z = (SEA_Z + max(0.0, height(x, y)) if b["kind"] not in ("rig", "dock", "jetty") else SEA_Z + 200) + dz
+                radius = 90 if b["kind"] in ("pad", "dock", "hall") else 60
+                out.append(actor("Light", f"Lamp{n}", (x, y, z),
+                                 f"    LightBrightness=200.0\n    LightHue=22\n    LightSaturation=90\n    LightRadius={radius}\n"))
+                n += 1
     d = ROOM_LEN / 2 - PLAYER_FROM_GLASS
     out.append(actor("PlayerStart", "PlayerStart0", (d * math.cos(a), d * math.sin(a), ROOM_Z + 100), "", (0, yaw(LOOK_YAW), 0)))
     out.append("End Map\n")
@@ -537,7 +566,8 @@ if __name__ == "__main__":
     with open(os.path.join(ase, "manifest.txt"), "w") as f:
         for name, group, tex in manifest:
             f.write(f"{name} {group} {tex}\n")
-    write_actors(os.path.join(HERE, "avalon_actors.t3d"), bounds, [m for m in manifest if m[0] != "Sea"], buildings)
+    write_actors(os.path.join(HERE, "avalon_actors_dusk.t3d" if DUSK else "avalon_actors.t3d"), bounds,
+                 [m for m in manifest if m[0] != "Sea"], buildings)
     counts = {g: sum(1 for m in manifest if m[1] == g) for g in ("Ground", "Tower", "Liandri")}
     px, py = from_frame(*PLANT_AT)
     print("meshes", counts, " tower hill %.0f  plant shelf %.0f  shore(%.0f) at %.0f  rig %.0f" % (
