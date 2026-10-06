@@ -94,7 +94,22 @@ var Material PoolLive[8];                            // live pools: placeholders
 var ModBloodDecal LiveOwner[8];
 var int NextLive;
 var config bool bLivePools;
-var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long   // the same in the Seekers' purple
+var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long
+// bloody footprints: whoever stands in a live pool leaves prints for FootSteps steps
+var Material FootTex[3], AlienFootTex[3];           // fresh, fading, nearly gone
+var Material DripTex, AlienDripTex;                 // drip streaks a coat pans down after a hit
+var config bool bFootprints;
+var config int FootSteps;
+var config float FootStride;
+struct WetFeet
+{
+	var Pawn P;
+	var int Kind;
+	var int Left;          // prints still to leave
+	var vector LastSpot;
+	var bool bRight;
+};
+var array<WetFeet> Wet;   // the same in the Seekers' purple
 var array<ModBloodDecal> Decals, Holes, Clutter;
 var StaticMesh ShellMesh;          // the game's own shell, taken from its shell particles
 var float ShellScale;              // ...and the size those particles draw it at
@@ -238,7 +253,7 @@ function Material SprayTex(Pawn P)
 }
 
 // a pool takes the next live slot (the pool that had it keeps a baked frame)
-function GoLive(ModBloodDecal D, float Size)
+function GoLive(ModBloodDecal D, float Size, int Kind)
 {
 	local int K;
 
@@ -247,7 +262,78 @@ function GoLive(ModBloodDecal D, float Size)
 	if (LiveOwner[K] != None && !LiveOwner[K].bDeleteMe)
 		LiveOwner[K].EndLive();
 	LiveOwner[K] = D;
-	D.GoLive(K, PoolLive[K], Size, LivePour, LivePourSecs);
+	D.Gore = self;
+	D.GoLive(K, PoolLive[K], Size, LivePour, LivePourSecs, Kind);
+}
+
+// a walker has stepped in blood: FootSteps prints from here, fading
+function BloodyFeet(Pawn P, int Kind)
+{
+	local int i;
+	local WetFeet F;
+
+	if (!bFootprints || P == None)
+		return;
+	for (i = 0; i < Wet.Length; i++)
+		if (Wet[i].P == P)
+		{
+			Wet[i].Left = FootSteps;
+			Wet[i].Kind = Kind;
+			return;
+		}
+	F.P = P;
+	F.Kind = Kind;
+	F.Left = FootSteps;
+	F.LastSpot = P.Location;
+	Wet[Wet.Length] = F;
+}
+
+function Material FootTexture(int Kind, int Step)
+{
+	local int Level;
+
+	Level = Clamp(Step * 3 / Max(FootSteps, 1), 0, 2);
+	if (Kind == 1)
+		return AlienFootTex[Level];
+	return FootTex[Level];
+}
+
+function Material DripMaterial(int Kind)
+{
+	if (Kind == 2)
+		return AlienDripTex;
+	return DripTex;
+}
+
+// the prints: one every FootStride units of travel, under alternate feet, pointing the way
+function WalkPrints()
+{
+	local int i;
+	local Pawn P;
+	local vector Side, Foot, HitL, HitN, Dir;
+
+	for (i = Wet.Length - 1; i >= 0; i--)
+	{
+		P = Wet[i].P;
+		if (P == None || P.bDeleteMe || P.Health <= 0 || Wet[i].Left <= 0)
+		{
+			Wet.Remove(i, 1);
+			continue;
+		}
+		if (VSize(P.Location - Wet[i].LastSpot) < FootStride || VSize(P.Velocity) < 10)
+			continue;
+		Dir = Normal(P.Velocity * vect(1,1,0));
+		Side = Dir Cross vect(0,0,1);
+		if (Wet[i].bRight)
+			Foot = P.Location + Side * 7;
+		else
+			Foot = P.Location - Side * 7;
+		if (Trace(HitL, HitN, Foot - vect(0,0,1) * (P.CollisionHeight + 60), Foot, false) != None && HitN.Z > 0.6)
+			Mark(FootTexture(Wet[i].Kind, FootSteps - Wet[i].Left), HitL, HitN, Dir, DecalScale * 0.22);
+		Wet[i].Left--;
+		Wet[i].bRight = !Wet[i].bRight;
+		Wet[i].LastSpot = P.Location;
+	}
 }
 
 function Material PoolTex(Pawn P)
@@ -1122,6 +1208,8 @@ event Tick(float DeltaTime)
 	local vector HitL, HitN, Spot;
 	local ModBloodDecal D;
 
+	if (Wet.Length > 0)
+		WalkPrints();
 	CorpseScan -= DeltaTime;
 	if (CorpseScan <= 0)
 	{
@@ -1158,9 +1246,9 @@ event Tick(float DeltaTime)
 							D.Frames[j] = PoolFrames[j];
 					}
 					D.Grow(DecalScale * 0.2, DecalScale * (0.9 + FRand() * 0.4), 5 + FRand() * 3);
-					// or, with the d3d8 layer's live pools, simulated for real (human blood only: one colour so far)
-					if (bLivePools && BloodKind(Dying[i]) != 2)
-						GoLive(D, DecalScale * 128.0 * (0.9 + FRand() * 0.4));
+					// or, with the d3d8 layer's live pools, simulated for real
+					if (bLivePools)
+						GoLive(D, DecalScale * 128.0 * (0.9 + FRand() * 0.4), int(BloodKind(Dying[i]) == 2));
 					D.LifeSpan = 300;
 				}
 			}
@@ -1663,6 +1751,17 @@ defaultproperties
      PoolLive(6)=Texture'AdventMod.Blood.BloodLive6'
      PoolLive(7)=Texture'AdventMod.Blood.BloodLive7'
      bLivePools=True
+     FootTex(0)=Texture'AdventMod.Blood.FootprintH0'
+     FootTex(1)=Texture'AdventMod.Blood.FootprintH1'
+     FootTex(2)=Texture'AdventMod.Blood.FootprintH2'
+     AlienFootTex(0)=Texture'AdventMod.Blood.FootprintA0'
+     AlienFootTex(1)=Texture'AdventMod.Blood.FootprintA1'
+     AlienFootTex(2)=Texture'AdventMod.Blood.FootprintA2'
+     DripTex=Texture'AdventMod.Blood.DripsH'
+     AlienDripTex=Texture'AdventMod.Blood.DripsA'
+     bFootprints=True
+     FootSteps=7
+     FootStride=38.000000
      LivePour=3.000000
      LivePourSecs=2.600000
      PoolFrames(0)=Texture'AdventMod.Blood.BloodPoolF0'

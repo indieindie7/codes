@@ -20,6 +20,15 @@ class ModBloodTextures extends Object;
 #exec TEXTURE IMPORT NAME=AlienSpray1 FILE=Textures\alien_spray1.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=AlienPool0 FILE=Textures\alien_pool0.tga GROUP=Blood MIPS=1 ALPHA=1
 // pools that spread like a liquid: frames of an offline shallow-water run (tools/make_blood_pool.py)
+// footprints out of a pool and drip streaks on a hit body (tools/make_blood_marks.py)
+#exec TEXTURE IMPORT NAME=FootprintH0 FILE=Textures\footprint_h0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintH1 FILE=Textures\footprint_h1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintH2 FILE=Textures\footprint_h2.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintA0 FILE=Textures\footprint_a0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintA1 FILE=Textures\footprint_a1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintA2 FILE=Textures\footprint_a2.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=DripsH FILE=Textures\drips_h.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=DripsA FILE=Textures\drips_a.tga GROUP=Blood MIPS=1 ALPHA=1
 // live pools: placeholders the d3d8 layer swaps for its simulated sheets (tools/make_blood_live.py)
 #exec TEXTURE IMPORT NAME=BloodLive0 FILE=Textures\blood_live0.tga GROUP=Blood MIPS=0 ALPHA=1
 #exec TEXTURE IMPORT NAME=BloodLive1 FILE=Textures\blood_live1.tga GROUP=Blood MIPS=0 ALPHA=1

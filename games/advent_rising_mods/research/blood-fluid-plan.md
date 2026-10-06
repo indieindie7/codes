@@ -28,9 +28,15 @@ gibs as unique high-detail ("Rage megatexture"-style) textures. Steps:
    GOTCHA found on the way: the game's TGA importer reads rows bottom-up whatever the
    orientation flag says, so generated TGAs must be written bottom-up (descriptor 8) for
    tools/tex_hash.py's hashes to match the layer's (the baked frame rules were wrong before).
-   Open: alien (purple) colour for live pools, stamps verified by log only (the pilot walked
-   into a wall), slot count 8, no sleep/early-out yet (8 x 4096 cells x ~2 faces per frame is
-   still well under 0.1 ms).
+   Then (same day): purple pools for Seekers (`pool ... kind`), a `wet K u v` query, and a
+   verified walk-through: the player's steps stamp the sheet (one step moved 2.7 volume units
+   to its ring) and leave FOOTPRINTS (ModGore.BloodyFeet / WalkPrints: 7 prints every 38 units,
+   alternate feet, pointing the way, textures footprint_h0..2 fading; tools/make_blood_marks.py)
+   and a hit body's coat DRIPS for 2.5 s (ModBloodCoat.Drip: a Combiner of the coat texture
+   and a TexMatrix-panned streak texture drips_h/a, panned down by a 25 Hz timer). Footprints
+   and drips are verified by log; the pilot's camera never looked back at them, so the look
+   is for the user to judge.
+   Open: no sleep/early-out yet (8 x 4096 cells per frame is still well under 0.1 ms).
 2b. NEXT for the live version: The baked sequence can't react to slopes or to walking through it.
    A real-time 2D sim per pool (32x32 cells) needs a dynamic texture: UE2 has no script-side
    texture writes, so the fork would own the sheet (CPU sim in the d3d layer, UpdateTexture

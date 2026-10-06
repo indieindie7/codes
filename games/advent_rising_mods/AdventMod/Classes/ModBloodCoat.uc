@@ -13,7 +13,8 @@
 // script can't ask a mesh). A body with neither is left alone. The player's coat wears off
 // with time; others keep theirs until the body is removed or the game reuses the pawn.
 //=============================================================================
-class ModBloodCoat extends Info;
+class ModBloodCoat extends Info
+	config(AdventMod);
 
 var ModGore Gore;
 var Pawn Wearer;
@@ -25,6 +26,12 @@ var int Slots;
 var Material OwnSkin[4];   // what the body wore
 var Combiner Mix[4];
 var bool bNoSkins;         // the body set no skins of its own (it gets none back)
+// fresh blood runs: for DripTime after a hit the coat is the blood texture times drip
+// streaks that a TexMatrix pans down the body, then the plain coat again
+var TexMatrix Pan;
+var Combiner DripMix;
+var float DripT, DripPhase;
+var config float DripTime, DripSpeed;
 
 static function Material PlainOf(Material M)
 {
@@ -93,6 +100,55 @@ function More(float A)
 {
 	Amount = FMin(Amount + A, 2.5);
 	Update();
+	if (A > 0.15)
+		Drip();
+}
+
+function Drip()
+{
+	local int i;
+
+	if (Gore == None || Gore.DripMaterial(Kind) == None || DripTime <= 0)
+		return;
+	if (Pan == None)
+	{
+		Pan = new(None) class'TexMatrix';
+		Pan.Material = Gore.DripMaterial(Kind);
+		DripMix = new(None) class'Combiner';
+		DripMix.Material2 = Pan;
+		DripMix.CombineOperation = CO_Multiply;
+		DripMix.Modulate2X = true;
+	}
+	DripMix.Material1 = Gore.CoatMaterial(Kind, Max(Level, 0));
+	for (i = 0; i < Slots; i++)
+		if (Mix[i] != None)
+			Mix[i].Material2 = DripMix;
+	DripT = DripTime;
+	SetTimer(0.04, true);
+}
+
+// the streaks pan down (texture V) while the drip lasts; then the plain coat comes back
+event Timer()
+{
+	local int i;
+
+	if (Pan == None)
+	{
+		SetTimer(0, false);
+		return;
+	}
+	DripT -= 0.04;
+	DripPhase += 0.04 * DripSpeed;
+	if (DripPhase > 1)
+		DripPhase -= 1;
+	Pan.Matrix.WPlane.Y = -DripPhase;
+	if (DripT <= 0)
+	{
+		for (i = 0; i < Slots; i++)
+			if (Mix[i] != None)
+				Mix[i].Material2 = Gore.CoatMaterial(Kind, Max(Level, 0));
+		SetTimer(0, false);
+	}
 }
 
 function Update()
@@ -106,8 +162,10 @@ function Update()
 	if (Want == Level)
 		return;
 	Level = Want;
+	if (DripMix != None)
+		DripMix.Material1 = Gore.CoatMaterial(Kind, Level);
 	for (i = 0; i < Slots; i++)
-		if (Mix[i] != None)
+		if (Mix[i] != None && DripT <= 0)
 			Mix[i].Material2 = Gore.CoatMaterial(Kind, Level);
 }
 
@@ -160,4 +218,6 @@ event Destroyed()
 
 defaultproperties
 {
+     DripTime=2.500000
+     DripSpeed=0.350000
 }

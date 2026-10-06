@@ -19,6 +19,8 @@ var int LiveSlot;                                // -1: not live
 var float LiveSize;                              // the pool's width in world units
 var vector AxU, AxV;                             // the texture's axes in the world
 var float LiveAge, LastStampT;
+var int LiveKind;                                // 0 red, 1 purple
+var ModGore Gore;
 
 // Projector attaches itself at spawn (before it has a texture or a place): not yet
 simulated event PostBeginPlay()
@@ -48,12 +50,13 @@ function Place(Material Tex, vector Spot, vector N, vector Along, float Size)
 }
 
 // this pool goes live in slot Slot (the d3d8 layer simulates it): Size world units across
-function GoLive(int Slot, Material Placeholder, float Size, float Pour, float PourSecs)
+function GoLive(int Slot, Material Placeholder, float Size, float Pour, float PourSecs, int Kind)
 {
 	local vector X, Y, Z;
 
 	LiveSlot = Slot;
 	LiveSize = Size;
+	LiveKind = Kind;
 	ProjTexture = Placeholder;
 	GrowTime = 0;
 	// the placeholder is 64 px; the projector's size is the texture's times DrawScale
@@ -62,7 +65,7 @@ function GoLive(int Slot, Material Placeholder, float Size, float Pour, float Po
 	AxU = Y;
 	AxV = Z;
 	// the floor's slope along the texture axes: the axes lie in the floor, so their Z is the rise
-	class'ModSettings'.static.NativeCall("Blood:pool " $ Slot $ " " $ Size $ " " $ AxU.Z $ " " $ AxV.Z);
+	class'ModSettings'.static.NativeCall("Blood:pool " $ Slot $ " " $ Size $ " " $ AxU.Z $ " " $ AxV.Z $ " " $ Kind);
 	class'ModSettings'.static.NativeCall("Blood:pour " $ Slot $ " 0.5 0.5 " $ Pour $ " " $ PourSecs);
 	DetachProjector(true);
 	AttachProjector();
@@ -111,6 +114,9 @@ function Stamps(float DeltaTime)
 		V = P.Velocity;
 		R = P.CollisionRadius * 0.6 / LiveSize;
 		class'ModSettings'.static.NativeCall("Blood:stamp " $ LiveSlot $ " " $ U $ " " $ W $ " " $ ((V Dot AxU) / LiveSize) $ " " $ ((V Dot AxV) / LiveSize) $ " " $ R);
+		// standing in the blood: bloody feet for a while (footprints)
+		if (Gore != None && class'ModSettings'.static.NativeCall("Blood:wet " $ LiveSlot $ " " $ U $ " " $ W))
+			Gore.BloodyFeet(P, LiveKind);
 	}
 }
 
