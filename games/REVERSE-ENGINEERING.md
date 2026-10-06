@@ -143,13 +143,32 @@ drop from a throwaway D3D device.
     momentum grids = height x velocity: this is how walking, swimming and explosions push the
     water. `FUN_00c10560`: finite differences of neighbouring cells (slope / normals, spawns
     spray particles where the slope is steep). `FUN_00c0e5b0`: per-region bookkeeping.
-  - NOT FOUND YET: the integration step that advances height/velocity (shallow-water or
-    spring-mesh). Candidates by size and grid access, in the water module 0xbec000-0xc22000:
-    `FUN_00c0cb70` (2280 B), `FUN_00c0dd30` (1849 B), `FUN_00c08330` (reads cell neighbours with
-    +0x1b8/+0x1bc boundary fallbacks), `FUN_00bf5dd0`, `FUN_00bf52d0`; or it runs inside the
-    Havok "safe window" through the `hkABIWater*` modifiers. The 200 x 200 float pair at
-    `DAT_01cb6ac4/ac8` is only allocated and freed in the code seen so far (likely the
-    `hydro.dumpflowfield` scratch).
+  - **THE SOLVER, FOUND (2026-10-06 00:50):** the grid manager's job dispatcher
+    `FUN_00c143e0` queues named phases per sheet (profiler strings): `HWGridMgr::StepFunc` ->
+    `FUN_00c0ede0` -> **`FUN_00d5c9d0(sheet, dt)`** (9.7 KB, SSE, 4 cells at a time), then
+    `PtclSpawnFn` (`job_00c113e0` -> `FUN_00c10560`, slopes -> spray), `FUN_00c0c8a0`
+    (mesh/visual prep), `SaveHghtFn` (`FUN_00c0e580` -> `FUN_00c194d0`: inflow per cell from
+    `DAT_01cb67bc`, volume, wet bounding box, average level, wave-speed factor `[9]`, then
+    `FUN_00c192a0` normals), `PtclUpdFn1..3` (`job_00c12860`, particles).
+    `FUN_00c0ede0` sub-steps: it calls the solver with the remaining time, the solver returns
+    how much it consumed (a CFL-limited step), the remainder loops until below a threshold;
+    `[0x10c]` counts steps.
+    `FUN_00d5c9d0` is an explicit finite-volume **shallow-water** solver on the sheet's cells
+    (cell size 20 units): the depth grid is double-buffered (`[*sheet + 10]` current, the other
+    index next); momentum grids `[*sheet + 0xd]` (x) and `[0xf]` (y) are clamped to +-1000 x
+    depth (a speed cap); pass 1 writes depth' = min(cap, max(depth - bed, floor) x scale) x
+    depth, velocity u = mx / depth, v = my / depth into `[0x14]` / `[0x12]`, a wave-speed grid
+    sqrt(depth x [9]) into `[0x13]`, and takes the maximum of |u| + c + |v| over the sheet: the
+    CFL signal speed that sizes the step; pass 2 (lines 800-1466) computes the fluxes between
+    each cell and its right/lower neighbour with min/max limiters (the select-by-mask code) and
+    updates depth and momentum; three 64-iteration loops handle edges. Constants: 1000 (speed
+    cap), 2 / 4 / 3 (scheme factors), 1e3 x4 vectors. Per-sheet parameters at `[0x78..0x8f]`
+    (4-wide: max depth, floor, bed, scale) and `[0x84..0x87]` (edge variants).
+  - So Hydrophobia's water IS a real fluid simulation, but 2D: shallow-water per room surface
+    (height + momentum, sub-stepped by CFL, SSE), fed by region levels (what pours in or out)
+    and disturbed by objects; rooms exchange water through the region volumes, not through the
+    grids. The 200 x 200 float pair at `DAT_01cb6ac4/ac8` is only allocated and freed in the
+    code seen (likely the `hydro.dumpflowfield` scratch).
   - Design conclusion so far: regions carry a water level (set by level logic / script, e.g.
     `script_WaterLevelAtDoor`), each region's surface is a height+velocity grid at 20-unit
     cells that objects disturb; rendering is planar reflection/refraction + a per-sheet mesh +
