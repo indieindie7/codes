@@ -126,9 +126,17 @@ for bid, b in B.items():
             actor(BARRELS[int(rng.integers(len(BARRELS)))], b["x"] + d * math.cos(ang), b["y"] + d * math.sin(ang), rng.uniform(0, 360), 1.0)
             n_crates += 1
 
-# 3. fence runs: along the road side of the core plant's yard (halls and tanks), 2-4 segments each
+# 3. fence runs: the spine layout gives the gaps between plots; otherwise along each core building's front
 n_fence = 0
-for bid, b in B.items():
+for f in L.get("fences", []):
+    (x0, y0), (x1, y1) = f
+    Lf = math.hypot(x1 - x0, y1 - y0)
+    n = int(Lf // FENCE_LEN)
+    for k in range(n):
+        t = (k + 0.5) / n
+        actor(FENCE_LONG, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, math.degrees(math.atan2(y1 - y0, x1 - x0)), 1.0)
+        n_fence += 1
+for bid, b in ([] if L.get("fences") else B.items()):
     if bid.startswith("hall") or bid in ("tank_farm", "fuel_depot", "silos"):
         yaw = math.radians(b["yaw"])
         fx, fy = math.cos(yaw), math.sin(yaw)

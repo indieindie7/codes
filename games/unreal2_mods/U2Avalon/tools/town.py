@@ -23,6 +23,7 @@ NAME = o.get("name", "TutA_Town")
 PILOT = o.get("pilot", "1") != "0"
 SHIFT = o.get("shift", "-5300")
 REROLLS = int(o.get("rerolls", 3))
+METHOD = o.get("method", "spine")      # spine = street first, plots along it (layout_spine.py); interest = layout.py
 name = "%s%d" % (NAME, seed)
 RUN = os.path.join(r"C:\Users\john\Documents\U2_research\towns", name)
 os.makedirs(RUN, exist_ok=True)
@@ -53,8 +54,9 @@ best = None
 for k in range(REROLLS):
     lseed = seed + 100 * k
     cand = base + "_layout_%d.json" % lseed
-    step("layout (seed %d)" % lseed, lambda: ib.run(["py", os.path.join(TOOLS, "layout.py"), base + "_e.bmp", cand,
-                                                      "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png"]))
+    tool = "layout_spine.py" if METHOD == "spine" else "layout.py"
+    step("layout %s (seed %d)" % (METHOD, lseed), lambda: ib.run(["py", os.path.join(TOOLS, tool), base + "_e.bmp", cand,
+                                                                  "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png"]))
     Lc, core_unmet = systems.run(cand, report=True)
     key = (len(core_unmet), -Lc["systems"]["score"])
     if best is None or key < best[0]:
@@ -68,7 +70,7 @@ L = json.load(open(layout))
 print("  using", os.path.basename(best[1]), "score %.2f, %d core unmet" % (L["systems"]["score"], best[0][0]), flush=True)
 open(os.path.join(RUN, "systems.txt"), "w").write(
     "needs %d unmet %d score %.2f\n" % (L["systems"]["needs"], len(L["systems"]["unmet"]), L["systems"]["score"])
-    + "".join("  %s needs %s: %s\n" % u for u in L["systems"]["unmet"]))
+    + "".join("  %s needs %s: %s\n" % tuple(u) for u in L["systems"]["unmet"]))
 
 # 4. pads, 5. terrain into TutA, 6. the buildings as actors + lighting + editor pictures
 step("pads + roads", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout]))
@@ -106,7 +108,7 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
        "Map: `%s\\Maps\\%s.un2` (mutator cards enabled). Run folder: `%s`." % (ib.GAME, name, RUN), "",
        "## Systems", "needs %d, unmet %d, score %.2f; pipes %d m, cables %d m, conveyors %d m" % (
            S["needs"], len(S["unmet"]), S["score"], S["pipes_m"], S["cables_m"], S["conveyors_m"]),
-       *("- %s needs %s: %s" % u for u in S["unmet"]), "",
+       *("- %s needs %s: %s" % tuple(u) for u in S["unmet"]), "",
        "## Terrain", "```", score.strip(), "```", "",
        "## Pictures", "- sketch: isl_sketch.png", "- layout: isl_layout.png", "- pads: isl_map.png",
        "- editor: isl_ed_plant.png, isl_ed_side.png, isl_ed_island.png"] + (["- game: pilot_sheet.png"] if sheet else []) + [
