@@ -7,8 +7,9 @@
 // times their damage (the head more: a broken helmet opens headshots). Explosions hit
 // every plate at once and the body in full. ModGoreRules hands every hit through
 // Strike() before the flinch and the blood see it, so they react to what got through.
-// Phase 1 of three: the numbers and the burst. Next: the region's own mesh piece as the
-// flying plate (ModGibParts), then the exposed flesh painted under it (region masks).
+// Phase 2 of three: the numbers, the burst, and the plate itself: the region's piece of the
+// character's own mesh (the gib parts) flies off, a little smaller than the limb, in the
+// body's skin, no blood. Next: the exposed flesh painted under it (region masks).
 //=============================================================================
 class ModArmor extends Info
 	config(AdventMod);
@@ -34,6 +35,11 @@ struct ArmorState
 var array<ArmorState> Bodies;
 var name Bones[12];                 // the bones a hit is measured against (ModReact's list)
 var int BoneRegion[12];             // ...and the plate each belongs to
+var string BonePart[12];            // the gib part (ModGibParts) that flies off as the plate when that bone's plate breaks
+var config float PlateScale;        // the flying plate's size against the body part (under 1: a shell, not a limb)
+var config float PlateStay;         // seconds a fallen plate lies there before it sinks away
+var config bool bPlates;            // the region's own mesh piece flies off (phase 2); off: chunks only
+var int LastBone;                   // the bone Region() settled on
 var localized string RegionNames[6];
 var array<ModRubble> Pieces;
 var ModGore Gore;
@@ -103,6 +109,7 @@ function int Region(Pawn P, vector HitLocation)
 			Best = i;
 		}
 	}
+	LastBone = Best;
 	if (Best < 0)
 		return 1;
 	return BoneRegion[Best];
@@ -135,7 +142,10 @@ function int Strike(int Damage, Pawn Injured, Pawn Instigator, vector HitLocatio
 			{
 				Bodies[b].Plate[r] -= Damage * BlastShare;
 				if (Bodies[b].Plate[r] <= 0)
-					Shatter(b, r, HitLocation, Dir);
+				{
+					LastBone = RegionBone(r);
+					Shatter(b, r, Injured.GetBoneCoords(Bones[LastBone]).Origin, Dir);
+				}
 			}
 		return Damage;
 	}
@@ -176,6 +186,8 @@ function Shatter(int b, int r, vector HitLocation, vector Dir)
 	Set = -1;
 	if (Gore != None)
 		Set = Gore.GibSet(P);
+	if (bPlates && Set >= 0)
+		Plate(P, Set, HitLocation, Dir);
 	for (i = 0; i < Chunks; i++)
 	{
 		while (Pieces.Length > 0 && (Pieces.Length >= MaxChunks || Pieces[0] == None || Pieces[0].bDeleteMe))
@@ -206,6 +218,46 @@ function Shatter(int b, int r, vector HitLocation, vector Dir)
 		if (Gore.React.bStagger)
 			Gore.React.Stagger(P, Dir);
 	}
+}
+
+// a bone of the region (the first in the table), for a plate broken by a blast
+function int RegionBone(int r)
+{
+	local int i;
+
+	for (i = 0; i < 12; i++)
+		if (BoneRegion[i] == r)
+			return i;
+	return 0;
+}
+
+// the plate itself: the region's part cut from the character's own mesh (the gib parts),
+// a little smaller than the limb so it reads as a shell, in the body's skin on every face,
+// thrown from the bone away from the shot; no blood, and it sinks away sooner than a gib
+function Plate(Pawn P, int Set, vector HitLocation, vector Dir)
+{
+	local ModGib G;
+	local float K;
+	local vector Spot, V;
+	local string Part;
+
+	if (LastBone < 0 || Gore == None)
+		return;
+	Part = BonePart[LastBone];
+	if (Part == "")
+		return;
+	Spot = P.GetBoneCoords(Bones[LastBone]).Origin;
+	if (Spot == vect(0,0,0))
+		Spot = HitLocation;
+	K = FClamp(2 * FMax(P.CollisionHeight, P.default.CollisionHeight) / class'ModGibParts'.default.Sets[Set].Height, 0.5, 2.0);
+	V = Normal(Dir * 1.2 + VRand() * 0.5 + vect(0,0,0.7)) * (200 + 160 * FRand());
+	G = Gore.ThrowPart(Set, 0, Part, Spot + Normal(Dir) * 8, P.Rotation.Yaw, K * PlateScale, V);
+	if (G == None)
+		return;
+	G.Skins[1] = G.Skins[0];
+	G.Stay = PlateStay * (0.8 + 0.4 * FRand());
+	if (bArmorLog)
+		class'ModSettings'.static.Note("armor: plate " $ Part $ " flies from " $ Bones[LastBone]);
 }
 
 // how many plates a body still has (the pilot's log, and later a HUD hint)
@@ -245,8 +297,11 @@ defaultproperties
      ExposedBonus=1.5
      HeadBonus=2.0
      BlastShare=0.4
-     Chunks=4
+     Chunks=2
      MaxChunks=40
+     bPlates=True
+     PlateScale=0.9
+     PlateStay=18.0
      Armored(0)="SeekerInfantry"
      Armored(1)="SeekerElite"
      Armored(2)="SeekerCommander"
@@ -275,6 +330,18 @@ defaultproperties
      BoneRegion(9)=2
      BoneRegion(10)=5
      BoneRegion(11)=4
+     BonePart(0)="torso_lower"
+     BonePart(1)="torso_lower"
+     BonePart(2)="torso_upper"
+     BonePart(3)="torso_upper"
+     BonePart(4)="head"
+     BonePart(5)="head"
+     BonePart(6)="r_upperarm"
+     BonePart(7)="r_lowerarm"
+     BonePart(8)="l_upperarm"
+     BonePart(9)="l_lowerarm"
+     BonePart(10)="r_upperleg"
+     BonePart(11)="l_upperleg"
      RegionNames(0)="head"
      RegionNames(1)="torso"
      RegionNames(2)="left arm"

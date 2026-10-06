@@ -45,12 +45,14 @@ added after the filter). `bPadDriftFix=False` turns it off.
 Seeker infantry, elites, commanders and pilots carry six plates (head, torso, each arm,
 each leg) with points of their own, 20 to 50 % of their health each. While a plate holds,
 a hit on it loses 70 % of its damage to the plate; when the points run out the plate
-breaks: chunks fly off, the body jerks and staggers, and from then on hits there do 1.5 x
+breaks: the region's own piece of the character's mesh (the gib parts) flies off as the plate,
+a little smaller than the limb and in the body's skin, with a couple of chunks; the body
+jerks and staggers, and from then on hits there do 1.5 x
 (a bare head 2 x: break the helmet, then headshots count). Explosions rattle every plate
 at once and hurt the body in full. `[AdventMod.ModArmor]` in `AdventMod.ini`: `bArmor`,
 the plate shares, `Absorb`, `ExposedBonus`, `HeadBonus`, `Armored` (class name parts),
-`bArmorLog`. Phase 1 of three: next the region's own mesh piece flies off as the plate,
-then the flesh under it is painted exposed.
+`bArmorLog`, `bPlates`, `PlateScale`, `PlateStay`. Phase 2 of three: next the flesh under a
+broken plate is painted exposed (region masks in the skin's UV space).
 
 ## How it works
 
