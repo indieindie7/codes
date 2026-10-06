@@ -556,7 +556,7 @@ Begin Actor Class=StaticMeshActor Name=A0_B_authority_pad
     Location=(X=1679.4,Y=-1108.8,Z=-2421.3)
     Rotation=(Pitch=0,Yaw=54613,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_authority_pad'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_authority_pad'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=P1
@@ -569,56 +569,56 @@ Begin Actor Class=StaticMeshActor Name=A2_B_boat_landing
     Location=(X=4560.1,Y=-18498.3,Z=-5027.0)
     Rotation=(Pitch=0,Yaw=54613,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_boat_landing'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_boat_landing'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A3_B_cargo_pad
     Location=(X=5255.5,Y=-15902.8,Z=-4960.9)
     Rotation=(Pitch=0,Yaw=54613,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_cargo_pad'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_cargo_pad'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A4_CargoDropship
     Location=(X=5255.5,Y=-15902.8,Z=-4910.9)
     Rotation=(Pitch=0,Yaw=58254,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.CargoDropship'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.cargo_dropship_script'
     DrawScale=0.500
 End Actor
 Begin Actor Class=StaticMeshActor Name=A5_radio_mast_1_kiln
     Location=(X=-12836.8,Y=-8566.0,Z=530.8)
     Rotation=(Pitch=0,Yaw=0,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.radio_mast_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.radio_mast_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A6_CoolingTower
     Location=(X=9945.4,Y=-10625.9,Z=-4569.1)
     Rotation=(Pitch=0,Yaw=8192,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.CoolingTower'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.cooling_tower_script'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A7_CoolingTower
     Location=(X=10470.4,Y=-11535.2,Z=-4592.3)
     Rotation=(Pitch=0,Yaw=8192,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.CoolingTower'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.cooling_tower_script'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A8_DeadRig
     Location=(X=25972.4,Y=-10985.6,Z=-5195.0)
     Rotation=(Pitch=0,Yaw=3640,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.DeadRig'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.dead_rig_script'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A9_B_directors_house
     Location=(X=1662.7,Y=-11279.9,Z=-3953.9)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_directors_house'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_directors_house'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=Quay
@@ -631,7 +631,7 @@ Begin Actor Class=StaticMeshActor Name=A10_DockCrane
     Location=(X=15994.4,Y=-15303.0,Z=-4747.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.DockCrane'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.dock_crane_script'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=P11
@@ -656,7 +656,7 @@ Begin Actor Class=StaticMeshActor Name=A14_B_dorm
     Location=(X=4964.4,Y=-11798.5,Z=-4571.7)
     Rotation=(Pitch=0,Yaw=21845,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_dorm'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_dorm'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=P15
@@ -693,7 +693,7 @@ Begin Actor Class=StaticMeshActor Name=A20_B_generator_house
     Location=(X=9928.5,Y=-12396.6,Z=-4568.3)
     Rotation=(Pitch=0,Yaw=54613,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_generator_house'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_generator_house'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=P21
@@ -730,7 +730,7 @@ Begin Actor Class=StaticMeshActor Name=A26_B_hall_a
     Location=(X=6343.8,Y=-12387.8,Z=-4567.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_hall_a'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_hall_a'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=P27
@@ -767,7 +767,7 @@ Begin Actor Class=StaticMeshActor Name=A32_B_hall_b
     Location=(X=8949.0,Y=-12500.2,Z=-4567.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_hall_b'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_hall_b'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=P33
@@ -804,7 +804,7 @@ Begin Actor Class=StaticMeshActor Name=A38_B_hall_c
     Location=(X=3761.7,Y=-11915.5,Z=-4556.1)
     Rotation=(Pitch=0,Yaw=13653,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_hall_c'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_hall_c'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=P39
@@ -847,91 +847,91 @@ Begin Actor Class=StaticMeshActor Name=A45_DrillingRig
     Location=(X=17139.0,Y=-16085.6,Z=-5195.0)
     Rotation=(Pitch=0,Yaw=0,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.DrillingRig'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.drilling_rig_script'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A46_B_plant_office
     Location=(X=6459.8,Y=-10588.7,Z=-4528.8)
     Rotation=(Pitch=0,Yaw=21845,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_plant_office'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_plant_office'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A47_B_pump_house
     Location=(X=7424.2,Y=-15459.0,Z=-4925.6)
     Rotation=(Pitch=0,Yaw=21845,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.B_pump_house'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.B_pump_house'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A48_ore_tank_2_kiln
     Location=(X=5520.0,Y=-14710.9,Z=-4567.2)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.ore_tank_2_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.ore_tank_2_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A49_ore_tank_2_kiln
     Location=(X=6104.6,Y=-14373.4,Z=-4567.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.ore_tank_2_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.ore_tank_2_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A50_ore_tank_2_kiln
     Location=(X=6689.1,Y=-14035.9,Z=-4567.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.ore_tank_2_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.ore_tank_2_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A51_storage_tank_1_kiln
     Location=(X=7579.5,Y=-10303.1,Z=-4553.5)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.storage_tank_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.storage_tank_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A52_storage_tank_1_kiln
     Location=(X=8067.0,Y=-11147.5,Z=-4567.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.storage_tank_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.storage_tank_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A53_storage_tank_1_kiln
     Location=(X=8423.9,Y=-9815.6,Z=-4483.9)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.storage_tank_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.storage_tank_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A54_storage_tank_1_kiln
     Location=(X=8911.4,Y=-10660.0,Z=-4567.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.storage_tank_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.storage_tank_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A55_storage_tank_2_kiln
     Location=(X=5873.6,Y=-16123.3,Z=-4967.0)
     Rotation=(Pitch=0,Yaw=54613,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.storage_tank_2_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.storage_tank_2_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A56_storage_tank_2_kiln
     Location=(X=6458.1,Y=-15785.8,Z=-4960.2)
     Rotation=(Pitch=0,Yaw=54613,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.storage_tank_2_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.storage_tank_2_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A57_storage_tank_2_kiln
     Location=(X=7042.7,Y=-15448.3,Z=-4871.2)
     Rotation=(Pitch=0,Yaw=54613,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.storage_tank_2_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.storage_tank_2_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=Pipeline
@@ -956,28 +956,28 @@ Begin Actor Class=StaticMeshActor Name=A58_pylon_1_kiln
     Location=(X=8439.2,Y=-10537.1,Z=-4567.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.pylon_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.pylon_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A59_pylon_1_kiln
     Location=(X=6453.5,Y=-8057.8,Z=-3814.5)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.pylon_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.pylon_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A60_pylon_1_kiln
     Location=(X=4467.8,Y=-5578.5,Z=-3225.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.pylon_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.pylon_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=A61_pylon_1_kiln
     Location=(X=2482.1,Y=-3099.1,Z=-2785.9)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)
     StaticMesh=StaticMesh'AvalonSM.Liandri.pylon_1_kiln'
-    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    Skins(0)=Texture'AvalonSM.Bake.pylon_1_kiln'
     DrawScale=1.000
 End Actor
 Begin Actor Class=StaticMeshActor Name=P62

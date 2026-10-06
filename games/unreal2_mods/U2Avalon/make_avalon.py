@@ -379,6 +379,12 @@ def yaw(deg):
 SEA_SHADER = "Shader'JungleT.Water.WaterSurfaceM081'"
 NO_COLLISION = "    bCollideActors=False\n    bBlockActors=False\n    bBlockPlayers=False\n"
 PAL = "    Skins(0)=Texture'AvalonSM.Pal.Pal'\n"
+BOUNDS = {}      # mesh name -> bounds + the texture it uses (glb_to_ase.py's bounds.json)
+
+
+def skin(mesh):
+    tex = BOUNDS.get(mesh, {}).get("texture", "Pal")
+    return PAL if tex == "Pal" else f"    Skins(0)=Texture'AvalonSM.Bake.{tex}'\n"
 TREES = ["Flora_M.Tree.Tree3", "Flora_M.Tree.Tree1_clump1"]
 CRATES = ["Terran_DecoM.Crates.Crate1Low", "Terran_DecoM.Crates.Crate1Medium", "Terran_DecoM.Crates.crate_pallet_01"]
 BARRELS = ["Terran_DecoM.Barrels.Metal_Barrel_01", "Terran_DecoM.Barrels.Metal_Barrel_Broken_01"]
@@ -428,7 +434,7 @@ def write_actors(path, bounds, manifest, buildings):
     def mesh_actor(mesh, x, y, z, deg, scale=1.0, extra=""):
         nonlocal k
         out.append(actor("StaticMeshActor", f"A{k}_{mesh}", (x, y, z),
-                         f"    StaticMesh=StaticMesh'AvalonSM.Liandri.{mesh}'\n" + PAL + f"    DrawScale={scale:.3f}\n" + extra,
+                         f"    StaticMesh=StaticMesh'AvalonSM.Liandri.{mesh}'\n" + skin(mesh) + f"    DrawScale={scale:.3f}\n" + extra,
                          (0, yaw(deg), 0)))
         k += 1
 
@@ -623,8 +629,14 @@ if __name__ == "__main__":
     manifest.append(("Fence", "Liandri", ""))
     manifest.append(("Floodmasts", "Liandri", ""))
     bounds = json.load(open(os.path.join(ase, "bounds.json")))
+    BOUNDS.update(bounds)
     for b in sorted(bounds):
         manifest.append((b, "Liandri", ""))
+    # the baked textures (one per mesh) for build_avalon's TEXTURE IMPORT: "name Bake <tga path>"
+    for b in sorted(bounds):
+        tex = bounds[b].get("texture", "Pal")
+        if tex != "Pal":
+            manifest.append((tex, "Bake", os.path.join("Models", "bake", tex + ".tga")))
     with open(os.path.join(ase, "manifest.txt"), "w") as f:
         for name, group, tex in manifest:
             f.write(f"{name} {group} {tex}\n")

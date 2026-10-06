@@ -33,9 +33,23 @@ def manifest():
     return rows
 
 
+def bakes():
+    """the 'name Bake <path>' rows of the manifest: baked textures to import into AvalonSM.Bake"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    rows = []
+    for line in open(os.path.join(here, "Models", "ase", "manifest.txt")):
+        w = line.split(None, 2)
+        if len(w) == 3 and w[1] == "Bake":
+            rows.append(w[0])
+    return rows
+
+
 ASSETS = [
     r'NEW StaticMeshFactory PACKAGE="AvalonSM" GROUP="%s" NAME="%s" FILE="{A}\Models\ase\%s.ase"' % (g, n, n)
-    for n, g in manifest()
+    for n, g in manifest() if g != "Bake"
+] + [
+    r'TEXTURE IMPORT FILE="{A}\Models\bake\%s.tga" NAME="%s" PACKAGE="AvalonSM" GROUP="Bake" MIPS=1' % (t, t)
+    for t in bakes()
 ] + [
     r'TEXTURE IMPORT FILE="{A}\Models\ase\Pal.tga" NAME="Pal" PACKAGE="AvalonSM" GROUP="Pal" MIPS=0',
     r'OBJ SAVEPACKAGE PACKAGE="AvalonSM" FILE="{SM}\AvalonSM.usx"',

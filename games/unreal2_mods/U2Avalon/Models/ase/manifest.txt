@@ -143,3 +143,34 @@ radio_mast_1_kiln Liandri
 radio_mast_2_kiln Liandri 
 storage_tank_1_kiln Liandri 
 storage_tank_2_kiln Liandri 
+B_authority_pad Bake Models\bake\B_authority_pad.tga
+B_boat_landing Bake Models\bake\B_boat_landing.tga
+B_cargo_pad Bake Models\bake\B_cargo_pad.tga
+B_directors_house Bake Models\bake\B_directors_house.tga
+B_dorm Bake Models\bake\B_dorm.tga
+B_generator_house Bake Models\bake\B_generator_house.tga
+B_hall_a Bake Models\bake\B_hall_a.tga
+B_hall_b Bake Models\bake\B_hall_b.tga
+B_hall_c Bake Models\bake\B_hall_c.tga
+B_plant_office Bake Models\bake\B_plant_office.tga
+B_pump_house Bake Models\bake\B_pump_house.tga
+cargo_dropship_script Bake Models\bake\cargo_dropship_script.tga
+cooling_tower_script Bake Models\bake\cooling_tower_script.tga
+dead_rig_script Bake Models\bake\dead_rig_script.tga
+dock_crane_script Bake Models\bake\dock_crane_script.tga
+drilling_rig_script Bake Models\bake\drilling_rig_script.tga
+ore_tank_script Bake Models\bake\ore_tank_script.tga
+processing_hall_script Bake Models\bake\processing_hall_script.tga
+pylon_script Bake Models\bake\pylon_script.tga
+radio_mast_script Bake Models\bake\radio_mast_script.tga
+storage_tank_script Bake Models\bake\storage_tank_script.tga
+ore_tank_1_kiln Bake Models\bake\ore_tank_1_kiln.tga
+ore_tank_2_kiln Bake Models\bake\ore_tank_2_kiln.tga
+processing_hall_1_kiln Bake Models\bake\processing_hall_1_kiln.tga
+processing_hall_2_kiln Bake Models\bake\processing_hall_2_kiln.tga
+pylon_1_kiln Bake Models\bake\pylon_1_kiln.tga
+pylon_2_kiln Bake Models\bake\pylon_2_kiln.tga
+radio_mast_1_kiln Bake Models\bake\radio_mast_1_kiln.tga
+radio_mast_2_kiln Bake Models\bake\radio_mast_2_kiln.tga
+storage_tank_1_kiln Bake Models\bake\storage_tank_1_kiln.tga
+storage_tank_2_kiln Bake Models\bake\storage_tank_2_kiln.tga

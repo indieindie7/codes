@@ -21,6 +21,8 @@ src, out = a[0], os.path.abspath(a[1])
 o = dict(x.split("=", 1) for x in a[2:])
 os.makedirs(out, exist_ok=True)
 SCALE = float(o.get("scale", 1))     # 50 = metres -> Unreal units, so the actors sit at DrawScale 1
+MESH_UVS = o.get("uvs", "palette") == "mesh"   # mesh: keep the GLB's UVs (a baked texture per mesh) instead of palette swatches
+VFLIP = o.get("vflip", "0") == "1"            # 1 = write 1-V (if the ASE importer does not flip V itself)
 palette = []          # list of (r,g,b)
 
 
@@ -68,12 +70,16 @@ for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
         me.calc_loop_triangles()
         M = mm.matrix_world
         R = M.to_3x3()
+        uvl = me.uv_layers.active.data if (MESH_UVS and me.uv_layers.active) else None
         for t in me.loop_triangles:
             mat = me.materials[t.material_index] if me.materials and t.material_index < len(me.materials) else None
-            uv = swatch(mat_colour(mat))
+            uv = swatch(mat_colour(mat)) if not MESH_UVS else None
             n = R @ t.normal
             idx = []
-            for vi in t.vertices:
+            for li, vi in zip(t.loops, t.vertices):
+                if uvl is not None:
+                    u_, v_ = uvl[li].uv
+                    uv = (u_, 1.0 - v_) if VFLIP else (u_, v_)   # Blender V up; vflip=1 if the ASE importer keeps V as-is
                 x, y, z = M @ me.vertices[vi].co
                 x, y = x - cx, y - cy
                 # glTF front (-Y) -> Unreal +X: turn +90 degrees about Z; scale= bakes metres into units
@@ -83,10 +89,16 @@ for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
             want = (-n.y, n.x, n.z)
             tris.append(tri_facing(verts, tuple(idx), want))
     write_ase(os.path.join(out, name + ".ase"), name, verts, uvs, tris)
-    bounds[name] = {"w": float(hi[1] - lo[1]) * SCALE, "d": float(hi[0] - lo[0]) * SCALE, "h": float(hi[2] - lo[2]) * SCALE}
+    bounds[name] = {"w": float(hi[1] - lo[1]) * SCALE, "d": float(hi[0] - lo[0]) * SCALE, "h": float(hi[2] - lo[2]) * SCALE,
+                    "texture": (stem if MESH_UVS else "Pal")}
     print("ASE", name, len(tris), "tris", bounds[name])
 
 # the palette texture (row 0 at the top = V 0)
+if MESH_UVS and not palette:
+    # the baked meshes carry textures, not swatches: still write the 8 stripes (make_avalon's own meshes,
+    # tower/room/quay/fence/pipeline, pick their colours from palette.json)
+    import palette as _pal
+    palette = [tuple(round(v, 3) for v in c) for c in _pal.COLOURS.values()]
 img = np.zeros((64, 64, 4), np.float32)
 img[..., 3] = 1
 for i, c in enumerate(palette):
