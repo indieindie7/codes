@@ -67,9 +67,31 @@ struct RagdollState
 	var Pawn P;
 	var float FloorZ, T;
 	var bool bFrozen;      // still watched: the engine may switch it to falling
+	// a powered ragdoll: pushed toward a death clip's pose for its first moments
+	var bool bPowered;
+	var name Clip;
+	var float ClipT;
+	var vector Start;      // where the body stood when it died, and which way it faced
+	var rotator Facing;
+	var int Space;         // how the clip's bone positions map to the world (found on the first tick, -1 = not yet)
+	var vector Prev[12];   // each part's position last tick (for its velocity)
+	var vector RestHips;   // where the hips were a moment ago, and how long they have barely moved
+	var float RestT;
 };
 var array<RagdollState> Ragdolls;
 var config float RagdollTime;
+// Powered ragdolls (physics plan step 2): a body that dies goes ragdoll at once, and for
+// PowerTime seconds each part is pushed toward where the death clip would have it (an
+// impulse per tick: a spring on the position error, damped), fading out. The body follows
+// the animation while physics handles the floor and the furniture, then goes limp.
+var config float RestMove, RestTime;   // a ragdoll whose hips move less than RestMove units for RestTime seconds is at rest
+var config bool bPoweredRagdoll;
+var config float PowerTime;
+var config float PowerSpring;      // per second squared: the pull toward the clip's pose
+var config float PowerDamp;        // per second: resists the part's motion
+var config float PowerMaxAccel;    // the push is capped (units per second squared)
+var name PowerBones[12];           // the ragdoll's parts (tools/make_ka.py, humanMale2)
+var float PowerWeights[12];        // their share of the body's mass
 
 struct DeathState
 {
@@ -320,6 +342,26 @@ event Tick(float DeltaTime)
 				continue;
 			}
 		}
+		else if (P.IsInState('Dying') && bPoweredRagdoll && Gore != None && DeathAnim(P, Deaths[i].Spot, Deaths[i].Dir, Deaths[i].Type, Deaths[i].Length, true) > 0)
+		{
+			// a powered ragdoll: limp now, pushed toward the clip's pose for a moment
+			Deaths[i].Start = P.Location;
+			Deaths[i].Facing = P.Rotation;
+			Gore.Limp(P, Deaths[i].Dir, Deaths[i].Spot);
+			if (P.Physics == PHYS_KarmaRagdoll)
+			{
+				AddRagdoll(P);
+				Ragdolls[Ragdolls.Length - 1].bPowered = true;
+				Ragdolls[Ragdolls.Length - 1].Clip = ClipName;
+				Ragdolls[Ragdolls.Length - 1].Start = Deaths[i].Start;
+				Ragdolls[Ragdolls.Length - 1].Facing = Deaths[i].Facing;
+				Ragdolls[Ragdolls.Length - 1].Space = -1;
+				if (class'ModSettings'.default.bGoreLog)
+					class'ModSettings'.static.Note("react: " $ P $ " powered ragdoll toward " $ ClipName);
+			}
+			Deaths.Remove(i, 1);
+			continue;
+		}
 		else if (P.IsInState('Dying') && bDeathAnims)
 		{
 			Deaths[i].Handoff = DeathAnim(P, Deaths[i].Spot, Deaths[i].Dir, Deaths[i].Type, Deaths[i].Length);
@@ -500,7 +542,7 @@ function string DeathZone(Pawn P, vector Spot, vector Dir, class<DamageType> Typ
 
 // a death clip (ModDeathAnims) on a body with the human skeleton: one for the hit's
 // zone, at random. Returns when the body should go limp (seconds in), 0 if none plays.
-function float DeathAnim(Pawn P, vector Spot, vector Dir, class<DamageType> Type, out float Length)
+function float DeathAnim(Pawn P, vector Spot, vector Dir, class<DamageType> Type, out float Length, optional bool bPickOnly)
 {
 	local MeshAnimation A;
 	local class<ModDeathClips> T;
@@ -551,11 +593,109 @@ function float DeathAnim(Pawn P, vector Spot, vector Dir, class<DamageType> Type
 			class'ModSettings'.static.Note("react: " $ P $ " (" $ P.Mesh $ ") has no death clip " $ ClipName);
 		return 0;
 	}
+	if (bPickOnly)
+		return Handoff;          // the clip is chosen (ClipName) and linked, not played
 	P.AnimBlendParams(1, 0.0);
 	P.PlayAnim(ClipName, 1.0, 0.1, 0);
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("react: " $ P $ " plays " $ ClipName $ " (" $ Zone $ "), limp in " $ Handoff $ " s");
 	return Handoff;
+}
+
+// where the clip puts a part at this moment, in the world: the clip's positions come in
+// one of a few spaces (found on the first tick by which one matches the body as it died)
+function vector ClipSpot(Pawn P, int i, int b, int Space)
+{
+	local vector Raw;
+
+	Raw = P.GetBoneLocationAtFrame(Ragdolls[i].Clip, PowerBones[b], Ragdolls[i].ClipT, false);
+	switch (Space)
+	{
+		case 0: return Ragdolls[i].Start + (Raw >> Ragdolls[i].Facing);                 // the body's frame
+		case 1: return Ragdolls[i].Start + Raw;                                          // unrotated, at the body
+		case 2: return Raw;                                                              // the world already
+		default: return Ragdolls[i].Start + (vect(0,0,0) + Raw.Z * vect(1,0,0) + Raw.X * vect(0,1,0) - Raw.Y * vect(0,0,1)) >> Ragdolls[i].Facing;   // mesh axes (-Y up, Z forward)
+	}
+}
+
+// a body that has barely moved for RestTime: at rest (KIsAwake() is no use here)
+function bool AtRest(int i, float Dt)
+{
+	local vector Hips;
+
+	Hips = Ragdolls[i].P.GetBoneCoords('hips').Origin;
+	if (VSize(Hips - Ragdolls[i].RestHips) > RestMove)
+	{
+		Ragdolls[i].RestHips = Hips;
+		Ragdolls[i].RestT = 0;
+		return false;
+	}
+	Ragdolls[i].RestT += Dt;
+	return Ragdolls[i].RestT >= RestTime;
+}
+
+// the powered ragdoll's push, each tick while it lasts
+function Steer(int i, float Dt)
+{
+	local Pawn P;
+	local int b, sp, Best, n;
+	local float M, Fade, Err, BestErr, E;
+	local vector Cur, Tgt, Vel, J;
+	local string Line;
+
+	P = Ragdolls[i].P;
+	if (Dt <= 0 || P == None)
+		return;
+	M = P.KGetSkelMass();
+	if (M <= 0)
+		M = 1;
+	if (Ragdolls[i].Space < 0)
+	{
+		// the first tick: the body still stands as the clip's first frame does, which tells
+		// the space the clip's positions are in
+		BestErr = 1000000000.0;
+		for (sp = 0; sp < 4; sp++)
+		{
+			Err = 0;
+			for (b = 0; b < 12; b++)
+				if (PowerBones[b] != '')
+					Err += VSize(ClipSpot(P, i, b, sp) - P.GetBoneCoords(PowerBones[b]).Origin);
+			Line = Line $ " " $ int(Err / 12);
+			if (Err < BestErr)
+			{
+				BestErr = Err;
+				Best = sp;
+			}
+		}
+		Ragdolls[i].Space = Best;
+		for (b = 0; b < 12; b++)
+			if (PowerBones[b] != '')
+				Ragdolls[i].Prev[b] = P.GetBoneCoords(PowerBones[b]).Origin;
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("react: powered " $ P $ " clip " $ Ragdolls[i].Clip $ ", mean errors by space" $ Line $ " -> space " $ Best $ ", mass " $ M);
+		return;
+	}
+	Ragdolls[i].ClipT += Dt;
+	Fade = FClamp(1 - Ragdolls[i].T / PowerTime, 0, 1);
+	P.KWake();   // a sleeping ragdoll ignores impulses
+	for (b = 0; b < 12; b++)
+	{
+		if (PowerBones[b] == '')
+			continue;
+		Cur = P.GetBoneCoords(PowerBones[b]).Origin;
+		Tgt = ClipSpot(P, i, b, Ragdolls[i].Space);
+		Vel = (Cur - Ragdolls[i].Prev[b]) / Dt;
+		Ragdolls[i].Prev[b] = Cur;
+		J = (Tgt - Cur) * PowerSpring - Vel * PowerDamp;
+		if (VSize(J) > PowerMaxAccel)
+			J = Normal(J) * PowerMaxAccel;
+		J = J * (Fade * M * PowerWeights[b] * Dt);
+		P.KAddImpulse(J, Cur, PowerBones[b]);
+		E += VSize(Tgt - Cur);
+		n++;
+	}
+	if (class'ModSettings'.default.bGoreLog && n > 0 && int(Ragdolls[i].T * 10) != int((Ragdolls[i].T + Dt) * 10))
+		class'ModSettings'.static.Note("react: powered " $ P $ " t " $ Ragdolls[i].T $ " mean error " $ int(E / n) $ " fade " $ Fade);
 }
 
 function AddRagdoll(Pawn P)
@@ -608,6 +748,8 @@ function WatchRagdolls(float DeltaTime)
 		}
 		if (Ragdolls[i].bFrozen || P.Physics != PHYS_KarmaRagdoll)
 			continue;
+		if (Ragdolls[i].bPowered && Ragdolls[i].T < PowerTime)
+			Steer(i, DeltaTime);
 		// testing: how the ragdoll falls, twice a second
 		if (class'ModSettings'.default.bGoreLog && int(Ragdolls[i].T * 2) != int((Ragdolls[i].T + DeltaTime) * 2))
 			class'ModSettings'.static.Note("react: ragdoll " $ P $ " t " $ Ragdolls[i].T $ " hips " $ int(P.GetBoneCoords('hips').Origin.Z - Ragdolls[i].FloorZ) $ " head " $ int(P.GetBoneCoords('head').Origin.Z - Ragdolls[i].FloorZ) $ " over floor, awake " $ P.KIsAwake() $ "; knees " $ Hinge(P, 'leftUpLeg', 'leftLeg', 'leftFoot') $ " " $ Hinge(P, 'rightUpLeg', 'rightLeg', 'rightFoot') $ ", elbows " $ Hinge(P, 'leftArm', 'leftForeArm', 'lefthand') $ " " $ Hinge(P, 'rightArm', 'rightForeArm', 'righthand'));
@@ -618,7 +760,7 @@ function WatchRagdolls(float DeltaTime)
 		// (kneeling), and its bones read wrong for a tick or two
 		if (Low < Ragdolls[i].FloorZ + 2 && Ragdolls[i].T > 0.3)
 			Why = "at its floor";
-		else if (Ragdolls[i].T > 0.8 && !P.KIsAwake())
+		else if (Ragdolls[i].T > 0.8 && AtRest(i, DeltaTime))
 			Why = "at rest";
 		else if (Ragdolls[i].T > RagdollTime)
 			Why = "time";
@@ -658,6 +800,36 @@ defaultproperties
      FloorBones(6)=lefthand
      FloorBones(7)=righthand
      DeathAnimHandoff=0.900000
+     RestMove=6.000000
+     RestTime=0.400000
+     PowerTime=0.700000
+     PowerSpring=80.000000
+     PowerDamp=12.000000
+     PowerMaxAccel=3000.000000
+     PowerBones(0)=hips
+     PowerBones(1)=spine1
+     PowerBones(2)=Spine3
+     PowerBones(3)=head
+     PowerBones(4)=leftArm
+     PowerBones(5)=leftForeArm
+     PowerBones(6)=rightArm
+     PowerBones(7)=rightForeArm
+     PowerBones(8)=leftUpLeg
+     PowerBones(9)=leftLeg
+     PowerBones(10)=rightUpLeg
+     PowerBones(11)=rightLeg
+     PowerWeights(0)=0.166667
+     PowerWeights(1)=0.142857
+     PowerWeights(2)=0.166667
+     PowerWeights(3)=0.071429
+     PowerWeights(4)=0.035714
+     PowerWeights(5)=0.023810
+     PowerWeights(6)=0.035714
+     PowerWeights(7)=0.023810
+     PowerWeights(8)=0.107143
+     PowerWeights(9)=0.059524
+     PowerWeights(10)=0.107143
+     PowerWeights(11)=0.059524
      MaxRagdolls=12
      KarmaTimeScale=1.000000
      RagdollTimeScale=0.850000
