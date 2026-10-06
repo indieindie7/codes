@@ -97,8 +97,31 @@ literature:
 4. The result, times the step length and divided by the cell size, is subtracted from one cell
    and added to the other.
 
-In other words: **an explicit, first-order Godunov finite-volume shallow-water solver with an
-HLL Riemann solver**, exactly what the GPU shallow-water papers of the late 2000s describe
+For the record, the exact step (per face between cells L and R, h depth, b floor, u normal
+and v tangential velocity, c = sqrt(g h), k = 1 / max(S_R - S_L, 1e-10)):
+
+```
+hL* = max(0, hL + min(bL - bR, 0))          hR* = max(0, hR + min(bR - bL, 0))
+u*  = (uL + uR)/2 + (cL - cR)               c*  = (cL + cR)/2 + (uL - uR)/4
+SL  = min(uL - cL, u* - |c*|, 0)            SR  = max(uR + cR, u* + |c*|, 0)
+qL  = hL* uL                                qR  = hR* uR
+F_h  = k (qL SR - qR SL + (hR* - hL*) SL SR)
+F_hu = k ((uL qL + g/2 hL*^2) SR - (uR qR + g/2 hR*^2) SL + (qR - qL) SL SR)
+F_hv = k (vL qL SR - vR qR SL + (hR* vR - hL* vL) SL SR)
+sL = g/2 (hL^2 - hL*^2)                     sR = g/2 (hR^2 - hR*^2)
+hR   += (dt/dx) F_h            hL   -= (dt/dx) F_h
+(hu)R += (dt/dx) (F_hu + sR)   (hu)L -= (dt/dx) (F_hu + sL)
+(hv)R += (dt/dx) F_hv          (hv)L -= (dt/dx) F_hv
+```
+
+with dt = min(time left, 0.5 dx / max(|u| + c + |v|)) (CFL 0.5), momentum clamped to 1000 x
+depth, and a per-cell wall flag that zeroes the face flux and leaves the cell its own
+hydrostatic pressure g/2 h^2 (a reflecting wall). The step is run twice: a half step into a
+scratch buffer, then a full step using the half-step velocities and wave speeds (the midpoint
+method, second order in time).
+
+In other words: **a Godunov finite-volume shallow-water solver with an HLL Riemann solver,
+first order in space and second order in time**, exactly what the GPU shallow-water papers of the late 2000s describe
 (Kurganov-Petrova and Brodtkorb-style schemes). It is robust, it conserves water, it handles
 dry floors, and a few hundred lines of SSE are enough. The trade-off is that first-order
 schemes are diffusive: waves flatten quicker than in reality, which in a game reads as calm

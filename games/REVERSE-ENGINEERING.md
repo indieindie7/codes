@@ -181,6 +181,39 @@ drop from a throwaway D3D device.
     4 cells wide, with a 1000 x depth momentum cap. It is the same family as the GPU
     shallow-water papers (Brodtkorb / Kurganov-Petrova style, see bioshock-mod-ideas.md): a
     direct model for a blood-pool or flooding mod, ~60 lines of plain C per pass.
+  - **The flux formula, read exactly (2026-10-06, lines 1075-1215 of the decompile for the x
+    direction; y is the same with u and v swapped; `FUN_00c19d00` fills the constants):**
+    per face between cell L (x) and R (x+1), with h the depth, b the bed (`[0x15]`), u, v the
+    velocities (`[0x14]`, `[0x12]`), c = sqrt(g h) (`[0x13]`), g/2 = `[0x74]`, 1/dx = `[0x78]` =
+    `[7]` = 1/20, wall = the per-cell grid `[0x19]` (1/dx on a wall cell, 0 otherwise):
+    1. `hL* = max(0, hL + min(bL - bR, 0))`, `hR* = max(0, hR + min(bR - bL, 0))`
+       (Audusse 2004 hydrostatic reconstruction; `[0x84]` = 0 is the clamp).
+    2. `u* = (uL + uR)/2 + (cL - cR)`, `c* = (cL + cR)/2 + (uL - uR)/4` (`[0x7c]` = 0.5, `[0x80]` =
+       0.25: Toro's two-rarefaction estimate), `SL = min(uL - cL, u* - |c*|, 0)`,
+       `SR = max(uR + cR, u* + |c*|, 0)`, `k = 1 / max(SR - SL, 1e-10)` (`[0x88]`).
+    3. HLL fluxes on the reconstructed states, `qL = hL* uL`, `qR = hR* uR`:
+       `F_h  = k (qL SR - qR SL + (hR* - hL*) SL SR)`
+       `F_hu = k ((uL qL + g/2 hL*^2) SR - (uR qR + g/2 hR*^2) SL + (qR - qL) SL SR)`
+       `F_hv = k ((vL qL) SR - (vR qR) SL + (hR* vR - hL* vL) SL SR)`
+    4. Hydrostatic source per side: `sL = g/2 (hL^2 - hL*^2)`, `sR = g/2 (hR^2 - hR*^2)`.
+    5. Update, with `open = 1/dx - wall` (0 across a wall) and `a = dt/dx` (`dt` = min(time
+       left, 0.5 dx / max(|u| + c + |v|)) over the sheet: `[8]` = 0.5 is the CFL number, `[4]` = 20
+       the cell):
+       `hR += a open F_h`, `hL -= a open F_h`
+       `(hu)R += a (wall g/2 hR^2 + open (F_hu + sR))`, `(hu)L -= a (wall g/2 hL^2 + open (F_hu + sL))`
+       `(hv)R += a open F_hv`, `(hv)L -= a open F_hv`
+       so at a wall the mass and transverse fluxes vanish and the momentum feels the cell's own
+       hydrostatic pressure: a reflecting boundary. Edge cells use an `[0x84]`/`[0x78]` mask so
+       nothing leaves the sheet.
+    6. Time stepping: the sheet's `[0x17]` = 2 selects a two-stage step: the first pass uses
+       `a = 0.5 dt/dx` into the other buffer (`[*sheet] ^ 1`), velocities and wave speeds are
+       recomputed from that half-step state, and a second pass applies the full `dt/dx`:
+       the midpoint (second-order Runge-Kutta) method, first order in space (no slope
+       reconstruction). Momentum is clamped to 1000 x depth before each pass.
+    So: HLL / hydrostatic-reconstruction shallow water, first order in space, second order in
+    time, CFL 0.5, reflecting walls, SSE 4 cells wide. Nothing exotic; it is the scheme of
+    Audusse et al. with Toro's speeds, which is also what the open-source shallow-water codes
+    use.
   - So Hydrophobia's water IS a real fluid simulation, but 2D: shallow-water per room surface
     (height + momentum, sub-stepped by CFL, SSE), fed by region levels (what pours in or out)
     and disturbed by objects; rooms exchange water through the region volumes, not through the
