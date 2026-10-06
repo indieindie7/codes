@@ -124,6 +124,16 @@ txt = (txt[:i] + "".join("Props[%d]=%s\n" % (k, p) for k, p in enumerate(props[:
        + "".join("Cards[%d]=%s\n" % (k, c) for k, c in enumerate(cards[:64])) + txt[i:])
 open(INI, "w", newline="").write(txt.replace("\n", "\r\n"))
 print(len(props) if WRITE_PROPS else 0, "props,", len(cards), "cards ->", INI, "(shift %.0f)" % SHIFT)
+if LAYOUT:
+    _L = _json.load(open(o["layout"]))
+    npyl = 0
+    for c in _L.get("connections", []):
+        for x, y, deg in c.get("relays", []):
+            actor("AvalonSM.Liandri.Pylon", x, y, deg, 1.0, 0.0)
+            props.append("AvalonSM.Liandri.Pylon %.0f %.0f %.0f 1.0 0 0 0 0" % (x, y, deg))
+            npyl += 1
+    if npyl:
+        print(npyl, "pylons along the power lines")
 if T3D:
     open(T3D, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
     print(len(actors), "StaticMeshActors ->", T3D)

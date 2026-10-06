@@ -166,45 +166,51 @@ def populate(name, t3d, layout_json, base):
     session(job)
 
 
-for seed in seeds:
-    name = "%s%d" % (NAME, seed)
-    base = os.path.join(OUT, "isl%d" % seed)
-    print("\n=== seed", seed, "->", name, flush=True)
-    if GEN == "form":
-        # the terrain tool forms and erodes the island itself (sketch -> stream power -> droplets -> thermal)
-        run(["py", os.path.join(TOOLS, "island_form.py"), seed, TEMPLATE, base + "_e.bmp", "png=" + base + "_sketch.png", "style=" + STYLE])
-    else:
-        run(["py", os.path.join(TOOLS, "random_island.py"), seed, TEMPLATE, base + ".bmp"])
-        run(["py", TERRAIN, "erode", base + ".bmp", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02",
-             "--seed", seed])
-        restore_sea(base + ".bmp", base + "_e.bmp", base + "_e.bmp")
-    # the town: anchors + interest-map seeding + roads + Voronoi drift (layout.py), then pads under it
-    layout = base + "_layout.json"
-    run(["py", os.path.join(TOOLS, "layout.py"), base + "_e.bmp", layout, "seed=%d" % seed, "shift=" + SHIFT, "png=" + base + "_map.png"])
-    run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout])
-    run(["py", os.path.join(TOOLS, "terrain_apply.py"), base + "_ec.bmp", name])
-    # the buildings go into the MAP as StaticMeshActors (ground Z from the final heightmap); the ini keeps the cards
-    t3d = base + "_actors.t3d"
-    run(["py", os.path.join(TOOLS, "export_mutator.py"), "shift=" + SHIFT, "layout=" + layout, "t3d=" + t3d,
-         "heightmap=" + base + "_ec.bmp", "props=0"])
-    populate(name, t3d, layout, base)
-    enable_map(name)
-    if not PILOT:
-        print("pilot skipped (pilot=0); editor pictures ->", base + "_ed_*.png", flush=True)
-        continue
-    script = os.path.join(PILOT, "scripts", "cards_binder_rand%d.txt" % seed)
-    open(script, "w").write(pilot_script(name, layout))
-    run(["py", os.path.join(PILOT, "u2pilot.py"), script, "--background"], cwd=PILOT)
-    runs = sorted(d for d in os.listdir(os.path.join(PILOT, "runs")) if d.endswith("cards_binder_rand%d" % seed))
-    if runs:
-        sheet = os.path.join(PILOT, "runs", runs[-1], "sheet.png")
-        if os.path.exists(sheet):
-            from PIL import Image
-            s, m = Image.open(sheet), Image.open(base + "_map.png")
-            m = m.resize((s.height, s.height))
-            board = Image.new("RGB", (s.width + m.width + 8, s.height), (20, 20, 20))
-            board.paste(m, (0, 0))
-            board.paste(s, (m.width + 8, 0))
-            board.save(os.path.join(OUT, "Rand%d_sheet.png" % seed))
-            print("sheet ->", os.path.join(OUT, "Rand%d_sheet.png" % seed), flush=True)
-print("done", seeds)
+
+def main():
+    for seed in seeds:
+        name = "%s%d" % (NAME, seed)
+        base = os.path.join(OUT, "isl%d" % seed)
+        print("\n=== seed", seed, "->", name, flush=True)
+        if GEN == "form":
+            # the terrain tool forms and erodes the island itself (sketch -> stream power -> droplets -> thermal)
+            run(["py", os.path.join(TOOLS, "island_form.py"), seed, TEMPLATE, base + "_e.bmp", "png=" + base + "_sketch.png", "style=" + STYLE])
+        else:
+            run(["py", os.path.join(TOOLS, "random_island.py"), seed, TEMPLATE, base + ".bmp"])
+            run(["py", TERRAIN, "erode", base + ".bmp", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02",
+                 "--seed", seed])
+            restore_sea(base + ".bmp", base + "_e.bmp", base + "_e.bmp")
+        # the town: anchors + interest-map seeding + roads + Voronoi drift (layout.py), then pads under it
+        layout = base + "_layout.json"
+        run(["py", os.path.join(TOOLS, "layout.py"), base + "_e.bmp", layout, "seed=%d" % seed, "shift=" + SHIFT, "png=" + base + "_map.png"])
+        run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout])
+        run(["py", os.path.join(TOOLS, "terrain_apply.py"), base + "_ec.bmp", name])
+        # the buildings go into the MAP as StaticMeshActors (ground Z from the final heightmap); the ini keeps the cards
+        t3d = base + "_actors.t3d"
+        run(["py", os.path.join(TOOLS, "export_mutator.py"), "shift=" + SHIFT, "layout=" + layout, "t3d=" + t3d,
+             "heightmap=" + base + "_ec.bmp", "props=0"])
+        populate(name, t3d, layout, base)
+        enable_map(name)
+        if not PILOT:
+            print("pilot skipped (pilot=0); editor pictures ->", base + "_ed_*.png", flush=True)
+            continue
+        script = os.path.join(PILOT, "scripts", "cards_binder_rand%d.txt" % seed)
+        open(script, "w").write(pilot_script(name, layout))
+        run(["py", os.path.join(PILOT, "u2pilot.py"), script, "--background"], cwd=PILOT)
+        runs = sorted(d for d in os.listdir(os.path.join(PILOT, "runs")) if d.endswith("cards_binder_rand%d" % seed))
+        if runs:
+            sheet = os.path.join(PILOT, "runs", runs[-1], "sheet.png")
+            if os.path.exists(sheet):
+                from PIL import Image
+                s, m = Image.open(sheet), Image.open(base + "_map.png")
+                m = m.resize((s.height, s.height))
+                board = Image.new("RGB", (s.width + m.width + 8, s.height), (20, 20, 20))
+                board.paste(m, (0, 0))
+                board.paste(s, (m.width + 8, 0))
+                board.save(os.path.join(OUT, "Rand%d_sheet.png" % seed))
+                print("sheet ->", os.path.join(OUT, "Rand%d_sheet.png" % seed), flush=True)
+    print("done", seeds)
+
+
+if __name__ == "__main__":
+    main()

@@ -44,3 +44,12 @@ Rules the checker enforces (check_binder.py):
 3. a building's doors face the side its users come from (the checker suggests the side from the
    routine's previous place); 4. an abandoned building has wear >= 0.6 and lit: no; 5. the growth
    rings make sense: a core building is nearer the old pad than a boom building of the same kind.
+
+Systems keys (optional, read by tools/systems.py; defaults by id/kind live in that file):
+
+    provides: ore               resources the building puts into the town: ore power water fuel cooling workers goods comms supply
+    needs: power water workers  resources it must get from a provider within reach (ore 220 m conveyor, power 350 m cable,
+                                water 300 m pipe, fuel 180 m, cooling 160 m, workers/goods/supply by road 450-500 m, comms 1500 m)
+
+A layout is a town only when every core need (ore, power, water, workers) is met; systems.py routes the
+connections and writes them into the layout JSON for the build step.

@@ -22,6 +22,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import binder  # noqa
+import systems  # noqa   (provides/needs: the systemic relations that drive placement)
 
 src, dst = sys.argv[1], sys.argv[2]
 o = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)
@@ -336,6 +337,21 @@ def interest_map(bid, b):
         d = dist_to(name)
         if d is not None:
             terms.append((wgt, attract(d, lmin, l0, lmax)))
+    # systemic relations: every need pulls the building toward a placed provider, and forbids beyond reach
+    prov, need = systems.spec_of(bid, b)
+    for res in sorted(need):
+        carrier, reach = systems.RES[res]
+        pts = [(p["x"], p["y"]) for pid, p in placed.items() if res in systems.spec_of(pid, buildings[pid])[0]]
+        if not pts:
+            continue
+        d = np.full((N, N), np.inf)
+        for x, y in pts:
+            d = np.minimum(d, np.hypot(WX - x, WY - y) / M)
+        lmin = r_m + 12
+        v = np.where(d < lmin, -1.0, np.where(d <= reach * 0.45, 1.0, np.clip(1 - (d - reach * 0.45) / (reach * 0.55), 0, 1)))
+        if HARD_NEAR:
+            v = np.where(d > reach, -1.0, v)
+        terms.append((2.0 if res in systems.CORE else 1.0, v))
     for name, mind, best, wgt in spec.get("avoid", []):
         d = dist_to(name)
         if d is not None:
@@ -481,6 +497,24 @@ for bid, b in buildings.items():
 order = [bid for bid in buildings if "at" in buildings[bid] and bid not in placed]
 order.sort(key=lambda i: (LAYERS.get(buildings[i].get("layer", "boom"), 1),
                           PRIORITY.index(i) if i in PRIORITY else 99, i))
+# providers before consumers within the same layer (the generator house before the halls it powers)
+SPEC = {i: systems.spec_of(i, buildings[i]) for i in buildings}
+ordered, pending = [], list(order)
+while pending:
+    progressed = False
+    for i in list(pending):
+        _, need = SPEC[i]
+        providers = [j for j in pending if j != i and any(r in SPEC[j][0] for r in need) and
+                     LAYERS.get(buildings[j].get("layer", "boom"), 1) <= LAYERS.get(buildings[i].get("layer", "boom"), 1)]
+        # a provider that itself needs something from i (generator <-> fuel depot) does not block
+        providers = [j for j in providers if not any(r in SPEC[i][0] for r in SPEC[j][1])]
+        if not providers:
+            ordered.append(i)
+            pending.remove(i)
+            progressed = True
+    if not progressed:
+        ordered.append(pending.pop(0))
+order = ordered
 deferred = []
 for bid in order:
     b = buildings[bid]
