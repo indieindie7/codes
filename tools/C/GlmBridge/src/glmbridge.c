@@ -50,6 +50,12 @@ static GetSuperFn pGetSuper;
 static GetNameFn pGetName;
 static StaticWindowGetObjectFn pWindowGetObject;
 static LogAddTargetFn pLogAddTarget;
+typedef void *(__cdecl *GetWorkspaceFn)(void);
+typedef const char *(TC *ItemGetNameFn)(void *item);
+typedef int (__cdecl *WindowCommandfFn)(void *self, const char *fmt, ...);   /* virtual, varargs: this on the stack */
+static WindowCommandfFn pWindowCommandf;
+static GetWorkspaceFn pGetWorkspace;
+static ItemGetNameFn pItemGetName;
 static HMODULE g_glm;
 static BYTE *g_glmLo, *g_glmHi;
 
@@ -181,23 +187,30 @@ static int InGlm(void *p) { return (BYTE *)p >= g_glmLo && (BYTE *)p < g_glmHi; 
 static void *ObjectOf(HWND h)
 {
 	void *obj, *vt;
+	char cls[64];
 	if (!h || !IsWindow(h)) return NULL;
+	/* Golem keeps a WWindow in GWL_USERDATA of its own windows and of the standard controls it wraps;
+	   anything else there is checked for looking like a GLM object before it is touched */
+	(void)cls;
 	obj = pWindowGetObject(h);
 	if (!obj || IsBadReadPtr(obj, 8)) return NULL;
 	vt = *(void **)obj;
-	if (!InGlm(vt)) return NULL;
+	if (!InGlm(vt) || IsBadReadPtr(vt, 16) || !InGlm(((void **)vt)[3])) return NULL;
 	return obj;
 }
 static void *ClassOf(void *obj)
 {
 	GetClassFn getClass = (GetClassFn)(*(void ***)obj)[3];   /* RObject vtable slot 3 = GetClass */
+	void *c;
 	if (!InGlm((void *)getClass)) return NULL;
-	return getClass(obj);
+	c = getClass(obj);
+	if (!c || IsBadReadPtr(c, 0x40)) return NULL;
+	return c;
 }
 static const char *ClassName(void *rclass)
 {
 	char *n = rclass ? pGetName(rclass) : NULL;
-	return n ? n : "?";
+	return n && !IsBadReadPtr(n, 1) ? n : "?";
 }
 
 /* --- requests --- */
@@ -236,10 +249,13 @@ static void ListWindow(HWND h, int depth)
 {
 	char cls[64], title[128], line[512];
 	void *obj = ObjectOf(h);
+	cls[0] = title[0] = 0;
 	GetClassNameA(h, cls, sizeof(cls));
-	GetWindowTextA(h, title, sizeof(title));
-	wsprintfA(line, "%*s%08X %s '%s'%s%s", depth * 2, "", (unsigned)(ULONG_PTR)h, cls, title,
-	          obj ? "  object " : "", obj ? ClassName(ClassOf(obj)) : "");
+	if (GetWindowThreadProcessId(h, NULL) == GetCurrentThreadId())
+		GetWindowTextA(h, title, sizeof(title));   /* another thread's window could deadlock us */
+	title[60] = 0;
+	wsprintfA(line, "%s%08X %s '%s'%s%s", depth ? "  " : "", (unsigned)(ULONG_PTR)h, cls, title,
+	          obj ? "  object " : "", obj ? ClassName(ClassOf(obj)) : "");   /* (wsprintf has no '*' width) */
 	CapLine(line);
 }
 static BOOL CALLBACK ListChild(HWND h, LPARAM depth) { ListWindow(h, (int)depth); return TRUE; }
@@ -273,10 +289,138 @@ static void ListCommands(void *obj)
 	}
 }
 
+/* every GLM class with its command table: GlmLib exports one static "sClass" pointer per class
+   (?sClass@<Class>@GLM@@...), so the export table is a complete class list */
+static void ListClasses(int onlyWithCommands)
+{
+	BYTE *base = (BYTE *)g_glm;
+	IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+	IMAGE_DATA_DIRECTORY *dir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+	IMAGE_EXPORT_DIRECTORY *ex = (IMAGE_EXPORT_DIRECTORY *)(base + dir->VirtualAddress);
+	DWORD *names = (DWORD *)(base + ex->AddressOfNames), *funcs = (DWORD *)(base + ex->AddressOfFunctions);
+	WORD *ords = (WORD *)(base + ex->AddressOfNameOrdinals);
+	DWORD i;
+	int classes = 0, withCmds = 0;
+	char line[512];
+	for (i = 0; i < ex->NumberOfNames; i++)
+	{
+		const char *nm = (const char *)(base + names[i]);
+		void **slot;
+		void *c;
+		unsigned long k, n;
+		if (strncmp(nm, "?sClass@", 8)) continue;
+		slot = (void **)(base + funcs[ords[i]]);
+		if (IsBadReadPtr(slot, 4)) continue;
+		c = *slot;
+		classes++;
+		if (!c || IsBadReadPtr(c, 0x40)) { if (!onlyWithCommands) { wsprintfA(line, "%s: class not created yet", nm + 8); CapLine(line); } continue; }
+		n = pGetCommandCount(c);
+		if (onlyWithCommands && !n) continue;
+		withCmds += n > 0;
+		wsprintfA(line, "class %s (%s): %lu commands", ClassName(c), pGetSuper(c) ? ClassName(pGetSuper(c)) : "-", n);
+		CapLine(line);
+		for (k = 0; k < n; k++)
+		{
+			BYTE *cmd = (BYTE *)pGetCommandIndexed(c, k);
+			const char *name = cmd && !IsBadReadPtr(cmd, 0x30) ? *(const char **)cmd : NULL;
+			wsprintfA(line, "  %s (%d params)", name && !IsBadReadPtr(name, 1) ? name : "?", cmd ? *(int *)(cmd + 0x24) : -1);
+			CapLine(line);
+		}
+	}
+	wsprintfA(line, "%d classes exported, %d with commands", classes, withCmds);
+	CapLine(line);
+}
+
+/* --- the workspace tree (RGemTreeItem, layout read from GemItemFindChildNamed / GemItemSetParent):
+   +0x24 = head of the child list; list nodes are {next, prev, item}, the head's item is NULL --- */
+static void *FirstChild(void *item, void **node)
+{
+	void **head = (void **)((BYTE *)item + 0x24);
+	void **n = (void **)head[0];
+	if (!n || IsBadReadPtr(n, 12) || !n[2]) return NULL;
+	*node = n;
+	return n[2];
+}
+static void *NextChild(void **node)
+{
+	void **n = (void **)((void **)*node)[0];
+	if (!n || IsBadReadPtr(n, 12) || !n[2]) return NULL;
+	*node = n;
+	return n[2];
+}
+static const char *ItemName(void *item)
+{
+	const char *n = item && !IsBadReadPtr(item, 0x40) ? pItemGetName(item) : NULL;
+	return n && !IsBadReadPtr(n, 1) ? n : "?";
+}
+static void PrintTree(void *item, int depth, int maxDepth, char *path)
+{
+	void *node, *child;
+	char line[1024];
+	size_t len = lstrlenA(path);
+	wsprintfA(line, "%s  [%s]", path[0] ? path : "/", ClassName(ClassOf(item)));
+	CapLine(line);
+	if (depth >= maxDepth) return;
+	for (child = FirstChild(item, &node); child; child = NextChild(&node))
+	{
+		if (len + lstrlenA(ItemName(child)) + 2 > 900) continue;
+		lstrcatA(path, "/");
+		lstrcatA(path, ItemName(child));
+		PrintTree(child, depth + 1, maxDepth, path);
+		path[len] = 0;
+	}
+}
+/* "/Folder/File.gem/Object" -> the item; "/" = the workspace */
+static void *ItemAt(const char *path, const char **rest)
+{
+	void *item = pGetWorkspace ? pGetWorkspace() : NULL;
+	const char *p = path;
+	if (!item) return NULL;
+	while (*p == '/')
+	{
+		const char *e;
+		char name[256];
+		void *node, *child, *hit = NULL;
+		size_t n;
+		p++;
+		for (e = p; *e && *e != '/' && *e != ' '; e++) ;
+		n = e - p;
+		if (!n) break;
+		if (n > 255) n = 255;
+		memcpy(name, p, n); name[n] = 0;
+		for (child = FirstChild(item, &node); child; child = NextChild(&node))
+			if (!lstrcmpiA(ItemName(child), name)) { hit = child; break; }
+		if (!hit) { *rest = NULL; return NULL; }
+		item = hit;
+		p = e;
+	}
+	while (*p == ' ') p++;
+	*rest = p;
+	return item;
+}
+
 static int RunBang(const char *req)
 {
+	if (!_strnicmp(req, "!tree", 5))
+	{
+		char path[1024] = "";
+		void *ws = pGetWorkspace ? pGetWorkspace() : NULL;
+		int depth = req[5] == ' ' ? atoi(req + 6) : 3;
+		if (!ws) { CapLine("bridge: no workspace"); return 0; }
+		PrintTree(ws, 0, depth > 0 ? depth : 3, path);
+		return 1;
+	}
+	if (!lstrcmpiA(req, "!classes")) { ListClasses(1); return 1; }
+	if (!lstrcmpiA(req, "!classes all")) { ListClasses(0); return 1; }
 	if (!lstrcmpiA(req, "!ping")) { CapLine("pong"); return 1; }
-	if (!lstrcmpiA(req, "!quit")) { PostMessageW(g_main, WM_CLOSE, 0, 0); CapLine("closing"); return 1; }
+	if (!lstrcmpiA(req, "!quit"))
+	{
+		/* "Are you sure you want to exit?" must get Yes, or Golem stays and its settings never save */
+		InterlockedExchange(&g_answerYes, 1);
+		PostMessageW(g_main, WM_CLOSE, 0, 0);
+		CapLine("closing");
+		return 1;
+	}
 	if (!lstrcmpiA(req, "!answer yes")) { InterlockedExchange(&g_answerYes, 1); CapLine("yes"); return 1; }
 	if (!lstrcmpiA(req, "!answer no")) { InterlockedExchange(&g_answerYes, 0); CapLine("no"); return 1; }
 	if (!lstrcmpiA(req, "!windows")) { EnumWindows(ListTop, 0); return 1; }
@@ -312,12 +456,34 @@ static void RunRequest(void)
 		g_rc = RunBang(req);
 	else
 	{
-		if (req[0] == '@')
+		obj = NULL;
+		if (!_strnicmp(req, "win:", 4))
 		{
-			target = (HWND)(ULONG_PTR)strtoul(req + 1, (char **)&req, 16);
+			/* a WINDOW command: what the menus run (WClass command handlers up the window's class chain) */
+			req += 4;
 			while (*req == ' ') req++;
+			obj = ObjectOf(target);
+			if (!obj) { CapLine("bridge: no Golem object behind the main window"); g_rc = 0; goto done; }
+			g_rc = pWindowCommandf(obj, "%s", req);
+			goto done;
 		}
-		obj = ObjectOf(target);
+		if (req[0] == '/')
+		{
+			const char *rest;
+			obj = ItemAt(req, &rest);
+			if (!obj) { CapLine("bridge: no such tree item"); g_rc = 0; goto done; }
+			if (!_strnicmp(rest, "!commands", 9)) { ListCommands(obj); g_rc = 1; goto done; }
+			req = rest;
+		}
+		else
+		{
+			if (req[0] == '@')
+			{
+				target = (HWND)(ULONG_PTR)strtoul(req + 1, (char **)&req, 16);
+				while (*req == ' ') req++;
+			}
+			obj = ObjectOf(target);
+		}
 		if (!obj) { CapLine("bridge: no Golem object behind the target window"); g_rc = 0; }
 		else
 		{
@@ -326,6 +492,7 @@ static void RunRequest(void)
 			/* out.s is a small CRT buffer owned by the string; left to the process (no exported destructor) */
 		}
 	}
+done:
 	InterlockedExchange(&g_capturing, 0);
 	InterlockedExchange(&g_state, 0);
 	SetEvent(g_done);
@@ -436,8 +603,11 @@ static DWORD WINAPI Main(LPVOID unused)
 	pGetName = (GetNameFn)GetProcAddress(g_glm, "?GetName@RClass@GLM@@QAEPADXZ");
 	pWindowGetObject = (StaticWindowGetObjectFn)GetProcAddress(g_glm, "?StaticWindowGetObject@WWindow@GLM@@SAPAV12@PAX@Z");
 	pLogAddTarget = (LogAddTargetFn)GetProcAddress(g_glm, "?LOG_AddTarget@GLM@@YAKPAVILogTarget@1@@Z");
+	pGetWorkspace = (GetWorkspaceFn)GetProcAddress(g_glm, "?ED_GetWorkspace@GLM@@YAPAVRGemWorkspaceFolder@1@XZ");
+	pWindowCommandf = (WindowCommandfFn)GetProcAddress(g_glm, "?WindowCommandf@WWindow@GLM@@UAA_NPADZZ");
+	pItemGetName = (ItemGetNameFn)GetProcAddress(g_glm, "?GemItemGetName@RGemTreeItem@GLM@@UAEPBDXZ");
 	if (!pExecuteCommand || !pGetCommandNamed || !pGetCommandCount || !pGetCommandIndexed || !pGetSuper || !pGetName
-	    || !pWindowGetObject || !pLogAddTarget)
+	    || !pWindowGetObject || !pLogAddTarget || !pGetWorkspace || !pItemGetName || !pWindowCommandf)
 	{ BLog("GlmLib.dll exports not found"); return 1; }
 	Sleep(2000);
 	g_logObj[0] = (void *)g_logVtbl;
