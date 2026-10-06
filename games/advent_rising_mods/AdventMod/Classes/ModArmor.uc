@@ -32,7 +32,7 @@ struct ArmorState
 	var float Plate[6];     // points left: head, torso, left arm, right arm, left leg, right leg
 	var float Max[6];
 	var byte Broken[6];
-	var Material Top;       // the skin chain's top: the plain skin with every broken plate's flesh blended in
+	var Material Top;       // the plain skin the flesh is blended over
 	var byte bSkinned;      // the chain is on the body
 };
 var array<ArmorState> Bodies;
@@ -267,14 +267,16 @@ function Plate(Pawn P, int Set, vector HitLocation, vector Dir)
 		class'ModSettings'.static.Note("armor: plate " $ Part $ " flies from " $ Bones[LastBone]);
 }
 
-// the flesh under the plate: a Combiner stage blends the meat texture over the skin through
-// the region's mask (ModArmorTextures, from the mesh's own UVs); each broken plate adds a
-// stage on top of the last. The chain goes into skin slot 0, or under the blood coat's
-// multiply if the body wears one (and a coat made later takes the chain as its plain skin).
+// the flesh under the broken plates: ONE Combiner stage blends the meat texture over the
+// plain skin through the mask of the set of broken plates (ModArmorTextures, from the mesh's
+// own UVs; the renderer draws a combiner inside a combiner as a flat colour, so one stage
+// and a pre-combined mask). It goes into skin slot 0; a blood coat on the body comes off
+// first (its multiply would be a second stage), and the coat won't come back on a
+// Combiner skin (ModBloodCoat.PlainOf).
 function Expose(int b, int r, int Set)
 {
 	local Pawn P;
-	local int i, Entry;
+	local int i, k, Entry, Bits;
 	local Material Base, Flesh;
 	local Combiner C;
 	local ModBloodCoat Coat;
@@ -285,12 +287,17 @@ function Expose(int b, int r, int Set)
 	for (i = 0; i < T.default.Sets.Length; i++)
 		if (T.default.Sets[i].Set == class'ModGibParts'.default.Sets[Set].Name)
 			break;
-	if (i >= T.default.Sets.Length || T.default.Sets[i].Masks[r] == None)
+	if (i >= T.default.Sets.Length)
+		return;
+	for (k = 0; k < 6; k++)
+		if (Bodies[b].Broken[k] != 0)
+			Bits = Bits | T.static.RegionBit(k);
+	if (Bits <= 0 || Bits > 15 || T.default.Sets[i].Combos[Bits] == None)
 		return;
 	Coat = Gore.CoatOf(P);
 	if (Bodies[b].Top == None)
 	{
-		// the plain skin: what the body wears, or the mesh's own material (ModSkins)
+		// the plain skin: what the body wears (under its coat), or the mesh's own material (ModSkins)
 		if (Coat != None && Coat.Mix[0] != None)
 			Base = Coat.Mix[0].Material1;
 		else if (P.Skins.Length > 0 && P.Skins[0] != None)
@@ -309,6 +316,8 @@ function Expose(int b, int r, int Set)
 		}
 		Bodies[b].Top = Base;
 	}
+	if (Coat != None)
+		Coat.Destroy();               // puts the body's own skins back; ours goes on over them
 	if (Gore.BloodKind(P) == 2)
 		Flesh = Gore.AlienMeatTex;
 	else
@@ -316,17 +325,13 @@ function Expose(int b, int r, int Set)
 	C = new(None) class'Combiner';
 	C.Material1 = Bodies[b].Top;
 	C.Material2 = Flesh;
-	C.Mask = T.default.Sets[i].Masks[r];
+	C.Mask = T.default.Sets[i].Combos[Bits];
 	C.CombineOperation = CO_AlphaBlend_With_Mask;
 	C.AlphaOperation = AO_Use_Alpha_From_Material1;
-	Bodies[b].Top = C;
-	if (Coat != None && Coat.Mix[0] != None)
-		Coat.Mix[0].Material1 = C;
-	else
-		P.Skins[0] = C;
+	P.Skins[0] = C;
 	Bodies[b].bSkinned = 1;
 	if (bArmorLog)
-		class'ModSettings'.static.Note("armor: " $ P $ " shows flesh at the " $ RegionNames[r] $ " (coat " $ Coat $ ")");
+		class'ModSettings'.static.Note("armor: " $ P $ " shows flesh (plates " $ Bits $ ", coat " $ Coat $ ")");
 }
 
 // how many plates a body still has (the pilot's log, and later a HUD hint)

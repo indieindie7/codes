@@ -41,8 +41,6 @@ static function Material PlainOf(Material M)
 		return PSSkinShader(M).Diffuse;
 	if (Texture(M) != None)
 		return M;
-	if (Combiner(M) != None)          // the armour's exposed-flesh chain (ModArmor): blood goes over it
-		return M;
 	return None;
 }
 

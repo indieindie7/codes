@@ -90,7 +90,24 @@ def main():
         cover = sum(1 for v in m.getdata() if v) / float(W * H)
         print("%-8s %5d faces, %4.1f%% of the sheet -> %s" % (name, counts[r], 100 * cover, fn))
         lines.append("#exec TEXTURE IMPORT NAME=Armor_%s_%s FILE=Textures\\%s GROUP=Armor MIPS=1 ALPHA=1" % (setname, name, fn))
+    # the combined masks: one texture per set of broken plates, so the exposure is a single
+    # Combiner stage (nested combiners made the Seeker a flat colour in game). Left and right
+    # limbs share texels on these meshes, so arms and legs count as one plate each here:
+    # bits 1 head, 2 torso, 4 arms, 8 legs -> 15 combinations at half size.
+    from PIL import ImageChops
+    group = [masks[0], masks[1], ImageChops.lighter(masks[2], masks[3]), ImageChops.lighter(masks[4], masks[5])]
+    group = [g.filter(ImageFilter.MaxFilter(5)).resize((W // 2, H // 2), Image.BILINEAR) for g in group]
+    combos = []
+    for bits in range(1, 16):
+        m = Image.new("L", (W // 2, H // 2), 0)
+        for k in range(4):
+            if bits & (1 << k):
+                m = ImageChops.lighter(m, group[k])
+        fn = "armor_%s_c%02d.tga" % (setname, bits)
+        write_tga(os.path.join(out, fn), m)
+        combos.append("#exec TEXTURE IMPORT NAME=Armor_%s_c%02d FILE=Textures\\%s GROUP=Armor MIPS=1 ALPHA=1" % (setname, bits, fn))
     print("\n".join(lines))
+    print("\n".join(combos))
 
 
 if __name__ == "__main__":
