@@ -23,7 +23,7 @@ WORLD = 30720
 N = 240                 # heightfield cells per side (256 units)
 TILES = 8
 SEA_Z = -4967.0         # world Z of the sea surface
-SKY_Z = 20000           # outside the main room (Z +-16384)
+SKY_Z = 20000           # centre of the sky room: the big room brush again, stacked above the main room (build_avalon.py)
 UV_TILE = 1024.0
 TOWER = (0.0, 0.0)
 ROOM_Z = SEA_Z + 9200   # the command room's floor
@@ -133,6 +133,35 @@ def tower():
     return verts, uvs, tris
 
 
+def cube_brush(name, z, half=256, csg="CSG_Subtract"):
+    """a cube brush actor for the T3D (the sky room): built from the subtractive-brush format UnrealEd exports.
+    MAP IMPORTADD takes it and MAP REBUILD carves it; this avoids BRUSH LOAD, which keeps the builder brush's
+    MainScale from the last loaded file (so a 'small' sky cube came out room-sized and merged the two zones)."""
+    h = half
+    faces = [  # (normal, four vertices counter-clockwise seen from outside)
+        ((-1, 0, 0), [(-h, -h, -h), (-h, -h, h), (-h, h, h), (-h, h, -h)]),
+        ((0, 1, 0), [(-h, h, -h), (-h, h, h), (h, h, h), (h, h, -h)]),
+        ((1, 0, 0), [(h, h, -h), (h, h, h), (h, -h, h), (h, -h, -h)]),
+        ((0, -1, 0), [(h, -h, -h), (h, -h, h), (-h, -h, h), (-h, -h, -h)]),
+        ((0, 0, 1), [(-h, h, h), (-h, -h, h), (h, -h, h), (h, h, h)]),
+        ((0, 0, -1), [(-h, -h, -h), (-h, h, -h), (h, h, -h), (h, -h, -h)]),
+    ]
+    L = [f"Begin Actor Class=Brush Name={name}", f"    CsgOper={csg}", f"    Location=(X=0.0,Y=0.0,Z={z:.1f})",
+         f"    Begin Brush Name={name}Model", "       Begin PolyList"]
+    for n, vs in faces:
+        u = (0, 1, 0) if n[0] else (1, 0, 0)
+        v = (0, 0, -1) if n[2] == 0 else (0, 1, 0)
+        L += ["          Begin Polygon",
+              "             Origin   %+013.6f,%+013.6f,%+013.6f" % vs[0],
+              "             Normal   %+013.6f,%+013.6f,%+013.6f" % n,
+              "             TextureU %+013.6f,%+013.6f,%+013.6f" % tuple(c / 128.0 for c in u),
+              "             TextureV %+013.6f,%+013.6f,%+013.6f" % tuple(c / 128.0 for c in v)]
+        L += ["             Vertex   %+013.6f,%+013.6f,%+013.6f" % p for p in vs]
+        L.append("          End Polygon")
+    L += ["       End PolyList", "    End Brush", "End Actor"]   # no Brush= line: the importer binds the model itself
+    return "\n".join(L) + "\n"
+
+
 def actor(cls, name, loc, props="", rot=None):
     x, y, z = loc
     r = f"    Rotation=(Pitch={rot[0]},Yaw={rot[1]},Roll={rot[2]})\n" if rot else ""
@@ -162,6 +191,8 @@ NO_COLLISION = "    bCollideActors=False\n    bBlockActors=False\n    bBlockPlay
 
 
 def write_actors(path, bounds):
+    # (cube_brush("SkyRoom", SKY_Z) is NOT used: an imported Brush actor is ignored by MAP REBUILD, and without
+    # a Brush= line the importer crashes in PrepBrush; the sky room is carved by build_avalon.py instead)
     out = ["Begin Map\n"]
     for ti in range(TILES):
         for tj in range(TILES):
@@ -189,7 +220,7 @@ def write_actors(path, bounds):
     # the sun actor must stand in open air: actors are sunlit only if the trace toward it is clear, and
     # above the tower it was inside the tower mesh. 20000 units out, in the direction the light comes from.
     sf = math.radians(LOOK_YAW - 60 + 180)
-    sun_at = (20000 * math.cos(sf) * math.cos(math.radians(30)), 20000 * math.sin(sf) * math.cos(math.radians(30)), 10000)
+    sun_at = (14000 * math.cos(sf) * math.cos(math.radians(30)), 14000 * math.sin(sf) * math.cos(math.radians(30)), 7000)
     out.append(actor("SunLight", "Sun0", sun_at,
                      "    LightBrightness=220.0\n    LightHue=24\n    LightSaturation=110\n", (-5461, yaw(LOOK_YAW - 60), 0)))
     out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=60\n    AmbientHue=160\n    AmbientSaturation=170\n"))

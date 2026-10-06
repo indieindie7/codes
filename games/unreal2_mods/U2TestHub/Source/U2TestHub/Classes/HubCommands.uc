@@ -119,6 +119,7 @@ exec function Hub(optional string Args)
 	else if (Cmd == "MENUTEST")             MenuTest(Word(Args));
 	else if (Cmd == "GOTO")                 GotoLevel(Word(Args));
 	else if (Cmd == "ZONES")                Zones();
+	else if (Cmd == "LIST")                 ListActors(Word(Args));
 	else if (Cmd == "BEATS")                Beats();
 	else
 		Say("hub: unknown command '"$Cmd$"' - try: hub help");
@@ -843,6 +844,36 @@ function GotoLevel(string Map)
 // Logs "Zones:" lines: every navigation point with its zone, every path that crosses into another
 // zone (a doorway), and per zone the actors that matter (enemies, triggers, movers, anything
 // that fires an event). tools/python/U2Pilot/zonemap.py turns them into a report and a picture.
+// hub list CLASS - every actor of that class (by name, e.g. Light, ZoneInfo) with its location, rotation and,
+// for lights, brightness/type; to the log and the screen
+function ListActors(string ClassName)
+{
+	local Actor A;
+	local class<Actor> C;
+	local int n;
+	local string L;
+
+	C = class<Actor>(DynamicLoadObject("Engine." $ ClassName, class'Class', true));
+	if (C == None)
+		C = class<Actor>(DynamicLoadObject(ClassName, class'Class', true));
+	if (C == None)
+	{
+		Say("list: no class " $ ClassName);
+		return;
+	}
+	foreach PC.AllActors(C, A)
+	{
+		L = string(A) $ " at " $ A.Location $ " rot " $ A.Rotation;
+		if (Light(A) != None)
+			L = L $ " bright " $ A.LightBrightness $ " radius " $ A.LightRadius $ " type " $ A.LightType $ " effect " $ A.LightEffect;
+		if (ZoneInfo(A) != None)
+			L = L $ " ambient " $ ZoneInfo(A).AmbientBrightness;
+		Say(L);
+		n++;
+	}
+	Say("list: " $ n $ " " $ ClassName);
+}
+
 function Zones()
 {
 	local NavigationPoint N;

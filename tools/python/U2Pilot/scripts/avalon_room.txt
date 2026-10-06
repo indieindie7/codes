@@ -1,0 +1,18 @@
+# avalon_room: how big is the main room really (zone 0 = solid)
+background
+map Avalon
+waitcontrol 240
+wait 2
+console hub tp 0 0 -16000
+console hub zones
+console hub tp 0 0 -17000
+console hub zones
+console hub tp 0 0 -32000
+console hub zones
+console hub tp 29000 0 5000
+console hub zones
+console hub tp 31500 0 5000
+console hub zones
+console hub tp 0 0 32500
+console hub zones
+quit

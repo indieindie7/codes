@@ -1,0 +1,12 @@
+# prairie_zones: the zones of the Prairie map, for comparison with Avalon
+background
+map Prairie
+waitcontrol 240
+wait 2
+console hub list ZoneInfo
+console hub zones
+console hub tp 0 0 9000
+console hub zones
+console hub tp 0 0 12000
+console hub zones
+quit

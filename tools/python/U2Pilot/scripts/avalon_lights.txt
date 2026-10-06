@@ -1,0 +1,18 @@
+# avalon_lights: what lights and zones the game sees in the Avalon map, and how tall the room really is
+background
+map Avalon
+waitcontrol 240
+wait 2
+console hub list Legend.SunLight
+console hub list ZoneInfo
+console hub tp 0 0 15000
+console hub zones
+console hub tp 0 0 19000
+console hub zones
+console hub tp 0 0 25000
+console hub zones
+console hub tp 0 0 31000
+console hub zones
+wait 1
+shot
+quit

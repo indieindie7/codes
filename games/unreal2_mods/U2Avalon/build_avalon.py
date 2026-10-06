@@ -1,6 +1,7 @@
 """Build the Avalon assets and map in UnrealEd through U2EdBridge (see make_avalon.py).
 
     python build_avalon.py assets   static meshes + palette -> StaticMeshes/AvalonSM.usx, brushes/room.u3d
+    python build_avalon.py room     only the room brush
     python build_avalon.py map      -> Maps/Avalon.un2, then paths
 
 Each step runs in a fresh editor (see U2Hover/build_editor.py for why).
@@ -33,10 +34,14 @@ ASSETS = [
 ] + [
     r'TEXTURE IMPORT FILE="{A}\Models\ase\Pal.tga" NAME="Pal" PACKAGE="AvalonSM" GROUP="Pal" MIPS=0',
     r'OBJ SAVEPACKAGE PACKAGE="AvalonSM" FILE="{SM}\AvalonSM.usx"',
-    # the room: the 512 cube scaled to 61440 x 61440 x 32768
+]
+
+# the room: the 512 cube scaled to 61440 x 61440 x 16384 (Z +-8192, the Prairie's proportions; a 32768-tall
+# room ended up as ONE zone with the sky room, and the SkyZoneInfo then governed the whole level: nothing lit)
+ROOM = [
     r'BRUSH LOAD FILE="{H}\brushes\Entry.u3d"',
     r'ACTOR SELECT ALL',
-    r'BRUSH SCALE X=120 Y=120 Z=64',
+    r'BRUSH SCALE X=120 Y=120 Z=32',
     r'BRUSH SAVE FILE="{A}\brushes\room.u3d"',
 ]
 
@@ -52,7 +57,11 @@ MAP = [
     r'POLY SELECT ALL',
     r'POLY SET SETFLAGS=%d' % PF_FAKEBACKDROP,
     r'POLY SELECT NONE',
-    r'BRUSH LOAD FILE="{H}\brushes\Entry.u3d"',
+    # the sky room: the SAME big builder brush again, stacked above the main room (Z 11808..28192). Only the
+    # first BRUSH LOAD of a session takes effect (measured: a second load is ignored), so a small Entry.u3d
+    # cube here came out room-sized at Z 12000, overlapped the main room and merged the two zones; the
+    # SkyZoneInfo then governed everything and nothing was lit. (The Prairie worked because its room was
+    # only +-4096 tall, so the big "sky cube" at 12000 happened not to overlap.)
     r'BRUSH MOVETO X=0 Y=0 Z=20000',
     r'BRUSH SUBTRACT',
     r'MAP IMPORTADD FILE="{A}\avalon_actors.t3d"',
@@ -77,7 +86,11 @@ def go(cmds):
 if __name__ == "__main__":
     step = sys.argv[1] if len(sys.argv) > 1 else "assets"
     if step == "assets":
-        ok = go(ASSETS)
+        ok = go(ASSETS) and go(ROOM)
+    elif step == "room":
+        ok = go(ROOM) and go(ROOM)
+    elif step == "room":
+        ok = go(ROOM)
     elif step == "map":
         ok = go(MAP) and go(PATHS)
     else:

@@ -89,7 +89,7 @@ for i, c in enumerate(palette):
 tex = bpy.data.images.new("Pal", 64, 64, alpha=True)
 tex.pixels = img[::-1].ravel()
 tex.filepath_raw = os.path.join(out, "Pal.tga")
-tex.file_format = "TARGA"
+tex.file_format = "TARGA_RAW"   # UnrealEd rejects RLE-compressed TGA ("Bad image format")
 tex.save()
 json.dump(bounds, open(os.path.join(out, "bounds.json"), "w"), indent=1)
 print("PALETTE", len(palette), "colours;", len(bounds), "meshes ->", out)
