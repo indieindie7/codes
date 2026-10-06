@@ -1,3 +1,5 @@
 demo_*.png
 demo_*.npy
 __pycache__/
+examples/*.npy
+examples/*_masks/

@@ -17,11 +17,11 @@ Stages (research: games/reports/Terrain look for generated maps.md, section "ord
      the valley network, 200+ steps;
   2. batched droplets (Lague / Beyer defaults): gullies; forced deposition on flat ground;
   3. thermal slumping (Olsen, c = 0.5) with the talus angle from hardness (Jako): cliffs, scree.
-Works on 128x128 to 512x512 in seconds to a minute (pure NumPy, no SciPy).
+Works on 128x128 to 512x512 in seconds to a minute (NumPy; flow routing in terrain_flow).
+For maps designed from a sketch (uplift primitives, exact peaks, presets) see terrain_form.
 
     py tools/python/terrain/terrain_erode.py --demo         writes demo PNGs next to this file
 """
-import heapq
 import math
 import os
 import sys
@@ -30,102 +30,27 @@ import numpy as np
 
 
 # ------------------------------------------------------------------------------------------
-# flow routing
+# flow routing and stage 1 (stream power): vectorised in terrain_flow; same names kept here
 # ------------------------------------------------------------------------------------------
-D8 = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-D8_LEN = np.array([math.sqrt(2), 1, math.sqrt(2), 1, 1, math.sqrt(2), 1, math.sqrt(2)])
+import terrain_flow as _tf
 
-
-def fill_depressions(h, eps=1e-4):
-    """Priority-flood (Barnes 2014): every cell drains to the border; tiny epsilon slope so
-    flow routing has a direction across filled lakes. Returns the filled copy."""
-    n, m = h.shape
-    out = h.copy()
-    done = np.zeros_like(h, dtype=bool)
-    heap = []
-    for i in range(n):
-        for j in (0, m - 1):
-            heap.append((out[i, j], i, j)); done[i, j] = True
-    for j in range(1, m - 1):
-        for i in (0, n - 1):
-            heap.append((out[i, j], i, j)); done[i, j] = True
-    heapq.heapify(heap)
-    while heap:
-        z, i, j = heapq.heappop(heap)
-        for di, dj in D8:
-            a, b = i + di, j + dj
-            if 0 <= a < n and 0 <= b < m and not done[a, b]:
-                done[a, b] = True
-                if out[a, b] < z + eps:
-                    out[a, b] = z + eps
-                heapq.heappush(heap, (out[a, b], a, b))
-    return out
-
-
-def d8_receivers(h):
-    """Steepest-descent receiver per cell as flat index (self where none), and the slope to it."""
-    n, m = h.shape
-    best_slope = np.zeros_like(h)
-    recv = np.arange(n * m).reshape(n, m)
-    padded = np.pad(h, 1, mode="edge")
-    for k, (di, dj) in enumerate(D8):
-        nb = padded[1 + di:1 + di + n, 1 + dj:1 + dj + m]
-        slope = (h - nb) / D8_LEN[k]
-        better = slope > best_slope
-        ii, jj = np.nonzero(better)
-        a = np.clip(ii + di, 0, n - 1); b = np.clip(jj + dj, 0, m - 1)
-        recv[ii, jj] = a * m + b
-        best_slope[better] = slope[better]
-    return recv.ravel(), best_slope
+D8 = _tf.D8
+D8_LEN = _tf.D8_LEN
+fill_depressions = _tf.fill_depressions
+d8_receivers = _tf.d8_receivers
 
 
 def drainage_area(h, recv):
-    """Cells upstream of each cell (itself included), accumulated in height order."""
-    order = np.argsort(h.ravel())[::-1]          # highest first
-    area = np.ones(h.size)
-    for c in order:
-        r = recv[c]
-        if r != c:
-            area[r] += area[c]
-    return area.reshape(h.shape), order
+    """Cells upstream of each cell (itself included) and the highest-first cell order."""
+    area = _tf.drainage_area(recv)
+    order = np.argsort(np.asarray(h).ravel())[::-1]
+    return area.reshape(np.asarray(h).shape), order
 
 
-# ------------------------------------------------------------------------------------------
-# stage 1: stream power with uplift (Braun & Willett 2013, implicit, n = 1)
-# ------------------------------------------------------------------------------------------
-def stream_power(h, steps=300, dt=1.0, k=0.02, m_exp=0.5, uplift=None, diffusion=0.05, fixed=None, log=None):
-    """h in height units, cell size 1 (scale k for your units). uplift: array or scalar per
-    step. Returns h and the final drainage area."""
-    h = h.astype(np.float64).copy()
-    n, mm = h.shape
-    if uplift is None:
-        uplift = 0.0
-    area = None
-    for s in range(steps):
-        filled = fill_depressions(h)
-        recv, _ = d8_receivers(filled)
-        area, order = drainage_area(filled, recv)
-        hf = h.ravel()
-        up = np.broadcast_to(np.asarray(uplift, dtype=np.float64), h.shape).ravel()
-        coef = dt * k * np.power(area.ravel(), m_exp)
-        new = hf.copy()
-        # from the outlets upward: receivers are already updated when a cell is processed
-        for c in order[::-1]:
-            r = recv[c]
-            if r == c:
-                new[c] = hf[c] + dt * up[c]
-            else:
-                new[c] = (hf[c] + dt * up[c] + coef[c] * new[r]) / (1 + coef[c])
-        h = new.reshape(n, mm)
-        if diffusion > 0:
-            lap = (np.roll(h, 1, 0) + np.roll(h, -1, 0) + np.roll(h, 1, 1) + np.roll(h, -1, 1) - 4 * h)
-            lap[0, :] = lap[-1, :] = lap[:, 0] = lap[:, -1] = 0
-            h += dt * diffusion * lap
-        if fixed is not None:
-            h[fixed] = hf.reshape(n, mm)[fixed]
-        if log and (s % 50 == 0 or s == steps - 1):
-            log("stream power step %d/%d: relief %.1f, max area %d" % (s + 1, steps, h.max() - h.min(), int(area.max())))
-    return h, area
+def stream_power(h, steps=300, dt=1.0, k=0.02, m_exp=0.5, uplift=None, diffusion=0.05, fixed=None, log=None, **kw):
+    """Braun & Willett implicit stream power with uplift and hillslope diffusion; see
+    terrain_flow.stream_power (this is the same solver, vectorised by flow level)."""
+    return _tf.stream_power(h, steps=steps, dt=dt, k=k, m_exp=m_exp, uplift=uplift, diffusion=diffusion, fixed=fixed, log=log, **kw)
 
 
 # ------------------------------------------------------------------------------------------
@@ -212,7 +137,7 @@ def droplets(h, count=60000, lifetime=30, radius=2, inertia=0.05, capacity=4.0, 
 # ------------------------------------------------------------------------------------------
 # stage 3: thermal slumping with a hardness field (Olsen 2004; Jako & Toth 2011)
 # ------------------------------------------------------------------------------------------
-def banded_hardness(h, bands=5, hard_fraction=0.3, cap=True, seed=0):
+def banded_hardness(h, bands=5, hard_fraction=0.3, cap=True, seed=0, cap_from=0.8):
     """Hardness 0..1 as a function of height: thin hard bands (strata) and, with cap, a thick
     hard layer at the top (mesas keep their table)."""
     rng = np.random.default_rng(seed)
@@ -223,20 +148,20 @@ def banded_hardness(h, bands=5, hard_fraction=0.3, cap=True, seed=0):
         width = hard_fraction / bands
         hard = np.maximum(hard, 0.9 * np.exp(-((z - centre) / (width * 0.5)) ** 2))
     if cap:
-        hard = np.maximum(hard, 0.85 * np.clip((z - 0.8) / 0.08, 0, 1))
+        hard = np.maximum(hard, 0.85 * np.clip((z - cap_from) / 0.08, 0, 1))
     return hard
 
 
-def thermal(h, iterations=50, c=0.5, hardness=None, fixed=None, log=None):
+def thermal(h, iterations=50, c=0.5, hardness=None, fixed=None, log=None, talus=(32.0, 70.0)):
     """Olsen's rule: material above the talus angle moves to the lower neighbours. The talus
-    angle follows hardness: 32 deg for loose material up to 70 deg for hard rock. Returns
+    angle follows hardness: talus[0] deg for loose material up to talus[1] for hard rock. Returns
     h and the debris (moved volume) map. Cell size 1."""
     h = h.astype(np.float64).copy()
     n, m = h.shape
     debris = np.zeros_like(h)
     R = np.zeros_like(h) if hardness is None else hardness
     # the angle of repose by hardness: loose material rests at ~32 deg, hard rock stands at ~70
-    T = math.tan(math.radians(32)) + R * (math.tan(math.radians(70)) - math.tan(math.radians(32)))
+    T = math.tan(math.radians(talus[0])) + R * (math.tan(math.radians(talus[1])) - math.tan(math.radians(talus[0])))
     for it in range(iterations):
         padded = np.pad(h, 1, mode="edge")
         total = np.zeros_like(h); dmax = np.zeros_like(h)

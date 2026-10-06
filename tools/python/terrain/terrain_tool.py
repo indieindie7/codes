@@ -1,16 +1,21 @@
-"""Command line for terrain_erode / terrain_score on Unreal Engine 2 heightmaps.
+"""Command line for the terrain package on Unreal Engine 2 heightmaps.
 
-    py tools/python/terrain/terrain_tool.py score  <in.bmp|.npy> [--cell 512] [--zstep 0.5] [--unit 0.02]
-    py tools/python/terrain/terrain_tool.py erode  <in.bmp|.npy> <out.bmp|.npy> [--cell 512] [--zstep 0.5]
-             [--unit 0.02] [--freeze mask.png] [--steps 250] [--droplets 60000] [--thermal 50] [--seed 0]
-             [--masks folder]      writes the layer masks as 8-bit PNGs (same size as the heightmap)
+    py terrain_tool.py form   <sketch.json> <out.npy|out.bmp> [--template in.bmp] [--size N] [--steps N]
+             [--seed 0] [--preset hills|alpine|canyon] [--preview out.png] [--masks folder] [--cell 512] [--zstep 0.5] [--unit 0.02]
+    py terrain_tool.py score  <in.bmp|.npy> [--cell 512] [--zstep 0.5] [--unit 0.02]
+    py terrain_tool.py erode  <in.bmp|.npy> <out.bmp|.npy> [--cell 512] [--zstep 0.5] [--unit 0.02]
+             [--freeze mask.png] [--steps 250] [--droplets 60000] [--thermal 50] [--seed 0] [--masks folder]
+    py terrain_tool.py preview <in.bmp|.npy> <out.png> [--cell 512] [--zstep 0.5] [--unit 0.02] [--masks folder]
 
-The .bmp is UnrealEd's 16-bit G16 heightmap export (TEXTURE IMPORT takes the same bytes
-back); the header is kept, only the pixels change. Heights: Z = Z0 + (value - 32768) * zstep
-world units, a cell is `cell` units wide, and `unit` is metres per world unit (Unreal II:
-2 cm), so TutA (cell 512, ScaleZ 128 -> zstep 0.5) is 10.24 m per cell and 1 cm per step.
---freeze: a PNG/BMP whose non-black pixels mark cells to leave untouched (building pads);
-the Avalon pipeline runs its cut-and-fill after this instead.
+form: a designed map from a sketch (see terrain_sketch's docstring for the JSON): uplift
+primitives -> stream power from flat -> strata/droplets/thermal -> detail -> pads -> masks.
+Writes .npy (metres) or, with --template, a G16 BMP with the template's header (UnrealEd's
+16-bit heightmap export: TEXTURE IMPORT takes the same bytes back); the template must have the
+sketch's size. Heights in a G16: Z = Z0 + (value - 32768) * zstep world units, a cell is
+`cell` units wide, `unit` is metres per world unit (Unreal II: 2 cm), so TutA (cell 512,
+ScaleZ 128 -> zstep 0.5) is 10.24 m per cell. The sea level / zero of the sketch lands at 32768.
+--masks writes the layer masks and the simulation state as 8-bit PNGs of the heightmap's size,
+which is exactly what a UE2 alpha map has to be.
 """
 import os
 import struct
@@ -39,6 +44,7 @@ def read_g16(path):
 
 def write_g16(path, H, raw, off):
     w = H.shape[1]; hh = struct.unpack_from("<i", raw, 22)[0]
+    assert (abs(hh), w) == H.shape, "template size %dx%d differs from the heightmap %dx%d" % (w, abs(hh), H.shape[1], H.shape[0])
     rows = H if hh < 0 else H[::-1]
     pix = np.clip(np.rint(rows), 0, 65535).astype("<u2").tobytes()
     open(path, "wb").write(raw[:off] + pix + raw[off + len(pix):])
@@ -56,17 +62,71 @@ def arg(name, default, cast=float):
     return default
 
 
+def write_masks(folder, out):
+    from PIL import Image
+    os.makedirs(folder, exist_ok=True)
+    masks = out["masks"] if "masks" in out else te.layer_masks(out)
+    for k, v in masks.items():
+        Image.fromarray((np.clip(v, 0, 1) * 255).astype(np.uint8)).save(os.path.join(folder, k + ".png"))
+    for k in ("flow", "deposit", "wear", "debris", "hardness", "uplift"):
+        if k not in out:
+            continue
+        a = np.asarray(out[k], dtype=np.float64); a = np.log1p(a) if k == "flow" else a
+        a = a / max(a.max(), 1e-9)
+        Image.fromarray((a * 255).astype(np.uint8)).save(os.path.join(folder, "state_" + k + ".png"))
+    if "pads" in out and out["pads"].any():
+        Image.fromarray((out["pads"] * 255).astype(np.uint8)).save(os.path.join(folder, "freeze_pads.png"))
+    print("masks written to", folder)
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__); return
     cmd, src = sys.argv[1], sys.argv[2]
     cell = arg("--cell", 512.0); zstep = arg("--zstep", 0.5); unit = arg("--unit", 0.02)
     mpc = cell * unit
+    if cmd == "form":
+        import terrain_form as tf_
+        import terrain_preview as tp
+        dst = sys.argv[3]
+        out = tf_.form(src, preset=arg("--preset", None, str), seed=int(arg("--seed", 0, int)), size=arg("--size", None, int), steps=arg("--steps", None, int))
+        mpc = out["metres_per_cell"]
+        if dst.lower().endswith(".npy"):
+            np.save(dst, out["h"])
+        else:
+            tpl = arg("--template", None, str)
+            assert tpl, "a .bmp output needs --template <g16 export of the right size>"
+            _, raw, off = read_g16(tpl)
+            vals = out["h"] / (zstep * unit) + 32768.0
+            write_g16(dst, vals, raw, off)
+        print("written", dst)
+        pv = arg("--preview", None, str)
+        if pv:
+            tp.save_png(pv, tp.render(out["h"], mpc, out["masks"]))
+            print("preview", pv)
+        folder = arg("--masks", None, str)
+        if folder:
+            write_masks(folder, out)
+        return
     H, raw, off = load(src)
     is_g16 = raw is not None
     metres = (H - 32768.0) * zstep * unit if is_g16 else H
     if cmd == "score":
         ts.report(ts.score(metres, mpc))
+        return
+    if cmd == "preview":
+        import terrain_preview as tp
+        masks = None
+        folder = arg("--masks", None, str)
+        if folder:
+            from PIL import Image
+            masks = {}
+            for k in ("grass", "wet", "scree", "rock", "snow", "sand"):
+                p = os.path.join(folder, k + ".png")
+                if os.path.exists(p):
+                    masks[k] = np.array(Image.open(p).convert("L")) / 255.0
+        tp.save_png(sys.argv[3], tp.render(metres, mpc, masks))
+        print("preview", sys.argv[3])
         return
     if cmd == "erode":
         dst = sys.argv[3]
@@ -88,15 +148,7 @@ def main():
         print("written", dst)
         folder = arg("--masks", None, str)
         if folder:
-            from PIL import Image
-            os.makedirs(folder, exist_ok=True)
-            for k, v in te.layer_masks(out).items():
-                Image.fromarray((np.clip(v, 0, 1) * 255).astype(np.uint8)).save(os.path.join(folder, k + ".png"))
-            for k in ("flow", "deposit", "wear", "debris"):
-                a = out[k]; a = np.log1p(a) if k == "flow" else a
-                a = a / max(a.max(), 1e-9)
-                Image.fromarray((a * 255).astype(np.uint8)).save(os.path.join(folder, "state_" + k + ".png"))
-            print("masks written to", folder)
+            write_masks(folder, out)
         return
     print(__doc__)
 
