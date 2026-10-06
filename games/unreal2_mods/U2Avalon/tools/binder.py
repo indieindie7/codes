@@ -130,6 +130,18 @@ def check(citizens, buildings, verbose=True):
             booms = [math.dist(b["at"][:2], core_pad["at"][:2]) for b in bs if b["layer"] == "boom"]
             if cores and booms and min(cores) > max(booms):
                 notes.append(f"{kind}: every core one is farther from the pad than every boom one (rings reversed?)")
+    # G.U.A.R.D.S. (Loot Goblin Marketplace): every settlement needs government, underworld, altar, resources,
+    # defenses and a social hub, all on one theme; a missing one is a hole the player feels, an imbalance is a story
+    FUNCTIONS = {"government": {"tower", "plant_office", "authority_pad"}, "underworld": {"boat_landing", "dead_rig", "old_camp"},
+                 "altar": set(), "resources": {"dock", "cargo_pad", "fuel_depot", "silos"}, "defenses": {"checkpoint", "authority_pad"},
+                 "social": set()}
+    for bid, b in buildings.items():
+        for f in b.get("function", "").split():
+            FUNCTIONS.setdefault(f, set()).add(bid)
+    for f, ids in FUNCTIONS.items():
+        present = [i for i in ids if i in buildings and not buildings[i].get("abandoned")]
+        if not present:
+            problems.append(f"GUARDS: no {f} building (add one or tag a sheet with 'function: {f}')")
     if verbose:
         for p in problems:
             print("PROBLEM", p)

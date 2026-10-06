@@ -71,12 +71,21 @@ open(os.path.join(RUN, "systems.txt"), "w").write(
     + "".join("  %s needs %s: %s\n" % u for u in L["systems"]["unmet"]))
 
 # 4. pads, 5. terrain into TutA, 6. the buildings as actors + lighting + editor pictures
-step("pads", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout]))
+step("pads + roads", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout]))
 ib.island_png(base + "_ec.bmp", base + "_map.png")
-step("terrain", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_apply.py"), base + "_ec.bmp", name]))
+# the ground paint: rock base, sand on roads / yards / beach, plant life on gentle ground (TutA's three layers)
+ALPHA_TPL = os.path.join(r"C:\Users\john\Documents\U2_research\terrain", "alphas")
+step("ground paint", lambda: ib.run(["py", os.path.join(TOOLS, "groundpaint.py"), base + "_ec.bmp", layout, ALPHA_TPL, os.path.join(RUN, "alphas")]))
+step("terrain", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_apply.py"), base + "_ec.bmp", name, "alphas=" + os.path.join(RUN, "alphas")]))
 t3d = base + "_actors.t3d"
 step("export", lambda: ib.run(["py", os.path.join(TOOLS, "export_mutator.py"), "shift=" + SHIFT, "layout=" + layout, "t3d=" + t3d,
                                "heightmap=" + base + "_ec.bmp", "props=0"]))
+# clutter and vegetation: lamps along the trunk roads, crates and barrels in the yards, fences, rocks, trees
+clut = base + "_clutter.t3d"
+step("clutter", lambda: ib.run(["py", os.path.join(TOOLS, "clutter.py"), base + "_ec.bmp", layout, clut, "seed=%d" % seed]))
+with open(t3d, "a") as f:                      # one import: the clutter actors are appended to the buildings' T3D
+    body = open(clut).read()
+    f.write("\n" + body[body.index("\n") + 1:body.rindex("End Map")])
 step("populate", lambda: ib.populate(name, t3d, layout, base))
 ib.enable_map(name)
 

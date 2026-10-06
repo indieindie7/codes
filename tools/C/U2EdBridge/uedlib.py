@@ -264,10 +264,11 @@ class Ed(Editor):
         return self.ok("MAP NEW")
 
     def rebuild(self):
-        return self.ok("MAP REBUILD", allow=("Can't",))
+        return self.ok("MAP REBUILD", allow=("Can't", "Couldn't bring window"))
 
     def light(self):
-        return self.ok("LIGHT APPLY")
+        # "Couldn't bring window to foreground" is logged when another app has focus; harmless
+        return self.ok("LIGHT APPLY", allow=("Couldn't bring window", "Can't find"))
 
     def paths(self, full=False):
         return self.ok("PATHS BUILD" if full else "PATHS DEFINE")

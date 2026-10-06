@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.join(HERE, "tools"))
 import binder  # noqa
 
 GAME = r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening"
-INI = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("shift=") else os.path.join(GAME, "System", "U2AvalonCards.ini")
+_pos = [a for a in sys.argv[1:] if "=" not in a]
+INI = _pos[0] if _pos else os.path.join(GAME, "System", "U2AvalonCards.ini")
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
 SHIFT = float(o.get("shift", -5300))
 T3D = o.get("t3d")                 # also write the buildings as StaticMeshActors in a T3D for MAP IMPORTADD

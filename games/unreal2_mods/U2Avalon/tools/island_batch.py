@@ -145,7 +145,8 @@ def populate(name, t3d, layout_json, base):
     def job(ed):
         ed.exec("!answer yes")
         ed.load(name)
-        for pkg in ("StaticMeshes/AvalonSM.usx", "StaticMeshes/Mission_05M.usx"):
+        for pkg in ("StaticMeshes/AvalonSM.usx", "StaticMeshes/Mission_05M.usx", "StaticMeshes/Mission_03M.usx",
+                    "StaticMeshes/Terran_DecoM.usx", "StaticMeshes/Flora_M.usx"):
             ed.load_package(os.path.join(GAME, pkg))
         ed.import_t3d(t3d, add=True)
         ed.light()                      # static meshes stay black in the editor until the lighting is applied

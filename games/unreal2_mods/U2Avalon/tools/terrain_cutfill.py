@@ -158,6 +158,52 @@ if pads:
     cut = float(-dz[dz < 0].sum()) * SCALE[0] * SCALE[1]
     fill = float(dz[dz > 0].sum()) * SCALE[0] * SCALE[1]
     H = new
+# roads: graded into the ground. Each road polyline is sampled every half cell; the ground along it is
+# replaced by a smoothed profile (moving average over ~7 samples, grade capped at MAX_GRADE) and the cells
+# within ROAD_W/2 of the line take that height, blended over one cell beyond, so a road reads as a cut
+# bench on a slope and a causeway over a dip instead of a line painted on bumps.
+ROAD_W = float(o.get("road_w", 1.3))        # cells
+MAX_GRADE = float(o.get("max_grade", 0.12))  # rise/run
+if LAYOUT:
+    import json as _j
+    _L = _j.load(open(o["layout"]))
+    road_cut = 0.0
+    for r in _L.get("roads", []):
+        pts = []
+        for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
+            n = max(1, int(math.hypot(bx - ax, by - ay) / (SCALE[0] * 0.5)))
+            for k in range(n):
+                t = k / n
+                pts.append((ax + (bx - ax) * t, ay + (by - ay) * t))
+        pts.append(tuple(r[-1]))
+        if len(pts) < 3:
+            continue
+        hs = []
+        for x, y in pts:
+            fi, fj = (x - LOC[0]) / SCALE[0] + w / 2, (y - LOC[1]) / SCALE[1] + abs(h) / 2
+            i0, j0 = min(w - 2, max(0, int(fi))), min(abs(h) - 2, max(0, int(fj)))
+            hs.append(H[j0, i0])
+        hs = np.array(hs, float)
+        k = 7
+        sm = np.convolve(np.pad(hs, (k // 2, k // 2), mode="edge"), np.ones(k) / k, mode="valid")
+        step_max = MAX_GRADE * SCALE[0] * 0.5 * 256 / SCALE[2]
+        for a in range(1, len(sm)):
+            sm[a] = min(max(sm[a], sm[a - 1] - step_max), sm[a - 1] + step_max)
+        for a in range(len(sm) - 2, -1, -1):
+            sm[a] = min(max(sm[a], sm[a + 1] - step_max), sm[a + 1] + step_max)
+        D = np.full(H.shape, np.inf)
+        T = np.zeros(H.shape)
+        for (x, y), hv in zip(pts, sm):
+            d = np.hypot(X - x, Y - y) / SCALE[0]
+            better = d < D
+            D[better] = d[better]
+            T[better] = hv
+        wgt = np.clip(1 - (D - ROAD_W / 2) / 1.0, 0, 1)
+        wgt = wgt * wgt * (3 - 2 * wgt)
+        newH = H * (1 - wgt) + T * wgt
+        road_cut += float(np.abs(newH - H).sum()) * SCALE[2] / 256 * SCALE[0] * SCALE[1]
+        H = newH
+    print(f"roads graded: {len(_L.get('roads', []))} legs, earth moved {road_cut / 1e9:.2f} (1e9 units^3)")
 H = np.clip(np.round(H), 0, 65535).astype("<u2")
 pix = (H if rows_up else H[::-1]).tobytes()
 open(dst, "wb").write(raw[:off] + pix + raw[off + len(pix):])
