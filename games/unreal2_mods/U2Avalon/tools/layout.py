@@ -38,6 +38,7 @@ SEA_Z = -4967.0
 N = 128
 CELL_M = CELL / M                      # 10.24 m per cell
 ANCHORS = {"tower", "authority_pad"}
+TOWER_WORLD = (-349.0, 1388.0)      # where TutA's command tower really stands (the sheet's 0 0 is the generated map's origin)
 
 
 def from_frame(along, across):
@@ -118,9 +119,27 @@ def domination(radius_cells=6):
 DOM = domination()
 
 
+def room_map(radius_m=100.0, max_slope=12.0):
+    """GDMC-style buildable-area map: the share of cells within radius that are land, on the main mass and
+    gentle; the plant needs room round its office, not a single flat cell on a cliff ledge"""
+    ok = (~WATER) & (SLOPE <= max_slope)
+    r = int(radius_m / CELL_M)
+    acc = np.zeros_like(Zm)
+    cnt = 0
+    for dj in range(-r, r + 1):
+        for di in range(-r, r + 1):
+            if di * di + dj * dj <= r * r:
+                acc += np.roll(np.roll(ok, dj, 0), di, 1)
+                cnt += 1
+    return acc / cnt
+
+
+ROOM = room_map()
+
+
 def main_landmass():
     """flood fill of land from the tower's cell: islets and sandbars are not buildable"""
-    ti, tj = int((from_frame(buildings_at_tower[0] + SHIFT, buildings_at_tower[1])[0] - LOC[0]) / CELL + N / 2),              int((from_frame(buildings_at_tower[0] + SHIFT, buildings_at_tower[1])[1] - LOC[1]) / CELL + N / 2)
+    ti, tj = int((TOWER_WORLD[0] - LOC[0]) / CELL + N / 2), int((TOWER_WORLD[1] - LOC[1]) / CELL + N / 2)
     land = ~WATER
     seen = np.zeros((N, N), bool)
     stack = [(ti, tj)]
@@ -325,6 +344,14 @@ def interest_map(bid, b):
         best, maxd, wgt = spec["road"]
         droad = chamfer(ROAD) * CELL_M
         terms.append((wgt, np.where(droad > maxd, 0.0, np.where(droad <= best, 1.0, 1 - (droad - best) / max(maxd - best, 1e-6)))))
+    if spec.get("room"):
+        need, wgt = spec["room"]
+        terms.append((wgt, np.where(ROOM < need, -1.0, np.clip((ROOM - need) / (1 - need), 0, 1))))
+    if "sector" in spec:
+        cx0, cy0, yaw0, half = spec["sector"]
+        ang = np.degrees(np.arctan2(WY - cy0, WX - cx0))
+        dang = np.abs((ang - yaw0 + 180) % 360 - 180)
+        terms.append((2.0, np.where(dang > half, -1.0, 1 - dang / half)))
     if spec.get("dom"):
         terms.append((spec["dom"], DOM if not wkind[0] == "in" else np.zeros_like(DOM)))
     if wkind[0] != "in":
@@ -433,14 +460,22 @@ def connect(bid):
         roads.append([cell_to_world(i + 0.5, j + 0.5) for i, j in path])
 
 
+# the window: the plant office (and so the plant) stands where the command room can see it
+OVERRIDE["plant_office"] = dict(KIND["office"], sector=(TOWER_WORLD[0], TOWER_WORLD[1], LOOK, 32.0), room=(0.45, 3.0))
+for _k in ("hall", "tank", "silo", "cooling", "pad", "dorm"):
+    KIND[_k]["room"] = (0.3, 1.5)
+
+TOWER_WORLD = (-349.0, 1388.0)      # where TutA's command tower really stands (the sheet's 0 0 is the generated map's origin)
+
 # --- 1. anchors ---------------------------------------------------------------------------------------------
 for bid, b in buildings.items():
     if "at" not in b:
         continue
     if bid in ANCHORS or b.get("anchor", "no").lower() == "yes":
         along, across, deg = b["at"]
-        x, y = from_frame(along + SHIFT, across)
-        place(bid, b, x, y, deg)
+        # anchors ride with the real tower: their sheet offset from the tower, no shift
+        ox, oy = from_frame(along - buildings_at_tower[0], across - buildings_at_tower[1])
+        place(bid, b, TOWER_WORLD[0] + ox, TOWER_WORLD[1] + oy, deg)
 
 # --- 2. seeding in layer order, roads as we go ----------------------------------------------------------------
 order = [bid for bid in buildings if "at" in buildings[bid] and bid not in placed]
@@ -552,6 +587,8 @@ for bid, p in placed.items():
 # --- output -----------------------------------------------------------------------------------------------------
 out = {"seed": SEED, "shift": SHIFT, "heightmap": os.path.abspath(src),
        "buildings": {bid: {"x": round(p["x"], 1), "y": round(p["y"], 1), "yaw": round(p["yaw"], 1),
+                           "z": round(float(Z[min(N - 1, max(0, int(world_to_cell(p["x"], p["y"])[1]))),
+                                              min(N - 1, max(0, int(world_to_cell(p["x"], p["y"])[0])))]), 1),
                            "interest": round(p.get("I", 1.0), 3), "cells": [list(c) for c in p["cells"]]} for bid, p in placed.items()},
        "roads": [[[round(x, 1), round(y, 1)] for x, y in r] for r in roads]}
 json.dump(out, open(dst, "w"), indent=0)
