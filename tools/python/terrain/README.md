@@ -80,6 +80,13 @@ step count to keep more of the original detail. 13 seconds end to end.
   class (USGS 3DEP or SRTM), resample to the map's grid, score them with the same functions
   and tune by EMD to their distributions (report step 9). Until then the ranges above are the
   published ones.
-- The spectrum exponent of smooth generated bases (3 to 4) is far from natural (2); erosion
-  moves it only a little. Rougher bases (more octaves, less smoothing) fix that at the source.
+- The spectrum exponent is not trustworthy on a 128-cell grid: the fit only spans wavenumbers
+  4 to 32, and the eroded TutA island reads 3.25 against the natural 1.9 to 2.1 band even
+  though it looks right. Treat it as informative from 256 cells up, and weight it lowest
+  (the report's advice). Smooth generated bases read 3 to 4 at any size; rougher bases (more
+  octaves, less smoothing) fix that at the source.
+- First real use (2026-10-06, the unreal chat): erode island1.bmp, then its cut-and-fill, then
+  uedlib replace_actors into Maps/TutA_Eroded.un2. Smoother, more connected hills, pads flat,
+  landform share 0.60 after both. The look changes little until the layer alphas are painted
+  from the masks; that is the next step on that side.
 - Pure NumPy; 256 cells take about a minute, dominated by the stream-power loop in Python.
