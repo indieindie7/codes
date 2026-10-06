@@ -2,6 +2,7 @@
 
     py terrain_tool.py form   <sketch.json> <out.npy|out.bmp> [--template in.bmp] [--size N] [--steps N]
              [--seed 0] [--preset hills|alpine|canyon] [--preview out.png] [--masks folder] [--cell 512] [--zstep 0.5] [--unit 0.02]
+             [--amplify <class>[/<site>]]   borrow 1-2 cell detail from a reference DEM (terrain_refs.py fetch first)
     py terrain_tool.py score  <in.bmp|.npy> [--cell 512] [--zstep 0.5] [--unit 0.02]
     py terrain_tool.py erode  <in.bmp|.npy> <out.bmp|.npy> [--cell 512] [--zstep 0.5] [--unit 0.02]
              [--freeze mask.png] [--steps 250] [--droplets 60000] [--thermal 50] [--seed 0] [--masks folder]
@@ -68,6 +69,11 @@ def write_masks(folder, out):
     masks = out["masks"] if "masks" in out else te.layer_masks(out)
     for k, v in masks.items():
         Image.fromarray((np.clip(v, 0, 1) * 255).astype(np.uint8)).save(os.path.join(folder, k + ".png"))
+    if "biome" in out:
+        Image.fromarray(out["biome"]["biome"].astype(np.uint8)).save(os.path.join(folder, "biome_class.png"))
+        for k in ("temperature", "moisture", "insolation"):
+            a = np.asarray(out["biome"][k], dtype=np.float64); a = (a - a.min()) / max(a.max() - a.min(), 1e-9)
+            Image.fromarray((a * 255).astype(np.uint8)).save(os.path.join(folder, "biome_" + k + ".png"))
     for k in ("flow", "deposit", "wear", "debris", "hardness", "uplift"):
         if k not in out:
             continue
@@ -89,7 +95,8 @@ def main():
         import terrain_form as tf_
         import terrain_preview as tp
         dst = sys.argv[3]
-        out = tf_.form(src, preset=arg("--preset", None, str), seed=int(arg("--seed", 0, int)), size=arg("--size", None, int), steps=arg("--steps", None, int))
+        out = tf_.form(src, preset=arg("--preset", None, str), seed=int(arg("--seed", 0, int)), size=arg("--size", None, int), steps=arg("--steps", None, int),
+                       amplify=arg("--amplify", None, str))
         mpc = out["metres_per_cell"]
         if dst.lower().endswith(".npy"):
             np.save(dst, out["h"])

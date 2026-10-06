@@ -204,7 +204,7 @@ def report(s, log=print):
     log("PTRM (relative)     %.2f   landform share %.2f  (valley+ridge+hollow+spur+shoulder+footslope; compare runs, higher = more real)" % (s["ptrm"], s["landform_share"]))
     log("geomorphons         valley %.2f ridge %.2f hollow %.2f spur %.2f slope %.2f flat %.2f shoulder %.2f footslope %.2f peak %.2f pit %.2f"
         % (g["valley"], g["ridge"], g["hollow"], g["spur"], g["slope"], g["flat"], g["shoulder"], g["footslope"], g["peak"], g["pit"]))
-    log("spectrum slope      %.2f   (natural ~1.9-2.1)" % s["psd_slope"])
+    log("spectrum slope      %.2f   (real 15 m DEMs read 3.7-4.4 with this estimator; fbm gain 0.5 reads 4)" % s["psd_slope"])
     sd = s["slope_deg"]
     log("slope deg           mean %.1f median %.1f p90 %.1f" % (sd["mean"], sd["median"], sd["p90"]))
     log("Horton Rb / Rl      %.2f / %.2f  (3-5 / 1.6-2.4), max order %d, drainage density %.3f" % (s["horton_rb"], s["horton_rl"], s["max_order"], s["drainage_density"]))

@@ -1,16 +1,204 @@
 {
-  "size": 256, "metres_per_cell": 10.24, "relief": 450, "preset": "alpine",
-  "outlet": "border", "base": 0.45, "roughness": 0.2, "roughness_kind": "ridged",
-  "items": [
-    {"type": "ridge", "points": [[0.03, 0.38], [0.22, 0.42], [0.36, 0.46], [0.52, 0.34], [0.68, 0.3], [0.84, 0.36], [0.98, 0.3]], "width": 0.08, "strength": 1.0},
-    {"type": "ridge", "points": [[0.46, 0.4], [0.5, 0.58], [0.47, 0.78]], "width": 0.055, "strength": 0.78},
-    {"type": "ridge", "points": [[0.72, 0.3], [0.8, 0.14], [0.9, 0.05]], "width": 0.05, "strength": 0.7},
-    {"type": "peak", "at": [0.36, 0.46], "height": 1.0, "radius": 0.025},
-    {"type": "peak", "at": [0.68, 0.3], "height": 0.9, "radius": 0.025},
-    {"type": "peak", "at": [0.49, 0.6], "height": 0.72, "radius": 0.02},
-    {"type": "valley", "points": [[0.2, 0.99], [0.26, 0.76], [0.33, 0.58]], "width": 0.05, "depth": 0.85},
-    {"type": "valley", "points": [[0.78, 0.99], [0.72, 0.72], [0.62, 0.5]], "width": 0.05, "depth": 0.85},
-    {"type": "valley", "points": [[0.5, 0.01], [0.5, 0.2], [0.44, 0.33]], "width": 0.045, "depth": 0.8},
-    {"type": "pad", "at": [0.3, 0.88], "radius": 0.03}
-  ]
+ "size": 256,
+ "metres_per_cell": 10.24,
+ "relief": 380,
+ "preset": "alpine",
+ "outlet": "border",
+ "base": 0.7,
+ "roughness": 0.2,
+ "roughness_kind": "ridged",
+ "items": [
+  {
+   "type": "ridge",
+   "points": [
+    [
+     0.03,
+     0.38
+    ],
+    [
+     0.22,
+     0.42
+    ],
+    [
+     0.36,
+     0.46
+    ],
+    [
+     0.52,
+     0.34
+    ],
+    [
+     0.68,
+     0.3
+    ],
+    [
+     0.84,
+     0.36
+    ],
+    [
+     0.98,
+     0.3
+    ]
+   ],
+   "width": 0.08,
+   "strength": 1.0
+  },
+  {
+   "type": "ridge",
+   "points": [
+    [
+     0.46,
+     0.4
+    ],
+    [
+     0.5,
+     0.58
+    ],
+    [
+     0.47,
+     0.78
+    ]
+   ],
+   "width": 0.055,
+   "strength": 0.78
+  },
+  {
+   "type": "ridge",
+   "points": [
+    [
+     0.72,
+     0.3
+    ],
+    [
+     0.8,
+     0.14
+    ],
+    [
+     0.9,
+     0.05
+    ]
+   ],
+   "width": 0.05,
+   "strength": 0.7
+  },
+  {
+   "type": "peak",
+   "at": [
+    0.36,
+    0.46
+   ],
+   "height": 1.0,
+   "radius": 0.025
+  },
+  {
+   "type": "peak",
+   "at": [
+    0.68,
+    0.3
+   ],
+   "height": 0.9,
+   "radius": 0.025
+  },
+  {
+   "type": "peak",
+   "at": [
+    0.49,
+    0.6
+   ],
+   "height": 0.72,
+   "radius": 0.02
+  },
+  {
+   "type": "valley",
+   "points": [
+    [
+     0.2,
+     0.99
+    ],
+    [
+     0.26,
+     0.76
+    ],
+    [
+     0.33,
+     0.58
+    ]
+   ],
+   "width": 0.05,
+   "depth": 0.85
+  },
+  {
+   "type": "valley",
+   "points": [
+    [
+     0.78,
+     0.99
+    ],
+    [
+     0.72,
+     0.72
+    ],
+    [
+     0.62,
+     0.5
+    ]
+   ],
+   "width": 0.05,
+   "depth": 0.85
+  },
+  {
+   "type": "valley",
+   "points": [
+    [
+     0.5,
+     0.01
+    ],
+    [
+     0.5,
+     0.2
+    ],
+    [
+     0.44,
+     0.33
+    ]
+   ],
+   "width": 0.045,
+   "depth": 0.8
+  },
+  {
+   "type": "pad",
+   "at": [
+    0.3,
+    0.88
+   ],
+   "radius": 0.03
+  },
+  {
+   "type": "road",
+   "points": [
+    [
+     0.3,
+     0.88
+    ],
+    [
+     0.44,
+     0.33
+    ],
+    [
+     0.5,
+     0.03
+    ]
+   ],
+   "width": 0.009
+  },
+  {
+   "type": "arena",
+   "at": [
+    0.2,
+    0.7
+   ],
+   "radius": 0.04,
+   "kind": "berm"
+  }
+ ]
 }

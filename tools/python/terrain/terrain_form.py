@@ -35,23 +35,25 @@ import terrain_erode as te        # noqa: E402
 import terrain_noise as tn        # noqa: E402
 import terrain_sketch as sk       # noqa: E402
 import terrain_score as ts        # noqa: E402
+import terrain_play as tplay      # noqa: E402
+import terrain_biome as tb        # noqa: E402
 
 PRESETS = {
     "hills": dict(
-        k=0.05, diffusion=0.12, steps=400, cap_slope=None,
+        k=0.05, diffusion=0.18, steps=400, cap_slope=None,
         hardness=dict(bands=3, hard_fraction=0.2, cap=False), hardness_scale=0.45,
         droplets=dict(count=40000), thermal=40, talus=(30.0, 55.0),
-        terrace=None, detail=dict(kind="fft", beta=2.0, amp=0.002), relief=220.0),
+        terrace=None, detail=dict(kind="fft", beta=2.0, amp=0.002), relief=160.0),
     "alpine": dict(
-        k=0.05, diffusion=0.08, steps=400, cap_slope=None,
+        k=0.05, diffusion=0.15, steps=400, cap_slope=None,
         hardness=dict(bands=4, hard_fraction=0.3, cap=False), hardness_scale=0.45,
         droplets=dict(count=15000, deposit_speed=0.2, capacity=5.0), thermal=25, talus=(34.0, 72.0),
-        terrace=None, detail=dict(kind="fft", beta=2.0, amp=0.003), relief=450.0),
+        terrace=None, detail=dict(kind="fft", beta=2.0, amp=0.003), relief=380.0),
     "canyon": dict(
-        k=0.08, diffusion=0.03, steps=400, cap_slope=None,
+        k=0.08, diffusion=0.02, steps=400, cap_slope=None,
         hardness=dict(bands=5, hard_fraction=0.55, cap=True), hardness_scale=1.0,
         droplets=dict(count=25000, deposit_speed=0.4), thermal=90, talus=(31.0, 80.0),
-        terrace=dict(step=0.08, sharpness=0.7, strength=0.65), detail=dict(kind="fft", beta=2.2, amp=0.002), relief=320.0),
+        terrace=dict(step=0.08, sharpness=0.7, strength=0.65), detail=dict(kind="fft", beta=2.2, amp=0.002), relief=280.0),
 }
 
 
@@ -110,7 +112,7 @@ def form_base(uplift, peaks, steps, k, diffusion, cap_slope=None, outlet=None, p
     return h, M, u
 
 
-def form(sketch, preset=None, seed=0, size=None, steps=None, log=print, detail=True):
+def form(sketch, preset=None, seed=0, size=None, steps=None, log=print, detail=True, amplify=None):
     if isinstance(sketch, str):
         sketch = sk.load(sketch)
     sketch = dict(sketch)
@@ -180,8 +182,59 @@ def form(sketch, preset=None, seed=0, size=None, steps=None, log=print, detail=T
         # no new pits from the noise (real pits deeper than a cell may stay)
         filled = tflow.fill_depressions(hc, outlet=r["outlet"])
         hc = np.where(filled - hc < 1.0, filled, hc)
+    # 4b. optional dictionary amplification from a real DEM of the class (terrain_amplify)
+    amp = amplify or sketch.get("amplify")
+    if amp:
+        import terrain_amplify as ta
+        import terrain_refs as tr
+        cls, _, site = str(amp).partition("/")
+        names = tr.site_names(cls)
+        if names:
+            ref, ref_mpc = tr.load_site(cls, site or names[0])
+            before = hc.copy()
+            hc = ta.amplify(hc * mpc, mpc, ref, ref_mpc, sparsity=2, strength=float(sketch.get("amplify_strength", 1.0)), seed=seed) / mpc
+            if log:
+                log("amplified from %s/%s: high-band power x%.1f" % (cls, site or names[0], ta.spectrum_gain(before, hc)))
+        elif log:
+            log("amplify: no reference tiles for %s (run terrain_refs.py fetch)" % cls)
     # 5. pads: flat, with a smooth halo
     hc, pads = sk.flatten_pads(hc, r["pads"], outlet=r["outlet"])
+    # 5b. roads and arenas (terrain_play): A* routes re-flowed into the ground, fight spaces
+    play = {"roads": [], "arenas": []}
+    hm = hc * mpc
+    for it in sketch.get("items", []):
+        if it["type"] == "road":
+            pts = [(int(round(p[1] * (n - 1))), int(round(p[0] * (n - 1)))) for p in it["points"]]
+            whole = []
+            for a, b in zip(pts[:-1], pts[1:]):
+                seg = tplay.road_path(hm, mpc, a, b, k_slope=float(it.get("k_slope", 30.0)), k_turn=float(it.get("k_turn", 0.6)), blocked=pads)
+                whole += seg if not whole else seg[1:]
+            hm, corridor = tplay.lay_road(hm, mpc, whole, width_cells=float(it.get("width", 0.01)) * n, halo_cells=float(it.get("halo", 0.025)) * n, max_grade=float(it.get("max_grade", 0.18)))
+            pads = pads | corridor
+            st = tplay.grade_stats(hm, mpc, whole); st["cells"] = len(whole)
+            play["roads"].append(st)
+            if log:
+                log("road: %.0f m, max grade %.0f%%, mean %.0f%%" % (st["length_m"], 100 * st["max_grade"], 100 * st["mean_grade"]))
+        elif it["type"] == "arena":
+            at = (int(round(it["at"][1] * (n - 1))), int(round(it["at"][0] * (n - 1))))
+            hm, amask = tplay.arena(hm, at, float(it.get("radius", 0.04)) * n, kind=it.get("kind", "bowl"), depth=float(it.get("depth", 0.3)))
+            pads = pads | amask
+            play["arenas"].append({"at": at, "kind": it.get("kind", "bowl")})
+    hc = hm / mpc
+    # playability: reach from the first pad or road start at 30 deg, the view from each pad
+    anchors = [p["mask"] for p in r["pads"] if p["mask"].any()]
+    if anchors or play["roads"]:
+        if anchors:
+            rr0, cc0 = np.nonzero(anchors[0]); start = (int(rr0.mean()), int(cc0.mean()))
+        else:
+            start = None
+        if start is not None:
+            _, frac = tplay.reachable(hm, mpc, start, 30.0)
+            _, seen = tplay.isovist(hm, mpc, start)
+            play["reachable_30deg"] = frac; play["isovist_from_pad"] = seen
+            if log:
+                log("play: %.0f%% of the map reachable from the first pad under 30 deg, %.0f%% of it visible from there" % (100 * frac, 100 * seen))
+    out_play = play
     # final state for the masks
     filled = tflow.fill_depressions(hc, outlet=r["outlet"])
     recv, _ = tflow.d8_receivers(filled)
@@ -212,8 +265,30 @@ def form(sketch, preset=None, seed=0, size=None, steps=None, log=print, detail=T
         masks["sand"] = np.maximum(masks.get("sand", 0), (1 - tn.smoothstep(np.degrees(np.arctan(out["slope"])), 4, 9)) * (1 - masks["wet"]) * (1 - tn.smoothstep((hc - hc.min()) / max(np.ptp(hc), 1e-9), 0.3, 0.5)))
         masks["grass"] = masks["grass"] * 0.25
     out["masks"] = masks
+    out["play"] = out_play
+    # biome fields: forest and scrub densities, a class map, the material slots per biome
+    climate = dict(sketch.get("climate", {}))
+    if name == "canyon":
+        climate.setdefault("sea_level_temp", 24.0); climate.setdefault("rain", 0.2)
+    elif name == "alpine":
+        climate.setdefault("sea_level_temp", 14.0); climate.setdefault("rain", 0.7)
+    else:
+        climate.setdefault("sea_level_temp", 14.0); climate.setdefault("rain", 0.85)
+    biome = tb.fields(out, **climate)
+    masks["forest"] = biome["forest"]; masks["scrub"] = biome["scrub"]
+    out["biome"] = biome
     out["score"] = ts.score(out["h"].astype(np.float64), mpc)
     if log:
         log("formed in %.1f s" % (time.time() - t0))
         ts.report(out["score"], log)
+        tb.report(biome, log)
+    try:
+        import terrain_refs as tr
+        if tr.load_stats():
+            out["compare"] = tr.compare(out["h"].astype(np.float64), mpc, name)
+            if log:
+                tr.report_compare(out["compare"], name, log)
+    except Exception as e:      # the references are optional
+        if log:
+            log("compare skipped: %s" % e)
     return out
