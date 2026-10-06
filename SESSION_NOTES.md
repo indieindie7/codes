@@ -50,6 +50,10 @@ the cloud can (Wine, headless Blender). The real check is the user's QA of the g
     --background`. Send the `Grime:` lines (incl. the `kind` survey) and the shots (dust and
     clutter, each with and without, and the kick).
 
+14. **SSAO:** fork branch `ssao` (or `tools/C/U2Shaders/d3d8-mingw.dll`), `ssao.hlsl` into
+    `System\U2Shaders\`, `post=1` + `ssao=1`. Compare with `ssao=0` and `ssaofx=0.8 40 1 1` (AO
+    alone); check the weapon and sky stay untouched, and the FPS.
+
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
 
