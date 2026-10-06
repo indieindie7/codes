@@ -41,6 +41,45 @@ Commands starting with `!` go to the bridge itself: `!ping`, `!answer yes|no`
 changes?" prompt from overwriting anything) and `!quit`. `python u2ed.py shell`
 opens an interactive prompt.
 
+## uedlib.py: recipes
+
+`uedlib.Ed` is `u2ed.Editor` plus the operations every build script re-invented. Each one raises
+`CommandFailed` when the editor logs a real failure line (`Can't ...`, `Bad image format`, `Failed to ...`),
+so a script stops at the cause instead of saving an empty map.
+
+```python
+from uedlib import Ed, session
+
+def job(ed):
+    ed.load("TutA")                                              # Maps\TutA.un2 (name or path)
+    ed.import_texture(r"C:\x\island1.bmp", "island1", "MyLevel", "terrain_maps", MIPS=0)
+    infos = ed.actors("TerrainInfo")                             # placed actors as dicts
+    ed.replace_actors("TerrainInfo", lambda t3d: t3d)            # copy, delete, re-import: rebuilds them
+    ed.view(0, 0, 4000, pitch=-2000, yaw=16384)                  # perspective camera
+    ed.screenshot("view.png")                                    # cropped to the perspective viewport
+    ed.save("TutA_Liandri")
+session(job)                                                     # fresh editor, always stopped
+```
+
+| Recipe | Notes |
+|---|---|
+| `load/save/new/rebuild/light/paths` | `paths()` = PATHS DEFINE (PATHS BUILD crashes on imported maps) |
+| `import_t3d(path, add=True)` / `export_t3d()` | export returns the text: what the editor really built |
+| `import_texture(file, name, pkg, group, **flags)` | checks the TGA first (RLE and odd depths are refused by UnrealEd); 8.3 paths |
+| `import_staticmesh(ase, pkg, group, name)` | `NEW StaticMeshFactory` |
+| `load_brush(u3d)` | warns on a second load: only the first `BRUSH LOAD` of a session takes effect |
+| `actors(cls)` | `ACTOR SELECT OFCLASS` + `EDIT COPY`, parsed from the clipboard T3D (`Location`, `Rotation`, `props`) |
+| `replace_actors(cls, edit)` | the one way to make a placed actor re-run its build (TerrainInfo re-reads its heightmap) |
+| `view(x, y, z, pitch, yaw)` / `screenshot(path)` | PrintWindow of the viewport, no PIL; `viewport="Overhead map"` for the others |
+| `hide_icons()` | SET bHiddenEd on Light, Triggers, Keypoint, NavigationPoint, AmbientSound, PlayerStart |
+| `short_path(p)` | 8.3 form: Unreal's parser cannot take spaces or parentheses |
+
+There is no `ACTOR SELECT NAME=` in this editor (checked in the decompiled `Exec_Actor`: NONE, ALL, INSIDE,
+INVERT, OFCLASS, OFSUBCLASS, GROW RADIUS=, DELETED, MATCHINGSTATICMESH, MATCHINGZONE, BRUSH, SELECTED,
+UNSELECTED): select by class and filter in Python, or edit the copied T3D.
+
+`ued_tour.py [map] [views]` is a camera tour built on it; `terrain_apply.py` (U2Avalon) is its first user.
+
 ## How it works
 
 Unreal II ships no engine source or headers. However, its DLLs export their C++
