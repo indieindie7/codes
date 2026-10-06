@@ -1,6 +1,6 @@
 r"""Random islands with the binder town on them, end to end, one game run each:
 
-    py tools/island_batch.py <seed> [<seed> ...] [shift=-5300]
+    py tools/island_batch.py <seed> [<seed> ...] [shift=-5300] [gen=form|noise]
 
 Per seed: random_island.py -> terrain erosion (tools/python/terrain) -> terrain_cutfill.py (pads under the
 town) -> terrain_apply.py into Maps\TutA_Rand<seed>.un2 (UnrealEd, uedlib) -> export_mutator.py (town
@@ -28,6 +28,7 @@ args = [a for a in sys.argv[1:] if "=" not in a]
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
 seeds = [int(a) for a in args] or [1]
 SHIFT = o.get("shift", "-5300")
+GEN = o.get("gen", "form")        # form = designed island by the terrain tool (island_form.py); noise = random_island.py + erosion
 
 
 def run(cmd, **k):
@@ -130,10 +131,14 @@ for seed in seeds:
     name = "TutA_Rand%d" % seed
     base = os.path.join(OUT, "isl%d" % seed)
     print("\n=== seed", seed, "->", name, flush=True)
-    run(["py", os.path.join(TOOLS, "random_island.py"), seed, TEMPLATE, base + ".bmp"])
-    run(["py", TERRAIN, "erode", base + ".bmp", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02",
-         "--seed", seed])
-    restore_sea(base + ".bmp", base + "_e.bmp", base + "_e.bmp")
+    if GEN == "form":
+        # the terrain tool forms and erodes the island itself (sketch -> stream power -> droplets -> thermal)
+        run(["py", os.path.join(TOOLS, "island_form.py"), seed, TEMPLATE, base + "_e.bmp", "png=" + base + "_sketch.png"])
+    else:
+        run(["py", os.path.join(TOOLS, "random_island.py"), seed, TEMPLATE, base + ".bmp"])
+        run(["py", TERRAIN, "erode", base + ".bmp", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02",
+             "--seed", seed])
+        restore_sea(base + ".bmp", base + "_e.bmp", base + "_e.bmp")
     # the town: anchors + interest-map seeding + roads + Voronoi drift (layout.py), then pads under it
     layout = base + "_layout.json"
     run(["py", os.path.join(TOOLS, "layout.py"), base + "_e.bmp", layout, "seed=%d" % seed, "shift=" + SHIFT, "png=" + base + "_map.png"])
