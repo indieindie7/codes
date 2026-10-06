@@ -43,14 +43,18 @@ added after the filter). `bPadDriftFix=False` turns it off.
 
 **Destructible armour (Seeker soldiers).** The way the new Wolfenstein games do it:
 Seeker infantry, elites, commanders and pilots carry six plates (head, torso, each arm,
-each leg) with points of their own, 20 to 50 % of their health each. While a plate holds,
-a hit on it loses 70 % of its damage to the plate; when the points run out the plate
+each leg) with points of their own. While a plate holds, a hit on it loses 70 % of its
+damage to the plate; when the points run out the plate
 breaks: the region's own piece of the character's mesh (the gib parts) flies off as the plate,
 a little smaller than the limb and in the body's skin, with a couple of chunks; the body
 jerks and staggers, and from then on hits there do 1.5 x
 (a bare head 2 x: break the helmet, then headshots count). Explosions rattle every plate
-at once and hurt the body in full. `[AdventMod.ModArmor]` in `AdventMod.ini`: `bArmor`,
-the plate shares, `Absorb`, `ExposedBonus`, `HeadBonus`, `Armored` (class name parts),
+at once and hurt the body in full. Time to kill is preserved: the plate points are chosen
+so that a region shot from full health takes the same total damage to kill as without
+armour (helmet: 235 damage to break it, 165 after; torso 167 and 233; limbs are lighter
+and a little faster), so the armour moves damage around in time rather than adding health.
+`[AdventMod.ModArmor]` in `AdventMod.ini`: `bArmor`, `bPreserveTtk` and the region shares
+(or the plain plate shares with it off), `Absorb`, `ExposedBonus`, `HeadBonus`,
 `bArmorLog`, `bPlates`, `PlateScale`, `PlateStay`, `bExpose`. Under a broken plate the flesh
 shows: one Combiner stage blends a flesh texture over the skin, a texture per set of broken
 plates in the skin's own UV space with the meat in its colour and the region in its alpha

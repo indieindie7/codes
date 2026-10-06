@@ -16,7 +16,14 @@ class ModArmor extends Info
 	config(AdventMod);
 
 var config bool bArmor;
-var config float PlateHead, PlateTorso, PlateArm, PlateLeg;   // plate points as a share of the character's health
+var config float PlateHead, PlateTorso, PlateArm, PlateLeg;   // plate points as a share of the character's health (bPreserveTtk off)
+// time to kill preserved: a region shot from full health takes the same total damage to
+// kill as without armour (the plate only moves damage around in time). With plate P,
+// absorb a, bonus B and health H: damage to kill = P/a + (H - P(1-a)/a)/B, which equals H
+// when P = a H (B-1) / (B-1+a). Shares under 1 give a lighter plate and a FASTER kill
+// through that region (limbs), never a slower one.
+var config bool bPreserveTtk;
+var config float ShareHead, ShareTorso, ShareArm, ShareLeg;
 var config float Absorb;            // the share of a hit a holding plate takes
 var config float ExposedBonus;      // damage x this on a region whose plate is gone
 var config float HeadBonus;         // ...and on a bare head
@@ -79,18 +86,38 @@ function int Body(Pawn P)
 		if (Bodies[i].P == P)
 			return i;
 	S.P = P;
-	S.Max[0] = P.default.Health * PlateHead;
-	S.Max[1] = P.default.Health * PlateTorso;
-	S.Max[2] = P.default.Health * PlateArm;
-	S.Max[3] = P.default.Health * PlateArm;
-	S.Max[4] = P.default.Health * PlateLeg;
-	S.Max[5] = P.default.Health * PlateLeg;
+	if (bPreserveTtk)
+	{
+		S.Max[0] = Neutral(P.default.Health, HeadBonus) * ShareHead;
+		S.Max[1] = Neutral(P.default.Health, ExposedBonus) * ShareTorso;
+		S.Max[2] = Neutral(P.default.Health, ExposedBonus) * ShareArm;
+		S.Max[3] = S.Max[2];
+		S.Max[4] = Neutral(P.default.Health, ExposedBonus) * ShareLeg;
+		S.Max[5] = S.Max[4];
+	}
+	else
+	{
+		S.Max[0] = P.default.Health * PlateHead;
+		S.Max[1] = P.default.Health * PlateTorso;
+		S.Max[2] = P.default.Health * PlateArm;
+		S.Max[3] = P.default.Health * PlateArm;
+		S.Max[4] = P.default.Health * PlateLeg;
+		S.Max[5] = P.default.Health * PlateLeg;
+	}
 	for (r = 0; r < 6; r++)
 		S.Plate[r] = S.Max[r];
 	Bodies[Bodies.Length] = S;
 	if (bArmorLog)
 		class'ModSettings'.static.Note("armor: " $ P $ " wears plates " $ int(S.Max[0]) $ "/" $ int(S.Max[1]) $ "/" $ int(S.Max[2]) $ "/" $ int(S.Max[4]));
 	return Bodies.Length - 1;
+}
+
+// the plate points that leave the damage-to-kill through a region unchanged
+function float Neutral(float Health, float Bonus)
+{
+	if (Bonus <= 1.0 || Absorb <= 0)
+		return 0;
+	return Absorb * Health * (Bonus - 1.0) / (Bonus - 1.0 + Absorb);
 }
 
 // the plate under a hit: the region of the bone nearest it (torso when no bone answers)
@@ -364,6 +391,11 @@ defaultproperties
      PlateTorso=0.5
      PlateArm=0.25
      PlateLeg=0.3
+     bPreserveTtk=True
+     ShareHead=1.0
+     ShareTorso=1.0
+     ShareArm=0.6
+     ShareLeg=0.6
      Absorb=0.7
      ExposedBonus=1.5
      HeadBonus=2.0
