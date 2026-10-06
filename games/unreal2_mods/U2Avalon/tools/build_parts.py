@@ -152,6 +152,9 @@ def roof(kind, W, D, H, lit, wear, rng):
         cyl(W * 0.3, D * 0.2, H + 1.2, 0.5, 1.6, "dark", 10)                                  # a vent
         box(-W * 0.3, -D * 0.2, H + 0.9, 1.6, 1.2, 1.0, "dark")                                # an AC box
     elif kind == "sawtooth":
+        # the ref-sheet hall has a heavy flat slab overhanging the walls (the silhouette check missed it):
+        # a 1.5 m overhang all round, the teeth sit on it
+        box(0, 0, H + 0.25, W + 3.0, D + 3.0, 0.5, "concrete")
         n = max(2, int(W // 6))
         pitch = W / n
         for i in range(n):

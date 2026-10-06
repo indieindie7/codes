@@ -100,11 +100,41 @@ def slope(x, y, d=64.0):
     return math.hypot(hx, hy)
 
 
+ROADS = []            # world segments ((x0,y0),(x1,y1)) where people walk between buildings (from the routines)
+
+
+def roads_from(citizens, buildings):
+    """every consecutive pair of places in a routine becomes a worn track between the two buildings; the
+    more people walk it, the wider (the width is used by material_at)"""
+    counts = {}
+    for c in citizens.values():
+        r = c.get("routine", [])
+        for k in range(1, len(r)):
+            a, b = r[k - 1][1], r[k][1]
+            if a != b and a in buildings and b in buildings and "at" in buildings[a] and "at" in buildings[b]:
+                if buildings[a]["kind"] == "rig" or buildings[b]["kind"] == "rig":
+                    continue                                   # the rig shuttle is a boat, not a path
+                key = tuple(sorted((a, b)))
+                counts[key] = counts.get(key, 0) + 1
+    segs = []
+    for (a, b), n in counts.items():
+        pa = from_frame(*buildings[a]["at"][:2])
+        pb = from_frame(*buildings[b]["at"][:2])
+        segs.append((pa, pb, 120 + 60 * min(n, 4)))
+    return segs
+
+
 def material_at(x, y):
-    """0 grass, 1 rock (steep), 2 sand (the shore band)"""
+    """0 grass, 1 rock (steep), 2 sand (the shore band, and the worn tracks between buildings)"""
     h = height(x, y)
     if -300 < h < 160:
         return 2
+    for (x0, y0), (x1, y1), w in ROADS:
+        dx, dy = x1 - x0, y1 - y0
+        L2 = dx * dx + dy * dy
+        t = 0.0 if L2 == 0 else max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / L2))
+        if math.hypot(x - (x0 + t * dx), y - (y0 + t * dy)) < w:
+            return 2
     if slope(x, y) > 0.8 or h > 4200:
         return 1
     return 0
@@ -483,6 +513,8 @@ if __name__ == "__main__":
         print("the binder has problems (python tools/binder.py); building anyway:")
         for p in problems:
             print("  ", p)
+    ROADS[:] = roads_from(citizens, buildings)
+    print(len(ROADS), "tracks from the routines")
     ase = os.path.join(HERE, "Models", "ase")
     os.makedirs(ase, exist_ok=True)
     manifest = []           # (mesh name, group, texture for the actor or "")
