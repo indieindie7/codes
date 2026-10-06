@@ -10,6 +10,7 @@ doors: front:personnel right:personnel
 roof: flat
 wear: 0.4
 lit: yes
+pipes: water_tanks dorm
 ref: processing_hall
 
 The smallest building with the most pipes: the sea intake on the shore side, the desalination stacks, the

@@ -5,7 +5,7 @@ layer: core
 kind: tower
 at: 0 0 300
 size: 36 36 110
-users: hawkins oduya vask
+users: hawkins oduya vask nkemelu
 doors: front:personnel
 roof: none
 wear: 0.5

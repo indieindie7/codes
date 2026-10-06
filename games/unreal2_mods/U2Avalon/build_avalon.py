@@ -82,6 +82,7 @@ MAP = [
     r'OBJ LOAD FILE="{GAME}\System\U2AvalonCards.u"',
     r'OBJ LOAD FILE="{SM}\HoverTestSM.usx"',
     r'OBJ LOAD FILE="{SM}\Flora_M.usx"',
+    r'OBJ LOAD FILE="{SM}\Mission_05M.usx"',
     r'OBJ LOAD FILE="{SM}\Terran_DecoM.usx"',
     r'OBJ LOAD FILE="{SM}\Mission_SulferonM.usx"',
     r'OBJ LOAD FILE="{GAME}\Textures\Mission_10T.utx"',

@@ -11,6 +11,7 @@ bays: front
 roof: sawtooth
 wear: 0.35
 lit: yes
+pipes: tank_farm
 ref: processing_hall
 
 The first hall, from the landing years: ore comes in from the silos on the right by roller door, product

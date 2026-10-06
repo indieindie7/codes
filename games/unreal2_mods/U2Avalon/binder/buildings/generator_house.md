@@ -10,6 +10,7 @@ doors: front:roller left:personnel
 roof: flat
 wear: 0.2
 lit: yes
+pipes: pump_station
 ref: processing_hall
 
 Where the island's power comes from, including the tower's; the pylon line starts at its back wall.

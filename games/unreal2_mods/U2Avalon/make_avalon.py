@@ -104,6 +104,77 @@ def slope(x, y, d=64.0):
 ROADS = []            # world segments ((x0,y0),(x1,y1)) where people walk between buildings (from the routines)
 
 
+def chaikin(pts, n=2):
+    for _ in range(n):
+        out = [pts[0]]
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            out.append((0.75 * x0 + 0.25 * x1, 0.75 * y0 + 0.25 * y1))
+            out.append((0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1))
+        out.append(pts[-1])
+        pts = out
+    return pts
+
+
+def curve(p0, p1, bulge=0.12):
+    """a gently bent road between two points: the midpoint pushed sideways by bulge*length, then smoothed"""
+    (x0, y0), (x1, y1) = p0, p1
+    dx, dy = x1 - x0, y1 - y0
+    L = math.hypot(dx, dy)
+    if L < 1:
+        return [p0, p1]
+    nx, ny = -dy / L, dx / L
+    mid = ((x0 + x1) / 2 + nx * bulge * L, (y0 + y1) / 2 + ny * bulge * L)
+    return chaikin([p0, mid, p1], 3)
+
+
+def road_network(citizens, buildings):
+    """ROADS: (a) the trunk roads (tower -> checkpoint -> plant office -> dock / cargo pad), bent and wide,
+    (b) a minimum spanning tree over every land building (narrow service tracks), (c) the routine tracks
+    (wider the more people walk them). Returns ((x0,y0),(x1,y1),width) world segments."""
+    segs = []
+    pos = {bid: from_frame(*b["at"][:2]) for bid, b in buildings.items() if "at" in b}
+    land = {bid: p for bid, p in pos.items() if buildings[bid]["kind"] not in ("rig", "barge", "wreck", "jetty")}
+
+    def add_poly(pts, w):
+        for a, b in zip(pts, pts[1:]):
+            segs.append((a, b, w))
+
+    trunk = [("tower", "checkpoint", 300), ("checkpoint", "plant_office", 300), ("plant_office", "dock", 280),
+             ("plant_office", "cargo_pad", 260), ("cargo_pad", "fuel_depot", 200), ("dorm", "hall_a", 220)]
+    for k, (a, b, w) in enumerate(trunk):
+        if a in pos and b in pos:
+            add_poly(curve(pos[a], pos[b], 0.10 if k % 2 == 0 else -0.08), w)
+    # Prim's tree over the land buildings
+    ids = list(land)
+    if ids:
+        inside = {ids[0]}
+        while len(inside) < len(ids):
+            best = None
+            for a in inside:
+                for b in ids:
+                    if b in inside:
+                        continue
+                    d = math.dist(land[a], land[b])
+                    if best is None or d < best[0]:
+                        best = (d, a, b)
+            _, a, b = best
+            inside.add(b)
+            if best[0] < 9000:
+                add_poly(curve(land[a], land[b], 0.05), 130)
+    # the routines
+    counts = {}
+    for c in citizens.values():
+        r = c.get("routine", [])
+        for k in range(1, len(r)):
+            a, b = r[k - 1][1], r[k][1]
+            if a != b and a in land and b in land:
+                key = tuple(sorted((a, b)))
+                counts[key] = counts.get(key, 0) + 1
+    for (a, b), n in counts.items():
+        add_poly(curve(land[a], land[b], 0.06), 110 + 50 * min(n, 4))
+    return segs
+
+
 def roads_from(citizens, buildings):
     """every consecutive pair of places in a routine becomes a worn track between the two buildings; the
     more people walk it, the wider (the width is used by material_at)"""
@@ -365,6 +436,62 @@ def floodmast(verts, uvs, tris, x, y, g, lit=True):
         box(verts, uvs, tris, x + dx, y, g + 670, 36, 30, 30, 0, uv=sw("glow" if lit else "dark"))
 
 
+def lamp_post(verts, uvs, tris, x, y, g, lit=True):
+    box(verts, uvs, tris, x, y, g + 200, 14, 14, 400, 0, uv=sw("charcoal"))
+    box(verts, uvs, tris, x, y, g + 405, 70, 20, 16, 0, uv=sw("charcoal"))
+    box(verts, uvs, tris, x + 28, y, g + 392, 22, 22, 14, 0, uv=sw("glow" if lit else "charcoal"))
+
+
+def pipe_network(buildings):
+    """'pipes: a b' on a sheet = an elevated pipe from this building to a and to b: an L in the look frame
+    (along first, then across), 2.8 m up on posts, a riser at each end and a junction box at the corner."""
+    verts, uvs, tris = [], [], []
+    pos = {bid: b["at"][:2] for bid, b in buildings.items() if "at" in b}
+    links = set()
+    for bid, b in buildings.items():
+        for other in b.get("pipes", "").split():
+            if bid in pos and other in pos:
+                links.add(tuple(sorted((bid, other))))
+    H = 140.0
+    for a, b in sorted(links):
+        (a0, c0), (a1, c1) = pos[a], pos[b]
+        corner = (a1, c0)
+        frame_pts = [(a0, c0), corner, (a1, c1)]
+        wpts = [from_frame(*p) for p in frame_pts]
+        for (x0, y0), (x1, y1) in zip(wpts, wpts[1:]):
+            L = math.hypot(x1 - x0, y1 - y0)
+            if L < 1:
+                continue
+            z0, z1 = max(height(x0, y0), 0) + H, max(height(x1, y1), 0) + H
+            n = 8
+            base = len(verts)
+            px, py = -(y1 - y0) / L, (x1 - x0) / L
+            for k in range(n):
+                ang = 2 * math.pi * k / n
+                ox, oy, oz = px * 32 * math.cos(ang), py * 32 * math.cos(ang), 32 * math.sin(ang)
+                verts.append((x0 + ox, y0 + oy, z0 + oz)); uvs.append(sw("steel"))
+                verts.append((x1 + ox, y1 + oy, z1 + oz)); uvs.append(sw("steel"))
+            for k in range(n):
+                i0, i1 = base + 2 * k, base + 2 * ((k + 1) % n)
+                ang = 2 * math.pi * (k + 0.5) / n
+                out = (px * math.cos(ang), py * math.cos(ang), math.sin(ang))
+                tris += [tri_facing(verts, (i0, i1, i1 + 1), out), tri_facing(verts, (i0, i1 + 1, i0 + 1), out)]
+            m = max(1, int(L // 500))
+            for k in range(1, m + 1):
+                t = k / (m + 1)
+                x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+                g = max(height(x, y), -200)
+                top = z0 + (z1 - z0) * t - 30
+                box(verts, uvs, tris, x, y, (g + top) / 2, 30, 30, max(10, top - g), 0, uv=sw("charcoal"))
+        for x, y in (wpts[0], wpts[-1]):                     # risers into the buildings
+            g = max(height(x, y), 0)
+            box(verts, uvs, tris, x, y, g + H / 2, 60, 60, H, 0, uv=sw("steel"))
+        cx_, cy_ = wpts[1]
+        g = max(height(cx_, cy_), 0)
+        box(verts, uvs, tris, cx_, cy_, g + H, 110, 110, 110, 0, uv=sw("rustred"))     # junction box
+    return verts, uvs, tris
+
+
 def actor(cls, name, loc, props="", rot=None):
     x, y, z = loc
     r = f"    Rotation=(Pitch={rot[0]},Yaw={rot[1]},Roll={rot[2]})\n" if rot else ""
@@ -391,7 +518,8 @@ BARRELS = ["Terran_DecoM.Barrels.Metal_Barrel_01", "Terran_DecoM.Barrels.Metal_B
 # the binder's kinds that keep a scripted mesh (metres, DrawScale M), by kind or by id
 SCRIPTED = {"tank": "StorageTank", "silo": "OreTank", "cooling": "CoolingTower", "mast": "RadioMast",
             "new_rig": "DrillingRig", "dead_rig": "DeadRig"}
-ASSEMBLED = ("hall", "office", "dorm", "house", "pump", "jetty", "pad")
+ASSEMBLED = ("hall", "office", "dorm", "house", "pump", "jetty", "pad", "barge")
+WRECK_MESH = "Mission_05M.debris_sheet_003.Crashed_Transport"
 
 
 def land_z(x, y):
@@ -504,12 +632,20 @@ def write_actors(path, bounds, manifest, buildings):
                 k += 1
             if kind in ("rig", "cooling"):
                 continue                      # the card replaces the mesh for these
+        if kind == "wreck":
+            x, y, deg = pts[0]
+            out.append(actor("StaticMeshActor", f"W{k}_wreck", (x, y, land_z(x, y) - 60),
+                             f"    StaticMesh=StaticMesh'{WRECK_MESH}'\n    DrawScale=2.60\n", (900, yaw(deg), -2600)))
+            k += 1
+            continue
         mesh = b.get("mesh") or (f"B_{bid}" if kind in ASSEMBLED else SCRIPTED.get(bid, SCRIPTED.get(kind)))
         if mesh is None:
             print("no mesh for", bid, kind)
             continue
         for x, y, deg in pts:
-            if kind == "rig":
+            if kind == "barge":
+                z = SEA_Z - 0.9 * M                        # the hull's draft
+            elif kind == "rig":
                 z = SEA_Z - 0.12 * b["size"][2] * M          # legs a little under the sea
             elif kind == "jetty":
                 z = SEA_Z - 60
@@ -551,6 +687,25 @@ def write_actors(path, bounds, manifest, buildings):
     fv = fence(buildings)
     write_ase(os.path.join(HERE, "Models", "ase", "Fence.ase"), "Fence", *fv)
     out.append(actor("StaticMeshActor", "Fence", (0, 0, SEA_Z), "    StaticMesh=StaticMesh'AvalonSM.Liandri.Fence'\n" + PAL + NO_COLLISION))
+    # lamp posts along the trunk roads (every ~900 units, on the right-hand verge)
+    lv = ([], [], [])
+    for (x0, y0), (x1, y1), w in ROADS:
+        if w < 250:
+            continue
+        L = math.hypot(x1 - x0, y1 - y0)
+        if L < 300:
+            continue
+        nx, ny = -(y1 - y0) / L, (x1 - x0) / L
+        t = 0.5
+        x, y = x0 + (x1 - x0) * t + nx * (w + 90), y0 + (y1 - y0) * t + ny * (w + 90)
+        along, across = look_frame(x, y)
+        if height(x, y) > 0 and along < shore_at(across):
+            lamp_post(*lv, x, y, height(x, y))
+    write_ase(os.path.join(HERE, "Models", "ase", "Lamps.ase"), "Lamps", *lv)
+    out.append(actor("StaticMeshActor", "Lamps", (0, 0, SEA_Z), "    StaticMesh=StaticMesh'AvalonSM.Liandri.Lamps'\n" + PAL))
+    pv = pipe_network(buildings)
+    write_ase(os.path.join(HERE, "Models", "ase", "Pipes.ase"), "Pipes", *pv)
+    out.append(actor("StaticMeshActor", "Pipes", (0, 0, SEA_Z), "    StaticMesh=StaticMesh'AvalonSM.Liandri.Pipes'\n" + PAL))
     mv = ([], [], [])
     for bid in ("cargo_pad", "dock"):
         if bid in placed:
@@ -643,8 +798,8 @@ if __name__ == "__main__":
         print("the binder has problems (python tools/binder.py); building anyway:")
         for p in problems:
             print("  ", p)
-    ROADS[:] = roads_from(citizens, buildings)
-    print(len(ROADS), "tracks from the routines")
+    ROADS[:] = road_network(citizens, buildings)
+    print(len(ROADS), "road segments (trunk + service tree + routines)")
     ase = os.path.join(HERE, "Models", "ase")
     os.makedirs(ase, exist_ok=True)
     manifest = []           # (mesh name, group, texture for the actor or "")
@@ -663,6 +818,8 @@ if __name__ == "__main__":
     manifest.append(("Pipeline", "Liandri", ""))
     manifest.append(("Fence", "Liandri", ""))
     manifest.append(("Floodmasts", "Liandri", ""))
+    manifest.append(("Lamps", "Liandri", ""))
+    manifest.append(("Pipes", "Liandri", ""))
     bounds = json.load(open(os.path.join(ase, "bounds.json")))
     BOUNDS.update(bounds)
     for b in sorted(bounds):

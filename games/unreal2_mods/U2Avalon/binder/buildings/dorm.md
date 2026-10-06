@@ -5,7 +5,7 @@ layer: core
 kind: dorm
 at: 12700 -1600 120
 size: 24 10 7
-users: reyes benedek arashiro hands
+users: reyes benedek arashiro hands haldane
 doors: front:personnel back:personnel
 roof: flat
 wear: 0.3

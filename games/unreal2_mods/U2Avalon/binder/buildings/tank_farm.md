@@ -12,6 +12,7 @@ roof: dome
 wear: 0.15
 lit: yes
 mesh: storage_tank_1_kiln
+pipes: cooling_towers
 ref: storage_tank
 
 Four pale product tanks between the halls and the cooling towers, with a ladder each and the pipeline's

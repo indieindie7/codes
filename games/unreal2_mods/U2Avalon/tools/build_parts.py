@@ -198,6 +198,23 @@ def building(b, rng):
         if lit:
             box(W / 2 - 1, 0, H + 1.6, 0.3, 0.3, 0.3, "glow")
         return
+    if kind == "barge":
+        # a flat company barge: hull, deck, bulwark, three containers, a wheelhouse aft (front = bow, -Y)
+        box(0, 0, 0.8, W, D, 1.6, "charcoal")
+        box(0, 0, 1.65, W - 0.4, D - 0.4, 0.1, "grey")
+        for s in (-1, 1):
+            box(0, s * (D / 2 - 0.15), 2.1, W, 0.3, 0.8, "steel")
+        box(0, -D / 2 + 0.15, 2.1, 0.3, D, 0.8, "steel")
+        for k, (dx, m) in enumerate(((-W * 0.25, "rustred"), (-W * 0.05, "steel"), (W * 0.15, "charcoal"))):
+            box(dx, (k % 2 - 0.5) * 1.6, 1.7 + 1.25, 6.0, 2.4, 2.5, m)
+            if k == 0 and wear > 0.2:
+                box(dx, 2.0, 1.7 + 1.25 + 2.5, 6.0, 2.4, 2.5, "brown")
+        box(W / 2 - 3.0, 0, 1.7 + 1.5, 3.5, D * 0.6, 3.0, "steel")
+        box(W / 2 - 1.3, 0, 4.4, 0.14, D * 0.5, 0.9, "glow" if lit else "charcoal")
+        cyl(W / 2 - 3.6, D * 0.2, 5.6, 0.12, 1.6, "charcoal", 6)
+        if lit:
+            box(-W / 2 + 0.6, 0, 3.4, 0.3, 0.3, 0.3, "glow")
+        return
     if kind == "pad":
         box(0, 0, 0.5, W, D, 1.0, "concrete")
         box(0, 0, 1.02, W * 0.72, D * 0.72, 0.06, "dark")
@@ -264,7 +281,7 @@ def building(b, rng):
     roof(b.get("roof", "flat"), W, D, H, lit, wear, rng)
 
 
-ASSEMBLED = ("hall", "office", "dorm", "house", "pump", "jetty", "pad")
+ASSEMBLED = ("hall", "office", "dorm", "house", "pump", "jetty", "pad", "barge")
 citizens, buildings = binder.load()
 for bid, b in buildings.items():
     if b["kind"] not in ASSEMBLED or "size" not in b:

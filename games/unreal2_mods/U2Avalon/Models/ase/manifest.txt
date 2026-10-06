@@ -112,17 +112,26 @@ Quay Liandri
 Pipeline Liandri 
 Fence Liandri 
 Floodmasts Liandri 
+Lamps Liandri 
+Pipes Liandri 
 B_authority_pad Liandri 
+B_barge Liandri 
 B_boat_landing Liandri 
 B_cargo_pad Liandri 
+B_checkpoint Liandri 
 B_directors_house Liandri 
 B_dorm Liandri 
 B_generator_house Liandri 
 B_hall_a Liandri 
 B_hall_b Liandri 
 B_hall_c Liandri 
+B_intake Liandri 
+B_old_camp Liandri 
 B_plant_office Liandri 
 B_pump_house Liandri 
+B_pump_station Liandri 
+B_shed_a Liandri 
+B_shed_b Liandri 
 CargoDropship Liandri 
 CoolingTower Liandri 
 DeadRig Liandri 
@@ -183,17 +192,48 @@ DrillingRigHY4 Cards Models\cards\DrillingRigHY4.tga
 DrillingRigHY5 Cards Models\cards\DrillingRigHY5.tga
 DrillingRigHY6 Cards Models\cards\DrillingRigHY6.tga
 DrillingRigHY7 Cards Models\cards\DrillingRigHY7.tga
+DrillingRigHY0 Cards Models\cards\DrillingRigHY0.tga
+DrillingRigHY1 Cards Models\cards\DrillingRigHY1.tga
+DrillingRigHY2 Cards Models\cards\DrillingRigHY2.tga
+DrillingRigHY3 Cards Models\cards\DrillingRigHY3.tga
+DrillingRigHY4 Cards Models\cards\DrillingRigHY4.tga
+DrillingRigHY5 Cards Models\cards\DrillingRigHY5.tga
+DrillingRigHY6 Cards Models\cards\DrillingRigHY6.tga
+DrillingRigHY7 Cards Models\cards\DrillingRigHY7.tga
+DrillingRigHY0 Cards Models\cards\DrillingRigHY0.tga
+DrillingRigHY1 Cards Models\cards\DrillingRigHY1.tga
+DrillingRigHY2 Cards Models\cards\DrillingRigHY2.tga
+DrillingRigHY3 Cards Models\cards\DrillingRigHY3.tga
+DrillingRigHY4 Cards Models\cards\DrillingRigHY4.tga
+DrillingRigHY5 Cards Models\cards\DrillingRigHY5.tga
+DrillingRigHY6 Cards Models\cards\DrillingRigHY6.tga
+DrillingRigHY7 Cards Models\cards\DrillingRigHY7.tga
+DeadRigHY0 Cards Models\cards\DeadRigHY0.tga
+DeadRigHY1 Cards Models\cards\DeadRigHY1.tga
+DeadRigHY2 Cards Models\cards\DeadRigHY2.tga
+DeadRigHY3 Cards Models\cards\DeadRigHY3.tga
+DeadRigHY4 Cards Models\cards\DeadRigHY4.tga
+DeadRigHY5 Cards Models\cards\DeadRigHY5.tga
+DeadRigHY6 Cards Models\cards\DeadRigHY6.tga
+DeadRigHY7 Cards Models\cards\DeadRigHY7.tga
 B_authority_pad Bake Models\bake\B_authority_pad.tga
+B_barge Bake Models\bake\B_barge.tga
 B_boat_landing Bake Models\bake\B_boat_landing.tga
 B_cargo_pad Bake Models\bake\B_cargo_pad.tga
+B_checkpoint Bake Models\bake\B_checkpoint.tga
 B_directors_house Bake Models\bake\B_directors_house.tga
 B_dorm Bake Models\bake\B_dorm.tga
 B_generator_house Bake Models\bake\B_generator_house.tga
 B_hall_a Bake Models\bake\B_hall_a.tga
 B_hall_b Bake Models\bake\B_hall_b.tga
 B_hall_c Bake Models\bake\B_hall_c.tga
+B_intake Bake Models\bake\B_intake.tga
+B_old_camp Bake Models\bake\B_old_camp.tga
 B_plant_office Bake Models\bake\B_plant_office.tga
 B_pump_house Bake Models\bake\B_pump_house.tga
+B_pump_station Bake Models\bake\B_pump_station.tga
+B_shed_a Bake Models\bake\B_shed_a.tga
+B_shed_b Bake Models\bake\B_shed_b.tga
 cargo_dropship_script Bake Models\bake\cargo_dropship_script.tga
 cooling_tower_script Bake Models\bake\cooling_tower_script.tga
 dead_rig_script Bake Models\bake\dead_rig_script.tga
