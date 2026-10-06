@@ -398,6 +398,18 @@ def land_z(x, y):
     return SEA_Z + height(x, y)
 
 
+CARD_PX = 256          # the cards' size (tools/bake_cards.py size=256); the building fills 92%, base line 6% up
+
+
+def card_actor(name, k, base, x, y, z_ground, deg, size_units):
+    """an 8-view imposter of a Hunyuan model: U2AvalonCards.CardSprite with the frames AvalonSM.Cards.<base>0..7.
+    Frame k faces k*45 degrees clockwise from the card's yaw; the sprite's centre sits 0.44*size above the base line."""
+    frames = "".join(f"    Frames({i})=Texture'AvalonSM.Cards.{base}{i}'\n" for i in range(8))
+    return actor("U2AvalonCards.CardSprite", f"C{k}_{base}", (x, y, z_ground + 0.44 * size_units),
+                 frames + f"    Texture=Texture'AvalonSM.Cards.{base}0'\n    NumFrames=8\n    Style=STY_Masked\n"
+                 f"    DrawScale={size_units / CARD_PX:.3f}\n    bUnlit=False\n", (0, yaw(deg), 0))
+
+
 def instances(b):
     """the (x, y, yaw) of each copy of a building: 'count: 3 across' / '2 along' / '2x2' in the look frame"""
     along, across, deg = b["at"]
@@ -463,12 +475,35 @@ def write_actors(path, bounds, manifest, buildings):
             # the crane near the sea end, containers along the quay
             a = math.radians(deg)
             Lq = b["size"][0] * M
-            mesh_actor("DockCrane", x + math.cos(a) * Lq * 0.3, y + math.sin(a) * Lq * 0.3, SEA_Z - 80 + 300, deg + 90)
+            if not b.get("card"):
+                mesh_actor("DockCrane", x + math.cos(a) * Lq * 0.3, y + math.sin(a) * Lq * 0.3, SEA_Z - 80 + 300, deg + 90)
+            else:
+                cw = b["card"].split()
+                out.append(card_actor(cw[0], k, cw[0], x + math.cos(a) * Lq * 0.3, y + math.sin(a) * Lq * 0.3, SEA_Z - 80 + 300, deg + 90, float(cw[1])))
+                k += 1
             for kx in range(int(-Lq / 2 + 500), int(Lq / 2 - 1500), 650):
                 if random.random() < 0.7:
                     prop(random.choice(CRATES), x + kx * math.cos(a) - 250 * math.sin(a), y + kx * math.sin(a) + 250 * math.cos(a),
                          1.0, bottom=-130, yaw_deg=deg + random.choice((0, 90)), z=SEA_Z - 80 + 300)
             continue
+        if b.get("card"):
+            # a Hunyuan imposter instead of (or on top of) the mesh: "card: DrillingRigHY 4000"
+            cw = b["card"].split()
+            cname, csize = cw[0], float(cw[1]) if len(cw) > 1 else b["size"][2] * M / 0.92
+            for x, y, deg in pts:
+                if kind == "rig":
+                    zg = SEA_Z - 0.06 * csize
+                elif kind in ("dock", "pad"):
+                    zg = (SEA_Z - 80 + 300) if kind == "dock" else SEA_Z + max(0.0, height(x, y)) + 1.0 * M
+                    a2 = math.radians(deg)
+                    if kind == "dock":
+                        x, y = x + math.cos(a2) * b["size"][0] * M * 0.3, y + math.sin(a2) * b["size"][0] * M * 0.3
+                else:
+                    zg = SEA_Z + max(0.0, height(x, y))
+                out.append(card_actor(cname, k, cname, x, y, zg, deg, csize))
+                k += 1
+            if kind in ("rig", "cooling"):
+                continue                      # the card replaces the mesh for these
         mesh = b.get("mesh") or (f"B_{bid}" if kind in ASSEMBLED else SCRIPTED.get(bid, SCRIPTED.get(kind)))
         if mesh is None:
             print("no mesh for", bid, kind)
@@ -482,7 +517,7 @@ def write_actors(path, bounds, manifest, buildings):
                 z = SEA_Z + max(0.0, height(x, y))
             mesh_actor(mesh, x, y, z, deg)
         # usage dressing
-        if kind == "pad" and bid == "cargo_pad":
+        if kind == "pad" and bid == "cargo_pad" and not b.get("card"):
             x, y, deg = pts[0]
             mesh_actor("CargoDropship", x, y, SEA_Z + max(0.0, height(x, y)) + 1.0 * M, deg + 20, 0.5)
         if kind == "pad" and bid == "authority_pad":
@@ -632,6 +667,13 @@ if __name__ == "__main__":
     BOUNDS.update(bounds)
     for b in sorted(bounds):
         manifest.append((b, "Liandri", ""))
+    cards_dir = os.path.join(HERE, "Models", "cards")
+    for b in buildings.values():
+        if b.get("card"):
+            base = b["card"].split()[0]
+            for i in range(8):
+                if os.path.exists(os.path.join(cards_dir, f"{base}{i}.tga")):
+                    manifest.append((f"{base}{i}", "Cards", os.path.join("Models", "cards", f"{base}{i}.tga")))
     # the baked textures (one per mesh) for build_avalon's TEXTURE IMPORT: "name Bake <tga path>"
     for b in sorted(bounds):
         tex = bounds[b].get("texture", "Pal")

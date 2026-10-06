@@ -1,0 +1,28 @@
+# avalon_aerial: the island from the air: high over the plant looking down, oblique over the tower toward the
+# sea, and the whole shelf from the sea side
+background
+map Avalon
+waitcontrol 240
+wait 2
+console god
+console hub tp 7250 -12557 7000
+console hub face 300
+turn 0 -85 0.2
+wait 0.6
+shot
+console hub tp -3000 5000 6500
+console hub face 300
+turn 0 -32 0.2
+wait 0.6
+shot
+console hub tp 14000 -22000 4500
+console hub face 120
+turn 0 -22 0.2
+wait 0.6
+shot
+console hub tp 2000 -4000 3500
+console hub face 300
+turn 0 -28 0.2
+wait 0.6
+shot
+quit

@@ -44,9 +44,22 @@ def bakes():
     return rows
 
 
+def cards():
+    here = os.path.dirname(os.path.abspath(__file__))
+    rows = []
+    for line in open(os.path.join(here, "Models", "ase", "manifest.txt")):
+        w = line.split(None, 2)
+        if len(w) == 3 and w[1] == "Cards":
+            rows.append(w[0])
+    return sorted(set(rows))
+
+
 ASSETS = [
     r'NEW StaticMeshFactory PACKAGE="AvalonSM" GROUP="%s" NAME="%s" FILE="{A}\Models\ase\%s.ase"' % (g, n, n)
-    for n, g in manifest() if g != "Bake"
+    for n, g in manifest() if g not in ("Bake", "Cards")
+] + [
+    r'TEXTURE IMPORT FILE="{A}\Models\cards\%s.tga" NAME="%s" PACKAGE="AvalonSM" GROUP="Cards" MIPS=1 ALPHA=1 UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP' % (t, t)
+    for t in cards()
 ] + [
     r'TEXTURE IMPORT FILE="{A}\Models\bake\%s.tga" NAME="%s" PACKAGE="AvalonSM" GROUP="Bake" MIPS=1' % (t, t)
     for t in bakes()
@@ -66,6 +79,7 @@ ROOM = [
 
 MAP = [
     r'OBJ LOAD FILE="{SM}\AvalonSM.usx"',
+    r'OBJ LOAD FILE="{GAME}\System\U2AvalonCards.u"',
     r'OBJ LOAD FILE="{SM}\HoverTestSM.usx"',
     r'OBJ LOAD FILE="{SM}\Flora_M.usx"',
     r'OBJ LOAD FILE="{SM}\Terran_DecoM.usx"',

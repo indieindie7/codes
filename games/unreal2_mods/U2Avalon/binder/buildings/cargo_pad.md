@@ -10,6 +10,7 @@ doors:
 roof: none
 wear: 0.1
 lit: yes
+card: CargoDropshipHY 900
 ref: pad
 
 The big pad: the boxy company dropship, floodlights, the product off-world. Vask's pad fits in one corner

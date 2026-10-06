@@ -11,6 +11,7 @@ roof: none
 wear: 0.9
 lit: no
 abandoned: yes
+card: DeadRigHY 3600
 ref: dead_rig
 
 Decommissioned after the blowout and never removed, because that was cheaper. One light at night where

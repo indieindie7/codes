@@ -143,6 +143,46 @@ radio_mast_1_kiln Liandri
 radio_mast_2_kiln Liandri 
 storage_tank_1_kiln Liandri 
 storage_tank_2_kiln Liandri 
+CargoDropshipHY0 Cards Models\cards\CargoDropshipHY0.tga
+CargoDropshipHY1 Cards Models\cards\CargoDropshipHY1.tga
+CargoDropshipHY2 Cards Models\cards\CargoDropshipHY2.tga
+CargoDropshipHY3 Cards Models\cards\CargoDropshipHY3.tga
+CargoDropshipHY4 Cards Models\cards\CargoDropshipHY4.tga
+CargoDropshipHY5 Cards Models\cards\CargoDropshipHY5.tga
+CargoDropshipHY6 Cards Models\cards\CargoDropshipHY6.tga
+CargoDropshipHY7 Cards Models\cards\CargoDropshipHY7.tga
+CoolingTowerHY0 Cards Models\cards\CoolingTowerHY0.tga
+CoolingTowerHY1 Cards Models\cards\CoolingTowerHY1.tga
+CoolingTowerHY2 Cards Models\cards\CoolingTowerHY2.tga
+CoolingTowerHY3 Cards Models\cards\CoolingTowerHY3.tga
+CoolingTowerHY4 Cards Models\cards\CoolingTowerHY4.tga
+CoolingTowerHY5 Cards Models\cards\CoolingTowerHY5.tga
+CoolingTowerHY6 Cards Models\cards\CoolingTowerHY6.tga
+CoolingTowerHY7 Cards Models\cards\CoolingTowerHY7.tga
+DeadRigHY0 Cards Models\cards\DeadRigHY0.tga
+DeadRigHY1 Cards Models\cards\DeadRigHY1.tga
+DeadRigHY2 Cards Models\cards\DeadRigHY2.tga
+DeadRigHY3 Cards Models\cards\DeadRigHY3.tga
+DeadRigHY4 Cards Models\cards\DeadRigHY4.tga
+DeadRigHY5 Cards Models\cards\DeadRigHY5.tga
+DeadRigHY6 Cards Models\cards\DeadRigHY6.tga
+DeadRigHY7 Cards Models\cards\DeadRigHY7.tga
+DockCraneHY0 Cards Models\cards\DockCraneHY0.tga
+DockCraneHY1 Cards Models\cards\DockCraneHY1.tga
+DockCraneHY2 Cards Models\cards\DockCraneHY2.tga
+DockCraneHY3 Cards Models\cards\DockCraneHY3.tga
+DockCraneHY4 Cards Models\cards\DockCraneHY4.tga
+DockCraneHY5 Cards Models\cards\DockCraneHY5.tga
+DockCraneHY6 Cards Models\cards\DockCraneHY6.tga
+DockCraneHY7 Cards Models\cards\DockCraneHY7.tga
+DrillingRigHY0 Cards Models\cards\DrillingRigHY0.tga
+DrillingRigHY1 Cards Models\cards\DrillingRigHY1.tga
+DrillingRigHY2 Cards Models\cards\DrillingRigHY2.tga
+DrillingRigHY3 Cards Models\cards\DrillingRigHY3.tga
+DrillingRigHY4 Cards Models\cards\DrillingRigHY4.tga
+DrillingRigHY5 Cards Models\cards\DrillingRigHY5.tga
+DrillingRigHY6 Cards Models\cards\DrillingRigHY6.tga
+DrillingRigHY7 Cards Models\cards\DrillingRigHY7.tga
 B_authority_pad Bake Models\bake\B_authority_pad.tga
 B_boat_landing Bake Models\bake\B_boat_landing.tga
 B_cargo_pad Bake Models\bake\B_cargo_pad.tga

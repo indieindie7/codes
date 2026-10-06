@@ -10,6 +10,7 @@ doors:
 roof: none
 wear: 0.1
 lit: yes
+card: DrillingRigHY 4200
 ref: drilling_rig
 
 Where the money is now. A flare burns at its top.
