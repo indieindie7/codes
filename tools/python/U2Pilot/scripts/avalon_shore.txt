@@ -1,0 +1,28 @@
+# avalon_shore: the waters and the shore: the barge from the quay, the wellheads from the beach, the wreck on the
+# western rocks, the dead rig and capped well from the east shore
+background
+map Avalon
+waitcontrol 240
+wait 2
+console god
+console hub tp 15019 -13614 0
+console hub face 300
+turn 0 -4 0.3
+wait 1
+shot
+console hub tp 9539 -14122 0
+console hub face 300
+turn 0 -2 0.3
+wait 1
+shot
+console hub tp 2438 -18222 0
+console hub face 300
+turn 0 -3 0.3
+wait 1
+shot
+console hub tp 14500 -11000 0
+console hub face 345
+turn 0 -2 0.3
+wait 1
+shot
+quit

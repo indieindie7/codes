@@ -323,7 +323,11 @@ function PlaceCard(string Line)
 		return;
 	for (k = 0; k < N; k++)
 	{
-		T = Texture(DynamicLoadObject("U2AvalonCards." $ Word(Line, 0) $ k, class'Texture'));
+		// a bare name is one of this package's cards; "AvalonSM.Cards.DrillingRigHY" names another package's
+		if (InStr(Word(Line, 0), ".") >= 0)
+			T = Texture(DynamicLoadObject(Word(Line, 0) $ k, class'Texture'));
+		else
+			T = Texture(DynamicLoadObject("U2AvalonCards." $ Word(Line, 0) $ k, class'Texture'));
 		if (T == None)
 		{
 			Log("Cards: no texture U2AvalonCards." $ Word(Line, 0) $ k);
