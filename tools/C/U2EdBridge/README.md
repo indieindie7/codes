@@ -124,5 +124,9 @@ instead: `winshot.py <out.png>` (run with a Python that has Pillow) grabs the ed
 (PW_RENDERFULLCONTENT reads the D3D viewports too; no mouse, no focus needed). Camera control by command:
 `SET PlayerStart Location (X=..,Y=..,Z=..)`, `ACTOR SELECT OFCLASS CLASS=PlayerStart`, `CAMERA ALIGN`, then
 `SET Camera Rotation (Pitch=..,Yaw=..,Roll=0)` (SET reaches the viewport cameras; any later selection change
-redraws). `ued_tour.py` does a whole tour this way. Never `SET Info bHiddenEd True`: General protection fault
-in AZoneInfo::PostEditChange.
+redraws). `ued_tour.py` does a whole tour this way. Never `SET` on `Info`, `ZoneInfo` or a ZoneInfo subclass (LevelInfo, SkyZoneInfo, WarpZoneInfo): general
+protection fault. Reason (from reading the engine with Ghidra, 2026-10-05): `SET` runs
+`UObject::GlobalSetProperty`, which touches EVERY object of the class, including class defaults and
+objects outside the current map, and calls each one's `PostEditChange`; `AZoneInfo::PostEditChange`
+dereferences the object's level (`XLevel`) without a null check, and those objects have none. Light,
+Keypoint, NavigationPoint, AmbientSound and Emitter only run AActor's harmless PostEditChange.
