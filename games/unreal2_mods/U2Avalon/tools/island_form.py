@@ -22,6 +22,7 @@ seed = int(sys.argv[1])
 src, dst = sys.argv[2], sys.argv[3]
 o = dict(a.split("=", 1) for a in sys.argv[4:] if "=" in a)
 PRESET = o.get("preset", "hills")
+STYLE = o.get("style", "ridges")             # ridges | plateau (the Sana concept: volcano cone, cliff-edged plateau with the plant, long coast road)
 RELIEF = float(o.get("relief", 90))          # metres, highest point over the lowest formed cell
 LAND = float(o.get("land", 0.40))
 PNG = o.get("png")
@@ -71,6 +72,22 @@ items.append({"type": "valley", "points": [pt(bx, by), pt((bx + cx) / 2 + rng.un
 # the plant's plain: flat after erosion, and low uplift so it stays a coastal plain
 items.append({"type": "basin", "polygon": [pt(px - 0.07, py - 0.07), pt(px + 0.07, py - 0.07), pt(px + 0.07, py + 0.07), pt(px - 0.07, py + 0.07)], "depth": 0.7, "edge": 0.04})
 items.append({"type": "pad", "at": pt(px, py), "radius": 0.045})
+if STYLE == "plateau":
+    # the concept island: one volcanic cone in the heart, a flat-topped plateau on the plant's side ending in
+    # cliffs, and a long road from the plant along the shore past the tower and on round the coast
+    items = []
+    items.append({"type": "peak", "at": pt(cx, cy), "height": 1.0, "radius": 0.07})
+    items.append({"type": "ridge", "points": [pt(cx, cy), pt((cx + px) / 2, (cy + py) / 2 + 0.08)], "width": 0.08, "strength": 0.8})
+    ang0 = rng.uniform(0, 2 * math.pi)
+    poly = [pt(px + 0.17 * math.cos(a) * rng.uniform(0.85, 1.15), py + 0.15 * math.sin(a) * rng.uniform(0.85, 1.15))
+            for a in np.linspace(ang0, ang0 + 2 * math.pi, 9)[:-1]]
+    items.append({"type": "plateau", "polygon": poly, "strength": 0.22, "edge": 0.03, "resist": 0.6})
+    items.append({"type": "pad", "at": pt(px, py), "radius": 0.045})
+    # the road: plain -> tower -> on along the coast on the far side of the tower
+    ex, ey = tx + (tx - px) * 1.6, ty + (ty - py) * 1.6
+    ex, ey = min(max(ex, 0.08), 0.92), min(max(ey, 0.08), 0.92)
+    items.append({"type": "road", "points": [pt(px, py), pt((px + tx) / 2 + 0.03, (py + ty) / 2 - 0.03), pt(tx, ty), pt(ex, ey)], "width": 0.012})
+    RELIEF = max(RELIEF, 130.0)
 # a big bay or sound on one random side: a basin polygon eating into the island (never over the tower/plain quarter)
 sides = ["north", "south", "east", "west"]
 bay_side = sides[int(rng.integers(0, 2))] if rng.random() < 0.5 else "west"     # x<0.6 half: keeps the plant's shore intact
@@ -108,9 +125,19 @@ def main_mass(Hm, sea_level):
     return seen
 
 
+J, I = np.mgrid[0:N, 0:N]
 sea = float(np.percentile(hm, 100 * (1 - LAND)))
 while sea > 3.0 and main_mass(hm, sea + 3.0).mean() < 0.8 * LAND:
     sea -= 1.5                                                   # lower the sea until the tower's landmass carries the island
+if STYLE == "plateau":
+    # the plateau's table sits at the tower's own level (TutA's tower base is ~22 m over the sea): cap the
+    # formed heights round the plain, the cap rising smoothly away so the cliffs stay where the sketch put them
+    PLAT_H = 26.0
+    dpl = np.hypot(I - (PLAIN[0] + PLAIN[1]) / 2, J - (PLAIN[2] + PLAIN[3]) / 2)
+    r_pl = 0.16 * N
+    tcap = np.clip((dpl - r_pl) / (0.08 * N), 0, 1)
+    cap = sea + PLAT_H + 120.0 * tcap * tcap * (3 - 2 * tcap)
+    hm = np.minimum(hm, cap)
 # the plain and the tower must be dry: lift them with smooth bumps rather than lowering the sea
 J, I = np.mgrid[0:N, 0:N]
 for (ci, cj, need, rad) in ((TOWER[0], TOWER[1], 7.0, 10.0), ((PLAIN[0] + PLAIN[1]) // 2, (PLAIN[2] + PLAIN[3]) // 2, 3.5, 9.0)):
@@ -133,7 +160,7 @@ Z = Z * E + TZ * (1 - E)
 Hn = np.clip(np.round(32768 + (Z - LOC_Z) * 256 / SCALE_Z), 0, 65535).astype("<u2")
 pix = (Hn if rows_up else Hn[::-1]).tobytes()
 open(dst, "wb").write(raw[:off] + pix + raw[off + len(pix):])
-print(f"seed {seed} [{PRESET}]: {n_ridges} ridge(s), inlet from side {side}, bay {bay_side}, sea at {sea:.1f} m of {hm.max():.0f}, land {(Z > SEA_Z).mean():.0%}, "
+print(f"seed {seed} [{PRESET} {STYLE}]: {n_ridges} ridge(s), inlet from side {side}, bay {bay_side}, sea at {sea:.1f} m of {hm.max():.0f}, land {(Z > SEA_Z).mean():.0%}, "
       f"peak Z {Z.max():.0f}, plain Z {Z[(PLAIN[2] + PLAIN[3]) // 2, (PLAIN[0] + PLAIN[1]) // 2]:.0f} -> {dst}")
 if PNG:
     import json
