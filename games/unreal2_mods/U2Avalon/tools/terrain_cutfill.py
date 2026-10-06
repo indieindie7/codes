@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(HERE, "tools"))
 import binder  # noqa
 
 src, dst = sys.argv[1], sys.argv[2]
-o = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)
+o = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)   # shift= margin= blend= max_terrace= layout=
 SHIFT = float(o.get("shift", -5300))
 MARGIN = float(o.get("margin", 600))      # a heightmap cell is 512 units: the pad must reach past the next cell centre
 BLEND = float(o.get("blend", 700))
@@ -35,8 +35,18 @@ def from_frame(along, across):
     return (along * math.cos(a) - across * math.sin(a), along * math.sin(a) + across * math.cos(a))
 
 
+LAYOUT = None
+if o.get("layout"):
+    import json as _json
+    LAYOUT = _json.load(open(o["layout"]))["buildings"]
+
+
 def instances(b):
     along, across, deg = b["at"]
+    if LAYOUT and b["id"] in LAYOUT:
+        # layout.py placed it: world position + yaw, instance offsets turned with the yaw
+        L = LAYOUT[b["id"]]
+        along, across, deg = None, None, L["yaw"]
     w, d = b["size"][0] * M, b["size"][1] * M
     gap = max(w, d) * 1.5
     spec = b.get("count", "1").split()
@@ -46,6 +56,9 @@ def instances(b):
     elif len(spec) == 2:
         n = int(spec[0])
         pts = [((k - (n - 1) / 2) * gap, 0) if spec[1] == "along" else (0, (k - (n - 1) / 2) * gap) for k in range(n)]
+    if along is None:
+        a = math.radians(deg)
+        return [(L["x"] + da * math.cos(a) - dc * math.sin(a), L["y"] + da * math.sin(a) + dc * math.cos(a)) for da, dc in pts]
     return [from_frame(along + SHIFT + da, across + dc) for da, dc in pts]
 
 
