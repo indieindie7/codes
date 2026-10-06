@@ -1,0 +1,27 @@
+"""ASE writer for Unreal II static meshes (copied from U2Hover/make_map.py: Blender has no PIL for that import)."""
+def tri_facing(v, tri, want):
+    """Order tri so that it faces WANT after import (see module docstring)."""
+    a, b, c = (v[i] for i in tri)
+    u = [b[k] - a[k] for k in range(3)]
+    w = [c[k] - a[k] for k in range(3)]
+    n = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0])
+    if sum(n[k] * want[k] for k in range(3)) > 0:
+        return (tri[0], tri[2], tri[1])
+    return tri
+
+
+def write_ase(path, name, verts, uvs, tris):
+    L = ["*3DSMAX_ASCIIEXPORT 200", "*GEOMOBJECT {", f'\t*NODE_NAME "{name}"', "\t*MESH {",
+         f"\t\t*MESH_NUMVERTEX {len(verts)}", f"\t\t*MESH_NUMFACES {len(tris)}", "\t\t*MESH_VERTEX_LIST {"]
+    L += [f"\t\t\t*MESH_VERTEX {k} {-v[0]:.3f} {v[1]:.3f} {v[2]:.3f}" for k, v in enumerate(verts)]
+    L += ["\t\t}", "\t\t*MESH_FACE_LIST {"]
+    L += [f"\t\t\t*MESH_FACE {k}: A: {t[0]} B: {t[1]} C: {t[2]} AB: 1 BC: 1 CA: 1 *MESH_SMOOTHING 1 *MESH_MTLID 0"
+          for k, t in enumerate(tris)]
+    L += ["\t\t}", f"\t\t*MESH_NUMTVERTEX {len(uvs)}", "\t\t*MESH_TVERTLIST {"]
+    L += [f"\t\t\t*MESH_TVERT {k} {t[0]:.5f} {t[1]:.5f} 0.0000" for k, t in enumerate(uvs)]
+    L += ["\t\t}", f"\t\t*MESH_NUMTVFACES {len(tris)}", "\t\t*MESH_TFACELIST {"]
+    L += [f"\t\t\t*MESH_TFACE {k} {t[0]} {t[1]} {t[2]}" for k, t in enumerate(tris)]
+    L += ["\t\t}", "\t}", "}"]
+    open(path, "w").write("\n".join(L) + "\n")
+
+

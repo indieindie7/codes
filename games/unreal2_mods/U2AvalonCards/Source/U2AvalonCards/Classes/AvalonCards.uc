@@ -46,6 +46,13 @@ var config string Props[64];
 // sunk or raised by Lift. A cube blockout is the guide an image model paints the place over.
 var config string Blocks[128];
 
+// baked building cards (CardTextures.uc; toolsake_cards.py over toolsuild_buildings.py's models),
+// one per line: "Name X Y Yaw Size [Frames] [Lift]". Name = the texture base name (CoolingTower ->
+// U2AvalonCards.CoolingTower0..7), X Y = where it stands (on whatever is under it, + Lift), Yaw in
+// degrees = where its front faces, Size = the card's height in world units (the building fills 92% of
+// the card's larger side), Frames = how many views were baked (8).
+var config string Cards[64];
+
 var bool bRebuild;
 var array<Actor> Made;
 var Texture TreeTex[3];
@@ -241,6 +248,9 @@ function Build()
 	for (i = 0; i < ArrayCount(Blocks); i++)
 		if (Blocks[i] != "")
 			PlaceBlock(Blocks[i]);
+	for (i = 0; i < ArrayCount(Cards); i++)
+		if (Cards[i] != "")
+			PlaceCard(Cards[i]);
 	Log("Cards: built "$Made.Length$" things on "$MapName());
 }
 
@@ -278,6 +288,55 @@ function PlaceBlock(string Line)
 	M = Spawn(class'CardMesh',,, P, R);
 	if (M != None && M.ShowBlock(Size, int(Word(Line, 7))))
 		Made[Made.Length] = M;
+}
+
+function PlaceCard(string Line)
+{
+	local vector P, HitL, HitN;
+	local rotator R;
+	local float Size, WZ;
+	local int N, k;
+	local Texture T;
+	local CardSprite S;
+
+	P.X = float(Word(Line, 1));
+	P.Y = float(Word(Line, 2));
+	R.Yaw = int(float(Word(Line, 3)) * 65536.0 / 360.0);
+	Size = float(Word(Line, 4));
+	N = Clamp(int(Word(Line, 5)), 1, 16);
+	if (Word(Line, 5) == "")
+		N = 8;
+	// stands on the land, or on TutA's sea surface
+	if (!WaterTop(P, WZ))
+	{
+		if (!Ground(P, HitL, HitN))
+		{
+			Log("Cards: no ground under card "$Line);
+			return;
+		}
+		WZ = HitL.Z;
+	}
+	// the picture's base line is 6% above its bottom
+	P.Z = WZ + 0.44 * Size + float(Word(Line, 6));
+	S = Spawn(class'CardSprite',,, P, R);
+	if (S == None)
+		return;
+	for (k = 0; k < N; k++)
+	{
+		T = Texture(DynamicLoadObject("U2AvalonCards." $ Word(Line, 0) $ k, class'Texture'));
+		if (T == None)
+		{
+			Log("Cards: no texture U2AvalonCards." $ Word(Line, 0) $ k);
+			S.Destroy();
+			return;
+		}
+		S.Frames[k] = T;
+	}
+	S.NumFrames = N;
+	S.Style = STY_Masked;
+	S.SetSize(Size);
+	Made[Made.Length] = S;
+	Log("Cards: card "$Word(Line, 0)$" at "$P);
 }
 
 function PlaceProp(string Line)

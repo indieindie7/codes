@@ -1,0 +1,35 @@
+# avalon_look: the new Avalon map (U2Avalon) from the tower balcony, then from the air over the plant
+background
+map Avalon
+waitcontrol 240
+wait 2
+console god
+console hub face 300
+turn 0 -20 0.3
+wait 0.8
+shot
+console hub face 320
+turn 0 -15 0.3
+wait 0.6
+shot
+console hub face 270
+turn 0 -20 0.3
+wait 0.6
+shot
+console ghost
+console hub tp 1500 -2500 1500
+console hub face 310
+turn 0 -22 0.3
+wait 1
+shot
+console hub tp 3000 -4000 -3800
+console hub face 300
+turn 0 -5 0.3
+wait 1
+shot
+console hub tp 9000 -9000 -2000
+console hub face 160
+turn 0 -8 0.3
+wait 1
+shot
+quit
