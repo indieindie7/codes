@@ -53,7 +53,7 @@ def write_tga(path, im):
     for y in range(h - 1, -1, -1):
         for x in range(w):
             a = px[x, y]
-            body += bytes((255, 255, 255, a))
+            body += bytes((a, a, a, a))        # the region in colour AND alpha: the renderer may read either
     with open(path, "wb") as f:
         f.write(hdr + body)
 
