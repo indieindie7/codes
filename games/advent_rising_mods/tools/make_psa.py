@@ -5,7 +5,7 @@ is its reference offset and its rotation is the clip's own.
 
 Mesh space of the human skeletons: -Y up, +X the body's left, +Z forward.
 
-    python tools/make_psa.py <out.psa> [mesh=marine]
+    python tools/make_psa.py <out.psa> [mesh=marine] [clips folder (default AdventMod/Anims; another folder = no death table)]
 
 Clips are functions of t (0..1) returning {bone: (axis, degrees)} plus a root offset; this
 first one is a hand-made test (knees buckle, then a fall forward) to prove the import path.
@@ -217,11 +217,13 @@ def write_table(clips):
 def main():
     out = sys.argv[1]
     mesh = sys.argv[2] if len(sys.argv) > 2 else "marine"
+    folder = sys.argv[3] if len(sys.argv) > 3 else ANIMS    # another clip folder: no test clips, no death table
     bones = read_skeleton(os.path.join(MESHES, mesh + ".psk"))
-    clips = [(name, FPS, hand_frames(fn, length)) for name, fn, length in CLIPS]
-    clips += load_clips(ANIMS)
+    clips = [] if len(sys.argv) > 3 else [(name, FPS, hand_frames(fn, length)) for name, fn, length in CLIPS]
+    clips += load_clips(folder)
     write_psa(out, bones, clips)
-    write_table(clips)
+    if len(sys.argv) <= 3:
+        write_table(clips)
     print(out, ":", len(bones), "bones,", ", ".join("%s (%d frames)" % (c[0], len(c[2])) for c in clips))
 
 

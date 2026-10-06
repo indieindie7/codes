@@ -1,4 +1,4 @@
-﻿# Builds AdventMod: compiles Classes\*.uc with AdventUCC, builds AdventNative.dll,
+# Builds AdventMod: compiles Classes\*.uc with AdventUCC, builds AdventNative.dll,
 # and installs AdventMod.u / AdventMod.int / AdventNative.dll into the game's System folder.
 param([string]$Game = 'H:\SteamLibrary\steamapps\common\Advent Rising')
 $ErrorActionPreference = 'Stop'
@@ -11,6 +11,9 @@ $Ucc = Join-Path (Split-Path -Parent $Here) 'AdventUCC'
 New-Item -ItemType Directory -Force "$Game\AdventMod\Anims" | Out-Null
 & python (Join-Path (Split-Path -Parent $Here) 'tools\make_psa.py') "$Game\AdventMod\Anims\ModDeaths.psa" marine
 if ($LASTEXITCODE -ne 0) { throw 'make_psa failed' }
+# the energy blade's swings (ModBladeAnims): the chosen Kimodo takes in AnimsBlade
+& python (Join-Path (Split-Path -Parent $Here) 'tools\make_psa.py') "$Game\AdventMod\Anims\ModBladeSwings.psa" marine (Join-Path $Here 'AnimsBlade')
+if ($LASTEXITCODE -ne 0) { throw 'make_psa (blade) failed' }
 # 1. script: the compiler reads <game>\AdventMod\Classes and the package list in AdventUCC's own ini
 New-Item -ItemType Directory -Force "$Game\AdventMod\Classes" | Out-Null
 Remove-Item "$Game\AdventMod\Classes\*.uc" -Confirm:$false -ErrorAction SilentlyContinue

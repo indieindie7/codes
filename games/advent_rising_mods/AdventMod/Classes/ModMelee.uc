@@ -28,6 +28,14 @@ var config vector HandOffset, BackOffset;
 var config bool bTestBlade;        // testing: the player starts with one
 var Sound Hum, Swing, StrikeSnd;
 var class<Emitter> Sparks;
+// the swings (ModBladeAnims): played on an upper-body channel over the game's punch move,
+// so the move's timing, footwork and hit checks stay the game's while the arm swings the blade
+var config bool bSwingAnims;
+var config int SwingChannel;       // an animation channel the game doesn't use
+var config float SwingRate;
+var config name SwingBone;         // the channel's root: the upper body
+var name Clips[5];
+var int LastClip;
 var WeaponBase HiddenGun;          // the gun put away while the blade is in the hand
 
 var ModGore Gore;
@@ -108,6 +116,7 @@ function Place(bool bHand)
 		}
 		if (Swing != None)
 			Holder.PlaySound(Swing, SLOT_None, 1.0, false, 400, 0.9 + 0.2 * FRand());
+		PlaySwing();
 	}
 	else
 	{
@@ -115,6 +124,8 @@ function Place(bool bHand)
 		Carried.SetRelativeLocation(BackOffset);
 		Carried.SetRelativeRotation(BackRot);
 		ShowGun();
+		if (bSwingAnims)
+			Holder.AnimBlendParams(SwingChannel, 0.0, 0.2, 0.2);
 	}
 	bInHand = bHand;
 	if (bBladeLight)
@@ -124,6 +135,39 @@ function Place(bool bHand)
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("melee: blade in hand " $ bHand $ ", right gun " $ Holder.RightWeapon $ " hidden by us " $ HiddenGun);
 	SetHum(Carried, bHand);
+}
+
+// one of the blade's swings on the upper body, over the punch move the game is playing
+function PlaySwing()
+{
+	local MeshAnimation A;
+	local int i, n;
+
+	if (!bSwingAnims || Holder == None)
+		return;
+	A = class'ModBladeAnims'.default.Swings;
+	if (A == None)
+		return;
+	Holder.LinkSkelAnim(A);
+	for (n = 0; n < 5; n++)
+		if (Clips[n] == '')
+			break;
+	if (n == 0)
+		return;
+	i = Rand(n);
+	if (n > 1 && i == LastClip)
+		i = (i + 1) % n;
+	LastClip = i;
+	if (!Holder.HasAnim(Clips[i]))
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("melee: " $ Holder $ " has no swing " $ Clips[i]);
+		return;
+	}
+	Holder.AnimBlendParams(SwingChannel, 1.0, 0.12, 0.2, SwingBone);
+	Holder.PlayAnim(Clips[i], SwingRate, 0.08, SwingChannel);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("melee: swing " $ Clips[i] $ " on channel " $ SwingChannel);
 }
 
 function BurnOut()
@@ -297,4 +341,13 @@ defaultproperties
      BackOffset=(X=0.000000,Y=-10.000000,Z=-6.000000)
      BackBone=Spine3
      bBladeLight=True
+     bSwingAnims=True
+     SwingChannel=9
+     SwingRate=1.250000
+     SwingBone=Spine3
+     Clips(0)=BladeSlashR
+     Clips(1)=BladeSlashL
+     Clips(2)=BladeOverhead
+     Clips(3)=BladeThrust
+     Clips(4)=BladeDiagonal
 }

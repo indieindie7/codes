@@ -1,0 +1,6 @@
+# name | prompt (one sentence: Kimodo splits prompts at full stops) | seconds
+slash_right|A standing person holds a sword in the right hand and swings it in a fast horizontal slash from right to left, then returns to a ready stance|2.2
+slash_left|A standing person holds a sword in the right hand and swings it in a fast backhand horizontal slash from left to right, then returns to a ready stance|2.2
+overhead|A standing person holds a sword in the right hand, raises it overhead and chops down hard in front, then returns to a ready stance|2.2
+thrust|A standing person holds a sword in the right hand, steps forward and thrusts the sword straight ahead, then pulls it back|2.2
+diagonal|A standing person holds a sword in the right hand and swings it in a fast diagonal slash from the upper right down to the lower left, then returns to a ready stance|2.2
