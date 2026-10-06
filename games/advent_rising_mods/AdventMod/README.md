@@ -52,10 +52,12 @@ jerks and staggers, and from then on hits there do 1.5 x
 at once and hurt the body in full. `[AdventMod.ModArmor]` in `AdventMod.ini`: `bArmor`,
 the plate shares, `Absorb`, `ExposedBonus`, `HeadBonus`, `Armored` (class name parts),
 `bArmorLog`, `bPlates`, `PlateScale`, `PlateStay`, `bExpose`. Under a broken plate the flesh
-shows: the meat texture is blended over the skin through a mask of that region in the
-skin's own UV space (`tools/make_armor_masks.py` cuts the masks from the character mesh by
-bone, one per plate), a Combiner stage per broken plate under the blood coat. The Seekers'
-left and right limbs share texels, so a broken arm shows flesh on both arms.
+shows: one Combiner stage blends a flesh texture over the skin, a texture per set of broken
+plates in the skin's own UV space with the meat in its colour and the region in its alpha
+(`tools/make_armor_masks.py` cuts the regions from the character mesh by bone). It has to be
+one stage with the texture as its own mask: a combiner inside a combiner, or a separate mask
+texture, drew the whole Seeker as a flat colour. A blood coat comes off an exposed body. The
+Seekers' left and right limbs share texels, so a broken arm shows flesh on both arms.
 
 ## How it works
 

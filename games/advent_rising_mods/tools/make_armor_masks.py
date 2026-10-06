@@ -106,8 +106,39 @@ def main():
         fn = "armor_%s_c%02d.tga" % (setname, bits)
         write_tga(os.path.join(out, fn), m)
         combos.append("#exec TEXTURE IMPORT NAME=Armor_%s_c%02d FILE=Textures\\%s GROUP=Armor MIPS=1 ALPHA=1" % (setname, bits, fn))
+    # the same combinations with the flesh baked in: colour = the meat tile where the region
+    # is, alpha = the region. One texture serves as Material2 and Mask (fewer stages), should
+    # the renderer not take a separate mask.
+    meat_path = os.path.join(out, "alien_meat.tga" if setname.startswith("seeker") else "meat.tga")
+    meat = Image.open(meat_path).convert("RGB")
+    tile = Image.new("RGB", (W // 2, H // 2))
+    for y in range(0, H // 2, meat.size[1]):
+        for x in range(0, W // 2, meat.size[0]):
+            tile.paste(meat, (x, y))
+    for bits in range(1, 16):
+        m = Image.new("L", (W // 2, H // 2), 0)
+        for k in range(4):
+            if bits & (1 << k):
+                m = ImageChops.lighter(m, group[k])
+        rgba = Image.merge("RGBA", (ImageChops.multiply(tile.getchannel("R"), m), ImageChops.multiply(tile.getchannel("G"), m), ImageChops.multiply(tile.getchannel("B"), m), m))
+        fn = "armor_%s_m%02d.tga" % (setname, bits)
+        write_tga_rgba(os.path.join(out, fn), rgba)
+        combos.append("#exec TEXTURE IMPORT NAME=Armor_%s_m%02d FILE=Textures\\%s GROUP=Armor MIPS=1 ALPHA=1" % (setname, bits, fn))
     print("\n".join(lines))
     print("\n".join(combos))
+
+
+def write_tga_rgba(path, im):
+    w, h = im.size
+    px = im.load()
+    hdr = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, w, h, 32, 0x08)
+    body = bytearray()
+    for y in range(h - 1, -1, -1):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            body += bytes((b, g, r, a))
+    with open(path, "wb") as f:
+        f.write(hdr + body)
 
 
 if __name__ == "__main__":

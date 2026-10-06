@@ -277,7 +277,7 @@ function Expose(int b, int r, int Set)
 {
 	local Pawn P;
 	local int i, k, Entry, Bits;
-	local Material Base, Flesh;
+	local Material Base;
 	local Combiner C;
 	local ModBloodCoat Coat;
 	local class<ModArmorTextures> T;
@@ -292,7 +292,7 @@ function Expose(int b, int r, int Set)
 	for (k = 0; k < 6; k++)
 		if (Bodies[b].Broken[k] != 0)
 			Bits = Bits | T.static.RegionBit(k);
-	if (Bits <= 0 || Bits > 15 || T.default.Sets[i].Combos[Bits] == None)
+	if (Bits <= 0 || Bits > 15 || T.default.Sets[i].Meat[Bits] == None)
 		return;
 	Coat = Gore.CoatOf(P);
 	if (Bodies[b].Top == None)
@@ -318,14 +318,11 @@ function Expose(int b, int r, int Set)
 	}
 	if (Coat != None)
 		Coat.Destroy();               // puts the body's own skins back; ours goes on over them
-	if (Gore.BloodKind(P) == 2)
-		Flesh = Gore.AlienMeatTex;
-	else
-		Flesh = Gore.MeatTex;
 	C = new(None) class'Combiner';
 	C.Material1 = Bodies[b].Top;
-	C.Material2 = Flesh;
-	C.Mask = T.default.Sets[i].Combos[Bits];
+	// the meat-baked texture is Material2 and Mask at once (a separate mask drew a flat colour)
+	C.Material2 = T.default.Sets[i].Meat[Bits];
+	C.Mask = T.default.Sets[i].Meat[Bits];
 	C.CombineOperation = CO_AlphaBlend_With_Mask;
 	C.AlphaOperation = AO_Use_Alpha_From_Material1;
 	P.Skins[0] = C;
