@@ -756,6 +756,43 @@ static void *FindFExec(void *editor, void *fexecVtbl)
 	return NULL;
 }
 
+/* --- the SET-on-ZoneInfo crash ---
+   "SET Info ..." (or SET on ZoneInfo / LevelInfo / SkyZoneInfo) kills the editor with a general
+   protection fault. UObject::GlobalSetProperty applies the value to EVERY object of the class, class
+   default objects and objects outside the open map included, and calls PostEditChange on each;
+   AZoneInfo::PostEditChange then reads this->XLevel to clear the level's render data without checking
+   it for NULL, and those objects have no level. Read from Engine.dll with Ghidra (2026-10-05;
+   Documents\U2_research\ghidra\SET_CRASH.md).
+   Fix, in memory only: the function tests GIsEditor before that block; inside UnrealEd GIsEditor is
+   always 1, so the test is replaced by a test of XLevel itself. Same length (15 bytes), same jump target.
+     mov ecx,[&GIsEditor] / mov eax,[ecx] / add esp,10h / test eax,eax / je +73h
+   becomes
+     mov eax,[esi+0D4h]     / add esp,10h / test eax,eax / je +75h / nop / nop        */
+static void PatchZoneInfoSet(void)
+{
+	HMODULE eng = GetModuleHandleW(L"Engine.dll");
+	BYTE *fn, *p;
+	DWORD old;
+	static const BYTE want[15] = { 0x8B, 0x0D, 0, 0, 0, 0, 0x8B, 0x01, 0x83, 0xC4, 0x10, 0x85, 0xC0, 0x74, 0x73 };
+	static const BYTE fix[15]  = { 0x8B, 0x86, 0xD4, 0x00, 0x00, 0x00, 0x83, 0xC4, 0x10, 0x85, 0xC0, 0x74, 0x75, 0x90, 0x90 };
+	int i;
+	if (!eng) { BLog("ZoneInfo patch: Engine.dll not loaded"); return; }
+	fn = (BYTE *)GetProcAddress(eng, "?PostEditChange@AZoneInfo@@UAEXXZ");
+	if (!fn) { BLog("ZoneInfo patch: AZoneInfo::PostEditChange export not found"); return; }
+	p = fn + 0x69;
+	for (i = 0; i < 15; i++)
+		if (i != 2 && i != 3 && i != 4 && i != 5 && p[i] != want[i])
+		{
+			BLog("ZoneInfo patch: unexpected code at %p (byte %d is %02X), not patched", (void *)p, i, p[i]);
+			return;
+		}
+	if (!VirtualProtect(p, 15, PAGE_EXECUTE_READWRITE, &old)) { BLog("ZoneInfo patch: VirtualProtect failed"); return; }
+	memcpy(p, fix, 15);
+	VirtualProtect(p, 15, old, &old);
+	FlushInstructionCache(GetCurrentProcess(), p, 15);
+	BLog("ZoneInfo patch: AZoneInfo::PostEditChange now skips objects with no level (SET Info is safe)");
+}
+
 static DWORD WINAPI Main(LPVOID unused)
 {
 	HMODULE ed = NULL, core = NULL;
@@ -783,6 +820,7 @@ static DWORD WINAPI Main(LPVOID unused)
 	g_fexec = FindFExec(*pEditor, fexecVtbl);
 	if (!g_fexec) { BLog("FExec subobject not found"); return 1; }
 	BLog("GEditor %p, FExec at +0x%x", (void *)*pEditor, (unsigned)((char *)g_fexec - (char *)*pEditor));
+	PatchZoneInfoSet();
 
 	pLog = (void **)GetProcAddress(core, "?GLog@@3PAVFOutputDevice@@A");
 	pWarn = (void **)GetProcAddress(core, "?GWarn@@3PAVFFeedbackContext@@A");
