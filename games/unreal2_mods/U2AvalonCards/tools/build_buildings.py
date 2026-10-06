@@ -15,9 +15,11 @@ out = os.path.abspath(a[0])
 o = dict(x.split("=", 1) for x in a[1:])
 os.makedirs(out, exist_ok=True)
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "U2Avalon", "tools"))
+import palette  # noqa  (the Liandri palette measured from the Hunyuan models; old names are aliased)
+
 MATS = {}
-COLOURS = {"concrete": (0.58, 0.58, 0.56), "pale": (0.70, 0.70, 0.68), "orange": (0.85, 0.34, 0.07),
-           "dark": (0.18, 0.19, 0.21), "rust": (0.42, 0.22, 0.12), "glow": (1.0, 0.45, 0.1)}
+COLOURS = palette.COLOURS
 
 
 def mat(name):
@@ -25,7 +27,7 @@ def mat(name):
         m = bpy.data.materials.new(name)
         m.use_nodes = True
         bsdf = m.node_tree.nodes["Principled BSDF"]
-        bsdf.inputs["Base Color"].default_value = COLOURS[name] + (1,)
+        bsdf.inputs["Base Color"].default_value = palette.colour(name) + (1,)
         bsdf.inputs["Roughness"].default_value = 0.85 if name != "glow" else 0.4
         if name == "glow":
             bsdf.inputs["Emission Color"].default_value = COLOURS[name] + (1,)

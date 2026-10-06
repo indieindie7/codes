@@ -1,0 +1,16 @@
+{
+ "sheet": "processing_hall_1",
+ "type": "processing_hall",
+ "iou": 0.512,
+ "params": {
+  "W": 16,
+  "D": 14,
+  "H": 8,
+  "teeth": 5,
+  "tooth": 2,
+  "overhang": 1.5,
+  "doors": 2,
+  "bay": 1,
+  "stack": 0
+ }
+}

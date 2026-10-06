@@ -1,0 +1,12 @@
+{
+ "sheet": "ore_tank_2",
+ "type": "ore_tank",
+ "iou": 0.823,
+ "params": {
+  "r": 6.85,
+  "h": 18,
+  "legs": 2,
+  "cone": 3,
+  "roof": 3.95
+ }
+}

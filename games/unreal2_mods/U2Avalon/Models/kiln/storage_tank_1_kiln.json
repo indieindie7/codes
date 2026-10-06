@@ -1,0 +1,13 @@
+{
+ "sheet": "storage_tank_1",
+ "type": "storage_tank",
+ "iou": 0.81,
+ "params": {
+  "r": 3.5,
+  "h": 8.6,
+  "base": 0.3,
+  "dome": 0.5,
+  "ribs": 8,
+  "stack": 1.6
+ }
+}

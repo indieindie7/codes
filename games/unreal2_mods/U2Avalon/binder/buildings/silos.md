@@ -11,6 +11,7 @@ doors:
 roof: cone
 wear: 0.3
 lit: yes
+mesh: ore_tank_2_kiln
 ref: ore_tank
 
 Three rust silos in a row along the shore axis, feeding Hall A's right roller door by conveyor. The hands

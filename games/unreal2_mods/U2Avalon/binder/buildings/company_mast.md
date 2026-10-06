@@ -10,6 +10,7 @@ doors:
 roof: none
 wear: 0.1
 lit: yes
+mesh: radio_mast_1_kiln
 ref: radio_mast
 
 On the west hill, taller than the Authority's antenna.

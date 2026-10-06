@@ -1,0 +1,13 @@
+{
+ "sheet": "radio_mast_1",
+ "type": "radio_mast",
+ "iou": 0.584,
+ "params": {
+  "H": 16,
+  "base": 8.5,
+  "top": 1.7000000000000002,
+  "platforms": 4,
+  "dish": 0.5,
+  "antennas": 0
+ }
+}

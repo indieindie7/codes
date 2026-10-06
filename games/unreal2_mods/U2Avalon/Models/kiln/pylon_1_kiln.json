@@ -1,0 +1,12 @@
+{
+ "sheet": "pylon_1",
+ "type": "pylon",
+ "iou": 0.384,
+ "params": {
+  "H": 12,
+  "base": 2,
+  "top": 1.6500000000000001,
+  "arm": 7,
+  "arms": 3
+ }
+}

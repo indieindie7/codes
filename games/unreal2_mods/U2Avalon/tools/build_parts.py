@@ -31,9 +31,10 @@ o = dict(x.split("=", 1) for x in a[1:])
 os.makedirs(out, exist_ok=True)
 ONLY = set(o["ids"].split(",")) if "ids" in o else None
 
+import palette  # noqa
+
 MATS = {}
-COLOURS = {"concrete": (0.58, 0.58, 0.56), "pale": (0.70, 0.70, 0.68), "orange": (0.85, 0.34, 0.07),
-           "dark": (0.18, 0.19, 0.21), "rust": (0.42, 0.22, 0.12), "glow": (1.0, 0.45, 0.1)}
+COLOURS = palette.COLOURS
 PANEL = 4.0          # wall panel width, metres
 STOREY = 3.4
 
@@ -43,7 +44,7 @@ def mat(name):
         m = bpy.data.materials.new(name)
         m.use_nodes = True
         bsdf = m.node_tree.nodes["Principled BSDF"]
-        bsdf.inputs["Base Color"].default_value = COLOURS[name] + (1,)
+        bsdf.inputs["Base Color"].default_value = palette.colour(name) + (1,)
         bsdf.inputs["Roughness"].default_value = 0.85 if name != "glow" else 0.4
         if name == "glow":
             bsdf.inputs["Emission Color"].default_value = COLOURS[name] + (1,)
@@ -101,10 +102,13 @@ def wall_panels(side, W, D, H, wear, base_mat, rng, keep=()):
         r = rng.random()
         if not any(t0 <= t <= t1 for t0, t1 in keep):
             if r < wear * 0.35:
-                m = "dark"             # a missing panel: the dark inside shows
+                m = "charcoal"         # a missing panel: the dark inside shows
             elif r < wear * 0.8:
-                m = "rust"
+                m = "brown"            # a weathered panel
         box(x - nx * 0.15, y - ny * 0.15, H / 2, 0.3, pw - 0.08, H, m, (0, 0, rot))
+        # the Hunyuan pattern: a dirt band at the foot of every wall, grey trim along the top
+        box(x - nx * 0.10, y - ny * 0.10, 0.6, 0.32, pw - 0.08, 1.2, "brown", (0, 0, rot))
+        box(x - nx * 0.10, y - ny * 0.10, H - 0.25, 0.34, pw - 0.08, 0.5, "grey", (0, 0, rot))
 
 
 def door(side, W, D, t, typ, lit, wear):
@@ -208,7 +212,7 @@ def building(b, rng):
             box(t * W / 2, -D / 2 + 1.2, 1.03, 1.2, 0.3, 0.05, "orange")
         return
     # a walled building
-    base = "pale" if kind in ("office", "house") else "concrete"
+    base = {"office": "pale", "house": "grey", "dorm": "steel"}.get(kind, "charcoal")
     storeys = max(1, int(H // STOREY)) if kind in ("office", "dorm", "house") else 1
     keep = {s: [] for s in sides(W, D)}
     spots = {}
@@ -220,8 +224,11 @@ def building(b, rng):
         keep[side].append((ts - 0.3, ts + 0.3))
     for side in sides(W, D):
         wall_panels(side, W, D, H, wear, base, rng, keep[side])
-    box(0, 0, H / 2, W - 0.5, D - 0.5, H, "dark")                                               # the inside, dark
-    box(0, 0, H + 0.05, W, D, 0.1, "pale" if base == "pale" else "concrete")                    # roof slab
+    # the accent: a rust-red block of two panels on the front, off-centre, like the Hunyuan paint jobs
+    ax, ay, (anx, any_), arot = along_side("front", W, D, -0.62)
+    box(ax - anx * 0.08, ay - any_ * 0.08, H * 0.55, 0.36, min(PANEL * 2, W * 0.3), H * 0.75, "rustred", (0, 0, arot))
+    box(0, 0, H / 2, W - 0.5, D - 0.5, H, "charcoal")                                           # the inside, dark
+    box(0, 0, H + 0.05, W, D, 0.1, "grey")                                                      # roof slab
     for side, typ in doors.items():
         door(side, W, D, spots[side], typ, lit, wear)
     for side in bays:

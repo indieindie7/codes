@@ -229,8 +229,8 @@ def box(verts, uvs, tris, cx, cy, cz, sx, sy, sz, yaw=0.0, uv=(0.5, 0.5), skip=(
 
 # palette swatches: tools\glb_to_ase.py's Pal.tga is 8 column stripes, palette.json lists their colours in order;
 # look a stripe up by the colour name the buildings use (build_parts.py's COLOURS)
-SW_COLOURS = {"concrete": (0.58, 0.58, 0.56), "pale": (0.70, 0.70, 0.68), "orange": (0.85, 0.34, 0.07),
-              "dark": (0.18, 0.19, 0.21), "rust": (0.42, 0.22, 0.12), "glow": (1.0, 0.45, 0.1)}
+import palette  # noqa
+SW_COLOURS = palette.COLOURS
 _PAL = None
 
 
@@ -238,7 +238,7 @@ def sw(name):
     global _PAL
     if _PAL is None:
         _PAL = json.load(open(os.path.join(HERE, "Models", "ase", "palette.json")))
-    want = SW_COLOURS[name]
+    want = palette.colour(name)
     best = min(range(len(_PAL)), key=lambda i: sum((a - b) ** 2 for a, b in zip(_PAL[i], want)))
     return ((best + 0.5) / 8.0, 0.5)
 
@@ -463,7 +463,7 @@ def write_actors(path, bounds, manifest, buildings):
                     prop(random.choice(CRATES), x + kx * math.cos(a) - 250 * math.sin(a), y + kx * math.sin(a) + 250 * math.cos(a),
                          1.0, bottom=-130, yaw_deg=deg + random.choice((0, 90)), z=SEA_Z - 80 + 300)
             continue
-        mesh = f"B_{bid}" if kind in ASSEMBLED else SCRIPTED.get(bid, SCRIPTED.get(kind))
+        mesh = b.get("mesh") or (f"B_{bid}" if kind in ASSEMBLED else SCRIPTED.get(bid, SCRIPTED.get(kind)))
         if mesh is None:
             print("no mesh for", bid, kind)
             continue
@@ -527,7 +527,7 @@ def write_actors(path, bounds, manifest, buildings):
         gx, gy = placed["generator_house"][0]
         for f in (0.85, 0.65, 0.45, 0.25):
             x, y = gx * f, gy * f
-            mesh_actor("Pylon", x, y, SEA_Z + max(0.0, height(x, y)), LOOK_YAW + 90)
+            mesh_actor("pylon_1_kiln" if "pylon_1_kiln" in bounds else "Pylon", x, y, SEA_Z + max(0.0, height(x, y)), LOOK_YAW + 90)
 
     # trees on the land, away from the buildings, the tower and the sea
     random.seed(21)
@@ -555,7 +555,7 @@ def write_actors(path, bounds, manifest, buildings):
         sun_at = (14000 * math.cos(sf) * math.cos(math.radians(45)), 14000 * math.sin(sf) * math.cos(math.radians(45)), 7500)
         out.append(actor("SunLight", "Sun0", sun_at,
                          "    LightBrightness=240.0\n    LightHue=24\n    LightSaturation=100\n", (-8192, yaw(LOOK_YAW - 60), 0)))
-        out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=110\n    AmbientHue=28\n    AmbientSaturation=120\n"))
+        out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=130\n    AmbientHue=28\n    AmbientSaturation=120\n"))
         a = math.radians(LOOK_YAW)
         for dd in (-600, 300):
             lx, ly = dd * math.cos(a), dd * math.sin(a)

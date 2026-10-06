@@ -11,6 +11,7 @@ doors:
 roof: dome
 wear: 0.45
 lit: no
+mesh: storage_tank_2_kiln
 ref: storage_tank
 
 The shore row, older and smaller than the product tanks, grey not pale.

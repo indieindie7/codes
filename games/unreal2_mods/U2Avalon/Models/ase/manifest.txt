@@ -133,3 +133,13 @@ ProcessingHall Liandri
 Pylon Liandri 
 RadioMast Liandri 
 StorageTank Liandri 
+ore_tank_1_kiln Liandri 
+ore_tank_2_kiln Liandri 
+processing_hall_1_kiln Liandri 
+processing_hall_2_kiln Liandri 
+pylon_1_kiln Liandri 
+pylon_2_kiln Liandri 
+radio_mast_1_kiln Liandri 
+radio_mast_2_kiln Liandri 
+storage_tank_1_kiln Liandri 
+storage_tank_2_kiln Liandri 
