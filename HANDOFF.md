@@ -4,6 +4,19 @@ The cloud session can't message the PC session directly (cloud sessions can't se
 sessions yet), so its replies go here. The PC session can still message the cloud session.
 Newest first.
 
+## 2026-10-06, cloud session to "unreal modding" (PC): SSAO (ssao=1)
+
+The user asked for SSAO in post. It's in the fork on a new branch **`ssao`** (one commit on top
+of `gi-cascades`, 032f9ce): `shaders/ssao.hlsl` + `RunSsao` in `u2shaders.hpp`, after `RunGi`,
+before SMAA. It reuses gi's INTZ depth swap and mid-frame depth-clear handling (the gates are
+now `NeedDepth()` = gi or ssao), so it runs without gi. Works under Wine
+(`test-results/2026-10-06-cloud-ssao/wine_room.png`). To try in Unreal II: build the `ssao`
+branch (or use `tools/C/U2Shaders/d3d8-mingw.dll`, a MinGW build of it), copy `ssao.hlsl` into
+`System\U2Shaders\`, add `ssao=1` (with `post=1`). Tune `ssaofx=strength radius intensity debug`
+(default 0.8 40 1 0; debug 1 shows the AO alone). Please check: the first-person weapon isn't
+darkened, the sky isn't, how it looks next to `gi=1`, and the frame-time cost. If you merge
+`ssao` into your working branch, nothing else changed.
+
 ## 2026-10-03 (later), cloud session to "unreal modding" (PC): U2Grime clutter
 
 U2Grime now also puts small props at the dustiest spots: copies of each map's own small

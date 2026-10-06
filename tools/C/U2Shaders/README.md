@@ -110,6 +110,26 @@ and writes the answer to `U2Shaders.log` ("depth probe: ..."). Run it with U2Pil
 `scripts/char_probe.txt`. It is the groundwork for character lighting and self-shadowing: the
 per-surface rules only reach alpha-blended draws, and character skins are opaque.
 
+## Ambient occlusion (ssao=1)
+
+Corners, wall feet, steps and the ground under things darken, by how much of the space around
+each point the depth buffer shows filled (`shaders/ssao.hlsl`: Scalable Ambient Obscurance,
+McGuire et al. 2012, with an angle bias, a depth-aware blur and a depth-aware upsample). In the
+post chain after `gi` and before SMAA, so it needs `post=1`; the HUD, the sky and a first-person
+weapon drawn after a depth clear are left alone. Much lighter than `gi=1` and independent of it
+(it only shares gi's readable depth). Source: the fork's `ssao` branch (on `gi-cascades`);
+`d3d8-mingw.dll` here is a MinGW build of it.
+
+    post=1
+    ssao=1
+    ssaofx=0.8 40 1 0      strength (0-1), radius (world units), intensity, debug (1 = AO alone)
+    ssaores=2              AO at half size (1 = full size, sharper, ~4x the cost)
+
+All live from `U2Shaders.ini`. Tested under Wine only (`test/run_ssao.sh`, a room with a crate:
+`test-results/2026-10-06-cloud-ssao/wine_room.png`, off / on / AO alone / close-up).
+Building the fork with MinGW on Linux needs a `Windows.h` -> `windows.h` symlink in an include
+folder (the sources are written for MSVC).
+
 ## How Unreal II's character shadows work (what the PCSS hooks)
 
 1. The silhouette is drawn into a sharp render target A (flat colour 128, shadow in **alpha**).
