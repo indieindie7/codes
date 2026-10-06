@@ -1279,6 +1279,16 @@ function Spatter(Pawn From, vector Spot, float Amount, float Reach)
 			AddCoat(P, Amount * 0.6 * (1 - VSize(P.Location - Spot) / (Reach + P.CollisionRadius + 1)), Kind);
 }
 
+function ModBloodCoat CoatOf(Pawn P)
+{
+	local int i;
+
+	for (i = 0; i < Coats.Length; i++)
+		if (Coats[i] != None && !Coats[i].bDeleteMe && Coats[i].Wearer == P)
+			return Coats[i];
+	return None;
+}
+
 function AddCoat(Pawn P, float Amount, int Kind)
 {
 	local int i, Oldest;

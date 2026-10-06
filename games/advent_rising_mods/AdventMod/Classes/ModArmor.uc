@@ -7,9 +7,10 @@
 // times their damage (the head more: a broken helmet opens headshots). Explosions hit
 // every plate at once and the body in full. ModGoreRules hands every hit through
 // Strike() before the flinch and the blood see it, so they react to what got through.
-// Phase 2 of three: the numbers, the burst, and the plate itself: the region's piece of the
-// character's own mesh (the gib parts) flies off, a little smaller than the limb, in the
-// body's skin, no blood. Next: the exposed flesh painted under it (region masks).
+// All three phases: the numbers and the burst; the plate itself, the region's piece of the
+// character's own mesh (the gib parts) flying off a little smaller than the limb in the
+// body's skin, no blood; and the flesh under it, the meat texture blended over the skin
+// through the region's UV mask (ModArmorTextures, tools/make_armor_masks.py).
 //=============================================================================
 class ModArmor extends Info
 	config(AdventMod);
@@ -31,6 +32,8 @@ struct ArmorState
 	var float Plate[6];     // points left: head, torso, left arm, right arm, left leg, right leg
 	var float Max[6];
 	var byte Broken[6];
+	var Material Top;       // the skin chain's top: the plain skin with every broken plate's flesh blended in
+	var byte bSkinned;      // the chain is on the body
 };
 var array<ArmorState> Bodies;
 var name Bones[12];                 // the bones a hit is measured against (ModReact's list)
@@ -40,6 +43,8 @@ var config float PlateScale;        // the flying plate's size against the body 
 var config float PlateStay;         // seconds a fallen plate lies there before it sinks away
 var config bool bPlates;            // the region's own mesh piece flies off (phase 2); off: chunks only
 var int LastBone;                   // the bone Region() settled on
+var config bool bExpose;            // the flesh shows where a plate is gone (phase 3)
+var config float ExposeMix;         // how much of the flesh shows through (1: the mask as made)
 var localized string RegionNames[6];
 var array<ModRubble> Pieces;
 var ModGore Gore;
@@ -188,6 +193,8 @@ function Shatter(int b, int r, vector HitLocation, vector Dir)
 		Set = Gore.GibSet(P);
 	if (bPlates && Set >= 0)
 		Plate(P, Set, HitLocation, Dir);
+	if (bExpose && Set >= 0)
+		Expose(b, r, Set);
 	for (i = 0; i < Chunks; i++)
 	{
 		while (Pieces.Length > 0 && (Pieces.Length >= MaxChunks || Pieces[0] == None || Pieces[0].bDeleteMe))
@@ -260,6 +267,68 @@ function Plate(Pawn P, int Set, vector HitLocation, vector Dir)
 		class'ModSettings'.static.Note("armor: plate " $ Part $ " flies from " $ Bones[LastBone]);
 }
 
+// the flesh under the plate: a Combiner stage blends the meat texture over the skin through
+// the region's mask (ModArmorTextures, from the mesh's own UVs); each broken plate adds a
+// stage on top of the last. The chain goes into skin slot 0, or under the blood coat's
+// multiply if the body wears one (and a coat made later takes the chain as its plain skin).
+function Expose(int b, int r, int Set)
+{
+	local Pawn P;
+	local int i, Entry;
+	local Material Base, Flesh;
+	local Combiner C;
+	local ModBloodCoat Coat;
+	local class<ModArmorTextures> T;
+
+	P = Bodies[b].P;
+	T = class'ModArmorTextures';
+	for (i = 0; i < T.default.Sets.Length; i++)
+		if (T.default.Sets[i].Set == class'ModGibParts'.default.Sets[Set].Name)
+			break;
+	if (i >= T.default.Sets.Length || T.default.Sets[i].Masks[r] == None)
+		return;
+	Coat = Gore.CoatOf(P);
+	if (Bodies[b].Top == None)
+	{
+		// the plain skin: what the body wears, or the mesh's own material (ModSkins)
+		if (Coat != None && Coat.Mix[0] != None)
+			Base = Coat.Mix[0].Material1;
+		else if (P.Skins.Length > 0 && P.Skins[0] != None)
+			Base = class'ModBloodCoat'.static.PlainOf(P.Skins[0]);
+		else
+		{
+			Entry = class'ModSkins'.static.Find(P.Mesh);
+			if (Entry >= 0 && class'ModSkins'.default.Meshes[Entry].Skin[0] != "")
+				Base = class'ModBloodCoat'.static.PlainOf(Material(DynamicLoadObject(class'ModSkins'.default.Meshes[Entry].Skin[0], class'Material')));
+		}
+		if (Base == None)
+		{
+			if (bArmorLog)
+				class'ModSettings'.static.Note("armor: " $ P $ " has no skin to expose");
+			return;
+		}
+		Bodies[b].Top = Base;
+	}
+	if (Gore.BloodKind(P) == 2)
+		Flesh = Gore.AlienMeatTex;
+	else
+		Flesh = Gore.MeatTex;
+	C = new(None) class'Combiner';
+	C.Material1 = Bodies[b].Top;
+	C.Material2 = Flesh;
+	C.Mask = T.default.Sets[i].Masks[r];
+	C.CombineOperation = CO_AlphaBlend_With_Mask;
+	C.AlphaOperation = AO_Use_Alpha_From_Material1;
+	Bodies[b].Top = C;
+	if (Coat != None && Coat.Mix[0] != None)
+		Coat.Mix[0].Material1 = C;
+	else
+		P.Skins[0] = C;
+	Bodies[b].bSkinned = 1;
+	if (bArmorLog)
+		class'ModSettings'.static.Note("armor: " $ P $ " shows flesh at the " $ RegionNames[r] $ " (coat " $ Coat $ ")");
+}
+
 // how many plates a body still has (the pilot's log, and later a HUD hint)
 function int PlatesLeft(Pawn P)
 {
@@ -300,6 +369,8 @@ defaultproperties
      Chunks=2
      MaxChunks=40
      bPlates=True
+     bExpose=True
+     ExposeMix=1.0
      PlateScale=0.9
      PlateStay=18.0
      Armored(0)="SeekerInfantry"
