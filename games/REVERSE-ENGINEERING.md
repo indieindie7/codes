@@ -160,10 +160,27 @@ drop from a throwaway D3D device.
     depth, velocity u = mx / depth, v = my / depth into `[0x14]` / `[0x12]`, a wave-speed grid
     sqrt(depth x [9]) into `[0x13]`, and takes the maximum of |u| + c + |v| over the sheet: the
     CFL signal speed that sizes the step; pass 2 (lines 800-1466) computes the fluxes between
-    each cell and its right/lower neighbour with min/max limiters (the select-by-mask code) and
-    updates depth and momentum; three 64-iteration loops handle edges. Constants: 1000 (speed
-    cap), 2 / 4 / 3 (scheme factors), 1e3 x4 vectors. Per-sheet parameters at `[0x78..0x8f]`
-    (4-wide: max depth, floor, bed, scale) and `[0x84..0x87]` (edge variants).
+    each cell and its right/lower neighbour and updates depth and momentum; three 64-iteration
+    loops handle edges.
+  - **The flux scheme, read (2026-10-06 morning, lines 800-1100 of the decompile + the sheet
+    initialiser `FUN_00c19d00`, which fills the 4-wide constant vectors):** a textbook
+    **HLL approximate Riemann solver** per cell face, wet/dry-safe:
+    1. *Hydrostatic reconstruction* (Audusse et al. 2004): with bed heights b from `[0x15]`,
+       h_L* = max(0, h_L + min(b_L - b_R, 0)), h_R* = max(0, h_R + min(b_R - b_L, 0)), and the
+       well-balancing source term g/2 (h^2 - h*^2) on each side (`[0x74..0x77]` = g/2, g = the
+       sheet's `[9]`, a global).
+    2. *Wave-speed estimate* = Toro's two-rarefaction form: u* = (u_L + u_R)/2 + (c_L - c_R),
+       c* = (c_L + c_R)/2 + (u_L - u_R)/4 (`[0x7c]` = 0.5, `[0x80]` = 0.25; c = sqrt(g h) from
+       pass 1, grid `[0x13]`), then S_L = min(u_L - c_L, u* - |c*|, 0), S_R = max(u_R + c_R,
+       u* + |c*|, 0) (`[0x84..]` = 0 is the clamp).
+    3. *HLL flux* F = (S_R F_L - S_L F_R + S_L S_R (U_R - U_L)) / max(S_R - S_L, 1e-10)
+       (`[0x88]` = 1e-10, the `divps` by `(1,1,1,1)`), with F_L = (h_L* u_L, h_L* u_L^2 + ...),
+       applied as F x dt / dx (`[0x78..0x7b]` = `[7]` = 1/20 = 1/cell). `[0x8c]` = 2e10 is the
+       +infinity sentinel for min().
+    So: explicit first-order Godunov/HLL finite volume on a 20-unit grid, CFL sub-stepped, SSE
+    4 cells wide, with a 1000 x depth momentum cap. It is the same family as the GPU
+    shallow-water papers (Brodtkorb / Kurganov-Petrova style, see bioshock-mod-ideas.md): a
+    direct model for a blood-pool or flooding mod, ~60 lines of plain C per pass.
   - So Hydrophobia's water IS a real fluid simulation, but 2D: shallow-water per room surface
     (height + momentum, sub-stepped by CFL, SSE), fed by region levels (what pours in or out)
     and disturbed by objects; rooms exchange water through the region volumes, not through the
