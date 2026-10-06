@@ -1,0 +1,4 @@
+bin/*.pdb
+bin/*.lib
+bin/*.log
+__pycache__/
