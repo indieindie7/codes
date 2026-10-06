@@ -324,6 +324,47 @@ def pipeline(pts, z_of):
     return verts, uvs, tris
 
 
+def fence(buildings):
+    """the company fence round the plant's shelf: posts every 8 m with two rails, on the shelf ellipse (along
+    11500..17500, across +-5100) but only on the land side, with gaps where the tracks cross it. Z 0 = SEA_Z."""
+    verts, uvs, tris = [], [], []
+    ra, rc = 3000.0 - 300, 5100.0 - 500
+    n = 160
+    pts = []
+    for k in range(n + 1):
+        t = -math.pi / 2 + math.pi * k / n              # the land half of the ellipse (toward the tower)
+        along = PLANT_AT[0] - ra * math.cos(t)
+        across = PLANT_AT[1] + rc * math.sin(t)
+        pts.append(from_frame(along, across))
+    def near_track(x, y):
+        for (x0, y0), (x1, y1), w in ROADS:
+            dx, dy = x1 - x0, y1 - y0
+            L2 = dx * dx + dy * dy
+            tt = 0.0 if L2 == 0 else max(0.0, min(1.0, ((x - x0) * dx + (y - y0) * dy) / L2))
+            if math.hypot(x - (x0 + tt * dx), y - (y0 + tt * dy)) < w + 150:
+                return True
+        return False
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
+        if near_track(xm, ym) or height(xm, ym) < 0:
+            continue
+        g0, g1 = height(x0, y0), height(x1, y1)
+        box(verts, uvs, tris, x0, y0, g0 + 60, 14, 14, 130, 0, uv=sw("dark"))
+        L = math.hypot(x1 - x0, y1 - y0)
+        ang = math.degrees(math.atan2(y1 - y0, x1 - x0))
+        for z in (45, 105):
+            box(verts, uvs, tris, xm, ym, (g0 + g1) / 2 + z, L, 5, 5, ang, uv=sw("dark"))
+    return verts, uvs, tris
+
+
+def floodmast(verts, uvs, tris, x, y, g, lit=True):
+    """a floodlight mast: a 14 m pole with a cross-arm and two lamp heads"""
+    box(verts, uvs, tris, x, y, g + 350, 22, 22, 700, 0, uv=sw("dark"))
+    box(verts, uvs, tris, x, y, g + 690, 160, 14, 14, 0, uv=sw("dark"))
+    for dx in (-70, 70):
+        box(verts, uvs, tris, x + dx, y, g + 670, 36, 30, 30, 0, uv=sw("glow" if lit else "dark"))
+
+
 def actor(cls, name, loc, props="", rot=None):
     x, y, z = loc
     r = f"    Rotation=(Pitch={rot[0]},Yaw={rot[1]},Roll={rot[2]})\n" if rot else ""
@@ -466,6 +507,22 @@ def write_actors(path, bounds, manifest, buildings):
     pipe = pipeline(pipe_pts, lambda x, y: max(height(x, y), 0) + 180)
     write_ase(os.path.join(HERE, "Models", "ase", "Pipeline.ase"), "Pipeline", *pipe)
     out.append(actor("StaticMeshActor", "Pipeline", (0, 0, SEA_Z), "    StaticMesh=StaticMesh'AvalonSM.Liandri.Pipeline'\n" + PAL))
+    fv = fence(buildings)
+    write_ase(os.path.join(HERE, "Models", "ase", "Fence.ase"), "Fence", *fv)
+    out.append(actor("StaticMeshActor", "Fence", (0, 0, SEA_Z), "    StaticMesh=StaticMesh'AvalonSM.Liandri.Fence'\n" + PAL + NO_COLLISION))
+    mv = ([], [], [])
+    for bid in ("cargo_pad", "dock"):
+        if bid in placed:
+            x, y = placed[bid][0]
+            b = buildings[bid]
+            a2 = math.radians(b["at"][2])
+            W2, D2 = b["size"][0] * M / 2, b["size"][1] * M / 2
+            for sx, sy in ((-1, -1), (1, 1)) if bid == "cargo_pad" else ((-0.9, 1.2),):
+                px_, py_ = x + sx * W2 * math.cos(a2) - sy * D2 * math.sin(a2), y + sx * W2 * math.sin(a2) + sy * D2 * math.cos(a2)
+                g = max(height(px_, py_), 0) if bid == "cargo_pad" else 220
+                floodmast(*mv, px_, py_, g, b["lit"])
+    write_ase(os.path.join(HERE, "Models", "ase", "Floodmasts.ase"), "Floodmasts", *mv)
+    out.append(actor("StaticMeshActor", "Floodmasts", (0, 0, SEA_Z), "    StaticMesh=StaticMesh'AvalonSM.Liandri.Floodmasts'\n" + PAL))
     if "generator_house" in placed:
         gx, gy = placed["generator_house"][0]
         for f in (0.85, 0.65, 0.45, 0.25):
@@ -518,6 +575,9 @@ def write_actors(path, bounds, manifest, buildings):
             if "at" not in b or bid == "tower":
                 continue
             lamps = []
+            if bid in ("cargo_pad", "dock") and b["lit"]:
+                x, y, _ = instances(b)[0]
+                lamps.append((x, y, 13.0 * M))
             if b["lit"]:
                 lamps = [(x, y, 7.0 * M) for x, y, _ in instances(b)]
             elif bid == "dead_rig":
@@ -560,6 +620,8 @@ if __name__ == "__main__":
     write_ase(os.path.join(ase, "Room.ase"), "Room", *room()); manifest.append(("Room", "Tower", ""))
     write_ase(os.path.join(ase, "Quay.ase"), "Quay", *quay(buildings["dock"])); manifest.append(("Quay", "Liandri", ""))
     manifest.append(("Pipeline", "Liandri", ""))
+    manifest.append(("Fence", "Liandri", ""))
+    manifest.append(("Floodmasts", "Liandri", ""))
     bounds = json.load(open(os.path.join(ase, "bounds.json")))
     for b in sorted(bounds):
         manifest.append((b, "Liandri", ""))

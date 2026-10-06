@@ -939,6 +939,19 @@ Begin Actor Class=StaticMeshActor Name=Pipeline
     StaticMesh=StaticMesh'AvalonSM.Liandri.Pipeline'
     Skins(0)=Texture'AvalonSM.Pal.Pal'
 End Actor
+Begin Actor Class=StaticMeshActor Name=Fence
+    Location=(X=0.0,Y=0.0,Z=-4967.0)
+    StaticMesh=StaticMesh'AvalonSM.Liandri.Fence'
+    Skins(0)=Texture'AvalonSM.Pal.Pal'
+    bCollideActors=False
+    bBlockActors=False
+    bBlockPlayers=False
+End Actor
+Begin Actor Class=StaticMeshActor Name=Floodmasts
+    Location=(X=0.0,Y=0.0,Z=-4967.0)
+    StaticMesh=StaticMesh'AvalonSM.Liandri.Floodmasts'
+    Skins(0)=Texture'AvalonSM.Pal.Pal'
+End Actor
 Begin Actor Class=StaticMeshActor Name=A58_Pylon
     Location=(X=8439.2,Y=-10537.1,Z=-4567.0)
     Rotation=(Pitch=0,Yaw=5461,Roll=0)

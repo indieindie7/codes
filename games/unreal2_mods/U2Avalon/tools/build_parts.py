@@ -237,6 +237,20 @@ def building(b, rng):
             cyl(dy * W, D / 2 + 3.0, 0.6 + 0.3 * i, 0.35, 6.0, "rust" if wear > 0.3 else "dark", 10, (math.pi / 2, 0, 0))
         cyl(W * 0.3, 0, H + 1.5, 0.6, 3.0, "dark", 10)
         cyl(-W * 0.3, 0, H + 1.2, 0.6, 2.4, "dark", 10)
+    if kind == "office":
+        # the company's only ornament: a dish on the roof and a flag-pole stub
+        cyl(W * 0.3, -D * 0.25, H + 1.0, 0.25, 1.6, "dark", 8)
+        cyl(W * 0.3, -D * 0.25, H + 2.0, 1.6, 0.25, "pale", 16, (math.radians(50), 0, 0))
+        cyl(-W * 0.4, D * 0.3, H + 2.5, 0.08, 5.0, "pale", 6)
+    if kind == "dorm":
+        # the annex nobody planned: a stack of containers against the right end, with a ladder
+        for k, (dz, dy) in enumerate(((1.3, -1.6), (1.3, 1.6), (3.9, 0.0))):
+            box(W / 2 + 1.6, dy, dz, 2.6, 6.2, 2.5, "rust" if k != 1 else "dark")
+        box(W / 2 + 3.0, 3.4, 2.6, 0.3, 0.6, 5.2, "dark")
+    if kind == "pad" and "authority" in b["id"]:
+        # the Authority's one antenna, on a guyed pole at the pad's corner
+        cyl(W / 2 - 2.5, D / 2 - 2.5, 7.0, 0.15, 12.0, "pale", 8)
+        box(W / 2 - 2.5, D / 2 - 2.5, 12.6, 2.4, 0.2, 0.9, "dark")
     if kind == "hall" and "generator" in b["id"]:
         cyl(W * 0.25, D * 0.1, H + 2.5, 0.7, 5.0, "dark", 12)
         cyl(-W * 0.25, D * 0.1, H + 2.5, 0.7, 5.0, "dark", 12)

@@ -110,6 +110,8 @@ Tower Tower
 Room Tower 
 Quay Liandri 
 Pipeline Liandri 
+Fence Liandri 
+Floodmasts Liandri 
 B_authority_pad Liandri 
 B_boat_landing Liandri 
 B_cargo_pad Liandri 
