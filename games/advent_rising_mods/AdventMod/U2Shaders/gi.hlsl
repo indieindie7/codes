@@ -284,7 +284,10 @@ float4 ResolvePS(float2 uv : TEXCOORD0) : COLOR
 		return float4(shade, shade, shade, 1);      // 2: the corner darkening alone
 	if (Fx.w > 0.5)
 		return float4(pow(max(light, 0), 1 / 2.2), 1);      // 1: the gathered light alone
-	float3 lit = pow(max(c.rgb, 0), 2.2) * shade + pow(max(hue, 0), 2.2) * light * Fx.x;
+	// bounce light fills the dark: where the frame is already bright (daylight, a lit wall)
+	// it only washes the picture out, so it fades with the pixel's brightness
+	float dark = saturate(1 - dot(c.rgb, float3(0.3, 0.59, 0.11)) * 1.4);
+	float3 lit = pow(max(c.rgb, 0), 2.2) * shade + pow(max(hue, 0), 2.2) * light * Fx.x * dark;
 	return float4(pow(max(lit, 0), 1 / 2.2), c.a);
 }
 #endif

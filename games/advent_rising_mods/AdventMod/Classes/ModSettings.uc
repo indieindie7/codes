@@ -272,20 +272,21 @@ static function ApplyPostPreset(int N)
 // light and darker corners. It runs in the post pass, so "Post Effects: Off" switches it off too.
 // gifx = bounce strength, corner darkening, reach, debug view; gilights = how much the
 // game's own lamps light the world cache, how many lamps (measured 2026-10-05: below
-// strength ~2 the bounce can't be told from no GI; lamps above ~0.6 wash the walls out)
+// strength ~2 the bounce can't be told from no GI in a dark room; 2.5 + lamps 0.4 washed the
+// outdoors out for the user (2026-10-05), so On sits below that and Strong is the old On)
 static function ApplyGi(int Level)
 {
 	Level = Clamp(Level, 0, 2);
 	default.GiLevel = Level;
 	if (Level == 2)
 	{
-		NativeCall("U2Set:gifx=4 0.7 300 0");
-		NativeCall("U2Set:gilights=0.6 16");
+		NativeCall("U2Set:gifx=2.5 0.7 300 0");
+		NativeCall("U2Set:gilights=0.4 16");
 	}
 	else
 	{
-		NativeCall("U2Set:gifx=2.5 0.6 300 0");
-		NativeCall("U2Set:gilights=0.4 16");
+		NativeCall("U2Set:gifx=1.5 0.6 300 0");
+		NativeCall("U2Set:gilights=0.25 16");
 	}
 	NativeCall("U2Set:gi=" $ int(Level > 0));
 	StaticSaveConfig();

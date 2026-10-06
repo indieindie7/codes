@@ -54,6 +54,18 @@ REGIONS = {
 }
 
 
+# how strong the generated normal map is per region (a factor on the preset's bump; later
+# rows win): the painted shading of pale, smooth cloth reads as noise when bumped, dark cloth
+# and leather take it well (the user, 2026-10-05: white jacket weird, dark clothes good)
+BUMP_REGIONS = {
+    "gideon_uniform": [
+        ((0, 0, 212, 262), 0.25),      # the white jacket
+        ((212, 130, 512, 262), 0.6),   # the vest
+        ((0, 262, 112, 512), 0.4),     # skin and hair
+    ],
+}
+
+
 def blur(a, radius):
     im = Image.fromarray(np.uint8(np.clip(a, 0, 1) * 255))
     return np.asarray(im.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32) / 255
@@ -87,7 +99,11 @@ def make(texture, preset="uniform", bump=2.5):
     height = blur(lum, 1.0) + 0.5 * blur(lum, 4)
     dx = (np.roll(height, -1, axis=1) - np.roll(height, 1, axis=1)) * 0.5
     dy = (np.roll(height, -1, axis=0) - np.roll(height, 1, axis=0)) * 0.5
-    n = np.stack([-dx * bump, -dy * bump, np.full_like(dx, 1.0 / 8)], axis=2)
+    bumpmap = np.full_like(dx, bump)
+    for (x0, y0, x1, y1), factor in BUMP_REGIONS.get(preset, []):
+        bumpmap[int(y0 * k):int(y1 * k), int(x0 * k):int(x1 * k)] = bump * factor
+    bumpmap = blur(bumpmap / max(bump, 1e-6), 2.0) * bump
+    n = np.stack([-dx * bumpmap, -dy * bumpmap, np.full_like(dx, 1.0 / 8)], axis=2)
     n /= np.linalg.norm(n, axis=2, keepdims=True)
     out = np.stack([rough, n[..., 1] * 0.5 + 0.5, n[..., 0] * 0.5 + 0.5, metal], axis=2)   # B, G, R, A
     return np.uint8(np.clip(out, 0, 1) * 255 + 0.5)
