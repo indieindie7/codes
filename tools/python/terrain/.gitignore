@@ -1,0 +1,3 @@
+demo_*.png
+demo_*.npy
+__pycache__/
