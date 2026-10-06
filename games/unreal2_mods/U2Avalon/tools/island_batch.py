@@ -28,7 +28,10 @@ args = [a for a in sys.argv[1:] if "=" not in a]
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
 seeds = [int(a) for a in args] or [1]
 SHIFT = o.get("shift", "-5300")
-GEN = o.get("gen", "form")        # form = designed island by the terrain tool (island_form.py); noise = random_island.py + erosion
+GEN = o.get("gen", "form")
+STYLE = o.get("style", "ridges")  # island_form style: ridges | plateau
+PILOT = o.get("pilot", "1") != "0"   # pilot=0: no game run (editor pictures only; e.g. while another GPU job runs)
+NAME = o.get("name", "TutA_Rand")    # map name prefix        # form = designed island by the terrain tool (island_form.py); noise = random_island.py + erosion
 
 
 def run(cmd, **k):
@@ -127,13 +130,49 @@ def pilot_script(name, layout_json):
     return "\n".join(lines) + "\n"
 
 
+def populate(name, t3d, layout_json, base):
+    """UnrealEd: load the map, load the mesh packages, import the actors, save; then editor pictures"""
+    import json, math
+    sys.path.insert(0, os.path.join(CODES, "tools", "C", "U2EdBridge"))
+    from uedlib import Ed, session
+    L = json.load(open(layout_json))["buildings"]
+    plant = L.get("plant_office", L["tower"])
+    halls = [L[k] for k in L if k.startswith("hall") and math.hypot(L[k]["x"] - plant["x"], L[k]["y"] - plant["y"]) < 200 * 50] + [plant]
+    cx, cy = sum(h["x"] for h in halls) / len(halls), sum(h["y"] for h in halls) / len(halls)
+    gz = max(h.get("z", -4800) for h in halls)
+    tower = L["tower"]
+
+    def job(ed):
+        ed.exec("!answer yes")
+        ed.load(name)
+        for pkg in ("StaticMeshes/AvalonSM.usx", "StaticMeshes/Mission_05M.usx"):
+            ed.load_package(os.path.join(GAME, pkg))
+        ed.import_t3d(t3d, add=True)
+        ed.light()                      # static meshes stay black in the editor until the lighting is applied
+        ed.save(name)
+        ed.hide_icons()
+        # pictures: over the plant toward the tower, from the sea toward the plant, the whole island
+        def yaw_to(fx, fy, tx, ty):
+            return int(math.degrees(math.atan2(ty - fy, tx - fx)) * 65536 / 360) % 65536
+        a = math.atan2(tower["y"] - cy, tower["x"] - cx)
+        px, py = cx - 3500 * math.cos(a), cy - 3500 * math.sin(a)
+        ed.view(px, py, gz + 3500, pitch=-7000, yaw=yaw_to(px, py, cx, cy))
+        ed.screenshot(base + "_ed_plant.png")
+        sx, sy = cx + 9000 * math.cos(a + math.pi / 2), cy + 9000 * math.sin(a + math.pi / 2)
+        ed.view(sx, sy, gz + 1500, pitch=-1500, yaw=yaw_to(sx, sy, cx, cy))
+        ed.screenshot(base + "_ed_side.png")
+        ed.view(cx - 12000 * math.cos(a), cy - 12000 * math.sin(a), gz + 14000, pitch=-8500, yaw=yaw_to(cx - 12000 * math.cos(a), cy - 12000 * math.sin(a), cx, cy))
+        ed.screenshot(base + "_ed_island.png")
+    session(job)
+
+
 for seed in seeds:
-    name = "TutA_Rand%d" % seed
+    name = "%s%d" % (NAME, seed)
     base = os.path.join(OUT, "isl%d" % seed)
     print("\n=== seed", seed, "->", name, flush=True)
     if GEN == "form":
         # the terrain tool forms and erodes the island itself (sketch -> stream power -> droplets -> thermal)
-        run(["py", os.path.join(TOOLS, "island_form.py"), seed, TEMPLATE, base + "_e.bmp", "png=" + base + "_sketch.png"])
+        run(["py", os.path.join(TOOLS, "island_form.py"), seed, TEMPLATE, base + "_e.bmp", "png=" + base + "_sketch.png", "style=" + STYLE])
     else:
         run(["py", os.path.join(TOOLS, "random_island.py"), seed, TEMPLATE, base + ".bmp"])
         run(["py", TERRAIN, "erode", base + ".bmp", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02",
@@ -144,8 +183,15 @@ for seed in seeds:
     run(["py", os.path.join(TOOLS, "layout.py"), base + "_e.bmp", layout, "seed=%d" % seed, "shift=" + SHIFT, "png=" + base + "_map.png"])
     run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout])
     run(["py", os.path.join(TOOLS, "terrain_apply.py"), base + "_ec.bmp", name])
-    run(["py", os.path.join(TOOLS, "export_mutator.py"), "shift=" + SHIFT, "layout=" + layout])
+    # the buildings go into the MAP as StaticMeshActors (ground Z from the final heightmap); the ini keeps the cards
+    t3d = base + "_actors.t3d"
+    run(["py", os.path.join(TOOLS, "export_mutator.py"), "shift=" + SHIFT, "layout=" + layout, "t3d=" + t3d,
+         "heightmap=" + base + "_ec.bmp", "props=0"])
+    populate(name, t3d, layout, base)
     enable_map(name)
+    if not PILOT:
+        print("pilot skipped (pilot=0); editor pictures ->", base + "_ed_*.png", flush=True)
+        continue
     script = os.path.join(PILOT, "scripts", "cards_binder_rand%d.txt" % seed)
     open(script, "w").write(pilot_script(name, layout))
     run(["py", os.path.join(PILOT, "u2pilot.py"), script, "--background"], cwd=PILOT)
