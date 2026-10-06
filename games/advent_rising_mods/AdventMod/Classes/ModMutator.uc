@@ -109,7 +109,7 @@ function Every()
 		bProbed = true;
 		Spawn(class'ShadowProbe').Start(PC.Pawn);
 	}
-	if ((class'ModSettings'.default.DebugLevelMenu != "" || class'ModSettings'.default.DebugMenuDelay > 0) && PC != None && DebugStage < 3)
+	if ((class'ModSettings'.default.DebugLevelMenu != "" || class'ModSettings'.default.DebugLevelCommands != "" || class'ModSettings'.default.DebugMenuDelay > 0) && PC != None && DebugStage < 3)
 	{
 		// testing (see ModSettings): open a menu in this level, then take a screenshot of it
 		DebugTime += 0.5;
@@ -119,6 +119,7 @@ function Every()
 			DebugStage = 1;
 			SkipCutscene();
 			PC.Player.GUIController.CloseAll(false);
+			RunCommands(PC, class'ModSettings'.default.DebugLevelCommands);
 		}
 		else if (DebugStage == 1 && DebugTime >= class'ModSettings'.default.DebugMenuDelay + 2.0)
 		{
@@ -169,7 +170,20 @@ function RunCommands(PlayerController PC, string Rest)
 			Cmd = Left(Rest, i);
 			Rest = Mid(Rest, i + 1);
 		}
-		class'ModSettings'.static.Note(Cmd $ " => " $ PC.ConsoleCommand(Cmd));
+		if (!class'ModSettings'.static.DebugStep(PC, Cmd))
+			if (Left(Cmd, 3) ~= "in:")
+		{
+			Cmd = Mid(Cmd, 3);
+			i = InStr(Cmd, ":");
+			if (i < 0 || !(Left(Cmd, i) ~= string(Level.Outer.Name)))
+			{
+				class'ModSettings'.static.Note(Cmd $ " skipped in " $ Level.Outer.Name);
+				continue;
+			}
+			Cmd = Mid(Cmd, i + 1);
+		}
+		if (!class'ModSettings'.static.DebugStep(PC, Cmd))
+			class'ModSettings'.static.Note(Cmd $ " => " $ PC.ConsoleCommand(Cmd));
 	}
 }
 

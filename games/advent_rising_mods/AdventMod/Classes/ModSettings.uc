@@ -51,6 +51,8 @@ var config float ColorblindStrength;  // 0..1
 var config int MaxFps;                // frame cap: -1 = the monitor's refresh rate, 0 = none (uncapped the GPU draws ~300 fps nobody sees)
 var config bool bD3DTrace;            // testing: trace Direct3D calls (AdventNative d3dtrace.c) into AdventNative.log
 var config string DebugLevelMenu;     // testing: a menu class ModMutator opens DebugMenuDelay seconds into a level,
+var config string DebugLevelCommands; // testing: commands run DebugMenuDelay seconds into a level (RunCommands steps; a
+                                      // step written "in:MAP:step" runs only in the map called MAP), e.g. a save load chain
 var config float DebugMenuDelay;      // then takes a screenshot (console "shot") 4 seconds later
 var config string DebugCommands;      // testing: console commands (separated by |) run on the title screen, results in AdventNative.log
 var config string DebugOpenMenu;      // testing: a menu class to open right after the title menu
@@ -309,6 +311,28 @@ static function ApplyColorblind(int Type, float Strength)
 
 // called once per run of the game, by ModMutator in the first level (the title): the
 // window and the render device exist
+// testing: the steps of the game's own Load Game path, so the harness can replay a save load:
+// "slot:N" makes slot N (0-based) the active one, "travel:URL" loads it the way MenuFade does
+// (checkpoint restore on). Returns false for anything else.
+static function bool DebugStep(PlayerController PC, string Cmd)
+{
+	if (Left(Cmd, 5) ~= "slot:")
+	{
+		PC.SetActiveSlotIndex(int(Mid(Cmd, 5)));
+		Note(Cmd $ " => active slot set");
+		return true;
+	}
+	if (Left(Cmd, 7) ~= "travel:")
+	{
+		PC.bRestoringCheckPointMutex = true;
+		PC.Level.bPendingLoadCheckPoint = false;
+		Note(Cmd $ " => ServerTravel with checkpoint restore");
+		PC.Level.ServerTravel(Mid(Cmd, 7), false);
+		return true;
+	}
+	return false;
+}
+
 static function Startup(PlayerController PC)
 {
 	local bool bReset;

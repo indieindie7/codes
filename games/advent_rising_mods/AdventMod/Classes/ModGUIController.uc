@@ -85,7 +85,7 @@ function RunDebug(string Rest)
 		}
 		else if (Left(Cmd, 7) ~= "native:")
 			class'ModSettings'.static.Note(Cmd $ " => " $ class'ModSettings'.static.NativeCall(Mid(Cmd, 7)));
-		else
+		else if (!class'ModSettings'.static.DebugStep(ViewportOwner.Actor, Cmd))
 			class'ModSettings'.static.Note(Cmd $ " => " $ ViewportOwner.Actor.ConsoleCommand(Cmd));
 	}
 }

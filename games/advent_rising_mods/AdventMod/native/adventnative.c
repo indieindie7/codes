@@ -179,6 +179,8 @@ static int HandleCommand(const wchar_t* Cmd)
 		return 1;
 	}
 	if (!_wcsnicmp(Cmd, L"Note:", 5)) { Note(L"%ls", Cmd + 5); return 1; }
+	if (!_wcsicmp(Cmd, L"TestCrashThread")) { Note(L"testing: a thread calling address 0 on purpose"); CreateThread(0, 0, (LPTHREAD_START_ROUTINE)0, 0, 0, 0); return 1; }
+	if (!_wcsicmp(Cmd, L"TestCrash")) { void (*Nowhere)(void) = 0; Note(L"testing: calling address 0 on purpose"); Nowhere(); return 1; }
 	if (!_wcsicmp(Cmd, L"BorderlessOn")) return SetBorderless(1);
 	if (!_wcsicmp(Cmd, L"BorderlessOff")) return SetBorderless(0);
 	if (!_wcsicmp(Cmd, L"IsBorderless")) return Borderless;
@@ -247,6 +249,79 @@ static void* Redirect(HMODULE Core, const char* Name, void* To)
 	return Real;
 }
 
+
+/* a crash the game's own handler doesn't catch (the ones that end in the Windows "stopped
+   working" record): what and where, to AdventNative.log, and a minidump next to it
+   (AdventCrash.dmp, readable in WinDbg / Visual Studio). The filter then lets Windows carry on
+   as before. */
+typedef BOOL (WINAPI *MiniDumpWriteDump_t)(HANDLE, DWORD, HANDLE, int, void*, void*, void*);
+static LPTOP_LEVEL_EXCEPTION_FILTER PrevFilter;
+
+static void Where(wchar_t* Out, size_t N, void* At)
+{
+	HMODULE M = 0;
+	wchar_t Path[MAX_PATH], *Base;
+	if (At && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCWSTR)At, &M) && M)
+	{
+		GetModuleFileNameW(M, Path, MAX_PATH);
+		Base = wcsrchr(Path, L'\\'); Base = Base ? Base + 1 : Path;
+		swprintf(Out, N, L"%ls+%08X", Base, (unsigned)((char*)At - (char*)M));
+	}
+	else
+		swprintf(Out, N, L"%08X", (unsigned)(size_t)At);
+}
+
+static LONG WINAPI CrashFilter(EXCEPTION_POINTERS* E)
+{
+	wchar_t W[160];
+	EXCEPTION_RECORD* R = E->ExceptionRecord;
+	CONTEXT* C = E->ContextRecord;
+	int i;
+	Where(W, 160, R->ExceptionAddress);
+	Note(L"crash: exception %08X at %ls (eip %08X)", R->ExceptionCode, W, (unsigned)C->Eip);
+	if (R->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && R->NumberParameters >= 2)
+		Note(L"crash: %ls address %08X", R->ExceptionInformation[0] == 8 ? L"executing" : R->ExceptionInformation[0] ? L"writing" : L"reading", (unsigned)R->ExceptionInformation[1]);
+	/* the callers: the frame chain, then the top of the stack (for a jump to nowhere the
+	   return address is the first thing there) */
+	{
+		DWORD* Fp = (DWORD*)C->Ebp;
+		for (i = 0; i < 16 && Fp && !IsBadReadPtr(Fp, 8); i++)
+		{
+			Where(W, 160, (void*)Fp[1]);
+			Note(L"crash: frame %d from %ls", i, W);
+			if ((DWORD*)Fp[0] <= Fp) break;
+			Fp = (DWORD*)Fp[0];
+		}
+		{
+			DWORD* Sp = (DWORD*)C->Esp;
+			wchar_t Line[600] = L"";
+			for (i = 0; i < 24 && !IsBadReadPtr(Sp + i, 4); i++)
+			{
+				HMODULE M = 0;
+				if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCWSTR)Sp[i], &M) && M)
+				{
+					Where(W, 160, (void*)Sp[i]);
+					if (wcslen(Line) + wcslen(W) + 12 < 600) swprintf(Line + wcslen(Line), 600 - wcslen(Line), L"[%d]%ls ", i, W);
+				}
+			}
+			Note(L"crash: code addresses on the stack: %ls", Line);
+		}
+	}
+	{
+		HMODULE Dbg = LoadLibraryW(L"dbghelp.dll");
+		MiniDumpWriteDump_t Write = Dbg ? (MiniDumpWriteDump_t)GetProcAddress(Dbg, "MiniDumpWriteDump") : 0;
+		HANDLE F = Write ? CreateFileW(L"AdventCrash.dmp", GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0) : INVALID_HANDLE_VALUE;
+		if (F != INVALID_HANDLE_VALUE)
+		{
+			struct { DWORD ThreadId; EXCEPTION_POINTERS* E; BOOL Client; } Info = { GetCurrentThreadId(), E, FALSE };
+			BOOL Ok = Write(GetCurrentProcess(), GetCurrentProcessId(), F, 0x0040 /* MiniDumpWithIndirectlyReferencedMemory: the stacks and what they point at (with data segments the file was 330 MB) */, &Info, 0, 0);
+			CloseHandle(F);
+			Note(L"crash: minidump %ls (System\\AdventCrash.dmp)", Ok ? L"written" : L"failed");
+		}
+	}
+	return PrevFilter ? PrevFilter(E) : EXCEPTION_CONTINUE_SEARCH;
+}
+
 BOOL WINAPI DllMain(HINSTANCE H, DWORD Reason, LPVOID R)
 {
 	if (Reason == DLL_PROCESS_ATTACH)
@@ -261,6 +336,7 @@ BOOL WINAPI DllMain(HINSTANCE H, DWORD Reason, LPVOID R)
 			GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)HookSLO, &Pin);
 			DeleteFileW(L"AdventNative.log");
 			Note(L"AdventNative loaded, hook %ls", RealSLO ? L"ready" : L"FAILED");
+			PrevFilter = SetUnhandledExceptionFilter(CrashFilter);
 			{
 				/* which Direct3D 8 the game got: the system's, or a wrapper in the game folder */
 				wchar_t Path[MAX_PATH] = L"(not loaded yet)";
