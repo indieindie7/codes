@@ -30,7 +30,7 @@ seeds = [int(a) for a in args] or [1]
 SHIFT = o.get("shift", "-5300")
 GEN = o.get("gen", "form")
 STYLE = o.get("style", "ridges")  # island_form style: ridges | plateau
-PILOT = o.get("pilot", "1") != "0"   # pilot=0: no game run (editor pictures only; e.g. while another GPU job runs)
+RUN_PILOT = o.get("pilot", "1") != "0"   # pilot=0: no game run (editor pictures only; e.g. while another GPU job runs)
 NAME = o.get("name", "TutA_Rand")    # map name prefix        # form = designed island by the terrain tool (island_form.py); noise = random_island.py + erosion
 
 
@@ -192,7 +192,7 @@ def main():
              "heightmap=" + base + "_ec.bmp", "props=0"])
         populate(name, t3d, layout, base)
         enable_map(name)
-        if not PILOT:
+        if not RUN_PILOT:
             print("pilot skipped (pilot=0); editor pictures ->", base + "_ed_*.png", flush=True)
             continue
         script = os.path.join(PILOT, "scripts", "cards_binder_rand%d.txt" % seed)
