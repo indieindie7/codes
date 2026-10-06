@@ -5,7 +5,7 @@ layer: core
 kind: mast
 at: 12000 -3000 0
 size: 6 6 22
-users:
+users: benedek
 doors:
 roof: none
 wear: 0.3

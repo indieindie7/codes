@@ -9,7 +9,7 @@ count: 3 along
 users:
 doors:
 roof: none
-wear: 0
+wear: 0.9
 lit: no
 abandoned: yes
 mesh: none
