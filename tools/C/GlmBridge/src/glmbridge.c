@@ -467,6 +467,7 @@ static void RunRequest(void)
 			g_rc = pWindowCommandf(obj, "%s", req);
 			goto done;
 		}
+		if (!_strnicmp(req, "item:", 5)) req += 5;   /* same as a leading '/', for shells that rewrite /paths (Git Bash) */
 		if (req[0] == '/')
 		{
 			const char *rest;

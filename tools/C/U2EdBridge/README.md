@@ -130,3 +130,6 @@ protection fault. Reason (from reading the engine with Ghidra, 2026-10-05): `SET
 objects outside the current map, and calls each one's `PostEditChange`; `AZoneInfo::PostEditChange`
 dereferences the object's level (`XLevel`) without a null check, and those objects have none. Light,
 Keypoint, NavigationPoint, AmbientSound and Emitter only run AActor's harmless PostEditChange.
+**Fixed in the bridge (2026-10-05):** U2EdBridge.dll patches `AZoneInfo::PostEditChange` in memory at
+startup so it tests the object's level instead of GIsEditor (same length, same jump); verified: `SET Info
+bHiddenEd True` now runs with the editor alive (log line "ZoneInfo patch: ... SET Info is safe").
