@@ -23,12 +23,14 @@ WORLD = 30720
 N = 240                 # heightfield cells per side (256 units)
 TILES = 8
 SEA_Z = -4967.0         # world Z of the sea surface
-SKY_Z = 14000
+SKY_Z = 20000           # outside the main room (Z +-16384)
 UV_TILE = 1024.0
 TOWER = (0.0, 0.0)
 ROOM_Z = SEA_Z + 9200   # the command room's floor
-BALCONY = (-250.0, 1100.0)
 LOOK_YAW = 300          # degrees
+# the player stands at the balcony's rim on the look side (standing in the middle of a 1700-unit disc,
+# the floor hides everything below 4 degrees); the real room (stage 2) puts the window at (-250,1100)
+BALCONY = (1550 * math.cos(math.radians(LOOK_YAW)), 1550 * math.sin(math.radians(LOOK_YAW)))
 
 random.seed(11)
 HILLS = [(random.uniform(-WORLD, WORLD), random.uniform(-WORLD, WORLD), random.uniform(1500, 4000),
@@ -182,10 +184,15 @@ def write_actors(path, bounds):
     out.append(actor("SkyZoneInfo", "SkyZoneInfo0", (0, 0, SKY_Z)))
     out.append(actor("StaticMeshActor", "SkyBox", (0, 0, SKY_Z),
                      "    StaticMesh=StaticMesh'HoverTestSM.SkyBox'\n    Skins(0)=Texture'HoverTestSM.SkyAtlas'\n    bUnlit=True\n" + NO_COLLISION))
-    # a low evening sun out over the sea (the paint-overs' light), a little right of the look direction
-    out.append(actor("SunLight", "Sun0", (0, 0, ROOM_Z + 2000),
-                     "    LightBrightness=200.0\n    LightHue=20\n    LightSaturation=120\n", (-3000, yaw(LOOK_YAW + 25), 0)))
-    out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=40\n    AmbientHue=160\n    AmbientSaturation=180\n"))
+    # a late-afternoon sun from the north-east, 30 degrees up: side light across the plant as seen from the
+    # tower (a sun out over the sea backlights everything and the hills shade the plant)
+    # the sun actor must stand in open air: actors are sunlit only if the trace toward it is clear, and
+    # above the tower it was inside the tower mesh. 20000 units out, in the direction the light comes from.
+    sf = math.radians(LOOK_YAW - 60 + 180)
+    sun_at = (20000 * math.cos(sf) * math.cos(math.radians(30)), 20000 * math.sin(sf) * math.cos(math.radians(30)), 10000)
+    out.append(actor("SunLight", "Sun0", sun_at,
+                     "    LightBrightness=220.0\n    LightHue=24\n    LightSaturation=110\n", (-5461, yaw(LOOK_YAW - 60), 0)))
+    out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=60\n    AmbientHue=160\n    AmbientSaturation=170\n"))
     bx, by = BALCONY
     out.append(actor("PlayerStart", "PlayerStart0", (bx, by, ROOM_Z + 120), "", (0, yaw(LOOK_YAW), 0)))
     out.append("End Map\n")

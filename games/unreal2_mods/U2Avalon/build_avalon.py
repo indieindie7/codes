@@ -53,7 +53,7 @@ MAP = [
     r'POLY SET SETFLAGS=%d' % PF_FAKEBACKDROP,
     r'POLY SELECT NONE',
     r'BRUSH LOAD FILE="{H}\brushes\Entry.u3d"',
-    r'BRUSH MOVETO X=0 Y=0 Z=14000',
+    r'BRUSH MOVETO X=0 Y=0 Z=20000',
     r'BRUSH SUBTRACT',
     r'MAP IMPORTADD FILE="{A}\avalon_actors.t3d"',
     r'MAP REBUILD',
