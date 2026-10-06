@@ -22,6 +22,8 @@ var config float BladeDamage;      // times the melee move's own damage
 var config int MaxPickups;
 var config float PickupReach;
 var config rotator HandRot, BackRot;       // how it sits on the hand and on the back
+var config name BackBone;                  // the bone it rides on the back (spine2 = lower back, Spine3 = upper)
+var config bool bBladeLight;               // the blade lights what is near it
 var config vector HandOffset, BackOffset;
 var config bool bTestBlade;        // testing: the player starts with one
 var Sound Hum, Swing, StrikeSnd;
@@ -109,12 +111,16 @@ function Place(bool bHand)
 	}
 	else
 	{
-		Holder.AttachToBone(Carried, 'spine2');
+		Holder.AttachToBone(Carried, BackBone);
 		Carried.SetRelativeLocation(BackOffset);
 		Carried.SetRelativeRotation(BackRot);
 		ShowGun();
 	}
 	bInHand = bHand;
+	if (bBladeLight)
+		Carried.LightType = LT_Steady;
+	else
+		Carried.LightType = LT_None;
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("melee: blade in hand " $ bHand $ ", right gun " $ Holder.RightWeapon $ " hidden by us " $ HiddenGun);
 	SetHum(Carried, bHand);
@@ -155,6 +161,8 @@ function Drop(vector Spot)
 	if (B == None)
 		return;
 	B.Lie(HitL + vect(0,0,34));
+	if (!bBladeLight)
+		B.LightType = LT_None;
 	B.LifeSpan = 150;
 	SetHum(B, false);
 	Pickups[Pickups.Length] = B;
@@ -285,6 +293,8 @@ defaultproperties
      Swing=Sound'fx.misc.koroem_whoosh'
      StrikeSnd=Sound'fx.misc.sparks_burst'
      Sparks=Class'EonEffects.fx_Default_Sparks'
-     BackRot=(Pitch=-12000,Yaw=16384,Roll=0)
-     BackOffset=(X=0.000000,Y=-8.000000,Z=-10.000000)
+     BackRot=(Pitch=0,Yaw=16384,Roll=12000)
+     BackOffset=(X=0.000000,Y=-10.000000,Z=-6.000000)
+     BackBone=Spine3
+     bBladeLight=True
 }
