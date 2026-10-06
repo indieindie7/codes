@@ -868,6 +868,8 @@ function ListActors(string ClassName)
 			L = L $ " bright " $ A.LightBrightness $ " radius " $ A.LightRadius $ " type " $ A.LightType $ " effect " $ A.LightEffect;
 		if (ZoneInfo(A) != None)
 			L = L $ " ambient " $ ZoneInfo(A).AmbientBrightness;
+		if (TerrainInfo(A) != None)
+			L = L $ " scale " $ TerrainInfo(A).TerrainScale $ " map " $ TerrainInfo(A).TerrainMap $ " hm " $ TerrainInfo(A).HeightmapX $ "x" $ TerrainInfo(A).HeightmapY;
 		Say(L);
 		n++;
 	}

@@ -1,0 +1,39 @@
+# cards_binder: the binder's island placed into the GAME's Avalon (TutA) by the U2AvalonCards mutator:
+# from the real command room window, from the air over the plant, and from the shore
+background
+map TutA_Liandri?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+console hub face 300
+turn 0 -22 0.3
+wait 0.6
+shot
+console hub face 320
+turn 0 -18 0.3
+wait 0.6
+shot
+console hub face 285
+turn 0 -20 0.3
+wait 0.6
+shot
+console ghost
+console hub tp 2500 -4500 1500
+console hub face 300
+turn 0 -30 0.3
+wait 1
+shot
+console hub tp 1000 -3000 -3800
+console hub face 300
+turn 0 -6 0.3
+wait 1
+shot
+console hub tp 9000 -9000 0
+console hub face 150
+turn 0 -4 0.3
+wait 1
+shot
+quit

@@ -1,0 +1,8 @@
+# tuta_terrain: TutA's TerrainInfo placement (for heightmap edits)
+background
+map TutA
+waitcontrol 240
+wait 2
+console hub list TerrainInfo
+wait 1
+quit
