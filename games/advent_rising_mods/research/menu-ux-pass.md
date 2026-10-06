@@ -70,7 +70,26 @@ Depth: 2 everywhere (was 4). Pages: 9 (was 10 counting the stock Graphics and ou
 - One hidden test run per page through the existing debug menu driver (DebugOpenMenu /
   DebugActions click/slide), screenshots to compare.
 
-## Open questions for the user
+## Decisions (user, 2026-10-05 evening)
+- Tree approved. No "Advanced" page: it's an untangible name against common menu tropes. Its rows
+  go to a **Quality** page instead (a trope players know: draw distance, fog distance, dynamic
+  lights, projectors, distortion effects, trilinear filtering, minimum frame rate = 7), and
+  Contrast joins Brightness and Gamma on Screen (Screen then holds 8, so Widescreen moves to
+  Quality and Trilinear to Graphics... final split below).
+- Difficulty stays as the first row of the hub.
+- The hub shows each row's current values ("Graphics: Shadows Yours, GI On").
+
+Final pages (7 rows each, depth 2):
+- Gameplay: boss damage dealt, boss damage taken, damage dealt, damage taken, running speed, blood, toggle crouch
+- Camera: invert horizontal, invert vertical, invert flight, horizontal sens., vertical sens., flick sens., field of view
+- Screen: resolution, fullscreen mode (Off / Borderless / Exclusive), VSync, frame cap, brightness, contrast, gamma
+- Graphics: shadows (Off / Yours / Everyone's), shadow darkness, global illumination, post effects, anti-aliasing, sharpening, trilinear filtering
+- Quality: draw distance, fog distance, dynamic lights, projectors, distortion effects, widescreen, minimum frame rate
+- Accessibility: colorblind mode, correction strength, subtitles, vibration, fading HUD, slow-mo weapon select, auto-aim mode
+- Audio, Controls, Difficulty: stock pages (Audio keeps our Dialogue Volume row)
+- Leftovers from stock Game Options (double-tap dodging, levitate objects): Gameplay is full, so they go on Accessibility only if a row frees up; otherwise they stay reachable on the stock Game Options page, which remains as a row called "Game Options" only if needed. To decide while building.
+
+## Open questions for the user (answered above)
 1. Is "Screen / Graphics / Advanced" a split you'd read correctly, or should Advanced merge into
    Graphics with the rarely used rows at the bottom (which would need two Graphics pages)?
 2. Keep the stock Difficulty page as the first row, or move it under Gameplay?
