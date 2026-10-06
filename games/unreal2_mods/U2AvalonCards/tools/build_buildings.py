@@ -127,12 +127,12 @@ def ore_tank():
 
 
 def dock_crane():
-    box(0, 0, 0.4, 30, 10, 0.8, "concrete")                     # dock slab
+    box(0, 0, 0.3, 24, 8, 0.6, "concrete")                      # dock slab
     for sgn in (-1, 1):
-        box(sgn * 8, 0, 7, 2.2, 3, 13, "concrete")              # legs
-        box(sgn * 8, 0, 7, 1.0, 1.0, 12, "orange")
-    box(0, 0, 14.2, 20, 3.4, 1.8, "concrete")                   # beam
-    box(0, 0, 15.6, 20, 2.4, 1.0, "orange")
+        box(sgn * 8.5, 0, 6.5, 5.5, 4.5, 13, "concrete")        # wall-like legs
+        box(sgn * 8.5, -2.3, 6.5, 3.5, 0.2, 9, "orange")
+    box(0, 0, 15.0, 23, 4.5, 4.0, "concrete")                   # thick beam
+    box(0, -2.3, 15.0, 21, 0.2, 2.6, "orange")
     box(2, 0, 12.8, 3, 3, 1.6, "dark")                          # trolley
     cyl(2, 0, 7.5, 0.08, 9, "dark", 8)                          # cable
     box(2, 0, 2.6, 1.6, 1.4, 1.2, "dark")                       # hook block
@@ -145,18 +145,18 @@ def rig(dead=False):
     for i in range(4):
         t = math.pi / 4 + 2 * math.pi * i / 4
         x, y = 9 * math.cos(t), 9 * math.sin(t)
-        cyl(x, y, 9, 2.4, 18, body, 12, 1.6)                    # tapered legs
-        box(x, y, 0.8, 5, 5, 1.6, body)                         # feet
-    box(0, 0, 20, 26, 26, 4, body)                              # deck
-    box(0, 0, 22.2, 24, 24, 0.6, trim)
-    box(-5, -4, 25.5, 12, 10, 7, body)                          # quarters block
-    box(-5, -9.1, 25.5, 11, 0.2, 2, "glow" if not dead else "dark")
-    box(6, 6, 27, 4, 4, 10, body)                                # derrick block
-    cyl(6, 6, 34, 0.7, 4, "dark", 8)
-    box(11, -8, 24, 10, 1, 1, "dark", (0, math.radians(-25), 0))   # flare boom
+        box(x, y, 9, 4.2, 4.2, 18, body, (0, 0, t))             # thick legs
+        box(x, y, 0.8, 6, 6, 1.6, body)                         # feet
+    box(0, 0, 21, 28, 26, 8, body)                              # deck (tall)
+    box(0, 0, 25.3, 26, 24, 0.6, trim)
+    box(-4, -3, 29.5, 16, 12, 8, body)                          # quarters block
+    box(-4, -9.1, 29.5, 14, 0.2, 2.4, "glow" if not dead else "dark")
+    box(8, 6, 30, 5, 5, 9, body)                                 # derrick block
+    cyl(8, 6, 36.5, 0.7, 4, "dark", 8)
+    box(13, -8, 27, 10, 1, 1, "dark", (0, math.radians(-25), 0))   # flare boom
     if not dead:
-        sphere(15.5, -8, 26.2, 1.2, "glow")                     # the flare
-    cyl(-9, 8, 23.5, 3.5, 0.5, trim, 12)                        # helipad
+        sphere(17.5, -8, 29.2, 1.2, "glow")                     # the flare
+    cyl(-10, 9, 25.6, 3.5, 0.5, trim, 12)                       # helipad
 
 
 def drilling_rig(): rig(False)
@@ -164,37 +164,40 @@ def dead_rig(): rig(True)
 
 
 def cargo_dropship():
-    box(0, 0, 0.3, 26, 26, 0.6, "concrete")                     # pad
-    box(0, 0, 0.7, 20, 20, 0.3, "dark")
-    box(0, 0, 5, 14, 8, 6, "concrete")                          # hull
-    box(0, 0, 8.3, 10, 6, 1.6, "dark")                          # spine
-    box(-7.2, 0, 4.5, 0.6, 6, 4, "orange")                      # open rear ramp face
+    box(0, 0, 0.3, 18, 18, 0.6, "concrete")                     # pad
+    box(0, 0, 0.7, 14, 14, 0.3, "dark")
+    box(0, 0, 6, 16, 9, 9, "concrete")                          # hull (tall box)
+    box(0, 0, 10.9, 12, 7, 1.6, "dark")                         # spine
+    box(-8.1, 0, 5.5, 0.4, 7, 6, "orange")                      # open rear ramp face
     for sx in (-1, 1):
         for sy in (-1, 1):
-            cyl(sx * 5, sy * 6.2, 4.8, 1.6, 4.4, "dark", 16, rot=(0, math.radians(90), 0))   # engine pods
-            cyl(sx * 7.3, sy * 6.2, 4.8, 1.2, 0.3, "glow", 16, rot=(0, math.radians(90), 0))
-        box(0, sx * 5.2, 5.2, 8, 3.2, 0.8, "pale")              # stub wings
-    box(5.5, 0, 6.3, 3, 4, 2.4, "dark")                         # cockpit
+            cyl(sx * 5, sy * 6.0, 5.5, 1.5, 4.4, "dark", 16, rot=(0, math.radians(90), 0))   # engine pods
+            cyl(sx * 7.3, sy * 6.0, 5.5, 1.1, 0.3, "glow", 16, rot=(0, math.radians(90), 0))
+        box(0, sx * 5.4, 6.0, 8, 2.4, 0.8, "pale")              # stub wings
+    box(6.5, 0, 8.0, 3, 5, 3.0, "dark")                         # cockpit
 
 
 def pylon():
-    box(0, 0, 10, 2.2, 1.6, 20, "concrete")                      # post
-    box(0, 0, 21.5, 3.0, 2.0, 3.0, "pale")                       # head
+    box(0, 0, 10, 4.4, 2.6, 20, "concrete")                      # slab post
+    box(0, -1.35, 12, 3.2, 0.2, 14, "dark")                      # recessed channel
+    box(0, 0, 21.2, 5.2, 3.2, 2.4, "pale")                       # head
     for sgn in (-1, 1):
-        box(sgn * 3.5, 0, 17, 5, 0.8, 0.8, "concrete")           # arms
-        cyl(sgn * 5.5, 0, 15.6, 0.25, 2.2, "dark", 8)            # insulators
-    box(0, -0.85, 9, 0.9, 0.1, 10, "glow")                       # orange strip
-    box(0, 0, 0.5, 4, 3, 1, "concrete")                          # footing
+        box(sgn * 2.9, 0, 18.5, 1.4, 1.0, 1.4, "concrete")       # short arms
+        cyl(sgn * 2.9, 0, 17.3, 0.25, 1.4, "dark", 8)            # insulators
+    box(0, -1.4, 18.6, 2.4, 0.1, 1.2, "glow")                    # orange light
+    box(0, 0, 0.5, 6, 4, 1, "concrete")                          # footing
 
 
 def radio_mast():
     box(0, 0, 1.5, 6, 5, 3, "concrete")                          # hut
     doors(0, -2.5, 0, 1.4, 2.4)
-    box(0, 0, 14, 1.6, 1.6, 22, "pale")                          # mast
-    box(0, 0, 26.5, 4, 3, 3, "concrete")                         # head box
-    cyl(0, -1.7, 26.5, 1.4, 0.4, "dark", 20, rot=(math.radians(90), 0, 0))   # dish
-    sphere(0, 0, 28.8, 0.5, "glow")                              # beacon
-    box(0, -0.9, 14, 0.5, 0.1, 8, "orange")
+    box(0, 0, 14, 4.2, 3.4, 22, "concrete")                      # blocky housing
+    box(0, 0, 27, 5.5, 4.5, 4, "pale")                           # head box
+    box(3.0, 0, 25, 1.2, 3.0, 2.0, "dark")                       # side pod
+    cyl(0, -2.4, 26.5, 1.9, 0.6, "dark", 20, rot=(math.radians(90), 0, 0))   # dish
+    sphere(0, -2.5, 26.5, 0.5, "glow")                           # dish eye
+    sphere(0, 0, 29.6, 0.5, "glow")                              # beacon
+    box(0, -1.75, 14, 1.0, 0.1, 10, "orange")
 
 
 BUILDERS = {"cooling_tower": cooling_tower, "processing_hall": processing_hall, "storage_tank": storage_tank,
