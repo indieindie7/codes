@@ -69,6 +69,12 @@ function bool AttachPilot()
 				PC = PlayerController(C);
 	if (PC == None || PC.PlayerInput == None)
 		return false;
+	if (PilotInput(PC.PlayerInput) == None && PI != None && PC.PlayerInput.Class != PC.InputClass)
+	{
+		// another mod wrapped our input (U2AutoPlay's AutoInput calls the one it replaced): keep
+		// driving the one we made; it still gets every frame
+		return true;
+	}
 	if (PilotInput(PC.PlayerInput) == None)
 	{
 		PI = new(PC) class'PilotInput';

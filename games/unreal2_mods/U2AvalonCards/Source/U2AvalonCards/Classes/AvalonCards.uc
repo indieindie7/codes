@@ -130,6 +130,7 @@ var AvalonEditor Editor;
 var config string LiveFile;
 var int LiveSeq;          // the last batch applied
 var bool bLiveRun;        // the batch being read is new
+var bool bInFile;         // the live file is being run right now (else: typed or sent by the pilot)
 var float LiveWait;
 var AvalonStorm LiveStorm;
 
@@ -252,7 +253,9 @@ function LiveTick()
 		return;
 	LiveWait = LivePoll;
 	bLiveRun = false;
-	PC.ConsoleCommand("exec "$LiveFile);
+	bInFile = true;
+	PC.ConsoleCommand("exec "$LiveFile);      // runs the file's lines right here, synchronously
+	bInFile = false;
 }
 
 // the rest of S after its first word
@@ -282,10 +285,8 @@ function Live(string S, PlayerController PC)
 		}
 		return;
 	}
-	// typed by hand at the console (no batch line before it) it runs too
-	if (!bLiveRun && LiveWait < LivePoll - 0.25)
-		bLiveRun = true;
-	if (!bLiveRun)
+	// a line from the live file runs only in a new batch; typed (or sent by the pilot) it always runs
+	if (bInFile && !bLiveRun)
 		return;
 	i = int(Word(Arg, 0));
 	if (Editor != None && Editor.Command(Cmd, Arg, PC))

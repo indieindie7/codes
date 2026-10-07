@@ -38,6 +38,16 @@ function Say(PlayerController PC, coerce string S)
 		PC.ClientMessage("[Claude] "$S);
 }
 
+// a class by name; a bare name is looked for in Engine (StaticMeshActor, Light, ...)
+function class<Actor> ClassNamed(string N)
+{
+	if (N == "")
+		return class'StaticMeshActor';
+	if (InStr(N, ".") < 0)
+		N = "Engine."$N;
+	return class<Actor>(DynamicLoadObject(N, class'Class', true));
+}
+
 function Actor Find(string N)
 {
 	local Actor A;
@@ -324,12 +334,10 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 		P.X = float(Cards.Word(Arg, 0));
 		P.Y = float(Cards.Word(Arg, 1));
 		P.Z = float(Cards.Word(Arg, 2));
-		Cls = class'StaticMeshActor';
-		if (Cards.Word(Arg, 3) != "")
-			Cls = class<Actor>(DynamicLoadObject(Cards.Word(Arg, 3), class'Class', true));
+		Cls = ClassNamed(Cards.Word(Arg, 3));
 		if (Cls == None)
 			Cls = class'Actor';
-		BestD = 1e9;
+		BestD = 1000000000.0;
 		foreach AllActors(Cls, A)
 		{
 			if (A.bHidden && !IsCopy(A))
@@ -443,9 +451,7 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 		Say(PC, "spawned "$Describe(A));
 		return true;
 	case "LIST":
-		Cls = class'StaticMeshActor';
-		if (Cards.Word(Arg, 0) != "")
-			Cls = class<Actor>(DynamicLoadObject(Cards.Word(Arg, 0), class'Class', true));
+		Cls = ClassNamed(Cards.Word(Arg, 0));
 		Rad = 3000;
 		if (Cards.Word(Arg, 1) != "")
 			Rad = float(Cards.Word(Arg, 1));
