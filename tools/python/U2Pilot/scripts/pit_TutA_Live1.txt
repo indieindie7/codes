@@ -1,0 +1,13 @@
+# aerial check of the carved pit (tools/carve.py) on TutA_Live1
+background
+map TutA_Live1?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+console avalon weather clear
+console hub tp 1200 -1500 3500 hold
+console hub face 315
+turn 0 -45 0.3
+wait 6
+shot
+quit

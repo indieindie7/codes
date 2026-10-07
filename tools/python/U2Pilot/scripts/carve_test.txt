@@ -1,0 +1,25 @@
+# carve round trip: a carved map (tools/carve.py) offered live, "avalon reload", back at the same spot
+background
+map TutA_Town5_Side?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+console hub face 302
+turn 0 -22 0.3
+wait 1
+console avalon weather clear
+wait 2
+shot
+console avalon pending TutA_Live1
+wait 1
+console avalon reload
+waitlog live returned the player 240
+wait 3
+console avalon weather clear
+wait 8
+shot
+console avalon where
+quit

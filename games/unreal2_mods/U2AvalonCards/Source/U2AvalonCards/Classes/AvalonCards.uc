@@ -124,11 +124,17 @@ var config string DecayLamp, DecayBuzz;
 
 // live editing (AvalonLive): every LivePoll seconds "exec LiveFile" through the player's console; 0 = off
 var config float LivePoll;
+// carving (U2Avalon/tools/carve.py): the editor saves a carved copy of the map and sets PendingMap
+// ("avalon pending NAME"); the user types "avalon reload" when it suits them, and lands where they stood
+var config string PendingMap;
+var config vector ReturnLoc;
+var config rotator ReturnRot;
+var config bool bReturn;
 // the live edit journal (AvalonEditor): "place NAME X Y Z YAW SCALE", "hide NAME", "mesh PATH X Y Z YAW SCALE"
 var config string Ops[128];
 var AvalonEditor Editor;
 var config string LiveFile;
-var int LiveSeq;          // the last batch applied
+var config int LiveSeq;   // the last batch applied (kept: a reload must not run an old batch again)
 var bool bLiveRun;        // the batch being read is new
 var bool bInFile;         // the live file is being run right now (else: typed or sent by the pilot)
 var float LiveWait;
@@ -142,12 +148,37 @@ var Texture RigTex[8];
 event PostBeginPlay()
 {
 	Super.PostBeginPlay();
-	if (InStr("," $ Maps $ ",", "," $ Locs(MapName()) $ ",") < 0)
+	if (!InList(Maps, MapName()))
 		return;
 	if (bSurvey)
 		Survey();
 	Build();
 	SetTimer(0.5, true);
+}
+
+// is the map in a comma list? An entry ending in * matches every map starting with it
+function bool InList(string List, string M)
+{
+	local string E;
+
+	M = Locs(M);
+	List = Locs(List);
+	while (List != "")
+	{
+		if (InStr(List, ",") >= 0)
+		{
+			E = Left(List, InStr(List, ","));
+			List = Mid(List, InStr(List, ",") + 1);
+		}
+		else
+		{
+			E = List;
+			List = "";
+		}
+		if (E == M || (Right(E, 1) == "*" && Left(M, Len(E) - 1) == Left(E, Len(E) - 1)))
+			return true;
+	}
+	return false;
 }
 
 function string MapName()
@@ -230,12 +261,24 @@ function LiveTick()
 	local AvalonLive L;
 	local int i;
 	local bool bHas;
+	local vector V;
 
 	if (LivePoll <= 0)
 		return;
 	PC = Level.PlayerControllerList;
 	if (PC == None)
 		return;
+	// back where the player stood before a reload
+	if (bReturn && PC.Pawn != None)
+	{
+		bReturn = false;
+		V = ReturnLoc;
+		PC.Pawn.SetLocation(V);
+		PC.SetRotation(ReturnRot);
+		PC.ClientMessage("[Claude] the carved map, back where you were");
+		Log("Cards: live returned the player to "$V);
+		SaveConfig();
+	}
 	bHas = false;
 	for (i = 0; i < PC.ExecManagers.Length; i++)
 		if (AvalonLive(PC.ExecManagers[i]) != None)
@@ -256,6 +299,8 @@ function LiveTick()
 	bInFile = true;
 	PC.ConsoleCommand("exec "$LiveFile);      // runs the file's lines right here, synchronously
 	bInFile = false;
+	if (bLiveRun)
+		SaveConfig();                          // the session's edits (journal, cards) survive any reload
 }
 
 // the rest of S after its first word
@@ -268,7 +313,7 @@ function string Rest(string S)
 
 function Live(string S, PlayerController PC)
 {
-	local string Cmd, Arg;
+	local string Cmd, Arg, Opts;
 	local int i, N;
 	local vector V;
 
@@ -292,10 +337,40 @@ function Live(string S, PlayerController PC)
 	if (Editor != None && Editor.Command(Cmd, Arg, PC))
 	{
 		Log("Cards: live "$LiveSeq$" "$S);
+		if (!bInFile)
+			SaveConfig();
 		return;
 	}
 	switch (Cmd)
 	{
+	case "PENDING":
+		PendingMap = Arg;
+		SaveConfig();
+		if (PC != None)
+			PC.ClientMessage("[Claude] the carved map is ready: type  avalon reload  when it suits you");
+		break;
+	case "RELOAD":
+		if (PendingMap == "" || PC == None || PC.Pawn == None)
+		{
+			if (PC != None)
+				PC.ClientMessage("[Claude] no carved map waiting");
+			break;
+		}
+		ReturnLoc = PC.Pawn.Location;
+		ReturnRot = PC.Rotation;
+		bReturn = true;
+		Arg = PendingMap;
+		PendingMap = "";
+		SaveConfig();                 // keeps the session's journal and cards too
+		// the same options as now (the mutators: the user's, or a test run's)
+		Opts = Level.GetLocalURL();
+		if (InStr(Opts, "?") >= 0)
+			Opts = Mid(Opts, InStr(Opts, "?"));
+		else
+			Opts = "";
+		Log("Cards: live reload into "$Arg$Opts);
+		PC.ConsoleCommand("open "$Arg$Opts);
+		break;
 	case "RAW":
 		// any console command, once (a raw line in the file would run on every poll)
 		if (PC != None && Caps(Left(Arg, 4)) != "EXEC")
@@ -361,6 +436,8 @@ function Live(string S, PlayerController PC)
 		return;
 	}
 	Log("Cards: live "$LiveSeq$" "$S);
+	if (!bInFile)
+		SaveConfig();
 }
 
 function Backwater()
@@ -421,7 +498,7 @@ function Storm()
 	local AvalonStorm St;
 	local int i;
 
-	if (InStr("," $ StormMaps $ ",", "," $ Locs(MapName()) $ ",") < 0)
+	if (!InList(StormMaps, MapName()))
 		return;
 	St = Spawn(class'AvalonStorm');
 	if (St == None)
