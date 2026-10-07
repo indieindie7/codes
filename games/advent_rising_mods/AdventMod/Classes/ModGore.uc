@@ -310,6 +310,10 @@ function bool PourInto(vector Spot, vector N, int Kind)
 	R = Mark(PoolLive[K], Spot, N, vect(0,0,0), RegionSize / 128.0);
 	if (R == None)
 		return false;
+	// a region is not a splatter: it lives outside the decal list, or the cap on marks would
+	// evict it within seconds and the next body would lay a fresh region beside it
+	if (Decals.Length > 0 && Decals[Decals.Length - 1] == R)
+		Decals.Remove(Decals.Length - 1, 1);
 	LiveOwner[K] = R;
 	R.Gore = self;
 	R.LifeSpan = 900;
