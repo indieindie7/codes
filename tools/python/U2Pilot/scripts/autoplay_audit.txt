@@ -1,0 +1,19 @@
+# U2AutoPlay: the reachability/wiring audit, then a watched autoplay run (triage.md at the end)
+background
+map TutA_Town5_Side?Mutator=U2AvalonCards.AvalonCards,U2AutoPlay.AutoPlayMutator
+waitcontrol 240
+wait 2
+console god
+console autoplay audit
+wait 2
+shot
+console autoplay on
+wait 30
+shot
+wait 30
+shot
+wait 30
+shot
+console autoplay status
+wait 1
+quit

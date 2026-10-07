@@ -11,7 +11,8 @@
 // AutoInput turns these wants into key presses each frame (Keys). Every
 // decision is logged ("AutoPlay: ...") so a run can be read back as a report.
 //=============================================================================
-class AutoBrain extends Info;
+class AutoBrain extends Info
+	config(U2AutoPlay);
 
 var bool bOn;
 var PlayerController PC;
@@ -29,6 +30,14 @@ var rotator Want;
 var bool bWantFire, bWantJump, bWantUse;
 var float UseTime, StrafeTime;
 
+// watchdogs (the research's oracles): "AutoPlay: EVT <TYPE> x y z <detail>" lines for triage.py
+var float LastProgress;        // time of the last new place (node or 5 m cell)
+var array<int> Cells;          // 5 m cells visited (x, y, z packed), for coverage and progress
+var float PosWait;
+var float LowestNode;          // the lowest navigation point: far below it = fallen out of the world
+var bool bWasAlive, bNoProgressSaid;
+var config float NoProgressTime;
+
 // bookkeeping
 var float ThinkWait, StuckWait, ReportWait;
 var vector LastSpot;
@@ -44,6 +53,7 @@ function Command(string Args)
 	{
 		bOn = true;
 		StartTime = Level.TimeSeconds;
+		LastProgress = Level.TimeSeconds;
 		Say("on");
 	}
 	else if (W == "OFF")
@@ -58,6 +68,10 @@ function Command(string Args)
 		Goal = None;
 		bGoPoint = false;
 		Say("exploring again");
+	}
+	else if (W == "AUDIT")
+	{
+		Spawn(class'AutoAudit').Run(PC);
 	}
 	else if (Left(W, 4) == "GOTO")
 	{
@@ -87,6 +101,72 @@ function string Word(string S, int n)
 	return S;
 }
 
+function Evt(string Kind, coerce string Detail)
+{
+	local vector P;
+
+	if (PC != None && PC.Pawn != None)
+		P = PC.Pawn.Location;
+	Log("AutoPlay: EVT "$Kind$" "$int(P.X)$" "$int(P.Y)$" "$int(P.Z)$" "$Detail);
+}
+
+// a 5 m cell visited: true when it's a new one (coverage, and progress for the softlock watchdog)
+function bool Visit(vector P)
+{
+	local int k, i;
+
+	k = (int(P.X / 256) & 1023) * 1048576 + (int(P.Y / 256) & 1023) * 1024 + (int(P.Z / 256) & 1023);
+	for (i = 0; i < Cells.Length; i++)
+		if (Cells[i] == k)
+			return false;
+	Cells[Cells.Length] = k;
+	return true;
+}
+
+function Watch(float DeltaTime)
+{
+	local NavigationPoint N;
+
+	if (PC == None)
+		return;
+	if (PC.Pawn == None || PC.Pawn.Health <= 0)
+	{
+		if (bWasAlive)
+			Evt("DIED", "after "$int(Level.TimeSeconds - StartTime)$" s");
+		bWasAlive = false;
+		return;
+	}
+	bWasAlive = true;
+	if (LowestNode == 0)
+	{
+		LowestNode = 1000000000.0;
+		for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+			LowestNode = FMin(LowestNode, N.Location.Z);
+	}
+	// fell out of the world: no zone, or far under every navigation point
+	if (PC.Pawn.Region.Zone == None || PC.Pawn.Location.Z < LowestNode - 3000)
+	{
+		Evt("FELL", "zone "$PC.Pawn.Region.Zone);
+		LowestNode -= 100000;        // once
+	}
+	if (Visit(PC.Pawn.Location))
+	{
+		LastProgress = Level.TimeSeconds;
+		bNoProgressSaid = false;
+	}
+	if (!bNoProgressSaid && Level.TimeSeconds - LastProgress > NoProgressTime)
+	{
+		Evt("NOPROGRESS", "no new place for "$int(NoProgressTime)$" s, "$Cells.Length$" cells, goal "$Goal);
+		bNoProgressSaid = true;
+	}
+	PosWait -= DeltaTime;
+	if (PosWait <= 0)
+	{
+		PosWait = 2;
+		Log("AutoPlay: POS "$int(PC.Pawn.Location.X)$" "$int(PC.Pawn.Location.Y)$" "$int(PC.Pawn.Location.Z)$" "$PC.Pawn.Health);
+	}
+}
+
 function Say(coerce string S)
 {
 	Log("AutoPlay: "$S);
@@ -102,7 +182,7 @@ function Report()
 		Where = int(PC.Pawn.Location.X)$" "$int(PC.Pawn.Location.Y)$" "$int(PC.Pawn.Location.Z)$" health "$PC.Pawn.Health;
 	else
 		Where = "no pawn";
-	Say("status: "$Where$", goal "$Goal$", visited "$Visited.Length$", reached "$Reached$", stuck "$Stuck
+	Say("status: "$Where$", goal "$Goal$", visited "$Visited.Length$", cells "$Cells.Length$", reached "$Reached$", stuck "$Stuck
 		$", gave up "$GiveUps$", fights "$Fights$", "$int(Level.TimeSeconds - StartTime)$" s");
 }
 
@@ -243,6 +323,8 @@ event Tick(float DeltaTime)
 	local vector Aim, Dest;
 	local float Yaw;
 
+	if (bOn)
+		Watch(DeltaTime);
 	if (!CanAct())
 		return;
 	ReportWait -= DeltaTime;
@@ -351,6 +433,7 @@ event Tick(float DeltaTime)
 				bWantUse = true;
 				UseTime = 0.4;
 			}
+			Evt("STUCK", "going for "$Goal);
 			if (Stuck % 3 == 0 && Goal != None)
 			{
 				Say("stuck going for "$Goal$" at "$int(PC.Pawn.Location.X)$" "$int(PC.Pawn.Location.Y)$" "$int(PC.Pawn.Location.Z)$": giving it up");
@@ -397,5 +480,6 @@ function Keys(float DeltaTime)
 
 defaultproperties
 {
+	NoProgressTime=120.000000
 	RemoteRole=ROLE_None
 }
