@@ -11,8 +11,13 @@
 // surface a little where it changes (the edge of a pool rounds off like a drop's), which puts a
 // rim of light along pool edges.
 //
+// Drying: the fork ages each decal (c1.w: 1 fresh .. 0 dry, glossdry= sets the times). The
+// shine fades with it, and a dry decal darkens what is under it (the pass blends ONE /
+// SRCALPHA: the colour returned is added, the alpha multiplies the floor), so old blood goes
+// from wet red to a dull brown-black; c16.x is how dark.
+//
 // Constants (the fork's GlossBegin): c0 time, 1, 1/w, 1/h; c1 x projected coordinates, y blend
-// kind, z neutral brightness; c2 glossfx= strength, sharpness, light gain, sheen gain; c3
+// kind, z neutral brightness, w wetness; c2 glossfx= strength, sharpness, light gain, sheen gain; c3
 // glossenv= the surroundings' colour and a multiplier; c8..c15 four lights in camera space
 // (position or direction toward it, range (0 = directional); colour, 1 if used).
 
@@ -22,6 +27,7 @@ float4 Mode   : register(c1);
 float4 Fx     : register(c2);
 float4 Env    : register(c3);
 float4 Light[8] : register(c8);
+float4 Dry    : register(c16);
 
 #define EDGE 6.0          // how strongly a change of thickness tilts the surface
 
@@ -37,7 +43,7 @@ float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
 	float2 uv = Mode.x > 0.5 ? t0.xy / t0.z : t0.xy;
 	float a = Amount(uv);
 	if (a < 0.02)
-		return 0;
+		return float4(0, 0, 0, 1);              // nothing added, the floor kept as it is
 
 	// the surface (flat: from the position's screen derivatives) and the view
 	float3 dpx = ddx(pos), dpy = ddy(pos);
@@ -70,7 +76,9 @@ float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
 	float f = 0.02 + 0.98 * pow(1 - saturate(dot(n, v)), 5);
 	float3 sheen = Env.rgb * (Env.a * f);
 
-	// thin smears dull fast; the shine comes with thickness
-	float wet = a * a * (3 - 2 * a);
-	return float4((spec * Fx.z + sheen * Fx.w) * (wet * Fx.x), 1);
+	// thin smears dull fast; the shine comes with thickness, and goes as the decal dries
+	float wet = a * a * (3 - 2 * a) * Mode.w;
+	float dried = a * (1 - Mode.w);
+	float3 brown = float3(0.010, 0.006, 0.0) * dried;      // dried blood is browner, not only darker
+	return float4((spec * Fx.z + sheen * Fx.w) * (wet * Fx.x) + brown, 1 - dried * Dry.x);
 }
