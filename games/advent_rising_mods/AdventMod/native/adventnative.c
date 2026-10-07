@@ -186,6 +186,27 @@ static int SetBorderless(int On)
 	return 1;
 }
 
+
+/* NativeCall("LiveReq:WORD"): live sessions (tools/live_reload.py). True, once, when System\AdventLive.req
+   holds that word (save, reload, forget, quit): the request is then deleted. A fixed set of
+   words the mod's ModLive asks about: nothing in the file is ever run as a command. */
+static int LiveRequest(const wchar_t* Word)
+{
+	wchar_t Path[MAX_PATH], Line[64] = L"";
+	FILE* F;
+	int n;
+	GetModuleFileNameW(NULL, Path, MAX_PATH);
+	if (wcsrchr(Path, 92)) wcscpy_s(wcsrchr(Path, 92) + 1, MAX_PATH - (wcsrchr(Path, 92) + 1 - Path), L"AdventLive.req");   /* after the last backslash */
+	if (_wfopen_s(&F, Path, L"r") || !F) return 0;
+	fgetws(Line, 64, F);
+	fclose(F);
+	for (n = (int)wcslen(Line); n > 0 && (Line[n - 1] == L'\n' || Line[n - 1] == L'\r' || Line[n - 1] == L' '); n--) Line[n - 1] = 0;
+	if (_wcsicmp(Line, Word)) return 0;
+	DeleteFileW(Path);
+	Note(L"live: request '%ls'", Word);
+	return 1;
+}
+
 /* ------------------------------------------------------------ commands */
 
 static int HandleCommand(const wchar_t* Cmd)
@@ -200,6 +221,7 @@ static int HandleCommand(const wchar_t* Cmd)
 		return 1;
 	}
 	if (!_wcsnicmp(Cmd, L"Note:", 5)) { Note(L"%ls", Cmd + 5); return 1; }
+	if (!_wcsnicmp(Cmd, L"LiveReq:", 8)) return LiveRequest(Cmd + 8);
 	if (!_wcsicmp(Cmd, L"TestCrashThread")) { Note(L"testing: a thread calling address 0 on purpose"); CreateThread(0, 0, (LPTHREAD_START_ROUTINE)0, 0, 0, 0); return 1; }
 	if (!_wcsicmp(Cmd, L"TestCrash")) { void (*Nowhere)(void) = 0; Note(L"testing: calling address 0 on purpose"); Nowhere(); return 1; }
 	if (!_wcsicmp(Cmd, L"BorderlessOn")) return SetBorderless(1);

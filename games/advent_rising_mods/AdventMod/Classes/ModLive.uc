@@ -21,6 +21,8 @@ var config int ResumeHealth;
 var config float ResumeDelay;       // seconds after the player has a pawn before putting it back
 
 var float Waited;
+var float Poll;                     // seconds to the next look at AdventLive.req
+var string PendingOpen;             // a reload asked for: opened at the next tick, in the game's own loop
 
 function string MapName()
 {
@@ -41,8 +43,11 @@ function Command(string Args, PlayerController PC)
 			return;
 		if (Args == "RELOAD")
 		{
-			class'ModSettings'.static.Note("live: reloading " $ Level.GetLocalURL());
-			PC.ConsoleCommand("open " $ Level.GetLocalURL());
+			// not from here: a command can arrive from a window message (the d3d8 layer's
+			// channel), and opening a map from inside one left the game stuck
+			PendingOpen = Level.GetLocalURL();
+			Enable('Tick');
+			class'ModSettings'.static.Note("live: reloading " $ PendingOpen);
 		}
 	}
 	else if (Args == "FORGET")
@@ -76,13 +81,36 @@ event Tick(float DeltaTime)
 {
 	local PlayerController PC;
 
+	// tools/live_reload.py's requests: a word in System\AdventLive.req (AdventNative LiveReq:)
+	Poll -= DeltaTime;
+	if (Poll <= 0)
+	{
+		Poll = 0.5;
+		PC = Level.GetLocalPlayerController();
+		if (class'ModSettings'.static.NativeCall("LiveReq:reload"))
+			Command("RELOAD", PC);
+		else if (class'ModSettings'.static.NativeCall("LiveReq:save"))
+			Command("SAVE", PC);
+		else if (class'ModSettings'.static.NativeCall("LiveReq:forget"))
+			Command("FORGET", PC);
+		else if (class'ModSettings'.static.NativeCall("LiveReq:quit") && PC != None)
+		{
+			Save(PC);
+			PC.ConsoleCommand("exit");
+		}
+	}
+	if (PendingOpen != "")
+	{
+		PC = Level.GetLocalPlayerController();
+		if (PC != None)
+			PC.ConsoleCommand("open " $ PendingOpen);
+		PendingOpen = "";
+		return;
+	}
 	if (!bResume)
 		return;
 	if (ResumeMap != MapName())
-	{
-		Disable('Tick');
 		return;
-	}
 	// the level's intro would move the player and the camera: skip it
 	if (Level.CinematicToSkip != None && CinematicEvent(Level.CinematicToSkip) != None)
 		CinematicEvent(Level.CinematicToSkip).SkipCinematic();
@@ -101,7 +129,6 @@ event Tick(float DeltaTime)
 	bResume = false;
 	SaveConfig();
 	class'ModSettings'.static.Note("live: resumed " $ ResumeMap $ " at " $ PC.Pawn.Location $ " (saved " $ ResumeLocation $ ")");
-	Disable('Tick');
 }
 
 defaultproperties
