@@ -168,6 +168,48 @@ def populate(name, t3d, layout_json, base):
 
 
 
+def closeup_script(name, layout_json, ids=("hall_a", "hall_b", "silos", "dorm", "tank_farm", "plant_office", "generator_house", "dock")):
+    """ground-level close-ups: the camera stands on the road side of each building at a distance that scales
+    with the building's size (1.6 x its longest side + 8 m), 3.5 m up, looking slightly down; plus the conveyor
+    line from the side and the street from mid-spine"""
+    import json, math
+    sys.path.insert(0, TOOLS)
+    import binder as _binder
+    _, sheets = _binder.load()
+    L = json.load(open(layout_json))
+    B = L["buildings"]
+
+    def face(fx, fy, tx, ty):
+        return int(math.degrees(math.atan2(ty - fy, tx - fx))) % 360
+    lines = ["# close-ups generated from %s" % os.path.basename(layout_json), "background",
+             "map %s?Mutator=U2AvalonCards.AvalonCards" % name, "waitcontrol 240", "wait 2", "console god", "console ghost"]
+
+    def shot(x, y, z, tx, ty, pitch):
+        lines.extend(["console hub tp %.0f %.0f %.0f" % (x, y, z), "console hub face %d" % face(x, y, tx, ty),
+                      "turn 0 %d 0.3" % pitch, "wait 1", "shot"])
+    for bid in ids:
+        if bid not in B or bid not in sheets:
+            continue
+        b = B[bid]
+        size = sheets[bid]["size"]
+        spec = sheets[bid].get("count", "1").split()
+        n = 2 if spec[0].lower() == "2x2" else (int(spec[0]) if len(spec) == 2 else 1)
+        longest = max(size[0], size[1]) * (1 + 1.5 * (n - 1)) * 50
+        d = longest * 1.6 + 8 * 50
+        a = math.radians(b["yaw"])
+        shot(b["x"] + d * math.cos(a), b["y"] + d * math.sin(a), b.get("z", -4800) + 175, b["x"], b["y"], -5 - int(8 * min(1, longest / 3000)))
+    if "wellhead_b" in B and "silos" in B:
+        w, sl = B["wellhead_b"], B["silos"]
+        mx, my = (w["x"] + sl["x"]) / 2, (w["y"] + sl["y"]) / 2
+        ang = math.atan2(sl["y"] - w["y"], sl["x"] - w["x"]) + math.pi / 2
+        shot(mx + 2200 * math.cos(ang), my + 2200 * math.sin(ang), max(w.get("z", -4800), sl.get("z", -4800)) + 450, mx, my, -6)
+    sp = L.get("spine") or L["roads"][0]
+    k = len(sp) // 2
+    shot(sp[k][0], sp[k][1], B.get("plant_office", B["tower"]).get("z", -4800) + 175, sp[min(len(sp) - 1, k + 8)][0], sp[min(len(sp) - 1, k + 8)][1], -3)
+    lines.append("quit")
+    return "\n".join(lines) + "\n"
+
+
 def main():
     for seed in seeds:
         name = "%s%d" % (NAME, seed)

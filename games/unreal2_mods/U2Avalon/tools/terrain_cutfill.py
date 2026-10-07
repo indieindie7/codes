@@ -22,7 +22,7 @@ src, dst = sys.argv[1], sys.argv[2]
 o = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)   # shift= margin= blend= max_terrace= layout=
 SHIFT = float(o.get("shift", -5300))
 MARGIN = float(o.get("margin", 600))      # a heightmap cell is 512 units: the pad must reach past the next cell centre
-BLEND = float(o.get("blend", 700))
+BLEND = float(o.get("blend", 400))        # shorter blend = real terraces (walls at the rims); 700 made soft mounds
 MAX_TERRACE = float(o.get("max_terrace", 3200))   # merged terraces never grow past this radius
 LOOK, M = 300.0, 50.0
 LOC = (-14487.546875, 4835.837891, -131.845703)

@@ -299,6 +299,34 @@ if not ONLY or "wall" in ONLY:
         ob.select_set(ob.type == "MESH")
     bpy.ops.export_scene.gltf(filepath=os.path.join(out, "B_wall.glb"), use_selection=True, export_format="GLB", export_apply=True)
     print("BUILT wall ->", os.path.join(out, "B_wall.glb"))
+# the conveyor tower (an A-frame of dark steel, 9 m, with the pulley box) and its cable span (60 m along the
+# line = -Y here, which is Unreal's +X at yaw 0), so the ore line reads as the dominant structure
+if not ONLY or "ctower" in ONLY:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    MATS.clear()
+    for sx in (-1, 1):
+        cyl(sx * 1.4, 0, 4.5, 0.18, 9.2, "dark", 8, rot=(0, sx * 0.17, 0))
+        box(sx * 1.2, 0, 3.0, 0.14, 0.14, 0.14, "grey")
+    box(0, 0, 2.2, 2.6, 0.14, 0.14, "grey")                      # cross braces
+    box(0, 0, 5.6, 1.8, 0.14, 0.14, "grey")
+    box(0, 0, 9.0, 2.4, 1.4, 0.5, "grey")                        # the head beam
+    box(0, 0, 9.55, 1.2, 1.0, 0.6, "rust")                       # the pulley box
+    box(0, 0, 0.2, 3.4, 1.0, 0.4, "concrete")                    # the footing
+    for ob in bpy.context.scene.objects:
+        ob.select_set(ob.type == "MESH")
+    bpy.ops.export_scene.gltf(filepath=os.path.join(out, "B_ctower.glb"), use_selection=True, export_format="GLB", export_apply=True)
+    print("BUILT ctower ->", os.path.join(out, "B_ctower.glb"))
+if not ONLY or "cable" in ONLY:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    MATS.clear()
+    for sx in (-0.6, 0.6):
+        box(sx, -30.0, 9.2, 0.12, 60.0, 0.12, "dark")           # two cables, sagging would need a curve: straight is fine at 60 m
+    for k in range(6):
+        box(0, -5.0 - k * 10.0, 9.0, 1.6, 0.6, 0.5, "rust")      # ore buckets
+    for ob in bpy.context.scene.objects:
+        ob.select_set(ob.type == "MESH")
+    bpy.ops.export_scene.gltf(filepath=os.path.join(out, "B_cable.glb"), use_selection=True, export_format="GLB", export_apply=True)
+    print("BUILT cable ->", os.path.join(out, "B_cable.glb"))
 for bid, b in buildings.items():
     if b["kind"] not in ASSEMBLED or "size" not in b:
         continue

@@ -128,11 +128,28 @@ print(len(props) if WRITE_PROPS else 0, "props,", len(cards), "cards ->", INI, "
 if LAYOUT:
     _L = _json.load(open(o["layout"]))
     npyl = 0
+    nct = 0
     for c in _L.get("connections", []):
+        if c["carrier"] == "conveyor":
+            # the ore line: an A-frame tower at every relay and a 60 m cable span with buckets toward the next
+            rel = c.get("relays", [])
+            pts = [tuple(c["path"][0])] + [(r[0], r[1]) for r in rel] + [tuple(c["path"][-1])]
+            for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:]):
+                deg = math.degrees(math.atan2(y1 - y0, x1 - x0))
+                actor("AvalonSM.Liandri.B_ctower", x0, y0, deg, 1.0, 0.0)
+                span = math.hypot(x1 - x0, y1 - y0) / (60 * M)
+                z0 = ground(x0, y0) if ground else -4967.0
+                actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'AvalonSM.Liandri.B_cable'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
+                              "    Rotation=(Yaw=%d)\n    DrawScale3D=(X=%.3f,Y=1,Z=1)\n    bStatic=True\nEnd Actor"
+                              % (x0, y0, z0, int(deg * 65536 / 360) % 65536, max(0.05, span)))
+                nct += 1
+            continue
         for x, y, deg in c.get("relays", []):
             actor("AvalonSM.Liandri.Pylon", x, y, deg, 1.0, 0.0)
             props.append("AvalonSM.Liandri.Pylon %.0f %.0f %.0f 1.0 0 0 0 0" % (x, y, deg))
             npyl += 1
+    if nct:
+        print(nct, "conveyor towers + cable spans")
     if npyl:
         print(npyl, "pylons along the power lines")
 if T3D:

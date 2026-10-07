@@ -101,6 +101,13 @@ if PILOT:
     if runs and os.path.exists(os.path.join(ib.PILOT, "runs", runs[-1], "sheet.png")):
         sheet = os.path.join(RUN, "pilot_sheet.png")
         shutil.copy(os.path.join(ib.PILOT, "runs", runs[-1], "sheet.png"), sheet)
+    # the second run: ground-level close-ups, camera distance scaled to each building
+    cscript = os.path.join(ib.PILOT, "scripts", "closeups_%s.txt" % name.lower())
+    open(cscript, "w").write(ib.closeup_script(name, layout))
+    step("close-ups", lambda: ib.run(["py", os.path.join(ib.PILOT, "u2pilot.py"), cscript, "--background"], cwd=ib.PILOT))
+    cruns = sorted(d for d in os.listdir(os.path.join(ib.PILOT, "runs")) if d.endswith("closeups_%s" % name.lower()))
+    if cruns and os.path.exists(os.path.join(ib.PILOT, "runs", cruns[-1], "sheet.png")):
+        shutil.copy(os.path.join(ib.PILOT, "runs", cruns[-1], "sheet.png"), os.path.join(RUN, "closeups_sheet.png"))
 
 # 8. the report
 S = L["systems"]
@@ -111,7 +118,7 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
        *("- %s needs %s: %s" % tuple(u) for u in S["unmet"]), "",
        "## Terrain", "```", score.strip(), "```", "",
        "## Pictures", "- sketch: isl_sketch.png", "- layout: isl_layout.png", "- pads: isl_map.png",
-       "- editor: isl_ed_plant.png, isl_ed_side.png, isl_ed_island.png"] + (["- game: pilot_sheet.png"] if sheet else []) + [
+       "- editor: isl_ed_plant.png, isl_ed_side.png, isl_ed_island.png"] + (["- game: pilot_sheet.png, closeups_sheet.png"] if sheet else []) + [
        "", "## Timing", *("- %s: %.0f s" % (t, d) for t, d in log), "- total: %.0f s" % (time.time() - t0)]
 open(os.path.join(RUN, "report.md"), "w", encoding="utf-8").write("\n".join(rep) + "\n")
 print("\nreport ->", os.path.join(RUN, "report.md"), flush=True)
