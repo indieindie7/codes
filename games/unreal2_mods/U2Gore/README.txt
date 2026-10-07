@@ -25,6 +25,17 @@ State on 2026-10-05, all seen in game unless noted: floor drips and pools, wall 
 meshes, body stains (a merc's torso), remains after a body is removed, screen blood (red and green).
 Bleeding trails: counted in the log (4 drops under a wounded merc), not looked at.
 
+New, 2026-10-07, not compiled yet (WOUNDS-AND-DYING.md has the design, Soldier of Fortune and GTA IV):
+  - hit zones: every hit is placed on the nearest bone (head, neck, chest, belly, groin, arm, leg);
+  - dying, not dead (GoreDying): a killing hit to the body can leave the enemy dying for 4-9 s: its AI is
+    gone at once (out of the fight), it sinks down with its own death clip, twitches, drags itself along
+    the floor from a belly or leg wound, and dies the game's way after, or at once when hit again. The
+    clips are learned from the first of each kind to die normally ("U2Gore: learned" lines);
+  - pumping wounds (GoreFountain): a neck wound squirts blood every heartbeat, weaker each time;
+  - limping after a leg hit (bLimp, off: it changes the fight).
+  Console: set GoreDying bDying False | DyingChance 1 | ShootZone 2 (test hit on the nearest enemy) |
+  bLog True. Test: scripts/gore_dying.txt.
+
 Not ported, and why:
   - skin x blood combiners (GoreCoat.uc, off: bCoats): only bodies that list their skins can wear one,
     and mercs, marines and Skaarj do not; the body stains replace it;

@@ -56,6 +56,7 @@ var array<vector> CorpseLoc;       // kept for when the body is gone
 var array<int> CorpseKind;
 var float CorpseScan;
 var array<GoreCoat> Coats;
+var GoreDying DyingPhase;
 var array<GoreBodyDecal> BodyDecals;
 var ComponentHandle Screen;        // the splash on screen now
 var float ScreenUntil;
@@ -71,6 +72,9 @@ event PostBeginPlay()
 		return;
 	R = Spawn(class'GoreRules');
 	R.Gore = Self;
+	DyingPhase = Spawn(class'GoreDying', self);
+	if (DyingPhase != None)
+		DyingPhase.Gore = self;
 	if (Level.Game.GameRulesModifiers == None)
 		Level.Game.GameRulesModifiers = R;
 	else

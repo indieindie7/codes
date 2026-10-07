@@ -54,6 +54,10 @@ the cloud can (Wine, headless Blender). The real check is the user's QA of the g
     `System\U2Shaders\`, `post=1` + `ssao=1`. Compare with `ssao=0` and `ssaofx=0.8 40 1 1` (AO
     alone); check the weapon and sky stay untouched, and the FPS.
 
+15. **Dying phase (U2Gore GoreDying):** rebuild U2Gore, `python u2pilot.py scripts/gore_dying.txt`.
+    Send the `U2Gore:` lines (survey, zone, learned, dying, dies) and the shots. Design and risks:
+    `games/unreal2_mods/U2Gore/WOUNDS-AND-DYING.md`.
+
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
 
