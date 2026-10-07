@@ -266,9 +266,11 @@ class Ed(Editor):
     def rebuild(self):
         return self.ok("MAP REBUILD", allow=("Can't", "Couldn't bring window"))
 
-    def light(self):
+    def light(self, selected=False):
+        """LIGHT APPLY; selected=True lights only the selected actors (Exec_Light parses SELECTED= and
+        CHANGED=), so a shipped map keeps the BSP lighting its developers baked"""
         # "Couldn't bring window to foreground" is logged when another app has focus; harmless
-        return self.ok("LIGHT APPLY", allow=("Couldn't bring window", "Can't find"))
+        return self.ok("LIGHT APPLY" + (" SELECTED=1" if selected else ""), allow=("Couldn't bring window", "Can't find"))
 
     def paths(self, full=False):
         return self.ok("PATHS BUILD" if full else "PATHS DEFINE")

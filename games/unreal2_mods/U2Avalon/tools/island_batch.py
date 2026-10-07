@@ -148,8 +148,18 @@ def populate(name, t3d, layout_json, base):
         for pkg in ("StaticMeshes/AvalonSM.usx", "StaticMeshes/Mission_05M.usx", "StaticMeshes/Mission_03M.usx",
                     "StaticMeshes/Terran_DecoM.usx", "StaticMeshes/Flora_M.usx"):
             ed.load_package(os.path.join(GAME, pkg))
+        ed.deselect()
         ed.import_t3d(t3d, add=True)
-        ed.light()                      # static meshes stay black in the editor until the lighting is applied
+        # light only what we added (and the terrain we changed): a full LIGHT APPLY re-lights TutA's BSP with
+        # our editor and the tower came out dark and blotchy next to the baked original
+        want = open(t3d).read().count("Begin Actor")
+        got = ed.copy_selected().count("Begin Actor")
+        if got < want * 0.9:
+            print("  import left %d of %d actors selected; lighting every StaticMeshActor" % (got, want))
+            ed.ok("ACTOR SELECT OFCLASS CLASS=StaticMeshActor")
+        ed.ok("ACTOR SELECT OFCLASS CLASS=TerrainInfo")
+        ed.light(selected=True)         # static meshes stay black in the editor until the lighting is applied
+        ed.deselect()
         ed.save(name)
         ed.hide_icons()
         # pictures: over the plant toward the tower, from the sea toward the plant, the whole island

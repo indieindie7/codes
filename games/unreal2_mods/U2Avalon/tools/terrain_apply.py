@@ -1,6 +1,6 @@
 r"""Put an edited heightmap back into a copy of TutA with UnrealEd (through U2EdBridge / uedlib):
 
-    py tools/terrain_apply.py <edited island1.bmp> [out map name=TutA_Liandri] [source map=TutA]
+    py tools/terrain_apply.py <edited island1.bmp> [out map name=TutA_Liandri] [source map=TutA_Stock]
 
 A TerrainInfo saves its built vertex arrays in the map, so swapping the heightmap texture alone changes
 nothing in game, and SET TerrainInfo TerrainMap is class-wide (it re-pointed the SEA terrain too). What
@@ -15,7 +15,7 @@ from uedlib import Ed, session  # noqa
 bmp = os.path.abspath([a for a in sys.argv[1:] if "=" not in a][0])
 args = [a for a in sys.argv[1:] if "=" not in a]
 name = args[1] if len(args) > 1 else "TutA_Liandri"
-source = args[2] if len(args) > 2 else "TutA"
+source = args[2] if len(args) > 2 else "TutA_Stock"   # a pristine copy of the shipped TutA (TutA itself may be a generated town now)
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
 ALPHAS = o.get("alphas")            # alphas=<dir> with Layer1.bmp, Layer2_Beach.bmp, PlantLife1.bmp (groundpaint.py)
 
