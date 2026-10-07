@@ -66,11 +66,48 @@ function GoLive(int Slot, Material Placeholder, float Size, float Pour, float Po
 	AxV = Z;
 	// the floor's slope along the texture axes: the axes lie in the floor, so their Z is the rise
 	class'ModSettings'.static.NativeCall("Blood:pool " $ Slot $ " " $ Size $ " " $ AxU.Z $ " " $ AxV.Z $ " " $ Kind);
-	class'ModSettings'.static.NativeCall("Blood:pour " $ Slot $ " 0.5 0.5 " $ Pour $ " " $ PourSecs);
+	class'ModSettings'.static.NativeCall("Blood:pour " $ Slot $ " 0.5 0.5 " $ Pour $ " " $ PourSecs $ " " $ Kind);
 	DetachProjector(true);
 	AttachProjector();
 	if (class'ModSettings'.default.bGoreLog)
-		class'ModSettings'.static.Note("gore: live pool slot " $ Slot $ " at " $ Location $ " size " $ Size $ " slope " $ AxU.Z $ " " $ AxV.Z);
+		class'ModSettings'.static.Note("gore: live region slot " $ Slot $ " at " $ Location $ " size " $ Size $ " slope " $ AxU.Z $ " " $ AxV.Z);
+}
+
+// where a world spot falls on the sheet (0..1 across); false when it is off the region or on
+// another floor
+function bool Local(vector Spot, out float U, out float W)
+{
+	local vector D;
+
+	D = Spot - Location;
+	if (Abs(D.Z) > 60)
+		return false;
+	U = 0.5 + (D Dot AxU) / LiveSize;
+	W = 0.5 + (D Dot AxV) / LiveSize;
+	return U > 0.08 && U < 0.92 && W > 0.08 && W < 0.92;
+}
+
+// another body in this region: its blood pours in where it lies (pools run together)
+function bool PourAt(vector Spot, float Pour, float PourSecs, int Kind)
+{
+	local float U, W;
+
+	if (LiveSlot < 0 || !Local(Spot, U, W))
+		return false;
+	class'ModSettings'.static.NativeCall("Blood:pour " $ LiveSlot $ " " $ U $ " " $ W $ " " $ Pour $ " " $ PourSecs $ " " $ Kind);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: region slot " $ LiveSlot $ " takes a body at " $ U $ " " $ W);
+	return true;
+}
+
+// something lying in the region (a gib, rubble): the blood flows around it
+function Bed(vector Spot, float Radius, float Height)
+{
+	local float U, W;
+
+	if (LiveSlot < 0 || !Local(Spot, U, W))
+		return;
+	class'ModSettings'.static.NativeCall("Blood:bed " $ LiveSlot $ " " $ U $ " " $ W $ " " $ (Radius / LiveSize) $ " " $ Height);
 }
 
 // the slot is wanted elsewhere: the pool keeps a baked final frame instead
@@ -114,9 +151,9 @@ function Stamps(float DeltaTime)
 		V = P.Velocity;
 		R = P.CollisionRadius * 0.6 / LiveSize;
 		class'ModSettings'.static.NativeCall("Blood:stamp " $ LiveSlot $ " " $ U $ " " $ W $ " " $ ((V Dot AxU) / LiveSize) $ " " $ ((V Dot AxV) / LiveSize) $ " " $ R);
-		// standing in the blood: bloody feet for a while (footprints)
+		// standing in the blood: bloody feet for a while (footprints), in the blood's own colour
 		if (Gore != None && class'ModSettings'.static.NativeCall("Blood:wet " $ LiveSlot $ " " $ U $ " " $ W))
-			Gore.BloodyFeet(P, LiveKind);
+			Gore.BloodyFeet(P, int(class'ModSettings'.static.NativeCall("Blood:wetkind " $ LiveSlot $ " " $ U $ " " $ W)));
 	}
 }
 

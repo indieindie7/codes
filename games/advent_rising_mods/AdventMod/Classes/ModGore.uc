@@ -96,6 +96,7 @@ var ModBloodDecal LiveOwner[8];
 var int NextLive;
 var config bool bLivePools;
 var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long
+var config float RegionSize;                        // a live sheet covers a floor square this wide: every body in it pours into the same sheet (pools run together, prints everywhere in it)
 // bloody footprints: whoever stands in a live pool leaves prints for FootSteps steps
 var Material FootTex[3], AlienFootTex[3];           // fresh, fading, nearly gone
 var Material DripTex, AlienDripTex;                 // drip streaks a coat pans down after a hit
@@ -267,6 +268,65 @@ function GoLive(ModBloodDecal D, float Size, int Kind)
 	LiveOwner[K] = D;
 	D.Gore = self;
 	D.GoLive(K, PoolLive[K], Size, LivePour, LivePourSecs, Kind);
+}
+
+// a body's blood goes into the live region under it; if no region covers the spot, a new one
+// is laid there (a free slot, else the region farthest from the player, whose blood is gone)
+function bool PourInto(vector Spot, vector N, int Kind)
+{
+	local int i, K;
+	local float D, Far;
+	local ModBloodDecal R;
+	local Pawn Viewer;
+
+	for (i = 0; i < 8; i++)
+		if (LiveOwner[i] != None && !LiveOwner[i].bDeleteMe && LiveOwner[i].LiveSlot >= 0 && LiveOwner[i].PourAt(Spot, LivePour, LivePourSecs, Kind))
+			return true;
+	K = -1;
+	for (i = 0; i < 8; i++)
+		if (LiveOwner[i] == None || LiveOwner[i].bDeleteMe || LiveOwner[i].LiveSlot < 0)
+		{
+			K = i;
+			break;
+		}
+	if (K < 0)
+	{
+		Viewer = Level.GetLocalPlayerController().Pawn;
+		Far = -1;
+		for (i = 0; i < 8; i++)
+		{
+			if (Viewer != None)
+				D = VSize(LiveOwner[i].Location - Viewer.Location);
+			else
+				D = float(i);
+			if (D > Far)
+			{
+				Far = D;
+				K = i;
+			}
+		}
+		LiveOwner[K].Destroy();
+	}
+	R = Mark(PoolLive[K], Spot, N, vect(0,0,0), RegionSize / 128.0);
+	if (R == None)
+		return false;
+	LiveOwner[K] = R;
+	R.Gore = self;
+	R.LifeSpan = 900;
+	R.GoLive(K, PoolLive[K], RegionSize, LivePour, LivePourSecs, Kind);
+	return true;
+}
+
+// the live region (if any) under a spot: gibs and rubble tell it where they lie
+function ModBloodDecal RegionAt(vector Spot)
+{
+	local int i;
+	local float U, W;
+
+	for (i = 0; i < 8; i++)
+		if (LiveOwner[i] != None && !LiveOwner[i].bDeleteMe && LiveOwner[i].LiveSlot >= 0 && LiveOwner[i].Local(Spot, U, W))
+			return LiveOwner[i];
+	return None;
 }
 
 // a walker has stepped in blood: FootSteps prints from here, fading
@@ -1249,10 +1309,15 @@ event Tick(float DeltaTime)
 							D.Frames[j] = PoolFrames[j];
 					}
 					D.Grow(DecalScale * 0.2, DecalScale * (0.9 + FRand() * 0.4), 5 + FRand() * 3);
-					// or, with the d3d8 layer's live pools, simulated for real
-					if (bLivePools)
-						GoLive(D, DecalScale * 128.0 * (0.9 + FRand() * 0.4), int(BloodKind(Dying[i]) == 2));
-					D.LifeSpan = 300;
+					// or, with the d3d8 layer's live pools, simulated for real: the body pours into the
+					// floor region it lies in (a new region if none), and the baked decal goes
+					if (bLivePools && PourInto(HitL, HitN, int(BloodKind(Dying[i]) == 2)))
+					{
+						D.Destroy();
+						D = None;
+					}
+					else
+						D.LifeSpan = 300;
 				}
 			}
 		}
@@ -1775,8 +1840,9 @@ defaultproperties
      bFootprints=True
      FootSteps=7
      FootStride=38.000000
-     LivePour=3.000000
+     LivePour=1.400000
      LivePourSecs=2.600000
+     RegionSize=640.000000
      PoolFrames(0)=Texture'AdventMod.Blood.BloodPoolF0'
      PoolFrames(1)=Texture'AdventMod.Blood.BloodPoolF1'
      PoolFrames(2)=Texture'AdventMod.Blood.BloodPoolF2'

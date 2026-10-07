@@ -46,6 +46,8 @@ function Settle(vector Floor, vector N)
 		Thick = Size.Z;
 	SetRotation(R);
 	SetLocation(Floor + N * Thick * 0.45);
+	if (Gore != None && Gore.RegionAt(Floor) != None)
+		Gore.RegionAt(Floor).Bed(Floor, Radius * 1.6, 0.5);
 }
 
 event Tick(float DeltaTime)
