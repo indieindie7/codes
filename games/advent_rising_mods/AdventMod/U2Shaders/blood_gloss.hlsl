@@ -16,12 +16,20 @@
 // SRCALPHA: the colour returned is added, the alpha multiplies the floor), so old blood goes
 // from wet red to a dull brown-black; c16.x is how dark.
 //
+// Puddles: with glossreflect= above 0 the fork also hands over the frame drawn so far (s1) and
+// c16.y strength, c16.z reach. A pool reflects what stands above it: the reflected view ray is
+// followed a few steps, each step projected to the screen (c4..c7) and the frame sampled there,
+// averaged into a soft reflection (blood is a dark, slightly rough mirror), weighted by Fresnel
+// and by how thick the blood is. Off screen nothing is reflected (screen-space reflections).
+//
 // Constants (the fork's GlossBegin): c0 time, 1, 1/w, 1/h; c1 x projected coordinates, y blend
 // kind, z neutral brightness, w wetness; c2 glossfx= strength, sharpness, light gain, sheen gain; c3
 // glossenv= the surroundings' colour and a multiplier; c8..c15 four lights in camera space
 // (position or direction toward it, range (0 = directional); colour, 1 if used).
 
 sampler2D Tex : register(s0);
+sampler2D Scene : register(s1);
+float4 Proj[4] : register(c4);
 float4 Info   : register(c0);
 float4 Mode   : register(c1);
 float4 Fx     : register(c2);
@@ -50,6 +58,7 @@ float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
 	float3 v = normalize(-pos);
 	float3 n = normalize(cross(dpx, dpy));
 	n = dot(n, v) < 0 ? -n : n;
+	float3 flatN = n;
 
 	// the liquid's own shape: tilted away from where it gets thicker (screen-space gradient)
 	float da = ddx(a), db = ddy(a);
@@ -76,9 +85,31 @@ float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
 	float f = 0.02 + 0.98 * pow(1 - saturate(dot(n, v)), 5);
 	float3 sheen = Env.rgb * (Env.a * f);
 
+	// a soft reflection of what stands above the pool (screen space)
+	float3 refl = 0;
+	if (Dry.y > 0)
+	{
+		float3 r = reflect(-v, flatN);
+		float3 acc = 0;
+		float wsum = 0.001;
+		float4 steps = float4(0.15, 0.35, 0.6, 1.0) * Dry.z;
+		for (int k = 0; k < 4; k++)
+		{
+			float3 q = pos + r * steps[k];
+			float4 c = q.x * Proj[0] + q.y * Proj[1] + q.z * Proj[2] + Proj[3];
+			float2 suv = c.xy / max(c.w, 1e-3) * float2(0.5, -0.5) + 0.5 + Info.zw * 0.5;
+			float2 edge = saturate(min(suv, 1 - suv) * 8);
+			float wk = edge.x * edge.y * step(1, c.w);
+			acc += tex2D(Scene, suv).rgb * wk;
+			wsum += wk;
+		}
+		refl = acc / wsum * saturate(wsum) * (f * Dry.y);
+	}
+
 	// thin smears dull fast; the shine comes with thickness, and goes as the decal dries
 	float wet = a * a * (3 - 2 * a) * Mode.w;
 	float dried = a * (1 - Mode.w);
 	float3 brown = float3(0.010, 0.006, 0.0) * dried;      // dried blood is browner, not only darker
-	return float4((spec * Fx.z + sheen * Fx.w) * (wet * Fx.x) + brown, 1 - dried * Dry.x);
+	float pool = saturate((a - 0.45) * 3);                    // only thick blood is a mirror
+	return float4((spec * Fx.z + sheen * Fx.w + refl * pool) * (wet * Fx.x) + brown, 1 - dried * Dry.x);
 }
