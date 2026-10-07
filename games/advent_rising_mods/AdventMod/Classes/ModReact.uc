@@ -55,6 +55,7 @@ struct FlinchState
 };
 var array<FlinchState> Flinches;
 var array<name> AnimProbed;
+var config array<name> ProbeNames;   // ProbeAnims tries these too (an ini list, for surveying a character's set)
 // knockdowns: a heavy hit that doesn't kill throws the character down with the game's own
 // impact animation (Death_Impact: Seekers and humans both have it), it lies there a moment
 // and gets up with GetUp_back / GetUp_front; the spring flinch rides on top
@@ -69,7 +70,8 @@ struct DownState
 	var Pawn P;
 	var float T, Speed;
 	var int Phase;          // 0 falling and lying, 1 getting up
-	var name Up;
+	var name Fall, Up;      // the fall (held on its last frame while lying) and the get-up
+	var bool bOwnClips;     // ours (ModHoundAnims): PlayAnim, no lying pose clip
 };
 var array<DownState> Downs;        // bGoreLog: the classes whose knockdown / get-up animations were listed
 
@@ -188,13 +190,42 @@ function bool Knock(Pawn P, vector Dir)
 	local int i;
 	local DownState D;
 
-	if (P.Physics != PHYS_Walking || !P.HasAnim('Death_Impact') || !P.HasAnim('GetUp_back'))
+	if (P.Physics != PHYS_Walking)
 		return false;
 	for (i = 0; i < Downs.Length; i++)
 		if (Downs[i].P == P)
 			return false;
 	D.P = P;
 	D.Speed = P.GroundSpeed;
+	if (IsHound(P))
+	{
+		// the hound's own: thrown onto the side the hit pushes it to
+		if (!LinkHound(P))
+			return false;
+		D.bOwnClips = true;
+		D.Fall = 'HoundKnock_L';
+		D.Up = 'HoundGetUp_L';
+		if ((Dir << P.Rotation).Y > 0)
+		{
+			D.Fall = 'HoundKnock_R';
+			D.Up = 'HoundGetUp_R';
+		}
+		Downs[Downs.Length] = D;
+		if (class'ModSettings'.default.bGoreLog)
+			HoundPoseLog(P, -1, P.Rotation);
+		P.GroundSpeed = 0;
+		P.AnimBlendParams(1, 0.0);
+		P.PlayAnim(D.Fall, 1.0, 0.08, 0);
+		Dir.Z = 0;
+		P.Velocity = Normal(Dir) * KnockPush * 0.6 + vect(0,0,100);
+		P.SetPhysics(PHYS_Falling);
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("react: " $ P $ " (hound) knocked down with " $ D.Fall);
+		return true;
+	}
+	if (!P.HasAnim('Death_Impact') || !P.HasAnim('GetUp_back'))
+		return false;
+	D.Fall = 'Death_Impact';
 	// the impact animation falls backwards: getting up from the back; from the front if it has it
 	// and the shot came from behind
 	D.Up = 'GetUp_back';
@@ -231,6 +262,38 @@ function Downed(float DeltaTime)
 		P.GroundSpeed = 0;
 		P.Acceleration = vect(0,0,0);
 		P.GetAnimParams(0, Anim, Frame, Rate);
+		if (Downs[i].bOwnClips)
+		{
+			// ours: the fall's last frame is the lying pose; the AI starting something else
+			// gets the pose back at once
+			if (Downs[i].Phase == 0)
+			{
+				if (Anim != Downs[i].Fall)
+				{
+					P.PlayAnim(Downs[i].Fall, 1.0, 0.05, 0);
+					P.SetAnimFrame(0.99, 0);
+				}
+				if (class'ModSettings'.default.bGoreLog && int(Downs[i].T * 2.5) != int((Downs[i].T - DeltaTime) * 2.5))
+					HoundPoseLog(P, Downs[i].T, P.Rotation);
+				if (Downs[i].T >= KnockDown)
+				{
+					Downs[i].Phase = 1;
+					Downs[i].T = 0;
+					P.PlayAnim(Downs[i].Up, 1.0, 0.1, 0);
+				}
+			}
+			else
+			{
+				if (Anim != Downs[i].Up && Downs[i].T < KnockGetUp * 0.8)
+					P.PlayAnim(Downs[i].Up, 1.0, 0.1, 0);
+				if (Downs[i].T >= KnockGetUp)
+				{
+					P.GroundSpeed = Downs[i].Speed;
+					Downs.Remove(i, 1);
+				}
+			}
+			continue;
+		}
 		if (Downs[i].Phase == 0)
 		{
 			// lying: hold the impact animation's last frame if the AI or the animation moved on
@@ -343,6 +406,16 @@ function ProbeAnims(Pawn P)
 	for (i = 0; i < 18; i++)
 		if (P.HasAnim(Try[i]))
 			Have = Have $ " " $ Try[i];
+	for (i = 0; i < ProbeNames.Length; i++)
+	{
+		if (P.HasAnim(ProbeNames[i]))
+			Have = Have $ " " $ ProbeNames[i];
+		if (Len(Have) > 300)
+		{
+			class'ModSettings'.static.Note("react: " $ P.Class.Name $ " has" $ Have);
+			Have = "";
+		}
+	}
 	class'ModSettings'.static.Note("react: " $ P.Class.Name $ " has" $ Have);
 }
 
@@ -486,12 +559,16 @@ event Tick(float DeltaTime)
 			// the frame the body died in, five times a second
 			if (class'ModSettings'.default.bGoreLog && int(Deaths[i].AnimT * 5) != int((Deaths[i].AnimT + DeltaTime) * 5))
 				class'ModSettings'.static.Note("react: move " $ P $ " t " $ Deaths[i].AnimT $ " actor " $ ((P.Location - Deaths[i].Start) << Deaths[i].Facing) $ " hips " $ ((P.GetBoneCoords('hips').Origin - Deaths[i].Start) << Deaths[i].Facing) $ " physics " $ P.Physics $ " hips over floor " $ OverFloor(P, 'hips') $ " head " $ OverFloor(P, 'head') $ " actor " $ int(P.Location.Z - P.GetBoneCoords('hips').Origin.Z + OverFloor(P, 'hips')) $ " collision " $ P.CollisionHeight);
+			if (IsHound(P))
+				StopTracking(P);
+			if (class'ModSettings'.default.bGoreLog && IsHound(P) && int(Deaths[i].AnimT * 2.5) != int((Deaths[i].AnimT + DeltaTime) * 2.5))
+				HoundPoseLog(P, Deaths[i].AnimT, Deaths[i].Facing);
 			Deaths[i].AnimT += DeltaTime;
 			if (bClipFloor)
 				OnFloor(P, Deaths[i].AnimT > Deaths[i].Length - 0.4, DeltaTime);
 			if (Deaths[i].AnimT < Deaths[i].Handoff)
 				continue;
-			if (!bDeathAnimRagdoll)
+			if (!bDeathAnimRagdoll || IsHound(P))
 			{
 				// the clip plays out; the body stays in its last pose
 				if (Deaths[i].AnimT >= Deaths[i].Length + 0.5)
@@ -711,6 +788,8 @@ function float DeathAnim(Pawn P, vector Spot, vector Dir, class<DamageType> Type
 	local int i, n, Pick;
 	local float Handoff;
 
+	if (IsHound(P))
+		return HoundDeath(P, Spot, Dir, Type, Length, bPickOnly);
 	if (AdventPawn(P) == None || Gore == None || Gore.RagdollSkeleton(AdventPawn(P)) != "humanMale2")
 		return 0;
 	A = class'ModDeathAnims'.default.Deaths;
@@ -761,6 +840,92 @@ function float DeathAnim(Pawn P, vector Spot, vector Dir, class<DamageType> Type
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("react: " $ P $ " plays " $ ClipName $ " (" $ Zone $ "), limp in " $ Handoff $ " s");
 	return Handoff;
+}
+
+// testing: the hound's bones relative to its hips in the frame it died in (X forward, Y right,
+// Z up), to set against the clip's own pose (tools/clip_sheet.py)
+function HoundPoseLog(Pawn P, float T, rotator Facing)
+{
+	local name B[7];
+	local int i;
+	local vector H, V;
+	local string Out;
+
+	B[0] = 'spine2'; B[1] = 'Neck02'; B[2] = 'head'; B[3] = 'LeftFrontFoot'; B[4] = 'RightFrontFoot'; B[5] = 'LeftToes'; B[6] = 'RightToes';
+	H = P.GetBoneCoords('hips').Origin;
+	for (i = 0; i < 7; i++)
+	{
+		V = (P.GetBoneCoords(B[i]).Origin - H) << Facing;
+		Out = Out $ " " $ B[i] $ " " $ int(V.X) $ "," $ int(V.Y) $ "," $ int(V.Z);
+	}
+	class'ModSettings'.static.Note("react: hound pose t " $ T $ " hips over floor " $ OverFloor(P, 'hips') $ " draw " $ P.DrawScale $ " " $ P.DrawScale3D $ " pivot " $ P.PrePivot $ Out);
+}
+
+// the AI's head and spine tracking (EonPawn: it turns the neck toward what the hound looks at)
+// outlives the death and bent the dead hound's neck into the floor: off, and the bones let go
+function StopTracking(Pawn P)
+{
+	local name B[6];
+	local int i;
+
+	P.SetPropertyText("bAllowHeadTracking", "False");
+	// and whatever the game's own death plays on the blend channels over ours
+	for (i = 1; i < 12; i++)
+		P.AnimBlendParams(i, 0.0);
+	B[0] = 'spine'; B[1] = 'spine1'; B[2] = 'spine2'; B[3] = 'neck'; B[4] = 'Neck02'; B[5] = 'head';
+	for (i = 0; i < 6; i++)
+	{
+		P.SetBoneDirection(B[i], rot(0,0,0), vect(0,0,0), 0.0);
+		P.SetBoneRotation(B[i], rot(0,0,0), 0, 0.0);
+	}
+}
+
+function bool IsHound(Pawn P)
+{
+	return P != None && InStr(Caps(string(P.Mesh)), "HOUND") >= 0;
+}
+
+function bool LinkHound(Pawn P)
+{
+	local MeshAnimation A;
+
+	A = class'ModHoundAnims'.default.Clips;
+	if (A == None)
+		return false;
+	P.LinkSkelAnim(A);
+	return P.HasAnim('HoundDie_Front');
+}
+
+// the hound's death (ModHoundAnims): over backwards from a blast, nose first from the front,
+// otherwise onto the side the shot pushes it to. It plays out and the body keeps its last
+// pose (no ragdoll: hounds going limp crashed the game, see ModGore.bHoundRagdolls)
+function float HoundDeath(Pawn P, vector Spot, vector Dir, class<DamageType> Type, out float Length, bool bPickOnly)
+{
+	local vector L;
+
+	if (bPickOnly || !LinkHound(P))
+		return 0;
+	StopTracking(P);
+	L = Dir << P.Rotation;
+	Length = 1.5;
+	if (DeathZone(P, Spot, Dir, Type) == "blast")
+	{
+		ClipName = 'HoundDie_Blast';
+		Length = 1.7;
+	}
+	else if (L.X < -0.6)
+		ClipName = 'HoundDie_Front';
+	else if (L.Y > 0)
+		ClipName = 'HoundDie_R';
+	else
+		ClipName = 'HoundDie_L';
+	if (TestClip != "")
+		SetPropertyText("ClipName", TestClip);
+	P.AnimBlendParams(1, 0.0);
+	P.PlayAnim(ClipName, 1.0, 0.08, 0);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("react: " $ P $ " (hound) plays " $ ClipName);
+	return Length + 1;            // past its end: it never goes limp
 }
 
 // where the clip puts a part at this moment, in the world: the clip's positions come in

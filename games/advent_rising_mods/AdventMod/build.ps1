@@ -14,6 +14,9 @@ if ($LASTEXITCODE -ne 0) { throw 'make_psa failed' }
 # the energy blade's swings (ModBladeAnims): the chosen Kimodo takes in AnimsBlade
 & python (Join-Path (Split-Path -Parent $Here) 'tools\make_psa.py') "$Game\AdventMod\Anims\ModBladeSwings.psa" marine (Join-Path $Here 'AnimsBlade')
 if ($LASTEXITCODE -ne 0) { throw 'make_psa (blade) failed' }
+# the Seeker hound's knockdowns and deaths (ModHoundAnims): hand-keyed in AnimsHound, on its own skeleton
+& python (Join-Path (Split-Path -Parent $Here) 'tools\make_psa.py') "$Game\AdventMod\Anims\ModHound.psa" seekerhound (Join-Path $Here 'AnimsHound')
+if ($LASTEXITCODE -ne 0) { throw 'make_psa (hound) failed' }
 # 1. script: the compiler reads <game>\AdventMod\Classes and the package list in AdventUCC's own ini
 New-Item -ItemType Directory -Force "$Game\AdventMod\Classes" | Out-Null
 Remove-Item "$Game\AdventMod\Classes\*.uc" -Confirm:$false -ErrorAction SilentlyContinue
