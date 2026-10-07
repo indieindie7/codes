@@ -191,19 +191,26 @@ if WALL and BEFORE and os.path.exists(BEFORE):
     Zb = LOC[2] + (Hb - 32768) * 0.5
     dZ = Z - Zb                                        # + = fill, - = cut
     changed = np.abs(dZ) > 130                        # rims of 2.6 m and more get a wall; smaller steps stay earth
+    # the wall stands where the FLAT pad meets the drop: a flat cell (slope < 6 deg) whose 4-neighbour is steep
+    # (slope > 16 deg); it faces the neighbour, its foot on the lower of the two, its height the step
+    flat = (SLOPE < 6.0) & changed
     for j in range(1, N - 1):
         for i in range(1, N - 1):
-            if not changed[j, i] or WATER[j, i]:
+            if not flat[j, i] or WATER[j, i]:
                 continue
             for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                if not changed[j + dj, i + di]:
+                nj, ni = j + dj, i + di
+                if SLOPE[nj, ni] > 16.0 and not WATER[nj, ni]:
+                    step = abs(Z[j, i] - Z[nj, ni])
+                    if step < 60:
+                        continue
                     x = WX[j, i] + di * CELL * 0.5
                     y = WY[j, i] + dj * CELL * 0.5
-                    yawd = 0 if di else 90                      # the part is long along Y at yaw 0: rim along Y when the neighbour is east/west
-                    hgt = min(abs(dZ[j, i]), 400)
+                    yawd = 0 if di else 90
+                    hgt = min(step, 400)
                     actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'%s'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
                                   "    Rotation=(Yaw=%d)\n    DrawScale3D=(X=1,Y=1,Z=%.3f)\n    bStatic=True\nEnd Actor"
-                                  % (WALL, x, y, min(Z[j, i], Zb[j, i]) - 10, int(yawd * 65536 / 360), max(0.5, hgt / 110.0)))
+                                  % (WALL, x, y, min(Z[j, i], Z[nj, ni]) - 10, int(yawd * 65536 / 360), max(0.6, hgt / 110.0)))
                     n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
 print(f"clutter: {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
