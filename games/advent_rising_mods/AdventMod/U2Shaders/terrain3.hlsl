@@ -145,11 +145,16 @@ float4 main(In I) : COLOR
 		float3 lum3 = float3(0.3, 0.59, 0.11);
 		if (Fx2.x > 0)
 		{
+			// two spreads: a wide one from a very coarse mip (the swells, metres across) and a
+			// narrow one (stones and ruts); one spread alone read as fine gravel everywhere
 			float e = max(Fx2.y, 0.5) * 0.001;
-			float4 u = float4(I.U1, 0, 2.5);                      // mip bias: the coarse shape
-			float hx = dot(tex2Dbias(Layer1, u + float4(e, 0, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, u - float4(e, 0, 0, 0)).rgb, lum3);
-			float hy = dot(tex2Dbias(Layer1, u + float4(0, e, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, u - float4(0, e, 0, 0)).rgb, lum3);
-			float3 nt = normalize(float3(-hx * Fx2.x * 6, -hy * Fx2.x * 6, 1));
+			float4 uc = float4(I.U1, 0, 4.5), uf = float4(I.U1, 0, 2.0);
+			float ec = e * 6;
+			float hx = 0.7 * (dot(tex2Dbias(Layer1, uc + float4(ec, 0, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uc - float4(ec, 0, 0, 0)).rgb, lum3))
+			         + 0.3 * (dot(tex2Dbias(Layer1, uf + float4(e, 0, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uf - float4(e, 0, 0, 0)).rgb, lum3));
+			float hy = 0.7 * (dot(tex2Dbias(Layer1, uc + float4(0, ec, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uc - float4(0, ec, 0, 0)).rgb, lum3))
+			         + 0.3 * (dot(tex2Dbias(Layer1, uf + float4(0, e, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uf - float4(0, e, 0, 0)).rgb, lum3));
+			float3 nt = normalize(float3(-hx * Fx2.x * 5, -hy * Fx2.x * 5, 1));
 			float3 L = normalize(float3(-0.55, -0.4, 0.73));
 			c.rgb *= saturate(1 + (dot(nt, L) - L.z) * 1.6);
 		}
