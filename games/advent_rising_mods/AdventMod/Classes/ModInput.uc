@@ -254,6 +254,20 @@ static function float YawStep(int R)
 	return R * 360.0 / 65536.0;
 }
 
+// console "live save|reload|forget": seamless reload for live sessions (ModLive). Here because
+// the console always reaches the player's input object; "mutate" didn't reach the mod's mutator
+exec function Live(string Args)
+{
+	local ModLive L;
+
+	ForEach Outer.DynamicActors(class'ModLive', L)
+	{
+		L.Command(Args, Outer);
+		return;
+	}
+	class'ModSettings'.static.Note("live: no ModLive in this level");
+}
+
 defaultproperties
 {
 }

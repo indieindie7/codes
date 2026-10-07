@@ -7,6 +7,7 @@
 //=============================================================================
 class ModMutator extends Mutator;
 
+var ModLive Live;
 var float Wait, DebugTime;
 var int DebugStage;
 var bool bProbed, bPiloted;
@@ -91,6 +92,8 @@ function Every()
 		PC.Player.InteractionMaster.AddInteraction(string(class'ModScreenBlood'), PC.Player);
 	if (!class'ModSettings'.default.bGraphicsOnly && Gore == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Gore = Spawn(class'ModGore');
+	if (Live == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
+		Live = Spawn(class'ModLive');      // live sessions: "mutate live reload" and the place it puts the player back
 	if (class'ModSettings'.default.bD3DTrace)
 		class'ModSettings'.static.NativeCall("D3DTrace");     // testing: follows the game to a new device
 	class'ModSettings'.static.NativeCall("MaxFps:" $ class'ModSettings'.default.MaxFps);  // follows the game to a new device
@@ -195,6 +198,14 @@ function SkipCutscene()
 		class'ModSettings'.static.Note("skipping cutscene " $ Level.CinematicToSkip);
 		CinematicEvent(Level.CinematicToSkip).SkipCinematic();
 	}
+}
+
+// console "mutate ...": "mutate live save|reload|forget" (ModLive)
+function Mutate(string MutateString, PlayerController Sender)
+{
+	if (Caps(Left(MutateString, 5)) == "LIVE " && Live != None)
+		Live.Command(Mid(MutateString, 5), Sender);
+	Super.Mutate(MutateString, Sender);
 }
 
 defaultproperties
