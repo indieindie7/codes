@@ -15,6 +15,7 @@ var float Radius;          // half its smallest size: how far it sits off the fl
 var int Kind;              // its blood (ModGore.BloodKind)
 var vector Size;           // the part's size (ModGibParts), scaled
 var bool bSettled;
+var bool bCarding;          // ModGibAtlas is taking its snapshot (it goes once the card is down)
 var float StillTime, Stay;
 
 function Launch(vector V, float G, float R)

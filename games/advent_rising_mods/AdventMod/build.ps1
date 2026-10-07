@@ -46,6 +46,8 @@ Copy-Item "$Here\Meshes\blade.ase" "$Game\AdventMod\Gibs\blade.ase" -Force
 Copy-Item "$Here\Meshes\rubble*.ase" "$Game\AdventMod\Gibs" -Force
 # armour plates (ModArmorPlate), our own meshes
 Copy-Item "$Here\Meshes\plate_*.ase" "$Game\AdventMod\Gibs" -Force
+# the gib card (ModGibCard), our own quad
+Copy-Item "$Here\Meshes\gib_card.ase" "$Game\AdventMod\Gibs" -Force
 # the stump cap (ModStump), our own mesh
 Copy-Item "$Here\Meshes\stump.ase" "$Game\AdventMod\Gibs\stump.ase" -Force
 # ragdoll skeletons (tools/make_ka.py): the engine reads <game>\KarmaData\*.ka

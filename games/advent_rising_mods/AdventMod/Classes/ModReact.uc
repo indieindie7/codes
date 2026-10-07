@@ -54,6 +54,24 @@ struct FlinchState
 	var rotator Turn2;
 };
 var array<FlinchState> Flinches;
+var array<name> AnimProbed;
+// knockdowns: a heavy hit that doesn't kill throws the character down with the game's own
+// impact animation (Death_Impact: Seekers and humans both have it), it lies there a moment
+// and gets up with GetUp_back / GetUp_front; the spring flinch rides on top
+var config bool bKnockdown;
+var config int KnockDamage;        // a single hit this big (after the game's scaling) knocks down
+var config float KnockChance;      // ...this often
+var config float KnockDown, KnockGetUp;   // seconds lying, seconds the get-up takes
+var config float KnockPush;
+var int Impact;                    // the current hit before armour (ModGoreRules sets it)
+struct DownState
+{
+	var Pawn P;
+	var float T, Speed;
+	var int Phase;          // 0 falling and lying, 1 getting up
+	var name Up;
+};
+var array<DownState> Downs;        // bGoreLog: the classes whose knockdown / get-up animations were listed
 
 struct StaggerState
 {
@@ -158,8 +176,86 @@ function Hit(Pawn Victim, vector HitLocation, vector Momentum, int Damage, class
 	}
 	if (bFlinch)
 		Flinch(Victim, HitLocation, Dir, Damage, false);
+	if (bKnockdown && Max(Damage, Impact) >= KnockDamage && Victim.iBaseTargetingPriority < 255 && FRand() < KnockChance && Knock(Victim, Dir))
+		return;
 	if (bStagger && Damage >= StaggerDamage && Victim.iBaseTargetingPriority < 255)
 		Stagger(Victim, Dir);
+}
+
+// down on the floor: the impact animation, a shove along the hit, and the body held there
+function bool Knock(Pawn P, vector Dir)
+{
+	local int i;
+	local DownState D;
+
+	if (P.Physics != PHYS_Walking || !P.HasAnim('Death_Impact') || !P.HasAnim('GetUp_back'))
+		return false;
+	for (i = 0; i < Downs.Length; i++)
+		if (Downs[i].P == P)
+			return false;
+	D.P = P;
+	D.Speed = P.GroundSpeed;
+	// the impact animation falls backwards: getting up from the back; from the front if it has it
+	// and the shot came from behind
+	D.Up = 'GetUp_back';
+	if (P.HasAnim('GetUp_front') && (Dir Dot vector(P.Rotation)) > 0.3)
+		D.Up = 'GetUp_front';
+	Downs[Downs.Length] = D;
+	P.GroundSpeed = 0;
+	P.PlayEonAnim(false, 'Death_Impact', 0, 1.0, 0.08);
+	Dir.Z = 0;
+	P.Velocity = Normal(Dir) * KnockPush + vect(0,0,140);
+	P.SetPhysics(PHYS_Falling);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("react: " $ P $ " knocked down (gets up with " $ D.Up $ ")");
+	return true;
+}
+
+// the knocked-down: kept down (the AI would start another animation), then up again
+function Downed(float DeltaTime)
+{
+	local int i;
+	local Pawn P;
+	local name Anim;
+	local float Frame, Rate;
+
+	for (i = Downs.Length - 1; i >= 0; i--)
+	{
+		P = Downs[i].P;
+		if (P == None || P.bDeleteMe || P.Health <= 0)
+		{
+			Downs.Remove(i, 1);
+			continue;
+		}
+		Downs[i].T += DeltaTime;
+		P.GroundSpeed = 0;
+		P.Acceleration = vect(0,0,0);
+		P.GetAnimParams(0, Anim, Frame, Rate);
+		if (Downs[i].Phase == 0)
+		{
+			// lying: hold the impact animation's last frame if the AI or the animation moved on
+			if (Anim != 'Death_Impact' && Anim != 'Death_Impact_B_Pose')
+				P.PlayEonAnim(false, 'Death_Impact', 0, 1.0, 0.05);
+			else if (Frame > 0.98 && P.HasAnim('Death_Impact_B_Pose'))
+				P.PlayEonAnim(true, 'Death_Impact_B_Pose', 0, 1.0, 0.1);
+			if (Downs[i].T >= KnockDown)
+			{
+				Downs[i].Phase = 1;
+				Downs[i].T = 0;
+				P.PlayEonAnim(false, Downs[i].Up, 0, 1.0, 0.15);
+			}
+		}
+		else
+		{
+			if (Anim != Downs[i].Up && Downs[i].T < KnockGetUp * 0.8)
+				P.PlayEonAnim(false, Downs[i].Up, 0, 1.0, 0.1);
+			if (Downs[i].T >= KnockGetUp)
+			{
+				P.GroundSpeed = Downs[i].Speed;
+				Downs.Remove(i, 1);
+			}
+		}
+	}
 }
 
 // a corpse hit: a twitch, a little stronger than a living flinch
@@ -195,6 +291,8 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional boo
 	}
 	if (Best < 0)
 		return;
+	if (class'ModSettings'.default.bGoreLog)
+		ProbeAnims(P);
 	for (i = Flinches.Length - 1; i >= 0; i--)
 		if (Flinches[i].P == P)
 		{
@@ -224,6 +322,28 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional boo
 	Flinches[Flinches.Length] = F;
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("react: " $ P $ " flinches at " $ F.Bone $ " " $ F.Turn);
+}
+
+// which knockdown / get-up / stun animations a character type has (for the knockdown work)
+function ProbeAnims(Pawn P)
+{
+	local int i;
+	local string Have;
+	local name Try[18];
+
+	for (i = 0; i < AnimProbed.Length; i++)
+		if (AnimProbed[i] == P.Class.Name)
+			return;
+	AnimProbed[AnimProbed.Length] = P.Class.Name;
+	Try[0] = 'GetUp_front'; Try[1] = 'GetUp_Back'; Try[2] = 'GetUp_attack'; Try[3] = 'Death_Impact';
+	Try[4] = 'Death_ImpactF'; Try[5] = 'Death_Impact_B_Pose'; Try[6] = 'Stun_Hit'; Try[7] = 'Stun_Hit_Idle';
+	Try[8] = 'bar_hit'; Try[9] = 'T_ROLL_DFront'; Try[10] = 'Throw_End'; Try[11] = 'Hit_Front';
+	Try[12] = 'Hit_Back'; Try[13] = 'KnockBack'; Try[14] = 'Knockdown'; Try[15] = 'Stagger';
+	Try[16] = 'Thrown'; Try[17] = 'Fall';
+	for (i = 0; i < 18; i++)
+		if (P.HasAnim(Try[i]))
+			Have = Have $ " " $ Try[i];
+	class'ModSettings'.static.Note("react: " $ P.Class.Name $ " has" $ Have);
 }
 
 // the spring's displacement at time T: a 50 ms snap out, then a decaying swing through rest
@@ -280,6 +400,9 @@ event Tick(float DeltaTime)
 	local int i;
 	local float Alpha;
 	local Pawn P;
+
+	if (Downs.Length > 0)
+		Downed(DeltaTime);
 
 	for (i = Flinches.Length - 1; i >= 0; i--)
 	{
@@ -823,6 +946,12 @@ defaultproperties
      FlinchAngle=4500.000000
      FlinchTime=0.300000
      bSpringFlinch=True
+     bKnockdown=True
+     KnockDamage=30
+     KnockChance=0.5
+     KnockDown=1.300000
+     KnockGetUp=1.400000
+     KnockPush=260.000000
      SpringFreq=3.200000
      SpringDecay=5.500000
      SpringTime=0.900000

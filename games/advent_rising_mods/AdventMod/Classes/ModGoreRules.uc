@@ -14,6 +14,9 @@ function int NetDamage(int OriginalDamage, int Damage, Pawn Injured, Pawn Instig
 	// (a melee hit with the energy blade does more, and cuts)
 	if (Gore != None && Gore.Melee != None)
 		Damage = Gore.Melee.Strike(Damage, Injured, InstigatedBy, HitLocation, DamageType);
+	// (the hit as it landed, before any plate took part of it: what knocks a body down)
+	if (Gore != None && Gore.React != None)
+		Gore.React.Impact = Damage;
 	// (a plate takes part of a hit on it until it breaks; a bare region takes more)
 	if (Gore != None && Gore.Armor != None)
 	{

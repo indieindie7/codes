@@ -59,6 +59,7 @@ var Material MeatTex, AlienMeatTex;
 var ModReact React;
 var ModSever Severer;              // decapitation and limb loss
 var ModMelee Melee;                // melee weapons (the energy blade)
+var ModGibAtlas Cards;              // settled gibs turned into floor snapshots
 var ModArmor Armor;                // destructible plates on the Seeker soldiers                // flinch, stagger and death ragdolls (fed by ModGoreRules too)
 var config bool bBloodCoats;       // blood lands on the characters near a hit: they look bloody
 var config int MaxCoats;
@@ -231,6 +232,9 @@ event PostBeginPlay()
 		ClampTex(FootTexL[i]);
 		ClampTex(AlienFootTexL[i]);
 	}
+	Cards = Spawn(class'ModGibAtlas');
+	if (Cards != None)
+		Cards.Gore = self;
 	React = Spawn(class'ModReact');
 	React.Gore = self;
 	Severer = Spawn(class'ModSever');
