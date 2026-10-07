@@ -155,14 +155,16 @@ float4 main(In I) : COLOR
 		{
 			// two spreads: a wide one from a very coarse mip (the swells, metres across) and a
 			// narrow one (stones and ruts); one spread alone read as fine gravel everywhere
-			float e = max(Fx2.y, 0.5) * 0.001;
-			float4 uc = float4(I.U1, 0, 4.5), uf = float4(I.U1, 0, 2.0);
-			float ec = e * 6;
-			float hx = 0.7 * (dot(tex2Dbias(Layer1, uc + float4(ec, 0, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uc - float4(ec, 0, 0, 0)).rgb, lum3))
-			         + 0.3 * (dot(tex2Dbias(Layer1, uf + float4(e, 0, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uf - float4(e, 0, 0, 0)).rgb, lum3));
-			float hy = 0.7 * (dot(tex2Dbias(Layer1, uc + float4(0, ec, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uc - float4(0, ec, 0, 0)).rgb, lum3))
-			         + 0.3 * (dot(tex2Dbias(Layer1, uf + float4(0, e, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uf - float4(0, e, 0, 0)).rgb, lum3));
+			// the wide spread from a very coarse mip (swells metres across); the fine stones come
+			// from the texel-level difference against the plain read (ps_2_a has ~512 slots: a
+			// second four-sample spread put the shader over the device's limit)
+			float e = max(Fx2.y, 0.5) * 0.006;
+			float4 uc = float4(I.U1, 0, 4.5);
+			float hx = dot(tex2Dbias(Layer1, uc + float4(e, 0, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uc - float4(e, 0, 0, 0)).rgb, lum3);
+			float hy = dot(tex2Dbias(Layer1, uc + float4(0, e, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, uc - float4(0, e, 0, 0)).rgb, lum3);
+			float fine = dot(t1.rgb, lum3) - dot(tex2Dbias(Layer1, float4(I.U1, 0, 3.0)).rgb, lum3);   // texel minus its blur
 			float3 nt = normalize(float3(-hx * Fx2.x * 5, -hy * Fx2.x * 5, 1));
+			c.rgb *= 1 + fine * Fx2.x * 0.8;
 			float3 L = normalize(float3(-0.55, -0.4, 0.73));
 			c.rgb *= saturate(1 + (dot(nt, L) - L.z) * 1.6);
 		}
@@ -173,7 +175,7 @@ float4 main(In I) : COLOR
 			float3 rock = lerp(c.rgb, l * float3(0.66, 0.62, 0.56), 0.75) * (Tone.z > 0 ? Tone.z : 1);
 			if (Fx2.w > 0)
 			{
-				float band = 0.5 + 0.5 * sin(world.z / 26.0 + 2.5 * Noise(world.xy / 300.0));
+				float band = 0.5 + 0.5 * sin(world.z / 26.0 + 0.004 * world.x + 0.003 * world.y);   // bands that drift, no noise call
 				rock *= 1 + Fx2.w * 0.35 * (band - 0.5);
 			}
 			// scree: a lighter, dustier band where the steep face meets gentler ground
