@@ -193,17 +193,17 @@ if WALL and BEFORE and os.path.exists(BEFORE):
     changed = np.abs(dZ) > 130                        # rims of 2.6 m and more get a wall; smaller steps stay earth
     # the wall stands where the FLAT pad meets the drop: a flat cell (slope < 6 deg) whose 4-neighbour is steep
     # (slope > 16 deg); it faces the neighbour, its foot on the lower of the two, its height the step
-    flat = (SLOPE < 6.0) & changed
+    flat = (SLOPE < 9.0) & changed
     for j in range(1, N - 1):
         for i in range(1, N - 1):
             if not flat[j, i] or WATER[j, i]:
                 continue
             for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nj, ni = j + dj, i + di
-                if SLOPE[nj, ni] > 16.0 and not WATER[nj, ni]:
-                    step = abs(Z[j, i] - Z[nj, ni])
-                    if step < 60:
-                        continue
+                # the neighbour is the drop when the ground steps more than 2 m across the one cell edge and that
+                # neighbour is not part of the same flat pad (the gradient-based slope is too smooth at 10 m cells)
+                step = abs(Z[j, i] - Z[nj, ni])
+                if step >= 100 and not WATER[nj, ni] and not (changed[nj, ni] and abs(Z[nj, ni] - Z[j, i]) < 40):
                     x = WX[j, i] + di * CELL * 0.5
                     y = WY[j, i] + dj * CELL * 0.5
                     yawd = 0 if di else 90
