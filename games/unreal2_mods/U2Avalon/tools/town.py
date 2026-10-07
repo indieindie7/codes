@@ -1,6 +1,6 @@
 r"""Concept to believable town, one command (see ../PIPELINE.md):
 
-    py tools/town.py <seed> [style=plateau|ridges] [name=TutA_Town] [pilot=1] [shift=-5300] [rerolls=3]
+    py tools/town.py <seed> [style=plateau|ridges] [name=TutA_Town] [pilot=1] [shift=-5300] [rerolls=3] [sun=low|stock]
 
 island (terrain tool sketch, formed + eroded) -> layout (interest maps, roads, Voronoi drift) -> systems
 (provides/needs, connections; an unmet core need re-rolls the layout with the next seed) -> pads -> TutA
@@ -25,6 +25,7 @@ PILOT = o.get("pilot", "1") != "0"
 SHIFT = o.get("shift", "-5300")
 COMPOSE = o.get("compose", "1") != "0"   # score layouts through the command room window and keep the best
 REROLLS = int(o.get("rerolls", 6 if COMPOSE else 3))
+SUN = o.get("sun", "low")              # low = re-aim the baked sun at the sky's painted one (lowsun.py); stock = leave it
 METHOD = o.get("method", "spine")      # spine = street first, plots along it (layout_spine.py); interest = layout.py
 name = "%s%d" % (NAME, seed)
 RUN = os.path.join(r"C:\Users\john\Documents\U2_research\towns", name)
@@ -108,6 +109,10 @@ with open(t3d, "a") as f:                      # one import: the clutter actors 
     f.write("\n" + body[body.index("\n") + 1:body.rindex("End Map")])
 step("populate", lambda: ib.populate(name, t3d, layout, base))
 ib.enable_map(name)
+if SUN == "low":
+    step("low sun", lambda: ib.run(["py", os.path.join(TOOLS, "lowsun.py"), name, "out=" + name, "el=10", "az=136", "hue=24", "sat=100", "bright=150"], retries=1))
+# motion in the view: plumes from the sheets' motion: keys, trucks on the spine, the reveal pass (U2AvalonCards.ini)
+step("motion", lambda: ib.run(["py", os.path.join(TOOLS, "motion.py"), layout]))
 
 # 7. the game
 sheet = None

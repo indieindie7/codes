@@ -13,5 +13,6 @@ wear: 0.1
 lit: yes
 ref: cooling_tower
 card: TwinTowersHY 2600
+motion: steam
 
 The tallest things in the plant, still far below the Authority's tower. Steam when the line runs.

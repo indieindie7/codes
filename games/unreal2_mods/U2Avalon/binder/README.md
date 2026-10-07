@@ -26,6 +26,7 @@ Building header keys (binder/buildings/*.md):
     lit: yes | no               has working lights (glow strips)
     abandoned: yes              (optional)
     ref: processing_hall        which ref sheet / scripted type it answers to for the silhouette check
+    motion: steam | smoke | flare   (optional) a plume over it in game (tools/motion.py -> AvalonPlume)
 
 Citizen header keys (binder/citizens/*.md):
 

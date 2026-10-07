@@ -5,6 +5,7 @@ layer: boom
 kind: hall
 at: 15700 2400 300
 size: 16 10 7
+motion: smoke
 users: hands plant_staff
 doors: front:roller left:personnel back:personnel
 roof: flat

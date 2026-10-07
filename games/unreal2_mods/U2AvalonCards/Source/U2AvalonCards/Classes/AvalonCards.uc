@@ -66,6 +66,27 @@ var config string FlyerMesh;
 var config vector FlyerCentre;
 var config float FlyerRadius, FlyerSpeed, FlyerScale;
 
+// plumes over the plant (AvalonPlume), one per line: "X Y Z Kind Width Rise" - Kind 0 smoke, 1 steam,
+// 2 flare (flame + light + smoke); Z = the source's height over whatever is under it (a mesh's roof, the
+// ground under a card, the sea); Width = the column at the source,
+// Rise = how far a puff climbs (world units). Wind = the drift (units/s) for all of them.
+var config string Plumes[16];
+var config vector Wind;
+var config string SmokeTexture, FireTexture, SteamTexture;
+var config int SmokeStyle;         // ERenderStyle for dark smoke (6 = STY_Alpha, 5 = Modulated, 3 = Translucent)
+
+// trucks on the roads (AvalonTruck), one per line: "Package.Group.Mesh Scale Speed Path Start Lift" -
+// Path = index into Paths[], Start = where along it (0..1). Paths[] = "X Y X Y ..." polylines (the spine).
+var config string Trucks[8];
+var config string Paths[4];
+
+// the staged reveal: the first time the player comes down below RevealBelowZ (out of the command deck),
+// a dropship (FlyerMesh) makes one low pass RevealFrom -> RevealTo with RevealSound. RevealBelowZ 0 = off.
+var config float RevealBelowZ, RevealSpeed, RevealScale;
+var config vector RevealFrom, RevealTo;
+var config string RevealSound;
+var bool bRevealed;
+
 var bool bRebuild;
 var array<Actor> Made;
 var Texture TreeTex[3];
@@ -96,6 +117,78 @@ event Timer()
 	{
 		bRebuild = false;
 		Build();
+	}
+	if (!bRevealed && RevealBelowZ != 0)
+		CheckReveal();
+}
+
+function CheckReveal()
+{
+	local Controller C;
+	local StaticMesh M;
+	local AvalonFlyer F;
+	local Sound S;
+
+	for (C = Level.ControllerList; C != None; C = C.NextController)
+		if (PlayerController(C) != None && C.Pawn != None && C.Pawn.Location.Z < RevealBelowZ && C.Pawn.Location.Z > RevealBelowZ - 1500)
+		{
+			bRevealed = true;
+			M = StaticMesh(DynamicLoadObject(FlyerMesh, class'StaticMesh', true));
+			if (RevealSound != "")
+				S = Sound(DynamicLoadObject(RevealSound, class'Sound', true));
+			F = Spawn(class'AvalonFlyer',,, RevealFrom);
+			if (F != None && M != None)
+				F.Pass(M, RevealFrom, RevealTo, RevealSpeed, RevealScale, S);
+			Log("Cards: reveal pass at "$C.Pawn.Location$" "$F);
+			return;
+		}
+}
+
+function Motion()
+{
+	local int i;
+	local vector P, HitL, HitN;
+	local Texture ST, FT, WT;
+	local AvalonPlume Pl;
+	local AvalonTruck T;
+	local StaticMesh M;
+
+	ST = Texture(DynamicLoadObject(SmokeTexture, class'Texture', true));
+	FT = Texture(DynamicLoadObject(FireTexture, class'Texture', true));
+	WT = Texture(DynamicLoadObject(SteamTexture, class'Texture', true));
+	for (i = 0; i < ArrayCount(Plumes); i++)
+	{
+		if (Plumes[i] == "")
+			continue;
+		P.X = float(Word(Plumes[i], 0));
+		P.Y = float(Word(Plumes[i], 1));
+		P.Z = 0;
+		if (Ground(P, HitL, HitN))
+			P.Z = HitL.Z;
+		P.Z += float(Word(Plumes[i], 2));
+		Pl = Spawn(class'AvalonPlume',,, P);
+		if (Pl == None)
+			continue;
+		Pl.Setup(int(Word(Plumes[i], 3)), float(Word(Plumes[i], 4)), float(Word(Plumes[i], 5)), Wind, ST, FT, SmokeStyle, WT);
+		Made[Made.Length] = Pl;
+		Log("Cards: plume "$Plumes[i]);
+	}
+	for (i = 0; i < ArrayCount(Trucks); i++)
+	{
+		if (Trucks[i] == "")
+			continue;
+		M = StaticMesh(DynamicLoadObject(Word(Trucks[i], 0), class'StaticMesh', true));
+		if (M == None || Paths[Clamp(int(Word(Trucks[i], 3)), 0, 3)] == "")
+		{
+			Log("Cards: truck skipped "$Trucks[i]);
+			continue;
+		}
+		T = Spawn(class'AvalonTruck',,, vect(0,0,0));
+		if (T == None)
+			continue;
+		T.Setup(M, float(Word(Trucks[i], 1)), Paths[Clamp(int(Word(Trucks[i], 3)), 0, 3)], float(Word(Trucks[i], 2)), float(Word(Trucks[i], 4)), float(Word(Trucks[i], 5)));
+		Made[Made.Length] = T;
+		Log("Cards: truck "$Trucks[i]$" at "$T.Location);
 	}
 }
 
@@ -230,6 +323,7 @@ function Build()
 	Made.Length = 0;
 	Haze();
 	Fly();
+	Motion();
 
 	// the landing pad and the dropship on it
 	if (PadMesh != "" && Ground(PadSpot, HitL, HitN))
@@ -446,5 +540,11 @@ defaultproperties
 	RigTex(5)=Texture'Rig5'
 	RigTex(6)=Texture'Rig6'
 	RigTex(7)=Texture'Rig7'
+	SmokeTexture="U2AvalonCards.SmokePuff"
+	FireTexture="SpecialFX.Fire.fireball_tw018"
+	SteamTexture="U2AvalonCards.SteamPuff"
+	SmokeStyle=6
+	RevealSpeed=3000.000000
+	RevealScale=1.000000
 	RemoteRole=ROLE_None
 }

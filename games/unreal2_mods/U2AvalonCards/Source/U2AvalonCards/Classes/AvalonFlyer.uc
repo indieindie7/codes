@@ -12,6 +12,9 @@ var float Radius;         // world units
 var float Speed;          // world units per second along the circle
 var float Angle;          // where on the circle (radians)
 var int Bank;             // roll into the turn (rotator units)
+var bool bPass;           // a one-shot straight pass (the staged reveal) instead of the circle
+var vector PassFrom, PassTo;
+var float PassT, PassTime;
 
 function Setup(StaticMesh M, vector C, float R, float S, float Scale, float Start)
 {
@@ -24,6 +27,22 @@ function Setup(StaticMesh M, vector C, float R, float S, float Scale, float Star
 	Tick(0);
 }
 
+// a straight pass from A to B at speed S, then gone; Snd plays once as it starts
+function Pass(StaticMesh M, vector A, vector B, float S, float Scale, Sound Snd)
+{
+	StaticMesh = M;
+	SetDrawScale(Scale);
+	bPass = True;
+	PassFrom = A;
+	PassTo = B;
+	PassTime = VSize(B - A) / FMax(S, 100);
+	PassT = 0;
+	SetLocation(A);
+	SetRotation(rotator(B - A));
+	if (Snd != None)
+		PlaySound(Snd, SLOT_None, 2.0, false, 40000, 1.0, true);
+}
+
 event Tick(float DeltaTime)
 {
 	local vector P, Dir;
@@ -31,6 +50,18 @@ event Tick(float DeltaTime)
 
 	if (StaticMesh == None)
 		return;
+	if (bPass)
+	{
+		PassT += DeltaTime;
+		if (PassT >= PassTime)
+		{
+			Destroy();
+			return;
+		}
+		P = PassFrom + (PassTo - PassFrom) * (PassT / PassTime);
+		SetLocation(P);
+		return;
+	}
 	Angle += DeltaTime * Speed / Radius;
 	P = Centre;
 	P.X += Radius * Cos(Angle);
