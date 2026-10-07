@@ -34,6 +34,19 @@ Masks: `<frame>_mask.png` or `_mask.bmp` next to a frame, or `--masks DIR`; whit
 The d3d8to9 fork writes them (`shotmask=1`, or AdventNative's `CaptureMask`), and Advent's pilot step
 `randomprints N [settle]` takes N frames with masks from random places, every other one beside a character.
 
+## Saliency
+
+UNISAL (Apache-2.0, ECCV 2020, trained on human eye fixations) when `Documents\Tools\unisal` is there
+(`git clone https://github.com/rdroste/unisal`, weights included; needs the CPU PyTorch in the venv:
+`pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu`).
+About 0.07 s a frame on the CPU. Otherwise, or with `--saliency spectral`, OpenCV's spectral residual.
+
+## HUD contrast
+
+With 4 or more frames, the HUD is found as the pixels that stay the same (and aren't dark) across
+them, so frames from different places are needed. Each frame's HUD is checked against what is behind
+it (WCAG contrast ratio; flagged under 3:1, the floor for large text and UI parts).
+
 ## Licences
 
 Everything used here is permissive (OpenCV Apache-2.0, FLIP BSD-3, numpy/scipy/Pillow BSD-style).
@@ -41,4 +54,4 @@ Non-commercial or unlicensed models from the research notes (pyiqa, DeepGaze, UM
 
 ## Not yet
 
-A random-prints step for Unreal II's pilot, UNISAL saliency, HUD text contrast, and glitch checks beyond missing textures and black characters.
+A random-prints step for Unreal II's pilot, and glitch checks that need two frames (z-fighting, shimmer).
