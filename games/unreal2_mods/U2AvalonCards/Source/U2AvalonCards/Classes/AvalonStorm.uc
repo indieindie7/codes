@@ -1,10 +1,14 @@
 //=============================================================================
-// AvalonStorm - a storm over the map: the outdoor zones' fog pulled in and
-// darkened, rain falling round the player (recycled streaks, none where a roof
-// is overhead), rain and wind loops, and lightning: a white flash on the
-// screen and in the fog, then thunder a few seconds later, nearer = sooner.
-// Engine only: zone fog, sprites, PlayerController.ClientFlash, ambient
-// sounds. Spawned and configured by AvalonCards (Storm* keys).
+// AvalonStorm - weather over the map that comes and goes. Between storms the
+// outdoor zones keep the clear haze (AvalonCards Haze*); a storm builds over
+// Ramp seconds, holds, and clears again. Its strength (Intensity 0..1) drives:
+// the fog pulled in and greyed, a gloom over the whole view (the sky box takes
+// no fog), a cloud deck of giant dark puffs round and over the player, rain
+// falling round the player (none where a roof is overhead), the rain and wind
+// loops, and lightning (only near full strength): a white flash on the screen
+// and in the fog, then thunder a few seconds later, nearer = sooner.
+// Engine only: zone fog, sprites, PlayerController flash/glow, ambient sounds.
+// Spawned and configured by AvalonCards (Storm* keys).
 //=============================================================================
 class AvalonStorm extends Actor;
 
@@ -17,15 +21,23 @@ var float CloudTurn;
 var float Radius, Fall, Top;
 var vector Wind;
 var array<ZoneInfo> Zones;
-var array<color> ZoneColour;
+var array<float> ClearStart, ClearEnd;    // each zone's own (clear weather) fog
+var array<color> ClearColour;
+var array<byte> ClearOn;
+var float StormStart, StormEnd, SkyEnd;
 var color FogColour, FlashColour;
 var float NextBolt, ThunderAt, Flash;
 var Sound Thunder[5];
 var int NThunder;
 var Actor WindSnd;
-var float Gloom;          // the whole view darkened by this much (0..1) and greyed: the sky box ignores fog
+var float Gloom;          // the whole view darkened by this much (0..1) at full strength, and greyed
 var vector GloomFog;
 var PlayerController Gloomed;
+var float GloomOn;        // how much of it is applied now
+
+// the cycle: Clear s of clear weather, Ramp s building, Hold s of storm, Ramp s clearing; Clear 0 = always storm
+var float ClearTime, RampTime, HoldTime, PhaseT, Intensity;
+var int Phase;
 
 function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float FogEnd, color Fog, Sound Rain, Sound WindLoop, float SkyFogEnd)
 {
@@ -38,26 +50,23 @@ function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float
 	Wind = Wd;
 	Top = 1400;
 	FogColour = Fog;
+	StormStart = FogStart;
+	StormEnd = FogEnd;
+	SkyEnd = SkyFogEnd;
 	FlashColour.R = 230;
 	FlashColour.G = 235;
 	FlashColour.B = 255;
 	foreach AllActors(class'ZoneInfo', Z)
-		if (Z.bDistanceFog)
+		if (Z.bDistanceFog || (Z.IsA('SkyZoneInfo') && SkyFogEnd > 0))
 		{
-			Z.DistanceFogStart = FogStart;
-			Z.DistanceFogEnd = FogEnd;
-			Z.DistanceFogColor = Fog;
 			Zones[Zones.Length] = Z;
-		}
-		else if (Z.IsA('SkyZoneInfo') && SkyFogEnd > 0)
-		{
-			// the sky box is a small room seen from its middle: fog it nearly through to grey
-			// (the painted sun and blue sky would say "fine weather" over everything else)
-			Z.bDistanceFog = True;
-			Z.DistanceFogStart = 0;
-			Z.DistanceFogEnd = SkyFogEnd;
-			Z.DistanceFogColor = Fog;
-			Zones[Zones.Length] = Z;
+			ClearStart[ClearStart.Length] = Z.DistanceFogStart;
+			ClearEnd[ClearEnd.Length] = Z.DistanceFogEnd;
+			ClearColour[ClearColour.Length] = Z.DistanceFogColor;
+			if (Z.bDistanceFog)
+				ClearOn[ClearOn.Length] = 1;
+			else
+				ClearOn[ClearOn.Length] = 0;
 		}
 	for (i = 0; i < N; i++)
 	{
@@ -73,7 +82,6 @@ function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float
 	}
 	// the loops: rain on this actor, wind on a second one (one ambient sound per actor)
 	AmbientSound = Rain;
-	SoundVolume = 190;
 	SoundRadius = 255;
 	if (WindLoop != None)
 	{
@@ -82,11 +90,34 @@ function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float
 		{
 			WindSnd.bHidden = True;
 			WindSnd.AmbientSound = WindLoop;
-			WindSnd.SoundVolume = 160;
 			WindSnd.SoundRadius = 255;
 		}
 	}
 	NextBolt = Level.TimeSeconds + 4;
+	Intensity = 1;
+	Phase = 2;
+}
+
+// Clear 0 = a storm that never ends; otherwise start somewhere in the cycle
+function Cycle(float Clear, float Ramp, float Hold)
+{
+	ClearTime = Clear;
+	RampTime = FMax(Ramp, 1);
+	HoldTime = FMax(Hold, 1);
+	if (Clear <= 0)
+		return;
+	Phase = Rand(4);
+	PhaseT = FRand() * 0.8 * PhaseLength();
+}
+
+function float PhaseLength()
+{
+	switch (Phase)
+	{
+	case 0: return ClearTime;
+	case 2: return HoldTime;
+	}
+	return RampTime;
 }
 
 // the cloud deck: a ring low round the horizon and a lid overhead, so the sky box's painted sun and
@@ -144,7 +175,7 @@ function vector Eye()
 }
 
 // a drop back to the top of the column round the eye (anywhere in it on the first fill); hidden
-// when something is overhead (indoors, under a deck)
+// when something is overhead (indoors, under a deck) or the storm is too light for it
 function Drop(AvalonPuff P, bool bAnyHeight)
 {
 	local vector E, S;
@@ -161,7 +192,7 @@ function Drop(AvalonPuff P, bool bAnyHeight)
 		S.Z -= FRand() * Top * 1.8;
 	P.SetLocation(S);
 	P.Start = S;
-	P.bHidden = !FastTrace(S + vect(0,0,6000), S);
+	P.bHidden = FRand() > Intensity || !FastTrace(S + vect(0,0,6000), S);
 }
 
 event Tick(float DeltaTime)
@@ -174,20 +205,19 @@ event Tick(float DeltaTime)
 
 	E = Eye();
 	SetLocation(E);
-	// the storm light over the whole view (PlayerController's constant glow), once per player controller
-	if (Gloom > 0 && Level.PlayerControllerList != None && Level.PlayerControllerList != Gloomed)
-	{
-		Gloomed = Level.PlayerControllerList;
-		Gloomed.ClientAdjustGlow(-Gloom, GloomFog);
-	}
+	Weather(DeltaTime);
 	if (WindSnd != None)
 		WindSnd.SetLocation(E);
-	// the cloud deck turns slowly round the player (the clouds move with the wind)
+	// the cloud deck turns slowly round the player (the clouds move with the wind); the deck thins
+	// out as the storm clears
 	CloudTurn += DeltaTime * 0.004;
 	Spin.Yaw = int(CloudTurn * 10430.4);      // radians -> rotator units
 	for (i = 0; i < Clouds.Length; i++)
 		if (Clouds[i] != None)
+		{
 			Clouds[i].SetLocation(E + (CloudAt[i] >> Spin));
+			Clouds[i].bHidden = (i + 0.5) / Clouds.Length > Intensity * 1.15;
+		}
 	M = Wind;
 	M.Z = -Fall;
 	for (i = 0; i < Drops.Length; i++)
@@ -199,20 +229,22 @@ event Tick(float DeltaTime)
 		if (P.Location.Z < E.Z - Top * 0.8 || VSize((P.Location - E) * vect(1,1,0)) > Radius * 1.2)
 			Drop(P, false);
 	}
-	// lightning: a flash now, the thunder later
+	// lightning, only in the thick of it: a flash now, the thunder later
 	if (Level.TimeSeconds >= NextBolt)
 	{
-		Bolt();
+		if (Intensity > 0.75)
+			Bolt();
 		NextBolt = Level.TimeSeconds + 7 + FRand() * 14;
 	}
+	F = 0;
 	if (Flash > 0)
 	{
 		Flash -= DeltaTime;
 		F = FClamp(Flash / 0.35, 0, 1);
 		if (FRand() < 0.15)
 			F *= 0.3;                             // the flicker of a real bolt
-		SetFog(F);
 	}
+	SetFog(F);
 	if (ThunderAt > 0 && Level.TimeSeconds >= ThunderAt)
 	{
 		ThunderAt = 0;
@@ -221,17 +253,81 @@ event Tick(float DeltaTime)
 	}
 }
 
-function SetFog(float F)
+// the cycle, and what the strength sets: the loops' volume and the gloom over the view
+function Weather(float DeltaTime)
+{
+	local float G;
+
+	if (ClearTime > 0)
+	{
+		PhaseT += DeltaTime;
+		if (PhaseT >= PhaseLength())
+		{
+			PhaseT = 0;
+			Phase = (Phase + 1) % 4;
+			Log("Cards: weather phase "$Phase);
+		}
+		switch (Phase)
+		{
+		case 0: Intensity = 0; break;
+		case 1: Intensity = PhaseT / RampTime; break;
+		case 2: Intensity = 1; break;
+		case 3: Intensity = 1 - PhaseT / RampTime; break;
+		}
+		Intensity = Intensity * Intensity * (3 - 2 * Intensity);    // smoothstep: eases in and out
+	}
+	SoundVolume = int(190 * Intensity);
+	if (WindSnd != None)
+		WindSnd.SoundVolume = int(60 + 120 * Intensity);
+	// the gloom: PlayerController's constant glow, adjusted by the change since last time
+	if (Level.PlayerControllerList != Gloomed)
+	{
+		Gloomed = Level.PlayerControllerList;
+		GloomOn = 0;
+	}
+	if (Gloomed != None)
+	{
+		G = Gloom * Intensity;
+		if (Abs(G - GloomOn) > 0.005)
+		{
+			Gloomed.ClientAdjustGlow(-(G - GloomOn), GloomFog * ((G - GloomOn) / FMax(Gloom, 0.001)));
+			GloomOn = G;
+		}
+	}
+}
+
+// each zone's fog between its clear weather and the storm's, and the lightning's white on top
+function SetFog(float Flsh)
 {
 	local int i;
-	local color C;
+	local color C, S;
+	local float W;
 
-	C.R = FogColour.R + (FlashColour.R - FogColour.R) * F;
-	C.G = FogColour.G + (FlashColour.G - FogColour.G) * F;
-	C.B = FogColour.B + (FlashColour.B - FogColour.B) * F;
+	W = Intensity;
 	for (i = 0; i < Zones.Length; i++)
-		if (Zones[i] != None)
-			Zones[i].DistanceFogColor = C;
+	{
+		if (Zones[i] == None)
+			continue;
+		S = FogColour;
+		if (Zones[i].IsA('SkyZoneInfo'))
+		{
+			Zones[i].bDistanceFog = W > 0.05 || ClearOn[i] == 1;
+			Zones[i].DistanceFogStart = ClearStart[i] * (1 - W);
+			Zones[i].DistanceFogEnd = Lerp(W, FMax(ClearEnd[i], SkyEnd * 20), SkyEnd);
+		}
+		else
+		{
+			Zones[i].DistanceFogStart = Lerp(W, ClearStart[i], StormStart);
+			Zones[i].DistanceFogEnd = Lerp(W, ClearEnd[i], StormEnd);
+		}
+		C.R = ClearColour[i].R + (S.R - ClearColour[i].R) * W;
+		C.G = ClearColour[i].G + (S.G - ClearColour[i].G) * W;
+		C.B = ClearColour[i].B + (S.B - ClearColour[i].B) * W;
+		C.R = C.R + (FlashColour.R - C.R) * Flsh;
+		C.G = C.G + (FlashColour.G - C.G) * Flsh;
+		C.B = C.B + (FlashColour.B - C.B) * Flsh;
+		Zones[i].DistanceFogColor = C;
+	}
 }
 
 function Bolt()
@@ -252,8 +348,8 @@ event Destroyed()
 {
 	local int i;
 
-	if (Gloomed != None)
-		Gloomed.ClientAdjustGlow(Gloom, -GloomFog);
+	if (Gloomed != None && GloomOn > 0)
+		Gloomed.ClientAdjustGlow(GloomOn, -GloomFog * (GloomOn / FMax(Gloom, 0.001)));
 	for (i = 0; i < Drops.Length; i++)
 		if (Drops[i] != None)
 			Drops[i].Destroy();

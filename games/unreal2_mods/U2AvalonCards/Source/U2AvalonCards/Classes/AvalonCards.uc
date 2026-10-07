@@ -99,6 +99,7 @@ var config int StormDrops;
 var config float StormRadius, StormFall, StormFogStart, StormFogEnd, StormSkyFogEnd;   // StormSkyFogEnd: the sky box's fog (0 = leave the sky)
 var config color StormFogColour;
 var config string StormRain, StormWind, StormThunder[5];
+var config float StormClear, StormRamp, StormHold;   // the cycle in seconds; StormClear 0 = always storm
 var config float StormGloom;       // 0..1: how much darker the whole view gets (the sky box takes no fog)
 var config vector StormGloomFog;   // the grey added (0..1000 per channel)
 var config int StormClouds;        // how many giant puffs in the cloud deck (0 = none)
@@ -108,6 +109,18 @@ var config float StormCloudSize;
 // one announcement every PAMinGap..PAMaxGap seconds, PARadius / PAVolume; no spots = off.
 var config string PASpots[6];
 var config float PAMinGap, PAMaxGap, PARadius, PAVolume;
+
+// the backwater posting (binder: Hawkins's punishment post, Oduya's board, the Thursday power cut):
+// RadioSpot = the command room's radio (AvalonRadio, absolute position; X=0,Y=0 = off) with a static bed;
+// a brownout in the tower every BrownoutMinGap..BrownoutMaxGap s (AvalonBrownout; 0 = off);
+// DecayLamp = the Authority pad's failing light (AvalonFlicker; "X Y Lift", "" = off)
+var config vector RadioSpot;
+var config float RadioMinGap, RadioMaxGap, RadioVolume;
+var config string RadioStatic;
+var config vector TowerSpot;
+var config float BrownoutMinGap, BrownoutMaxGap, BrownoutDepth;
+var config string BrownoutDown, BrownoutUp;
+var config string DecayLamp, DecayBuzz;
 
 var bool bRebuild;
 var array<Actor> Made;
@@ -195,6 +208,59 @@ function Speakers()
 	Log("Cards: public address, "$PA.Speakers.Length$" loudspeakers");
 }
 
+function Backwater()
+{
+	local AvalonRadio R;
+	local AvalonBrownout B;
+	local AvalonFlicker F;
+	local AvalonPuff S;
+	local vector P, HitL, HitN;
+
+	if (RadioSpot.X != 0 || RadioSpot.Y != 0)
+	{
+		R = Spawn(class'AvalonRadio');
+		if (R != None)
+		{
+			R.AddSpeaker(RadioSpot);
+			S = AvalonPuff(R.Speakers[0]);
+			if (S != None && RadioStatic != "")
+			{
+				S.AmbientSound = Sound(DynamicLoadObject(RadioStatic, class'Sound', true));
+				S.SoundVolume = 30;
+				S.SoundRadius = 30;
+			}
+			R.Begin(RadioMinGap, RadioMaxGap, 3000, RadioVolume);
+			Made[Made.Length] = R;
+		}
+	}
+	if (BrownoutMinGap > 0)
+	{
+		B = Spawn(class'AvalonBrownout');
+		if (B != None)
+		{
+			B.Begin(TowerSpot, 2600, TowerSpot.Z, BrownoutMinGap, BrownoutMaxGap, BrownoutDepth,
+				Sound(DynamicLoadObject(BrownoutDown, class'Sound', true)), Sound(DynamicLoadObject(BrownoutUp, class'Sound', true)));
+			Made[Made.Length] = B;
+		}
+	}
+	if (DecayLamp != "")
+	{
+		P.X = float(Word(DecayLamp, 0));
+		P.Y = float(Word(DecayLamp, 1));
+		P.Z = 0;
+		if (Ground(P, HitL, HitN))
+			P.Z = HitL.Z;
+		P.Z += float(Word(DecayLamp, 2));
+		F = Spawn(class'AvalonFlicker',,, P);
+		if (F != None)
+		{
+			F.Begin(Sound(DynamicLoadObject(DecayBuzz, class'Sound', true)));
+			Made[Made.Length] = F;
+		}
+	}
+	Log("Cards: backwater radio "$R$" brownout "$B$" lamp "$F);
+}
+
 function Storm()
 {
 	local AvalonStorm St;
@@ -209,6 +275,7 @@ function Storm()
 		Sound(DynamicLoadObject(StormRain, class'Sound', true)), Sound(DynamicLoadObject(StormWind, class'Sound', true)), StormSkyFogEnd);
 	St.Overcast(Texture(DynamicLoadObject(SmokeTexture, class'Texture', true)), StormClouds, StormCloudSize);
 	St.Gloom = StormGloom;
+	St.Cycle(StormClear, StormRamp, StormHold);
 	St.GloomFog = StormGloomFog;
 	for (i = 0; i < 5; i++)
 		if (StormThunder[i] != "")
@@ -399,6 +466,7 @@ function Build()
 	Motion();
 	Storm();
 	Speakers();
+	Backwater();
 
 	// the landing pad and the dropship on it
 	if (PadMesh != "" && Ground(PadSpot, HitL, HitN))
@@ -624,6 +692,22 @@ defaultproperties
 	SmokeStyle=6
 	RevealSpeed=3000.000000
 	PAMinGap=45.000000
+	RadioSpot=(X=-349.000000,Y=1388.000000,Z=4330.000000)
+	RadioMinGap=50.000000
+	RadioMaxGap=120.000000
+	RadioVolume=1.200000
+	RadioStatic="U2Ambient2A.Transmissions.transmission_static_loop_1"
+	TowerSpot=(X=-349.000000,Y=1388.000000,Z=3300.000000)
+	BrownoutMinGap=480.000000
+	BrownoutMaxGap=900.000000
+	BrownoutDepth=0.550000
+	BrownoutDown="U2Ambient2A.Generator.generator_power_dwn_1"
+	BrownoutUp="U2Ambient2A.Generator.building_power_up_1"
+	DecayLamp="1330 279 450"
+	DecayBuzz="U2AmbientA.Electric.Elecsparksloop0"
+	StormClear=300.000000
+	StormRamp=60.000000
+	StormHold=240.000000
 	PAMaxGap=110.000000
 	PARadius=16000.000000
 	PAVolume=2.000000

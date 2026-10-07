@@ -1,6 +1,10 @@
-r"""The Liandri public address: binder/pa_lines.md -> loudspeaker WAVs for U2AvalonCards (AvalonPA).
+r"""The Liandri public address and the tower radio: binder/pa_lines.md -> loudspeaker WAVs (AvalonPA),
+binder/radio_lines.md -> radio WAVs (AvalonRadio), for U2AvalonCards.
 
     py tools/pa_voice.py [out dir ...]
+
+Radio lines (`id | voice | text`, a voice per caller) get a narrower, harsher band, a squelch click and a
+burst of static at each end instead of the chime and the echoes.
 
 Piper TTS (Documents\Tools\piper_voices) speaks each line; then it is made to sound like a company
 loudspeaker heard across a town: a two-tone chime first, telephone band (300-3400 Hz), a little clipping,
@@ -20,6 +24,21 @@ def lines():
     txt = open(os.path.join(HERE, "binder", "pa_lines.md"), encoding="utf-8").read()
     voice = re.search(r"(?m)^voice:\s*(\S+)", txt).group(1)
     return voice, re.findall(r"(?m)^(pa\d+)\s*\|\s*(.+)$", txt)
+
+
+def radio_lines():
+    txt = open(os.path.join(HERE, "binder", "radio_lines.md"), encoding="utf-8").read()
+    return re.findall(r"(?m)^(r\d+)\s*\|\s*(\S+)\s*\|\s*(.+)$", txt)
+
+
+def radio(a):
+    rng = np.random.default_rng(len(a))
+    a = sosfilt(butter(4, [450, 2800], "bandpass", fs=SR, output="sos"), a)
+    a = np.tanh(a * 3.5) / np.tanh(3.5)
+    burst = lambda n: sosfilt(butter(2, [800, 4000], "bandpass", fs=SR, output="sos"), rng.normal(0, 0.35, n))
+    click = np.zeros(int(0.02 * SR)); click[0] = 0.9
+    hiss = rng.normal(0, 0.015, len(a))
+    return np.concatenate([click, burst(int(0.18 * SR)), a + hiss, burst(int(0.25 * SR)), click])
 
 
 def speak(voice, text):
@@ -78,3 +97,8 @@ if __name__ == "__main__":
         for d in outs:
             write(os.path.join(d, pid.upper() + ".wav"), a)
         print(pid, "%.1f s" % (len(a) / SR), text[:60])
+    for rid, rvoice, text in radio_lines():
+        a = radio(speak(rvoice, text))
+        for d in outs:
+            write(os.path.join(d, "RADIO" + rid[1:] + ".wav"), a)
+        print(rid, rvoice, "%.1f s" % (len(a) / SR), text[:50])

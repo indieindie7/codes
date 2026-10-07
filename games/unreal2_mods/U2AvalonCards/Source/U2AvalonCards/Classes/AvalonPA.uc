@@ -22,6 +22,7 @@ class AvalonPA extends Actor;
 #exec AUDIO IMPORT FILE=Sounds\PA12.wav NAME=PA12
 
 var Sound Lines[12];
+var int NumLines;        // how many of Lines[] are used
 var array<Actor> Speakers;
 var float MinGap, MaxGap, Radius, Volume;
 var int Last;
@@ -52,9 +53,9 @@ event Timer()
 {
 	local int i, k;
 
-	k = Rand(12);
+	k = Rand(NumLines);
 	if (k == Last)
-		k = (k + 1) % 12;
+		k = (k + 1) % NumLines;
 	Last = k;
 	for (i = 0; i < Speakers.Length; i++)
 		if (Speakers[i] != None)
@@ -85,6 +86,7 @@ defaultproperties
 	Lines(9)=Sound'PA10'
 	Lines(10)=Sound'PA11'
 	Lines(11)=Sound'PA12'
+	NumLines=12
 	DrawType=DT_None
 	bHidden=True
 	bStatic=False
