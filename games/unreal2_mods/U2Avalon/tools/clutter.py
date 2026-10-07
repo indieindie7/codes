@@ -87,10 +87,17 @@ def footing(x, y):
     return min(c)
 
 
+SEEN = np.load(o["vis"])["seen"] if o.get("vis") else None   # vis=<viewshed npz>: skip props nobody can see
+
+
 def actor(mesh, x, y, yaw_deg, scale=1.0, lift=0.0):
     z = ground(x, y)
     if z is None or z <= SEA_Z + 20:
         return
+    if SEEN is not None:
+        i_, j_ = int(round((x - LOC[0]) / CELL + N / 2)), int(round((y - LOC[1]) / CELL + N / 2))
+        if 0 <= i_ < N and 0 <= j_ < N and SEEN[j_, i_] == 0:
+            return                         # film set: off camera, not built
     if any(k in mesh for k in ("Rock", "Tree", "LampPost", "Crate", "crate", "Barrel", "Fence")):
         z = footing(x, y)                  # props stand on the lowest corner: bedded, never floating
         if z is None:
@@ -277,4 +284,4 @@ if WALL and BEFORE and os.path.exists(BEFORE):
                                   % (WALL, x, y, min(Z[j, i], Z[nj, ni]) - 10, int(yawd * 65536 / 360), max(0.6, hgt / 110.0), cull_of(WALL)))
                     n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
-print(f"clutter: {n_road} road slabs, {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
+print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")

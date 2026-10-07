@@ -45,6 +45,10 @@ step("island", lambda: ib.run(["py", os.path.join(TOOLS, "island_form.py"), seed
                                "png=" + base + "_sketch.png", "style=" + STYLE]))
 # the stock island's relief: hills as tall as TutA's own, the plain kept at the tower's foot
 step("relief", lambda: ib.run(["py", os.path.join(TOOLS, "relief_match.py"), base + "_e.bmp", ib.TEMPLATE]))
+# the camera: what the player can see from the playable area (the tower's NavigationPoints); the layout
+# puts the story's buildings where it looks, clutter goes only where it looks (film-set rule)
+NAV = os.path.join(os.path.dirname(TOOLS), "data", "navpoints_TutA.json")
+step("viewshed", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), base + "_e.bmp", NAV, "-", base]))
 score = subprocess.run(["py", os.path.join(os.path.dirname(os.path.dirname(HERE)), "..", "tools", "python", "terrain", "terrain_tool.py")
                         if False else ib.TERRAIN, "score", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02"],
                        capture_output=True, text=True).stdout
@@ -58,7 +62,7 @@ for k in range(REROLLS):
     cand = base + "_layout_%d.json" % lseed
     tool = "layout_spine.py" if METHOD == "spine" else "layout.py"
     step("layout %s (seed %d)" % (METHOD, lseed), lambda: ib.run(["py", os.path.join(TOOLS, tool), base + "_e.bmp", cand,
-                                                                  "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png"]))
+                                                                  "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png", "vis=" + base + "_vis.npz"]))
     Lc, core_unmet = systems.run(cand, report=True)
     key = (len(core_unmet), -Lc["systems"]["score"])
     if best is None or key < best[0]:
@@ -77,6 +81,7 @@ open(os.path.join(RUN, "systems.txt"), "w").write(
 # 4. pads, 5. terrain into TutA, 6. the buildings as actors + lighting + editor pictures
 step("pads + roads", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout]))
 ib.island_png(base + "_ec.bmp", base + "_map.png")
+step("viewshed (final ground)", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), base + "_ec.bmp", NAV, layout, base]))
 # the citizens' routines walked on the graded ground: desire lines, door wants, travel-time checks
 step("walks", lambda: ib.run(["py", os.path.join(TOOLS, "walks.py"), base + "_ec.bmp", layout, "png=" + base + "_walks.png"]))
 L = json.load(open(layout))
@@ -89,7 +94,7 @@ step("export", lambda: ib.run(["py", os.path.join(TOOLS, "export_mutator.py"), "
                                "heightmap=" + base + "_ec.bmp", "props=0"]))
 # clutter and vegetation: lamps along the trunk roads, crates and barrels in the yards, fences, rocks, trees
 clut = base + "_clutter.t3d"
-step("clutter", lambda: ib.run(["py", os.path.join(TOOLS, "clutter.py"), base + "_ec.bmp", layout, clut, "seed=%d" % seed, "before=" + base + "_e.bmp"]))
+step("clutter", lambda: ib.run(["py", os.path.join(TOOLS, "clutter.py"), base + "_ec.bmp", layout, clut, "seed=%d" % seed, "before=" + base + "_e.bmp", "vis=" + base + "_vis.npz"]))
 with open(t3d, "a") as f:                      # one import: the clutter actors are appended to the buildings' T3D
     body = open(clut).read()
     f.write("\n" + body[body.index("\n") + 1:body.rindex("End Map")])
@@ -125,7 +130,7 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
            sum(1 for w in L.get("walks", []) if w.get("path")), sum((w.get("m") or 0) * w.get("n", 1) for w in L.get("walks", [])) / 1000),
        *("- " + c for c in L.get("walk_checks", [])), "- (none)" if not L.get("walk_checks") else "", "",
        "## Terrain", "```", score.strip(), "```", "",
-       "## Pictures", "- sketch: isl_sketch.png", "- layout: isl_layout.png", "- pads: isl_map.png", "- walks: isl_walks.png",
+       "## Pictures", "- sketch: isl_sketch.png", "- layout: isl_layout.png", "- pads: isl_map.png", "- walks: isl_walks.png", "- viewshed (what the player sees): isl_vis.png",
        "- editor: isl_ed_plant.png, isl_ed_side.png, isl_ed_island.png"] + (["- game: pilot_sheet.png, closeups_sheet.png"] if sheet else []) + [
        "", "## Timing", *("- %s: %.0f s" % (t, d) for t, d in log), "- total: %.0f s" % (time.time() - t0)]
 open(os.path.join(RUN, "report.md"), "w", encoding="utf-8").write("\n".join(rep) + "\n")

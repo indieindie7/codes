@@ -26,6 +26,21 @@ src, dst = sys.argv[1], sys.argv[2]
 o = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)
 SEED = int(o.get("seed", 1))
 PNG = o.get("png")
+CAMERA_K = float(o.get("camera", 2.0))     # how strongly the camera term counts against systems/ring pulls
+VIS = None                            # vis=<viewshed npz>: how much the player sees each cell (viewshed.py)
+if o.get("vis"):
+    _v = np.load(o["vis"])["score"]
+    VIS = np.clip(_v / max(1e-6, np.percentile(_v[_v > 0], 95)), 0, 1) if (_v > 0).any() else None
+
+
+def camera_weight(bid, b):
+    """how much a building wants to be in the player's view: the story's places most, plumbing least
+    (film-set rule: dress what the camera sees)"""
+    if b.get("function") in ("social", "clinic", "store") or b.get("kind") in ("hall", "office", "dorm", "cooling", "silo", "mast"):
+        return 1.8
+    if b.get("kind") in ("pump", "wellhead") or bid.startswith(("shed", "pump", "water_tanks", "intake")):
+        return 0.4
+    return 1.0
 rng = np.random.default_rng(SEED)
 
 LOOK, M = 300.0, 50.0
@@ -462,6 +477,8 @@ def try_place(bid, b):
                             score -= max(0, 1 - dm / 150)
                 if kind == "house" and bid == "directors_house":
                     score += 1.5 * (zb(cx, cy) - SEA_Z) / 4000.0            # the view
+                if VIS is not None:                                          # the camera: seen ground is worth more
+                    score += CAMERA_K * camera_weight(bid, buildings[bid]) * at(VIS, cx, cy)
                 score += rng.uniform(0, 0.15)
                 if best is None or score > best[0]:
                     best = (score, road, s0, s1, side, cx, cy, ux, uy, nx, ny)

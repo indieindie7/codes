@@ -1,0 +1,452 @@
+[
+ {
+  "class": "PlayerStart",
+  "name": "PlayerStart0",
+  "loc": [
+   -349.739777,
+   1388.255737,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode0",
+  "loc": [
+   -255.070206,
+   1416.845093,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode5",
+  "loc": [
+   -541.949036,
+   2042.828125,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode9",
+  "loc": [
+   -636.566406,
+   1578.190186,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode1",
+  "loc": [
+   -818.099304,
+   1570.497314,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode11",
+  "loc": [
+   -809.8349,
+   1890.308594,
+   4138.845703
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode185",
+  "loc": [
+   -841.0,
+   2044.0,
+   4126.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode80",
+  "loc": [
+   -349.081299,
+   1426.097778,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode87",
+  "loc": [
+   -812.274292,
+   1656.621704,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode101",
+  "loc": [
+   -544.0,
+   2248.0,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode164",
+  "loc": [
+   -532.0,
+   2576.0,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode12",
+  "loc": [
+   -15.594528,
+   1768.244507,
+   4190.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode4",
+  "loc": [
+   -0.698181,
+   1434.493042,
+   4190.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode6",
+  "loc": [
+   -72.5,
+   2748.0,
+   4190.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode2",
+  "loc": [
+   -157.955917,
+   2083.028564,
+   4190.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode135",
+  "loc": [
+   -264.0,
+   2733.0,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode136",
+  "loc": [
+   -79.0,
+   2355.0,
+   4190.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode137",
+  "loc": [
+   -16.0,
+   1631.0,
+   4190.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode3",
+  "loc": [
+   -516.0,
+   1514.0,
+   4238.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode7",
+  "loc": [
+   -1466.0,
+   2684.0,
+   3862.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode8",
+  "loc": [
+   -1554.0,
+   2252.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode10",
+  "loc": [
+   -1578.0,
+   1940.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode13",
+  "loc": [
+   -1542.0,
+   1466.0,
+   3862.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode14",
+  "loc": [
+   -1218.0,
+   1332.0,
+   3870.54541
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode28",
+  "loc": [
+   -972.0,
+   1342.0,
+   3862.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode16",
+  "loc": [
+   -734.0,
+   1736.0,
+   3862.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode17",
+  "loc": [
+   -272.0,
+   2060.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode18",
+  "loc": [
+   266.0,
+   2136.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode19",
+  "loc": [
+   274.0,
+   2718.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode20",
+  "loc": [
+   252.0,
+   1496.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode21",
+  "loc": [
+   -1146.0,
+   2682.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode22",
+  "loc": [
+   -658.0,
+   2718.0,
+   3862.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode23",
+  "loc": [
+   -510.0,
+   2932.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode24",
+  "loc": [
+   -226.0,
+   2942.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode25",
+  "loc": [
+   142.0,
+   2926.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode26",
+  "loc": [
+   -716.0,
+   2114.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode27",
+  "loc": [
+   -1150.0,
+   1518.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode29",
+  "loc": [
+   -1696.0,
+   2928.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode30",
+  "loc": [
+   -1704.0,
+   1712.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode32",
+  "loc": [
+   -1704.0,
+   2288.0,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode35",
+  "loc": [
+   -1322.927612,
+   2210.071289,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode34",
+  "loc": [
+   -1367.957153,
+   1911.738037,
+   3870.998535
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode31",
+  "loc": [
+   21.125,
+   2613.75,
+   4190.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode33",
+  "loc": [
+   -983.76001,
+   745.776123,
+   3422.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode39",
+  "loc": [
+   -1565.370117,
+   752.328918,
+   3646.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode40",
+  "loc": [
+   -1571.232544,
+   954.404907,
+   3646.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode38",
+  "loc": [
+   -988.925232,
+   964.385376,
+   3870.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode41",
+  "loc": [
+   -1068.061279,
+   960.503296,
+   3870.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode36",
+  "loc": [
+   -1478.018311,
+   747.632629,
+   3646.0
+  ]
+ },
+ {
+  "class": "PathNode",
+  "name": "PathNode37",
+  "loc": [
+   -1459.509888,
+   952.158447,
+   3656.993408
+  ]
+ }
+]
