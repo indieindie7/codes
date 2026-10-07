@@ -403,6 +403,10 @@ def set_ini_keys(path, section, values):
         f.write("\n".join(lines) + "\n")
 
 
+# U2PILOT_RES=1920x1080 renders the run (and its shots) at that size; default 960x540
+RES = (os.environ.get("U2PILOT_RES", "960x540").lower().split("x") + ["540"])[:2]
+
+
 def make_pilot_inis():
     """Throwaway copies of the user's configs (so installed mods still load) with
     mouse capture off and a small window. The user's own files are never written."""
@@ -410,7 +414,7 @@ def make_pilot_inis():
     shutil.copy(os.path.join(GAME_SYSTEM, "Unreal2.ini"), ini)
     shutil.copy(os.path.join(GAME_SYSTEM, "User.ini"), user)
     set_ini_keys(ini, "WinDrv.WindowsClient", {"CaptureMouse": "False", "StartupFullscreen": "true" if FULLSCREEN else "false",
-                                               "WindowedViewportX": "960", "WindowedViewportY": "540"})
+                                               "WindowedViewportX": RES[0], "WindowedViewportY": RES[1]})
     return [f"-ini={PILOT_INI}", f"-userini={PILOT_USER_INI}"]
 
 

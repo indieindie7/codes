@@ -1,0 +1,27 @@
+background
+map Prairie
+waitcontrol 240
+wait 3
+console god
+console hub clean
+console hub tp -23600 500 -2484 hold
+console hub face 33
+turn 0 0 0.3
+wait 1.5
+shot
+console hub tp -8610 10979 -2259 hold
+console hub face 3
+turn 0 6 0.3
+wait 1.5
+shot
+console hub tp 7200 3200 -1675 hold
+console hub face 6
+turn 0 -3 0.3
+wait 1.5
+shot
+console hub tp -2500 10500 -2323 hold
+console hub face 243
+turn 0 10 0.3
+wait 1.5
+shot
+quit
