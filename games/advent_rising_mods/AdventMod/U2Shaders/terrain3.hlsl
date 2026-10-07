@@ -38,6 +38,7 @@ float4 ViewZ   : register(c3);
 float4 Fx      : register(c4);   // blend depth, anti-tiling, variation, fog falloff
 float4 Fog     : register(c5);   // fog colour, density
 float4 Fog2    : register(c6);   // fog base height, most fog
+float4 Fx2     : register(c7);   // terrainfx2= relief strength, relief scale, slope rock, strata
 
 struct In
 {
@@ -129,6 +130,45 @@ float4 main(In I) : COLOR
 	// 3: wide colour variation (very low frequency, about +-Fx.z)
 	if (Fx.z > 0)
 		c.rgb *= 1 + Fx.z * (Noise(world.xy / 3000.0) * 2 - 1);
+
+	// 5: the ground's shape, which the flat vertex lighting hides (terrainfx2=):
+	//    x relief: the first layer's own brightness read as a height map from a coarse mip (bumps
+	//      metres wide, not texels), lit by a fixed low sun, so hollows darken and brows catch light;
+	//    y relief scale: the sample spread in texture units x 0.001 (4 = wide, soft bumps);
+	//    z slope rock: steep ground (from the screen-space slope of the world position) turns to
+	//      darker, greyer bare rock with scree at its foot instead of the same grass or dust;
+	//    w strata: faint horizontal rock bands (world height) on that steep ground, canyon-style
+	if (Fx2.x > 0 || Fx2.z > 0)
+	{
+		float3 n = normalize(cross(ddx(world), ddy(world)));
+		n = n.z < 0 ? -n : n;
+		float3 lum3 = float3(0.3, 0.59, 0.11);
+		if (Fx2.x > 0)
+		{
+			float e = max(Fx2.y, 0.5) * 0.001;
+			float4 u = float4(I.U1, 0, 2.5);                      // mip bias: the coarse shape
+			float hx = dot(tex2Dbias(Layer1, u + float4(e, 0, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, u - float4(e, 0, 0, 0)).rgb, lum3);
+			float hy = dot(tex2Dbias(Layer1, u + float4(0, e, 0, 0)).rgb, lum3) - dot(tex2Dbias(Layer1, u - float4(0, e, 0, 0)).rgb, lum3);
+			float3 nt = normalize(float3(-hx * Fx2.x * 6, -hy * Fx2.x * 6, 1));
+			float3 L = normalize(float3(-0.55, -0.4, 0.73));
+			c.rgb *= saturate(1 + (dot(nt, L) - L.z) * 1.6);
+		}
+		if (Fx2.z > 0)
+		{
+			float steep = saturate((1 - n.z - 0.22) / 0.28) * Fx2.z;   // 0 under ~26 deg, full over ~44
+			float l = dot(c.rgb, lum3);
+			float3 rock = lerp(c.rgb, l * float3(0.66, 0.62, 0.56), 0.75);
+			if (Fx2.w > 0)
+			{
+				float band = 0.5 + 0.5 * sin(world.z / 26.0 + 2.5 * Noise(world.xy / 300.0));
+				rock *= 1 + Fx2.w * 0.35 * (band - 0.5);
+			}
+			// scree: a lighter, dustier band where the steep face meets gentler ground
+			float foot = saturate((n.z - 0.6) / 0.15) * saturate((0.85 - n.z) / 0.1);
+			rock = lerp(rock, c.rgb * 1.08, foot * 0.5);
+			c.rgb = lerp(c.rgb, rock, steep);
+		}
+	}
 
 	c *= I.Light * 2;   // the game's lighting, as before
 
