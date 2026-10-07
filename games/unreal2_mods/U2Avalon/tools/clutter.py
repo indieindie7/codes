@@ -72,10 +72,29 @@ def cull_of(mesh):
     return next((d for k, d in CULL if k in mesh), 8000)
 
 
+def footing(x, y):
+    """the LOWEST of the four terrain vertices round (x, y), or None if any of them is under the sea: the
+    engine draws each cell as two flat triangles, so the smooth (bilinear) height floats a prop by metres
+    on steep cells, and next to a cliff edge it hangs a rock in mid-air over the water (seen from the
+    tower as black discs)"""
+    fi, fj = (x - LOC[0]) / CELL + N / 2, (y - LOC[1]) / CELL + N / 2
+    i0, j0 = int(math.floor(fi)), int(math.floor(fj))
+    if not (0 <= i0 < N - 1 and 0 <= j0 < N - 1):
+        return None
+    c = (Z[j0, i0], Z[j0, i0 + 1], Z[j0 + 1, i0], Z[j0 + 1, i0 + 1])
+    if min(c) <= SEA_Z + 20:
+        return None
+    return min(c)
+
+
 def actor(mesh, x, y, yaw_deg, scale=1.0, lift=0.0):
     z = ground(x, y)
     if z is None or z <= SEA_Z + 20:
         return
+    if any(k in mesh for k in ("Rock", "Tree", "LampPost", "Crate", "crate", "Barrel", "Fence")):
+        z = footing(x, y)                  # props stand on the lowest corner: bedded, never floating
+        if z is None:
+            return
     actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'%s'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
                   "    Rotation=(Yaw=%d)\n    DrawScale=%.3f\n    CullDistance=%d\n    bStatic=True\nEnd Actor"
                   % (mesh, x, y, z + lift, int(yaw_deg * 65536 / 360) % 65536, scale, cull_of(mesh)))
