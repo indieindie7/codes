@@ -26,3 +26,12 @@ Image.fromarray(np.dstack([v, v, v, v]), "RGBA").save(os.path.join(out, "SteamPu
 grey = np.full((N, N), 90, "u1")                  # dark: exhaust, not steam
 Image.fromarray(np.dstack([grey, grey, grey, v]), "RGBA").save(os.path.join(out, "SmokePuff.tga"), compression=None)
 print("puffs ->", out)
+
+# RainStreak.tga: one thin falling streak for AvalonStorm (additive: bright core on exact black), 32x128
+W, H = 32, 128
+yy, xx = (np.mgrid[0:H, 0:W] + 0.5)
+core = np.exp(-((xx - W / 2) / 1.6) ** 2)                    # a hair-thin line across
+along = np.clip(np.sin(np.pi * yy / H), 0, 1) ** 0.6           # fades at both ends
+s = (np.clip(core * along, 0, 1) * 255).astype("u1")
+s[:, :2] = 0; s[:, -2:] = 0; s[:2] = 0; s[-2:] = 0
+Image.fromarray(np.dstack([s, s, s, s]), "RGBA").save(os.path.join(out, "RainStreak.tga"), compression=None)

@@ -87,6 +87,20 @@ var config vector RevealFrom, RevealTo;
 var config string RevealSound;
 var bool bRevealed;
 
+// the storm (AvalonStorm), on the maps in StormMaps only (comma list, lower case; "" = none): fog pulled in
+// to StormFogStart..StormFogEnd in StormFogColour, StormDrops rain streaks within StormRadius of the player
+// falling at StormFall (units/s, slanted by Wind), the StormRain / StormWind loops, lightning with one of
+// StormThunder[] a distance-delay later.
+var config string StormMaps;
+var config int StormDrops;
+var config float StormRadius, StormFall, StormFogStart, StormFogEnd, StormSkyFogEnd;   // StormSkyFogEnd: the sky box's fog (0 = leave the sky)
+var config color StormFogColour;
+var config string StormRain, StormWind, StormThunder[5];
+var config float StormGloom;       // 0..1: how much darker the whole view gets (the sky box takes no fog)
+var config vector StormGloomFog;   // the grey added (0..1000 per channel)
+var config int StormClouds;        // how many giant puffs in the cloud deck (0 = none)
+var config float StormCloudSize;
+
 var bool bRebuild;
 var array<Actor> Made;
 var Texture TreeTex[3];
@@ -142,6 +156,28 @@ function CheckReveal()
 			Log("Cards: reveal pass at "$C.Pawn.Location$" "$F);
 			return;
 		}
+}
+
+function Storm()
+{
+	local AvalonStorm St;
+	local int i;
+
+	if (InStr("," $ StormMaps $ ",", "," $ Locs(MapName()) $ ",") < 0)
+		return;
+	St = Spawn(class'AvalonStorm');
+	if (St == None)
+		return;
+	St.Setup(StormDrops, StormRadius, StormFall, Wind, StormFogStart, StormFogEnd, StormFogColour,
+		Sound(DynamicLoadObject(StormRain, class'Sound', true)), Sound(DynamicLoadObject(StormWind, class'Sound', true)), StormSkyFogEnd);
+	St.Overcast(Texture(DynamicLoadObject(SmokeTexture, class'Texture', true)), StormClouds, StormCloudSize);
+	St.Gloom = StormGloom;
+	St.GloomFog = StormGloomFog;
+	for (i = 0; i < 5; i++)
+		if (StormThunder[i] != "")
+			St.AddThunder(Sound(DynamicLoadObject(StormThunder[i], class'Sound', true)));
+	Made[Made.Length] = St;
+	Log("Cards: storm on "$MapName()$", "$St.Drops.Length$" drops, "$St.NThunder$" thunder sounds");
 }
 
 function Motion()
@@ -324,6 +360,7 @@ function Build()
 	Haze();
 	Fly();
 	Motion();
+	Storm();
 
 	// the landing pad and the dropship on it
 	if (PadMesh != "" && Ground(PadSpot, HitL, HitN))
@@ -545,6 +582,24 @@ defaultproperties
 	SteamTexture="U2AvalonCards.SteamPuff"
 	SmokeStyle=6
 	RevealSpeed=3000.000000
+	StormDrops=320
+	StormClouds=30
+	StormCloudSize=16000.000000
+	StormGloom=0.400000
+	StormGloomFog=(X=45,Y=50,Z=60)
+	StormSkyFogEnd=900.000000
+	StormRadius=1600.000000
+	StormFall=2600.000000
+	StormFogStart=600.000000
+	StormFogEnd=26000.000000
+	StormFogColour=(R=78,G=84,B=92,A=255)
+	StormRain="U2AmbientA.MiscEnv.Iceyrain_03"
+	StormWind="U2AmbientA.MiscEnv.Blusterywindloop_04"
+	StormThunder(0)="U2AmbientA.MiscEnv.Thunder_01"
+	StormThunder(1)="U2AmbientA.MiscEnv.Thunder_02"
+	StormThunder(2)="U2AmbientA.MiscEnv.Thunder_03"
+	StormThunder(3)="U2AmbientA.MiscEnv.Thunder04R"
+	StormThunder(4)="U2AmbientA.MiscEnv.Thunder_05"
 	RevealScale=1.000000
 	RemoteRole=ROLE_None
 }
