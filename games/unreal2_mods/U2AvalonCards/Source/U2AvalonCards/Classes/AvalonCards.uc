@@ -52,6 +52,9 @@ var config string Blocks[128];
 // degrees = where its front faces, Size = the card's height in world units (the building fills 92% of
 // the card's larger side), Frames = how many views were baked (8).
 var config string Cards[64];
+// more cards in the same format, written by U2Avalon/tools/motion.py (export_mutator.py owns Cards[]): the
+// landmark crane tower and the round-2 concept buildings (A-frame huts, dorm pods, Tin Row shacks)
+var config string Extras[48];
 
 // haze between the view's depth layers (the cinematography report: atmospheric perspective): the zones
 // that already use distance fog (the outdoor ones) get HazeStart..HazeEnd in HazeColour; HazeEnd 0 = the
@@ -100,6 +103,11 @@ var config float StormGloom;       // 0..1: how much darker the whole view gets 
 var config vector StormGloomFog;   // the grey added (0..1000 per channel)
 var config int StormClouds;        // how many giant puffs in the cloud deck (0 = none)
 var config float StormCloudSize;
+
+// the Liandri public address (AvalonPA): loudspeakers at PASpots[] ("X Y Lift": over whatever is under),
+// one announcement every PAMinGap..PAMaxGap seconds, PARadius / PAVolume; no spots = off.
+var config string PASpots[6];
+var config float PAMinGap, PAMaxGap, PARadius, PAVolume;
 
 var bool bRebuild;
 var array<Actor> Made;
@@ -156,6 +164,35 @@ function CheckReveal()
 			Log("Cards: reveal pass at "$C.Pawn.Location$" "$F);
 			return;
 		}
+}
+
+function Speakers()
+{
+	local AvalonPA PA;
+	local vector P, HitL, HitN;
+	local int i;
+
+	for (i = 0; i < ArrayCount(PASpots); i++)
+	{
+		if (PASpots[i] == "")
+			continue;
+		if (PA == None)
+			PA = Spawn(class'AvalonPA');
+		if (PA == None)
+			return;
+		P.X = float(Word(PASpots[i], 0));
+		P.Y = float(Word(PASpots[i], 1));
+		P.Z = 0;
+		if (Ground(P, HitL, HitN))
+			P.Z = HitL.Z;
+		P.Z += float(Word(PASpots[i], 2));
+		PA.AddSpeaker(P);
+	}
+	if (PA == None)
+		return;
+	PA.Begin(PAMinGap, PAMaxGap, PARadius, PAVolume);
+	Made[Made.Length] = PA;
+	Log("Cards: public address, "$PA.Speakers.Length$" loudspeakers");
 }
 
 function Storm()
@@ -361,6 +398,7 @@ function Build()
 	Fly();
 	Motion();
 	Storm();
+	Speakers();
 
 	// the landing pad and the dropship on it
 	if (PadMesh != "" && Ground(PadSpot, HitL, HitN))
@@ -436,6 +474,9 @@ function Build()
 	for (i = 0; i < ArrayCount(Cards); i++)
 		if (Cards[i] != "")
 			PlaceCard(Cards[i]);
+	for (i = 0; i < ArrayCount(Extras); i++)
+		if (Extras[i] != "")
+			PlaceCard(Extras[i]);
 	Log("Cards: built "$Made.Length$" things on "$MapName());
 }
 
@@ -582,6 +623,10 @@ defaultproperties
 	SteamTexture="U2AvalonCards.SteamPuff"
 	SmokeStyle=6
 	RevealSpeed=3000.000000
+	PAMinGap=45.000000
+	PAMaxGap=110.000000
+	PARadius=16000.000000
+	PAVolume=2.000000
 	StormDrops=320
 	StormClouds=30
 	StormCloudSize=16000.000000
