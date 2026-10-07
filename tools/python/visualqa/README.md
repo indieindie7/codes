@@ -30,7 +30,9 @@ visual_qa.py compare <before dir> <after dir> [--out DIR]
 - **compare**: frames with the same names in two folders (the same camera before and after a look
   edit): NVIDIA FLIP difference maps and the metric changes that pass a minimum per metric.
 
-Masks: `<frame>_mask.png` next to a frame, or `--masks DIR`; white is the character.
+Masks: `<frame>_mask.png` or `_mask.bmp` next to a frame, or `--masks DIR`; white is the character.
+The d3d8to9 fork writes them (`shotmask=1`, or AdventNative's `CaptureMask`), and Advent's pilot step
+`randomprints N [settle]` takes N frames with masks from random places, every other one beside a character.
 
 ## Licences
 
@@ -39,5 +41,4 @@ Non-commercial or unlicensed models from the research notes (pyiqa, DeepGaze, UM
 
 ## Not yet
 
-A pilot step that takes random prints in both games, an engine mask pass in the d3d8to9 fork,
-UNISAL saliency, HUD text contrast, and glitch checks beyond missing textures and black characters.
+A random-prints step for Unreal II's pilot, UNISAL saliency, HUD text contrast, and glitch checks beyond missing textures and black characters.

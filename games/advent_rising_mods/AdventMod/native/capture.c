@@ -147,9 +147,15 @@ int SetMaxFps(int Fps)
 	return 1;
 }
 
-/* NativeCall("Capture"): the next presented frame goes to a ShotP file */
-int CaptureNext(void)
+/* NativeCall("Capture"): the next presented frame goes to a ShotP file. With the U2Shaders
+   d3d8.dll in place the layer takes the shot itself (U2ShotP: after its post effects, and with
+   Mask 1 a character mask beside it, ShotP#####_mask.bmp); otherwise it is copied here. */
+int CaptureNext(int Mask)
 {
+	typedef int (__cdecl *ShotP_t)(int);
+	HMODULE D3d8 = GetModuleHandleW(L"d3d8.dll");
+	ShotP_t Fork = D3d8 ? (ShotP_t)GetProcAddress(D3d8, "U2ShotP") : NULL;
+	if (Fork) return Fork(Mask);
 	if (!HookDevice()) return 0;
 	Wanted = 1;
 	return 1;

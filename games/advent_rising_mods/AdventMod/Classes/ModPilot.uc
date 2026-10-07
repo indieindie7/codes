@@ -47,6 +47,9 @@ var float TopSpeed;                    // SPEEDTEST
 var vector SpeedFrom;
 var float ControlTime;                   // the script itself paused the game (pause button, menu step)
 
+var int PrintsLeft, PrintPhase, PrintNo;  // RANDOMPRINTS
+var float PrintT, PrintSettle;
+var array<NavigationPoint> PrintNavs;
 var name HurtBone;    // HURT's bone (a string can only become a name through SetPropertyText)
 
 function Note(string S)
@@ -786,6 +789,18 @@ function StartStep()
 		// third-person camera eases and clamps TURN's look input, this doesn't
 		Aim(ArgF(1, 0), ArgF(2, 0));
 		break;
+	case "RANDOMPRINTS":
+		// RANDOMPRINTS N [settle]: N frames from random places for visual QA
+		// (tools/python/visualqa): every other one beside a random character, looking at it,
+		// the rest at random navigation points; a random yaw and a slightly lowered view, a
+		// moment to settle, then the frame and its character mask (NativeCall CaptureMask)
+		PrintsLeft = int(ArgF(1, 10));
+		PrintSettle = ArgF(2, 1.2);
+		PrintPhase = 0;
+		PrintNo = 0;
+		PrintNavs.Length = 0;
+		StepLength = 100000;
+		break;
 	case "MARK":
 		break;
 	default:
@@ -841,6 +856,11 @@ event Tick(float DeltaTime)
 		SteerView(P, DeltaTime);
 		return;
 	}
+	if (Cmd == "RANDOMPRINTS")
+	{
+		RandomPrints(P, DeltaTime);
+		return;
+	}
 	if (Cmd == "SPEEDTEST" && P.Pawn != None)
 	{
 		TopSpeed = FMax(TopSpeed, VSize(P.Pawn.Velocity * vect(1,1,0)));
@@ -859,6 +879,89 @@ event Tick(float DeltaTime)
 	}
 	if (StepTime >= StepLength)
 		StartStep();
+}
+
+// RANDOMPRINTS: place, settle, capture, next
+function RandomPrints(PlayerController P, float DeltaTime)
+{
+	local NavigationPoint N;
+	local Pawn O, Pick;
+	local array<Pawn> Others;
+	local vector Spot, Dir;
+	local float Yaw, Pitch;
+	local int i, Tries;
+
+	if (P.Pawn == None)
+	{
+		StartStep();
+		return;
+	}
+	PrintT += DeltaTime;
+	if (PrintPhase == 1)
+	{
+		if (PrintT >= PrintSettle)
+		{
+			class'ModSettings'.static.NativeCall("CaptureMask");
+			PrintPhase = 2;
+			PrintT = 0;
+		}
+		return;
+	}
+	if (PrintPhase == 2)
+	{
+		if (PrintT < 0.4)
+			return;
+		PrintsLeft--;
+		PrintPhase = 0;
+		if (PrintsLeft <= 0)
+		{
+			Note("randomprints: done, " $ PrintNo $ " frames");
+			StartStep();
+			return;
+		}
+	}
+	// phase 0: a new place
+	if (PrintNavs.Length == 0)
+		ForEach AllActors(class'NavigationPoint', N)
+			if (!N.IsA('PlayerStart'))
+				PrintNavs[PrintNavs.Length] = N;
+	ForEach DynamicActors(class'Pawn', O)
+		if (O != P.Pawn && O.Health > 0 && !O.bHidden && O.Mesh != None)
+			Others[Others.Length] = O;
+	PrintNo++;
+	if (PrintNo % 2 == 0 && Others.Length > 0)
+	{
+		// beside a character, looking at it
+		Pick = Others[Rand(Others.Length)];
+		for (Tries = 0; Tries < 6; Tries++)
+		{
+			Dir = VRand();
+			Dir.Z = 0;
+			Spot = Pick.Location + Normal(Dir) * (180 + FRand() * 220) + vect(0,0,40);
+			if (P.Pawn.SetLocation(Spot))
+				break;
+		}
+		Dir = Pick.Location - P.Pawn.Location;
+		Yaw = ViewDeg(rotator(Dir).Yaw) + (FRand() - 0.5) * 30;
+		Pitch = -5 - FRand() * 12;
+		Note("randomprints: " $ PrintNo $ " beside " $ Pick $ " at " $ P.Pawn.Location $ " yaw " $ int(Yaw) $ " pitch " $ int(Pitch));
+	}
+	else if (PrintNavs.Length > 0)
+	{
+		for (Tries = 0; Tries < 8; Tries++)
+		{
+			i = Rand(PrintNavs.Length);
+			if (P.Pawn.SetLocation(PrintNavs[i].Location + vect(0,0,1) * P.Pawn.CollisionHeight))
+				break;
+		}
+		Yaw = FRand() * 360 - 180;
+		Pitch = -3 - FRand() * 20;
+		Note("randomprints: " $ PrintNo $ " at " $ PrintNavs[i] $ " " $ P.Pawn.Location $ " yaw " $ int(Yaw) $ " pitch " $ int(Pitch));
+	}
+	P.Pawn.Velocity = vect(0,0,0);
+	Aim(Yaw, Pitch);
+	PrintPhase = 1;
+	PrintT = 0;
 }
 
 // a rotation component (65536 = 360 degrees) as degrees, -180..180

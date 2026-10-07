@@ -17,7 +17,7 @@
 int D3DTraceStart(void);   /* d3dtrace.c */
 int ShadowFixApply(void);  /* shadowfix.c */
 int ShadowAlphaApply(void); /* shadowalpha.c */
-int CaptureNext(void);      /* capture.c */
+int CaptureNext(int Mask);  /* capture.c */
 int SetMaxFps(int Fps);     /* capture.c */
 extern int D3DZAlways;
 
@@ -208,7 +208,8 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsicmp(Cmd, L"D3DTrace")) return D3DTraceStart();
 	if (!_wcsicmp(Cmd, L"ShadowFix")) return ShadowFixApply();
 	if (!_wcsicmp(Cmd, L"ShadowAlpha")) return ShadowAlphaApply();
-	if (!_wcsicmp(Cmd, L"Capture")) return CaptureNext();
+	if (!_wcsicmp(Cmd, L"Capture")) return CaptureNext(-1);
+	if (!_wcsicmp(Cmd, L"CaptureMask")) return CaptureNext(1);   /* the frame and a character mask (U2Shaders layer) */
 	if (!_wcsnicmp(Cmd, L"MaxFps:", 7)) return SetMaxFps(_wtoi(Cmd + 7));
 	if (!_wcsicmp(Cmd, L"D3DZAlways")) { D3DZAlways = 1; Note(L"d3dtrace: projected draws now always pass the depth test"); return 1; }
 	if (!_wcsnicmp(Cmd, L"Pcss:", 5)) return SetPcss(Cmd[5] == L'1');

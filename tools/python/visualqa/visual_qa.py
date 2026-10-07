@@ -140,6 +140,8 @@ def score_frame(path, mask_path=None):
         if m.any():
             rg_ = ring(m, max(4, w // 60))
             a, bkg = L[m > 0], L[rg_ > 0]
+            if len(bkg) == 0:
+                bkg = L[m == 0]                 # the character fills the frame's edge: the rest of the frame
             out["fg_contrast_L"] = round(abs(float(a[:, 0].mean() - bkg[:, 0].mean())), 2)
             out["fg_contrast_dE"] = round(float(np.linalg.norm(a.mean(0) - bkg.mean(0))), 2)
             area = (m > 0).mean()
@@ -192,7 +194,7 @@ def frames_in(d):
 
 def mask_for(frame, masks_dir):
     stem = os.path.splitext(os.path.basename(frame))[0]
-    for cand in [os.path.join(os.path.dirname(frame), stem + "_mask.png")] + ([os.path.join(masks_dir, stem + ".png"), os.path.join(masks_dir, stem + "_mask.png")] if masks_dir else []):
+    for cand in [os.path.join(os.path.dirname(frame), stem + "_mask" + e) for e in (".png", ".bmp")] + ([os.path.join(masks_dir, stem + ".png"), os.path.join(masks_dir, stem + "_mask.png")] if masks_dir else []):
         if os.path.exists(cand):
             return cand
     return None
