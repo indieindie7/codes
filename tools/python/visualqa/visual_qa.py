@@ -1,4 +1,4 @@
-"""Visual QA for game screenshots: design heuristics as numbers, and a contact sheet that flags
+r"""Visual QA for game screenshots: design heuristics as numbers, and a contact sheet that flags
 the frames worth a look (see games/reports/visual-heuristics-qa.html for the why).
 
     visual_qa.py score <frames dir> [--out DIR] [--baseline baseline.json] [--masks DIR]
@@ -28,8 +28,15 @@ What each metric is (all on the frame scaled to 640 px wide):
   char_attention    share of the saliency mass on the character, over its share of the area
   sil_solidity      area over convex hull area: low = limbs stand out from the body
   sil_fill          the character's share of the frame
+  hud_contrast      WCAG contrast ratio of the HUD's pixels against what is behind them (score
+                    with 4+ frames: the HUD is found as the pixels that stay the same across them)
+Saliency (where the eye lands) comes from UNISAL (Apache-2.0, Documents\Tools\unisal, ECCV
+2020, trained on human eye fixations) when it is there, else OpenCV's spectral residual
+(--saliency spectral forces it).
 Flags: magenta (missing texture), black_character, muddy (squint_mid high and spread low),
-no_focus (attention_peak low), and with a baseline any metric beyond 2 standard deviations.
+no_focus (attention_peak low), low_figure_ground, hud_low_contrast (under 3:1), streak (a long
+line from a character far out of its mask: a stretched polygon), and with a baseline any metric
+beyond 2 standard deviations.
 """
 import argparse
 import base64
@@ -63,7 +70,48 @@ def lab(img):
     return cv2.cvtColor(f, cv2.COLOR_RGB2Lab)
 
 
+UNISAL_DIR = os.environ.get("UNISAL_DIR", r"C:\Users\john\Documents\Tools\unisal")
+SALIENCY = "unisal"
+_unisal = None
+
+
+def unisal_model():
+    """UNISAL's image model with its published weights, or None if it isn't installed"""
+    global _unisal
+    if _unisal is None:
+        _unisal = False
+        try:
+            import types
+            import torch
+            from pathlib import Path
+            pkg = types.ModuleType("unisal")
+            pkg.__path__ = [os.path.join(UNISAL_DIR, "unisal")]      # the model alone (its __init__ imports training code)
+            sys.modules["unisal"] = pkg
+            from unisal.model import UNISAL
+            runs = os.path.join(UNISAL_DIR, "training_runs", "pretrained_unisal")
+            cfg = json.load(open(os.path.join(runs, "UNISAL.json")))
+            cfg["cnn_cfg"]["pretrained"] = False
+            cfg.pop("verbose", None)
+            m = UNISAL(**cfg)
+            m.load_best_weights(Path(runs))
+            m.eval()
+            _unisal = m
+        except Exception as e:                                        # not installed: the OpenCV map
+            print("UNISAL not available (%s): OpenCV spectral residual saliency" % e)
+    return _unisal or None
+
+
 def saliency(img):
+    m = unisal_model() if SALIENCY == "unisal" else None
+    if m is not None:
+        import torch
+        small = cv2.resize(img, (384, 288), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+        small = (small - np.array([0.485, 0.456, 0.406], np.float32)) / np.array([0.229, 0.224, 0.225], np.float32)
+        x = torch.from_numpy(small.transpose(2, 0, 1).copy())[None, None]
+        with torch.no_grad():
+            y = m(x, target_size=img.shape[:2], source="SALICON", static=True)
+        s = y[0, 0, 0].exp().numpy().astype(np.float32)
+        return s / max(float(s.max()), 1e-9)
     s = cv2.saliency.StaticSaliencySpectralResidual_create()
     ok, m = s.computeSaliency(cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
     m = cv2.GaussianBlur(m.astype(np.float32), (0, 0), 5)
@@ -153,6 +201,17 @@ def score_frame(path, mask_path=None):
             out["sil_solidity"] = round(float(cv2.contourArea(big) / max(cv2.contourArea(hull), 1)), 3)
             out["char_L"] = round(float(a[:, 0].mean()), 1)
             out["ring_L"] = round(float(bkg[:, 0].mean()), 1)
+            # stretched polygons: long straight lines leaving a character far beyond its outline
+            near = cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
+            lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 60, minLineLength=int(w * 0.3), maxLineGap=4)
+            streaks = 0
+            for x1, y1, x2, y2 in (lines.reshape(-1, 4) if lines is not None else []):
+                ends_in = (near[y1, x1] > 0) != (near[y2, x2] > 0)
+                xs = np.linspace(x1, x2, 24).astype(int)
+                ys = np.linspace(y1, y2, 24).astype(int)
+                if ends_in and (near[ys, xs] == 0).mean() > 0.7:
+                    streaks += 1
+            out["streaks"] = streaks
 
     # flags that need no baseline
     flags = []
@@ -166,12 +225,47 @@ def score_frame(path, mask_path=None):
         flags.append("black_character")
     if "fg_contrast_dE" in out and out["fg_contrast_dE"] < 6:
         flags.append("low_figure_ground")
+    if out.get("streaks", 0) > 0:
+        flags.append("streak")
     out["flags"] = flags
     return out, img, blur, sal
 
 
 NUMERIC = ["squint_spread", "squint_mid", "focus_contrast", "attention_peak", "thirds_dist", "clutter_edges",
-           "clutter_congest", "colourfulness", "fg_contrast_L", "fg_contrast_dE", "char_attention", "sil_solidity"]
+           "clutter_congest", "colourfulness", "fg_contrast_L", "fg_contrast_dE", "char_attention", "sil_solidity",
+           "hud_contrast"]
+
+
+def hud_mask(frames):
+    """the HUD: pixels that stay the same (and aren't dark) across frames of different places"""
+    if len(frames) < 4:
+        return None
+    h, w = frames[0].shape[:2]
+    stack = np.stack([cv2.cvtColor(f, cv2.COLOR_RGB2GRAY).astype(np.float32) for f in frames if f.shape[:2] == (h, w)])
+    if len(stack) < 4:
+        return None
+    still = (stack.std(0) < 6) & (stack.mean(0) > 70)
+    m = still.astype(np.uint8) * 255
+    m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
+    return m if (m > 0).mean() > 0.0005 else None
+
+
+def rel_lum(rgb):
+    c = rgb.astype(np.float32) / 255.0
+    c = np.where(c <= 0.03928, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * c[..., 0] + 0.7152 * c[..., 1] + 0.0722 * c[..., 2]
+
+
+def hud_contrast(img, hud):
+    """WCAG contrast of the HUD's pixels against a ring of what is behind them in this frame"""
+    behind = ring(hud, 4)
+    behind = behind & ~cv2.dilate(hud, np.ones((3, 3), np.uint8))
+    if not behind.any():
+        return None
+    L1 = float(rel_lum(img[hud > 0]).mean())
+    L2 = float(np.median(rel_lum(img[behind > 0])))
+    hi, lo = max(L1, L2), min(L1, L2)
+    return round((hi + 0.05) / (lo + 0.05), 2)
 
 
 # the smallest before/after change worth reporting, per metric (in its own units)
@@ -238,7 +332,7 @@ def report(out_dir, title, rows):
     for rec, imgs in rows:
         figs = "".join("<figure><img src='data:image/png;base64,%s' alt='%s'><figcaption>%s</figcaption></figure>" % (png_b64(a), html.escape(n), html.escape(n)) for n, a in imgs)
         flags = "".join("<span>%s</span>" % html.escape(f) for f in rec["flags"]) or "<span style='background:none;color:var(--muted)'>no flags</span>"
-        nums = "".join("<tr><td>%s</td><td>%s</td></tr>" % (k, rec[k]) for k in NUMERIC + ["magenta", "flip_mean"] if k in rec)
+        nums = "".join("<tr><td>%s</td><td>%s</td></tr>" % (k, rec[k]) for k in NUMERIC + ["magenta", "streaks", "flip_mean"] if k in rec)
         pal = "".join("<span style='background:%s;width:%dpx' title='%s %d%%'></span>" % (c, max(4, int(s * 160)), c, int(s * 100)) for c, s in rec.get("palette", []))
         parts.append("<div class=card><b>%s</b><div class=flags>%s</div><div class=imgs>%s</div><div class=pal>%s</div><table>%s</table></div>" % (html.escape(rec["frame"]), flags, figs, pal, nums))
     os.makedirs(out_dir, exist_ok=True)
@@ -249,10 +343,22 @@ def report(out_dir, title, rows):
 
 
 def cmd_score(a):
+    global SALIENCY
+    SALIENCY = a.saliency
     base = json.load(open(a.baseline)) if a.baseline else None
     rows = []
-    for f in frames_in(a.frames):
+    files = frames_in(a.frames)
+    hud = hud_mask([load(f) for f in files[:24]])
+    if hud is not None:
+        print("HUD found: %.2f%% of the frame" % (100 * (hud > 0).mean()))
+    for f in files:
         rec, img, blur, sal = score_frame(f, mask_for(f, a.masks))
+        if hud is not None and hud.shape == img.shape[:2]:
+            c = hud_contrast(img, hud)
+            if c is not None:
+                rec["hud_contrast"] = c
+                if c < 3:
+                    rec["flags"].append("hud_low_contrast")
         if base:
             baseline_flags(rec, base)
         squint, over = views(img, blur, sal)
@@ -262,7 +368,18 @@ def cmd_score(a):
 
 
 def cmd_baseline(a):
-    recs = [score_frame(f, mask_for(f, a.masks))[0] for f in frames_in(a.frames)]
+    global SALIENCY
+    SALIENCY = a.saliency
+    files = frames_in(a.frames)
+    hud = hud_mask([load(f) for f in files[:24]])
+    recs = []
+    for f in files:
+        rec, img, _, _ = score_frame(f, mask_for(f, a.masks))
+        if hud is not None and hud.shape == img.shape[:2]:
+            c = hud_contrast(img, hud)
+            if c is not None:
+                rec["hud_contrast"] = c
+        recs.append(rec)
     base = {}
     for k in NUMERIC:
         v = [r[k] for r in recs if k in r]
@@ -296,7 +413,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("score"); s.add_argument("frames"); s.add_argument("--out"); s.add_argument("--baseline"); s.add_argument("--masks")
+    s.add_argument("--saliency", choices=["unisal", "spectral"], default="unisal")
     b = sub.add_parser("baseline"); b.add_argument("frames"); b.add_argument("--save", required=True); b.add_argument("--masks")
+    b.add_argument("--saliency", choices=["unisal", "spectral"], default="unisal")
     c = sub.add_parser("compare"); c.add_argument("before"); c.add_argument("after"); c.add_argument("--out")
     a = p.parse_args()
     {"score": cmd_score, "baseline": cmd_baseline, "compare": cmd_compare}[a.cmd](a)
