@@ -144,6 +144,18 @@ struct Wound
 	var bool bDied;        // the body was dead with it: gone when the game reuses the pawn
 };
 var array<Wound> Wounds;
+// an opened artery: some wounds spurt in heartbeats for a few seconds, painting what is near
+struct Spurt
+{
+	var Pawn P;
+	var ModStump M;
+	var int Kind;
+	var float T, Next, Life;
+};
+var array<Spurt> Spurts;
+var config float SpurtChance;        // the share of wounds that spurt
+var config float SpurtBeat;          // seconds between pulses
+var config float SpurtReach;         // how far a pulse carries
 var string LastGuns;                // bGoreLog
 var array<Actor> Seen;
 var array<Projectile> Shots;       // projectiles in flight: where they were and how fast,
@@ -1385,6 +1397,7 @@ event Tick(float DeltaTime)
 	TrackShots();
 	if (bBleedTrail)
 		BleedTrails(DeltaTime);
+	Spurts_(DeltaTime);
 	if (bDirt)
 		Grime(DeltaTime);
 	for (i = Dying.Length - 1; i >= 0; i--)
@@ -1640,12 +1653,18 @@ function AddWound(Pawn P, vector Spot)
 
 	Kind = BloodKind(P);
 	if (Kind == 0 || React == None || P.bHidden)
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: no wound on " $ P $ " (kind " $ Kind $ ", react " $ React $ ", hidden " $ P.bHidden $ ")");
 		return;
+	}
 	for (i = 0; i < Wounds.Length; i++)
 		if (Wounds[i].P == P)
 			n++;
 	if (n >= WoundsPerBody)
 		return;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: wound " $ (n + 1) $ " on " $ P);
 	BestD = 1000000;
 	Best = -1;
 	for (i = 0; i < 12; i++)
@@ -1674,7 +1693,11 @@ function AddWound(Pawn P, vector Spot)
 		Off = Normal(Off) * 9;
 	W.M = Spawn(class'ModStump',,, BC.Origin + Off);
 	if (W.M == None)
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: wound on " $ P $ " did not spawn");
 		return;
+	}
 	W.M.SetDrawScale(1.5 + 1.3 * FRand());
 	if (Kind == 2)
 		W.M.Skins[0] = AlienMeatTex;
@@ -1682,6 +1705,8 @@ function AddWound(Pawn P, vector Spot)
 		W.M.Skins[0] = MeatTex;
 	if (!P.AttachToBone(W.M, React.Bones[Best]))
 	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: wound on " $ P $ " did not attach to " $ React.Bones[Best]);
 		W.M.Destroy();
 		return;
 	}
@@ -1691,6 +1716,62 @@ function AddWound(Pawn P, vector Spot)
 	W.M.SetRelativeLocation(Rel);
 	W.P = P;
 	Wounds[Wounds.Length] = W;
+	if (bBlood && FRand() < SpurtChance)
+	{
+		Spurts.Length = Spurts.Length + 1;
+		Spurts[Spurts.Length - 1].P = P;
+		Spurts[Spurts.Length - 1].M = W.M;
+		Spurts[Spurts.Length - 1].Kind = Kind;
+		Spurts[Spurts.Length - 1].Life = 2.5 + 2.0 * FRand();
+		Spurts[Spurts.Length - 1].Next = 0.15;
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: " $ P $ " has a spurting wound at " $ React.Bones[Best]);
+	}
+}
+
+// the spurting wounds: a pulse every heartbeat, out from the wound and falling, weaker as it
+// runs down; a dead body's last few beats are weaker still
+function Spurts_(float DeltaTime)
+{
+	local int i, k;
+	local float Strength, Reach;
+	local vector Out, V, HitL, HitN, Fall;
+
+	for (i = Spurts.Length - 1; i >= 0; i--)
+	{
+		Spurts[i].T += DeltaTime;
+		if (Spurts[i].P == None || Spurts[i].P.bDeleteMe || Spurts[i].M == None || Spurts[i].M.bDeleteMe
+			|| Spurts[i].T > Spurts[i].Life || Spurts[i].P.bHidden)
+		{
+			Spurts.Remove(i, 1);
+			continue;
+		}
+		if (Spurts[i].T < Spurts[i].Next)
+			continue;
+		Spurts[i].Next = Spurts[i].T + SpurtBeat * (0.85 + 0.3 * FRand()) * (Spurts[i].P.Health <= 0 ? 1.4 : 1.0);
+		Strength = 1 - Spurts[i].T / Spurts[i].Life;
+		if (Spurts[i].P.Health <= 0)
+			Strength *= 0.5;
+		Reach = SpurtReach * (0.35 + 0.65 * Strength);
+		// out of the wound: away from the body's axis, a little up
+		Out = Spurts[i].M.Location - Spurts[i].P.Location;
+		Out.Z = 0;
+		Out = Normal(Normal(Out) + vect(0,0,0.35) + VRand() * 0.25);
+		// the jet: where it meets a wall or the floor along a falling arc (two segments)
+		V = Spurts[i].M.Location + Out * Reach * 0.5;
+		Fall = V + (Out * 0.5 + vect(0,0,-0.6)) * Reach;
+		if (Trace(HitL, HitN, V, Spurts[i].M.Location, false) != None
+			|| Trace(HitL, HitN, Fall, V, false) != None
+			|| Trace(HitL, HitN, Fall - vect(0,0,300), Fall, false) != None)
+			Mark(KindSpray(Spurts[i].Kind), HitL, HitN, Out, DecalScale * (0.35 + 0.35 * Strength));
+		// droplets beside the jet
+		for (k = 0; k < 2; k++)
+		{
+			V = Spurts[i].M.Location + Normal(Out + VRand() * 0.5) * Reach * (0.3 + 0.4 * FRand());
+			if (Trace(HitL, HitN, V - vect(0,0,300), V, false) != None)
+				Mark(KindSplat(Spurts[i].Kind), HitL, HitN, vect(0,0,0), DecalScale * 0.12);
+		}
+	}
 }
 
 // wounds go with their body: when it is removed, blown apart or brought back to life
@@ -2028,6 +2109,9 @@ defaultproperties
      bWounds=True
      MaxWounds=48
      WoundsPerBody=5
+     SpurtChance=0.350000
+     SpurtBeat=0.550000
+     SpurtReach=150.000000
      bBlastShake=True
      BlastShake=1.000000
      bBleedTrail=True

@@ -17,6 +17,10 @@ class ModReact extends Info
 var config bool bFlinch;
 var config float FlinchAngle;      // rotation units for a 40-damage hit
 var config float FlinchTime;
+// flesh: the flinch as a damped spring (the bone snaps away, swings back past rest and settles)
+// and a ripple into the next bone up the body, a moment later and weaker
+var config bool bSpringFlinch;
+var config float SpringFreq, SpringDecay, SpringTime, RippleShare, RippleDelay;
 var config bool bStagger;
 var config int StaggerDamage;
 var config float StaggerPush, StaggerSlow, StaggerTime;
@@ -46,6 +50,8 @@ struct FlinchState
 	var rotator Turn;
 	var float T;
 	var bool bCorpse;      // on a dead body: not cut short by the death
+	var name Bone2;        // the spring flinch's ripple (None: none)
+	var rotator Turn2;
 };
 var array<FlinchState> Flinches;
 
@@ -193,6 +199,8 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional boo
 		if (Flinches[i].P == P)
 		{
 			P.SetBoneRotation(Flinches[i].Bone, rot(0,0,0), 0, 0);
+			if (Flinches[i].Bone2 != '')
+				P.SetBoneRotation(Flinches[i].Bone2, rot(0,0,0), 0, 0);
 			Flinches.Remove(i, 1);
 		}
 	A = FlinchAngle * FClamp(Damage / 40.0, 0.4, 1.6);
@@ -203,9 +211,30 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional boo
 	F.Turn.Pitch = int(-L.X * A);
 	F.Turn.Roll = int(L.Y * A);
 	F.Turn.Yaw = int((FRand() - 0.5) * A * 0.4);
+	if (bSpringFlinch)
+	{
+		// up the spine chain (hips .. head = Bones 0..5); a limb hit shakes the chest a little
+		if (Best < 5)
+			F.Bone2 = Bones[Best + 1];
+		else if (Best > 5)
+			F.Bone2 = Bones[3];
+		if (F.Bone2 != '')
+			F.Turn2 = F.Turn * (Best > 5 ? RippleShare * 0.5 : RippleShare);
+	}
 	Flinches[Flinches.Length] = F;
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("react: " $ P $ " flinches at " $ F.Bone $ " " $ F.Turn);
+}
+
+// the spring's displacement at time T: a 50 ms snap out, then a decaying swing through rest
+function float Spring(float T)
+{
+	if (T <= 0)
+		return 0;
+	if (T < 0.05)
+		return T / 0.05;
+	T -= 0.05;
+	return Exp(-T * SpringDecay) * Cos(T * SpringFreq * 6.2831853);
 }
 
 function Stagger(Pawn P, vector Dir)
@@ -261,10 +290,19 @@ event Tick(float DeltaTime)
 			Flinches.Remove(i, 1);
 			continue;
 		}
-		if (Flinches[i].T >= FlinchTime || (P.Health <= 0 && !Flinches[i].bCorpse))
+		if (Flinches[i].T >= (bSpringFlinch ? SpringTime : FlinchTime) || (P.Health <= 0 && !Flinches[i].bCorpse))
 		{
 			P.SetBoneRotation(Flinches[i].Bone, rot(0,0,0), 0, 0);
+			if (Flinches[i].Bone2 != '')
+				P.SetBoneRotation(Flinches[i].Bone2, rot(0,0,0), 0, 0);
 			Flinches.Remove(i, 1);
+			continue;
+		}
+		if (bSpringFlinch)
+		{
+			P.SetBoneRotation(Flinches[i].Bone, Flinches[i].Turn * Spring(Flinches[i].T), 0, 1);
+			if (Flinches[i].Bone2 != '')
+				P.SetBoneRotation(Flinches[i].Bone2, Flinches[i].Turn2 * Spring(Flinches[i].T - RippleDelay), 0, 1);
 			continue;
 		}
 		// a snap in (60 ms), then easing back
@@ -784,6 +822,12 @@ defaultproperties
      bFlinch=True
      FlinchAngle=4500.000000
      FlinchTime=0.300000
+     bSpringFlinch=True
+     SpringFreq=3.200000
+     SpringDecay=5.500000
+     SpringTime=0.900000
+     RippleShare=0.550000
+     RippleDelay=0.070000
      bStagger=True
      StaggerDamage=40
      StaggerPush=260.000000
