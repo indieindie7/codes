@@ -62,12 +62,23 @@ B = L["buildings"]
 actors = []
 
 
+# draw distances (Actor.CullDistance, units): small props vanish first, trees and terrace walls stay longest.
+# Without them every crate, rock and tree on the island was drawn every frame and the game crawled.
+CULL = (("Tree", 14000), ("B_wall", 14000), ("LampPost", 9000), ("Fence", 8000), ("Rock", 8000),
+        ("Crate", 5000), ("crate", 5000), ("Barrel", 4500))
+
+
+def cull_of(mesh):
+    return next((d for k, d in CULL if k in mesh), 8000)
+
+
 def actor(mesh, x, y, yaw_deg, scale=1.0, lift=0.0):
     z = ground(x, y)
     if z is None or z <= SEA_Z + 20:
         return
     actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'%s'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
-                  "    Rotation=(Yaw=%d)\n    DrawScale=%.3f\n    bStatic=True\nEnd Actor" % (mesh, x, y, z + lift, int(yaw_deg * 65536 / 360) % 65536, scale))
+                  "    Rotation=(Yaw=%d)\n    DrawScale=%.3f\n    CullDistance=%d\n    bStatic=True\nEnd Actor"
+                  % (mesh, x, y, z + lift, int(yaw_deg * 65536 / 360) % 65536, scale, cull_of(mesh)))
 
 
 def near_building(x, y, r_units):
@@ -93,6 +104,36 @@ for wk in L.get("walks", []):                    # the worn foot paths (walks.py
 dbld = np.full((N, N), np.inf)
 for bid, b in B.items():
     dbld = np.minimum(dbld, np.hypot(WX - b["x"], WY - b["y"]) / CELL)
+
+# 0. the road surface: B_road slabs (10 m, pivot at the bottom of the gravel shoulders, 0.43 m to the asphalt
+#    top) every ~8 m along every road, aimed along it and pitched to the graded ground, stretched to the spacing
+ROAD = o.get("road", "AvalonSM.Liandri.B_road")
+n_road = 0
+if ROAD:
+    seen = set()
+    for r in roads:
+        pts = []
+        for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
+            seg = math.hypot(bx - ax, by - ay)
+            n = max(1, int(seg // 400))
+            pts += [(ax + (bx - ax) * k / n, ay + (by - ay) * k / n) for k in range(n)]
+        pts.append(tuple(r[-1]))
+        for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:]):
+            key = (round((x0 + x1) / 300), round((y0 + y1) / 300))
+            if key in seen:                              # shared stretches (branch junctions) once
+                continue
+            seen.add(key)
+            g0, g1 = ground(x0, y0), ground(x1, y1)
+            seg = math.hypot(x1 - x0, y1 - y0)
+            if g0 is None or g1 is None or seg < 50 or min(g0, g1) <= SEA_Z + 30:
+                continue
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            yaw = math.degrees(math.atan2(y1 - y0, x1 - x0))
+            pitch = math.degrees(math.atan2(g1 - g0, seg))
+            actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'%s'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
+                          "    Rotation=(Pitch=%d,Yaw=%d)\n    DrawScale3D=(X=%.3f,Y=1,Z=1)\n    CullDistance=20000\n    bStatic=True\nEnd Actor"
+                          % (ROAD, mx, my, (g0 + g1) / 2 - 15, int(pitch * 65536 / 360) % 65536, int(yaw * 65536 / 360) % 65536, seg / 500 * 1.04))
+            n_road += 1
 
 # 1. lamps along the longest roads (the trunk), every ~60 m, on the right-hand verge
 roads_sorted = sorted(roads, key=lambda r: -sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(r[:-1], r[1:])))
@@ -168,12 +209,12 @@ for j, i in zip(*np.nonzero(steep)):
         actor(mesh, WX[j, i] + rng.uniform(-200, 200), WY[j, i] + rng.uniform(-200, 200), rng.uniform(0, 360),
               rng.uniform(0.6, 1.1) if big else rng.uniform(0.8, 1.6), lift=-30)
         n_rocks += 1
-# trees: clump centres on gentle ground, 3-7 trees each
+# trees: clump centres on gentle ground, 2-5 trees each (fewer than the first pass: frame rate)
 cand = list(zip(*np.nonzero(gentle)))
 rng.shuffle(cand)
-for j, i in cand[:min(90, int(len(cand) * 0.03 * TREES))]:
+for j, i in cand[:min(60, int(len(cand) * 0.03 * TREES))]:
     cx, cy = WX[j, i], WY[j, i]
-    for k in range(int(rng.integers(3, 8))):
+    for k in range(int(rng.integers(2, 6))):
         ang, d = rng.uniform(0, 2 * math.pi), rng.uniform(0, 420)
         x, y = cx + d * math.cos(ang), cy + d * math.sin(ang)
         if near_building(x, y, 900):
@@ -213,8 +254,8 @@ if WALL and BEFORE and os.path.exists(BEFORE):
                     yawd = 0 if di else 90
                     hgt = min(step, 400)
                     actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'%s'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
-                                  "    Rotation=(Yaw=%d)\n    DrawScale3D=(X=1,Y=1,Z=%.3f)\n    bStatic=True\nEnd Actor"
-                                  % (WALL, x, y, min(Z[j, i], Z[nj, ni]) - 10, int(yawd * 65536 / 360), max(0.6, hgt / 110.0)))
+                                  "    Rotation=(Yaw=%d)\n    DrawScale3D=(X=1,Y=1,Z=%.3f)\n    CullDistance=%d\n    bStatic=True\nEnd Actor"
+                                  % (WALL, x, y, min(Z[j, i], Z[nj, ni]) - 10, int(yawd * 65536 / 360), max(0.6, hgt / 110.0), cull_of(WALL)))
                     n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
-print(f"clutter: {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
+print(f"clutter: {n_road} road slabs, {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")

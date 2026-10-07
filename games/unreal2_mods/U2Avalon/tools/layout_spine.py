@@ -155,9 +155,10 @@ ang_t = np.degrees(np.arctan2(WY - ty, WX - tx))
 dang = np.abs((ang_t - WINDOW[0] + 180) % 360 - 180)
 dist_t = np.hypot(WX - tx, WY - ty) / M
 shore = MAIN & (D_WATER <= 1.2 * CELL_M) & (~WATER)
-# a longer dock -> tower leg gives the works room: prefer the far end of the window sector
-dock_score = np.where(shore & (dang < WINDOW[1]) & (dist_t > 250) & (dist_t < 750) & (DEEP < 60),
-                      1.5 * ROOM + 0.6 * (1 - dang / WINDOW[1]) + 1.0 * np.clip((dist_t - 250) / 500, 0, 1), -1)
+# the dock as NEAR as the shore allows (200-550 m): the works between it and the tower then sit close and big in
+# the command room's window (the user's first play: at 300-700 m the town read as specks and nobody saw roads)
+dock_score = np.where(shore & (dang < WINDOW[1]) & (dist_t > 200) & (dist_t < 550) & (DEEP < 60),
+                      1.5 * ROOM + 0.6 * (1 - dang / WINDOW[1]) + 1.0 * np.clip((550 - dist_t) / 350, 0, 1), -1)
 if dock_score.max() <= 0:
     dock_score = np.where(shore & (dist_t < 900), ROOM, -1)
 j, i = np.unravel_index(int(dock_score.argmax()), dock_score.shape)

@@ -6,7 +6,7 @@ cell pinned to the stock height so the tower's BSP foot meets the ground.
 
 Why: island_form sets the sea for ~40 % land and caps the plateau a few metres over the sea, so its land
 sat at a median ~14 m against the stock island's ~65 m (90th percentile 39 m against 120 m); in game
-the island read as squashed flat, and the ground at the tower was 15 m under the tower's foot.
+the island read as squashed flat. The tower cell already sits at the stock height; it stays pinned.
 How: split both land distributions at the tower height; our cells below it are quantile-matched to the
 stock cells below the stock tower height, those above to the stock cells above. Sea cells are untouched.
 """

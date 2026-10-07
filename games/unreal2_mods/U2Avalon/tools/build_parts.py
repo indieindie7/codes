@@ -316,6 +316,22 @@ if not ONLY or "ctower" in ONLY:
         ob.select_set(ob.type == "MESH")
     bpy.ops.export_scene.gltf(filepath=os.path.join(out, "B_ctower.glb"), use_selection=True, export_format="GLB", export_apply=True)
     print("BUILT ctower ->", os.path.join(out, "B_ctower.glb"))
+# the road surface: one 10 m segment (along -Y = Unreal +X), 7 m of dark asphalt with pale kerbs, a centre
+# dash and gravel shoulders; the pivot is the MIDDLE of the slab so clutter.py can pitch/roll it onto the
+# graded ground and stretch it (DrawScale3D X) to the sample spacing. The terrain's sand paint at 10 m cells
+# could not show a road; this does.
+if not ONLY or "road" in ONLY:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    MATS.clear()
+    box(0, 0, 0.0, 7.0, 10.0, 0.4, "charcoal")                  # asphalt slab, top 0.2 m over the pivot
+    for sx in (-1, 1):
+        box(sx * 3.45, 0, 0.23, 0.3, 10.0, 0.06, "grey")        # kerbs
+        box(sx * 4.2, 0, -0.08, 1.4, 10.0, 0.3, "brown")        # gravel shoulder
+    box(0, -2.5, 0.21, 0.18, 3.0, 0.02, "orange")               # the centre dash
+    for ob in bpy.context.scene.objects:
+        ob.select_set(ob.type == "MESH")
+    bpy.ops.export_scene.gltf(filepath=os.path.join(out, "B_road.glb"), use_selection=True, export_format="GLB", export_apply=True)
+    print("BUILT road ->", os.path.join(out, "B_road.glb"))
 if not ONLY or "cable" in ONLY:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     MATS.clear()

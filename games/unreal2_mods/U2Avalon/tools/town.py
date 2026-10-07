@@ -43,6 +43,8 @@ def step(title, fn):
 # 1. the island
 step("island", lambda: ib.run(["py", os.path.join(TOOLS, "island_form.py"), seed, ib.TEMPLATE, base + "_e.bmp",
                                "png=" + base + "_sketch.png", "style=" + STYLE]))
+# the stock island's relief: hills as tall as TutA's own, the plain kept at the tower's foot
+step("relief", lambda: ib.run(["py", os.path.join(TOOLS, "relief_match.py"), base + "_e.bmp", ib.TEMPLATE]))
 score = subprocess.run(["py", os.path.join(os.path.dirname(os.path.dirname(HERE)), "..", "tools", "python", "terrain", "terrain_tool.py")
                         if False else ib.TERRAIN, "score", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02"],
                        capture_output=True, text=True).stdout
