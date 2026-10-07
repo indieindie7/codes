@@ -190,6 +190,18 @@ event PostBeginPlay()
 	ClampTex(CraterTex);
 	for (i = 0; i < 3; i++)
 		ClampTex(Scorches[i]);
+	// (an unclamped projector texture draws its whole square darkened, not just the mark)
+	for (i = 0; i < 6; i++)
+		ClampTex(WallHoles[i]);
+	for (i = 0; i < 4; i++)
+		ClampTex(Burns[i]);
+	for (i = 0; i < 3; i++)
+	{
+		ClampTex(FootTex[i]);
+		ClampTex(AlienFootTex[i]);
+		ClampTex(FootTexL[i]);
+		ClampTex(AlienFootTexL[i]);
+	}
 	React = Spawn(class'ModReact');
 	React.Gore = self;
 	Severer = Spawn(class'ModSever');
@@ -1276,6 +1288,11 @@ function ShotGone(vector Loc, vector Vel)
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: shot gone at " $ Loc $ " hit " $ A $ " at " $ HitL);
 	// a scorch on walls, floors and level meshes; nothing on characters (they bleed instead)
+	// marks only where the player can see them: a fight across the level makes ten impacts a
+	// second, which would churn the caps and sweep the marks in front of the player away
+	if (Level.GetLocalPlayerController() != None && Level.GetLocalPlayerController().Pawn != None
+		&& VSize(HitL - Level.GetLocalPlayerController().Pawn.Location) > 1500)
+		return;
 	if (bImpacts && A != None && (A == Level || A.bWorldGeometry || A.bStatic) && Pawn(A) == None)
 	{
 		// a wall or ceiling: the shot digs a hole (the layer's parallax rule makes it read as
@@ -1301,6 +1318,11 @@ function Chips(vector Spot, vector N)
 	local vector V;
 
 	if (MaxRubble <= 0 || ChipCount <= 0)
+		return;
+	// only near the player: a fight's hundreds of stray shots would otherwise churn rubble
+	// actors nobody sees (the holes themselves are cheap projectors)
+	if (Level.GetLocalPlayerController() == None || Level.GetLocalPlayerController().Pawn == None
+		|| VSize(Spot - Level.GetLocalPlayerController().Pawn.Location) > 700)
 		return;
 	for (i = 0; i < ChipCount; i++)
 	{
@@ -2035,7 +2057,7 @@ defaultproperties
      RagdollMaxTimestep=0.016000
      RagdollContactSoftness=0.000000
      bImpacts=True
-     MaxHoles=110
+     MaxHoles=160
      bBlood=True
      MaxDecals=80
      SprayReach=260.000000

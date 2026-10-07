@@ -287,6 +287,35 @@ function ShootCorpse(string ClassName)
 	G.CorpseHit(Best, Best.Location - Dir * Best.CollisionRadius * 0.5, Dir);
 }
 
+// a shot's impact where the view (offset by YawOff, PitchOff degrees) meets the level
+function ShootWall(float YawOff, float PitchOff)
+{
+	local ModGore G;
+	local rotator R;
+	local vector Eye, Dir, HitL, HitN;
+	local Actor A;
+
+	if (PC() == None || PC().Pawn == None)
+		return;
+	ForEach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None)
+	{
+		Note("shootwall: no ModGore");
+		return;
+	}
+	R = PC().Rotation;
+	R.Yaw += int(YawOff * 65536.0 / 360.0);
+	R.Pitch += int(PitchOff * 65536.0 / 360.0);
+	Dir = vector(R);
+	Eye = PC().Pawn.Location + vect(0,0,1) * PC().Pawn.EyeHeight;
+	A = PC().Pawn.Trace(HitL, HitN, Eye + Dir * 3000, Eye, false);
+	Note("shootwall: " $ A $ " at " $ HitL $ " normal " $ HitN);
+	if (A == None)
+		return;
+	G.ShotGone(HitL - Dir * 8, Dir * 2500);
+}
+
 function Hurt(int Damage, string TypeName, optional string BoneName)
 {
 	local Pawn P, Best;
@@ -649,6 +678,12 @@ function StartStep()
 		// SHOOTCORPSE [Package.ProjectileClass]: a shot from beside the player through the nearest body
 		ShootCorpse(Args.Length > 1 ? Args[1] : "EonWeapons.HumanXJ9Fire_Proj");
 		StepLength = 0.5;
+		break;
+	case "SHOOTWALL":
+		// SHOOTWALL [yaw] [pitch]: a shot's impact on whatever the view (offset by that much, in
+		// degrees) looks at: ModGore's impact marks (holes, scorches, burns, chips) without a weapon
+		ShootWall(ArgF(1, 0), ArgF(2, 0));
+		StepLength = 0.2;
 		break;
 	case "HURT":
 		// HURT damage [Package.DamageType] [bone]: the nearest other character takes a shot from
