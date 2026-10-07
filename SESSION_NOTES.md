@@ -48,7 +48,7 @@ the cloud can (Wine, headless Blender). The real check is the user's QA of the g
 13. **Dust (U2Grime):** copy `games/unreal2_mods/U2Grime/Source/U2Grime` into the game folder,
     add `EditPackages=U2Grime`, `UCC make`, then `python u2pilot.py scripts/grime_test.txt
     --background`. Send the `Grime:` lines (incl. the `kind` survey) and the shots (dust and
-    clutter, each with and without, and the kick).
+    clutter, each with and without, the kick, and the break: BrokenByDamage vs BrokenByShot).
 
 14. **SSAO:** fork branch `ssao` (or `tools/C/U2Shaders/d3d8-mingw.dll`), `ssao.hlsl` into
     `System\U2Shaders\`, `post=1` + `ssao=1`. Compare with `ssao=0` and `ssaofx=0.8 40 1 1` (AO
@@ -151,7 +151,9 @@ distance from the AI path network (traffic). Walking over a patch wears it light
 Clutter (GrimeClutter): the map's own small StaticMeshActors are measured with TraceActors
 (collision switched on for a moment if needed), small ones on a floor become kinds, copies go
 against the wall at the dustiest spots (no collision; walking into one kicks it, scripted
-bounce like DestructDebris). Console: `set GrimeManager bShow False`, `ViewSpot N`,
+bounce like DestructDebris). Shooting a piece shatters it into shards of its own mesh
+(GrimeProp.TakeDamage via the engine's hit, or GrimeClutter.ShotWatch tracing the player's
+aim at each shot as a fallback; the log says which). Console: `set GrimeManager bShow False`, `ViewSpot N`,
 `bRebuild True`, `set GrimeClutter ViewProp N`. Possible later: real SSAO in the post pass (INTZ depth works on
 the PC, per the depth probe).
 

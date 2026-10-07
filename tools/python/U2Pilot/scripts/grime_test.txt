@@ -91,4 +91,15 @@ move 1 0 1.2
 wait 1.5
 shot
 dump GrimeProp Kicks Physics
+# break: stand in front of piece 5 and shoot it: it should burst into shards that bounce and lie
+# there; BrokenByDamage = the engine's own hit reached it, BrokenByShot = the aim-trace fallback did
+console set GrimeClutter ViewProp 5
+wait 0.5
+shot
+fire 0.25
+wait 0.4
+shot
+wait 1.5
+shot
+dump GrimeClutter Broken BrokenByDamage BrokenByShot
 quit

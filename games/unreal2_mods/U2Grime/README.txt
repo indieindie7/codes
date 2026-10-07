@@ -21,6 +21,10 @@ U2Grime works this out live when any map loads (no per-map work, stock maps incl
      (nobody gets stuck, shots pass through); walking into one kicks it: it hops away,
      bounces and settles (Unreal II has no rigid-body physics, so this is scripted).
      The log lists each kind ("Grime: kind ..."): a survey of every map's small props.
+  5. Breaking (Black-style): shoot a piece and it bursts into shards of its own mesh
+     (4, smaller, squashed at random so they read as broken bits), thrown along the shot,
+     bouncing and lying there for half a minute; a dust puff and a sound if set (below).
+     Pieces stop shots (hitscan traces and projectiles) but never block anyone walking.
 
 The best candidates (spaced apart, 160 at most) get a soft dust patch: a projector
 straight down that darkens the floor slightly, warm-grey (GrimeSpot). Doors and terrain
@@ -47,6 +51,12 @@ bClutter (False = dust only).
 Clutter numbers (GrimeClutter.uc, applied on the next bRebuild): MaxPropRadius,
 MaxPropHeight, MinScore, Chance, MaxPerSpot, MaxPieces, bKick, ExtraMeshes (named
 meshes "Package.Group.Name" to add, e.g. ones the survey found on other maps).
+Breaking: bBreakable, BreakDamage (1: anything breaks a piece), ShardCount, ShardLife,
+DustTemplate ("Package.Name" of a ParticleGenerator template for the puff; none set yet:
+needs a name from the game's packages), BreakSound (a Sound, same), bShotWatch (the
+fallback that traces the player's aim at each shot). The log says which path broke a
+piece: "broken by N damage" = the engine's own hit, "broken by the player's shot" = the
+fallback; the test dumps BrokenByDamage / BrokenByShot.
 
 Textures: tools\make_textures.py (Python 3, numpy, Pillow) writes Textures\Dust*.tga.
 PB_Modulate doubles the texture, so 128 grey = no change; the border is exactly 128.
@@ -57,4 +67,6 @@ looks straight down past it; could be fine, could look wrong), and projectors co
 little each, so watch the FPS with 160 of them. Clutter: copied props are lit as moving
 actors, not with the map's baked light, so they may look a little brighter or darker
 than the originals; maps whose small props have no collision get them switched on for a
-moment to be measured (logged as "unmeasurable" if even that fails).
+moment to be measured (logged as "unmeasurable" if even that fails). Breaking: a piece's
+cylinder stops zero-extent traces, so a low enough AI sight line across a can on the floor
+would be blocked (the cylinders are at most the prop's height, usually under 20 units).
