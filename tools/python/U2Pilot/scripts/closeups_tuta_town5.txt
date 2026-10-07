@@ -1,0 +1,58 @@
+# close-ups generated from isl_layout.json
+background
+map TutA_Town5?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+console ghost
+console hub tp 8348 -14366 0
+console hub face 90
+turn 0 -1 0.3
+wait 1
+shot
+console hub tp -4 -3819 0
+console hub face 90
+turn 0 -3 0.3
+wait 1
+shot
+console hub tp -10199 -9074 0
+console hub face 63
+turn 0 9 0.3
+wait 1
+shot
+console hub tp 6498 -10646 0
+console hub face 270
+turn 0 -2 0.3
+wait 1
+shot
+console hub tp 3728 3087 0
+console hub face 202
+turn 0 -2 0.3
+wait 1
+shot
+console hub tp 9709 -7240 0
+console hub face 225
+turn 0 0 0.3
+wait 1
+shot
+console hub tp -1642 -546 0
+console hub face 90
+turn 0 7 0.3
+wait 1
+shot
+console hub tp 2708 -15658 0
+console hub face 316
+turn 0 -9 0.3
+wait 1
+shot
+console hub tp -6228 -5717 0
+console hub face 157
+turn 0 -6 0.3
+wait 1
+shot
+console hub tp 2152 -1756 0
+console hub face 129
+turn 0 -3 0.3
+wait 1
+shot
+quit

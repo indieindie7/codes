@@ -2,6 +2,7 @@ id: hands
 name: the processing line hands (twelve)
 role: Liandri plant workers, two shifts
 employer: liandri
+headcount: 12
 lives: dorm
 works: hall_a
 routine: 0600 dorm; 0630 hall_a; 1230 hall_b; 1300 hall_a; 1830 dorm

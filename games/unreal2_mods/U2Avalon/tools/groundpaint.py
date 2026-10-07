@@ -9,6 +9,7 @@ out_dir gets the repainted three. Rules (cells are 10.24 m):
   * sand (Layer2_Beach): roads (width road_w cells, soft edge), building footprints and the yard round them
     (`yard` cells: worn ground, the first "glue" between buildings), the beach within 1.5 cells of the sea,
     the connection corridors (pipes/conveyors) faintly;
+  * foot paths (the layout's "walks" from walks.py) as lighter sand, stronger with the trips that wear them;
   * plant life (PlantLife1): gentle slopes away from the sand, thinner with height and on steep ground,
     none inside the town's yards;
   * rock (Layer1, the base layer): always full under everything (it shows where the others are thin), so
@@ -64,6 +65,17 @@ for c in L.get("connections", []):
         for (ax, ay), (bx, by) in zip(p[:-1], p[1:]):
             dline = np.minimum(dline, seg_dist(ax, ay, bx, by))
 lines = 0.45 * np.clip(1 - (dline - 0.4) / 0.6, 0, 1)
+# foot paths worn by the citizens' routines (walks.py): stronger where more people walk, lighter than a road
+traffic = np.zeros((N, N))
+for wk in L.get("walks", []):
+    p = wk.get("path") or []
+    if len(p) < 2:
+        continue
+    dp = np.full((N, N), np.inf)
+    for (ax, ay), (bx, by) in zip(p[:-1], p[1:]):
+        dp = np.minimum(dp, seg_dist(ax, ay, bx, by))
+    traffic += wk.get("n", 1) * np.clip(1 - (dp - 0.25) / 0.5, 0, 1)
+paths = np.clip(0.3 + 0.4 * traffic / 12.0, 0, 0.7) * (traffic > 0)
 # footprints and yards
 yard = np.zeros((N, N))
 for bid, b in L["buildings"].items():
@@ -87,7 +99,7 @@ if len(wi):
             sh = np.roll(np.roll(WATER, dj, 0), di, 1)
             dwater = np.where(sh, np.minimum(dwater, math.hypot(di, dj)), dwater)
 beach = np.clip(1 - (dwater - 0.5) / 1.5, 0, 1)
-sand = np.clip(np.maximum.reduce([road, yard, beach, lines]), 0, 1)
+sand = np.clip(np.maximum.reduce([road, yard, beach, lines, paths]), 0, 1)
 # plant life: gentle ground, not on sand, thinner high up and on steep slopes
 height_t = np.clip((Z - SEA_Z) / 4500.0, 0, 1)
 plant = np.clip(1 - SLOPE / 28.0, 0, 1) * (1 - 0.7 * height_t) * (1 - sand)

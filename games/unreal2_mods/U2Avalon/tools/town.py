@@ -75,6 +75,9 @@ open(os.path.join(RUN, "systems.txt"), "w").write(
 # 4. pads, 5. terrain into TutA, 6. the buildings as actors + lighting + editor pictures
 step("pads + roads", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout]))
 ib.island_png(base + "_ec.bmp", base + "_map.png")
+# the citizens' routines walked on the graded ground: desire lines, door wants, travel-time checks
+step("walks", lambda: ib.run(["py", os.path.join(TOOLS, "walks.py"), base + "_ec.bmp", layout, "png=" + base + "_walks.png"]))
+L = json.load(open(layout))
 # the ground paint: rock base, sand on roads / yards / beach, plant life on gentle ground (TutA's three layers)
 ALPHA_TPL = os.path.join(r"C:\Users\john\Documents\U2_research\terrain", "alphas")
 step("ground paint", lambda: ib.run(["py", os.path.join(TOOLS, "groundpaint.py"), base + "_ec.bmp", layout, ALPHA_TPL, os.path.join(RUN, "alphas")]))
@@ -116,8 +119,11 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
        "## Systems", "needs %d, unmet %d, score %.2f; pipes %d m, cables %d m, conveyors %d m" % (
            S["needs"], len(S["unmet"]), S["score"], S["pipes_m"], S["cables_m"], S["conveyors_m"]),
        *("- %s needs %s: %s" % tuple(u) for u in S["unmet"]), "",
+       "## Walks", "%d trips a day, %.1f km on foot; checks:" % (
+           sum(1 for w in L.get("walks", []) if w.get("path")), sum((w.get("m") or 0) * w.get("n", 1) for w in L.get("walks", [])) / 1000),
+       *("- " + c for c in L.get("walk_checks", [])), "- (none)" if not L.get("walk_checks") else "", "",
        "## Terrain", "```", score.strip(), "```", "",
-       "## Pictures", "- sketch: isl_sketch.png", "- layout: isl_layout.png", "- pads: isl_map.png",
+       "## Pictures", "- sketch: isl_sketch.png", "- layout: isl_layout.png", "- pads: isl_map.png", "- walks: isl_walks.png",
        "- editor: isl_ed_plant.png, isl_ed_side.png, isl_ed_island.png"] + (["- game: pilot_sheet.png, closeups_sheet.png"] if sheet else []) + [
        "", "## Timing", *("- %s: %.0f s" % (t, d) for t, d in log), "- total: %.0f s" % (time.time() - t0)]
 open(os.path.join(RUN, "report.md"), "w", encoding="utf-8").write("\n".join(rep) + "\n")

@@ -185,8 +185,49 @@ def closeup_script(name, layout_json, ids=("hall_a", "hall_b", "silos", "dorm", 
              "map %s?Mutator=U2AvalonCards.AvalonCards" % name, "waitcontrol 240", "wait 2", "console god", "console ghost"]
 
     def shot(x, y, z, tx, ty, pitch):
-        lines.extend(["console hub tp %.0f %.0f %.0f" % (x, y, z), "console hub face %d" % face(x, y, tx, ty),
+        lines.extend(["console hub tp %.0f %.0f 0" % (x, y), "console hub face %d" % face(x, y, tx, ty),
                       "turn 0 %d 0.3" % pitch, "wait 1", "shot"])
+    # the ground the cameras stand on: the graded heightmap when there is one
+    hm = L.get("heightmap", "")
+    if hm.endswith("_e.bmp") and os.path.exists(hm[:-6] + "_ec.bmp"):
+        hm = hm[:-6] + "_ec.bmp"
+    Hg = read_bmp(hm)[3] if os.path.exists(hm) else None
+    LOC = (-14487.546875, 4835.837891, -131.845703)
+    # the clutter props (lamps, fences, trees): the pawn cannot be teleported into one
+    CLUT = []
+    ct = os.path.join(os.path.dirname(hm), "isl_clutter.t3d")
+    if os.path.exists(ct):
+        CLUT = [(float(a), float(b_)) for a, b_ in re.findall(r"Location=\(X=([-\d.]+),Y=([-\d.]+)", open(ct).read())]
+
+    def ground(x, y):
+        if Hg is None:
+            return -4800.0
+        i = min(127, max(0, int(round((x - LOC[0]) / 512 + 64))))
+        j = min(127, max(0, int(round((y - LOC[1]) / 512 + 64))))
+        return LOC[2] + (Hg[j, i] - 32768) * 0.5
+
+    def radius(bid):
+        s = sheets.get(bid, {}).get("size")
+        return math.hypot(s[0], s[1]) * 25 if s else 600
+
+    def clear(bid, x, y, z, tx, ty, tz, wet_ok=False):
+        """dry ground under the camera, no other building on it or across the sight line, terrain below the line"""
+        if ground(x, y) <= -4967 + 40 and not wet_ok:
+            return False
+        if any(math.hypot(x - cx_, y - cy_) < 260 for cx_, cy_ in CLUT):      # the pawn would encroach a prop
+            return False
+        for k in range(0, 12):
+            t = k / 12
+            px, py, pz = x + (tx - x) * t, y + (ty - y) * t, z + (tz - z) * t
+            if t < 0.8 and ground(px, py) > pz - 60:
+                return False
+            for o_, ob in B.items():
+                if o_ in (bid, "far_islands") or sheets.get(o_, {}).get("kind") in ("islet",):
+                    continue
+                if math.hypot(px - ob["x"], py - ob["y"]) < radius(o_) * 0.8 + (200 if k == 0 else 0) and t < 0.85:
+                    return False
+        return True
+
     for bid in ids:
         if bid not in B or bid not in sheets:
             continue
@@ -196,16 +237,43 @@ def closeup_script(name, layout_json, ids=("hall_a", "hall_b", "silos", "dorm", 
         n = 2 if spec[0].lower() == "2x2" else (int(spec[0]) if len(spec) == 2 else 1)
         longest = max(size[0], size[1]) * (1 + 1.5 * (n - 1)) * 50
         d = longest * 1.6 + 8 * 50
-        a = math.radians(b["yaw"])
-        shot(b["x"] + d * math.cos(a), b["y"] + d * math.sin(a), b.get("z", -4800) + 175, b["x"], b["y"], -5 - int(8 * min(1, longest / 3000)))
+        tz = max(b.get("z", -4800), -4967) + size[2] * 25
+        # bearings from the front round both ways; the first with dry ground and a clear line wins
+        pick = None
+        for off_ in (0, 45, -45, 90, -90, 135, -135, 180):
+            for dd in (d, d * 0.75, d * 1.3):
+                a = math.radians(b["yaw"] + off_)
+                x, y = b["x"] + dd * math.cos(a), b["y"] + dd * math.sin(a)
+                z = max(ground(x, y), -4967) + 140                         # eye height on the ground
+                if clear(bid, x, y, z, b["x"], b["y"], tz):
+                    pick = (x, y, z)
+                    break
+            if pick:
+                break
+        if pick is None:
+            a = math.radians(b["yaw"])
+            x, y = b["x"] + d * math.cos(a), b["y"] + d * math.sin(a)
+            pick = (x, y, max(ground(x, y), b.get("z", -4800), -4967) + 400)
+            print("  close-up %s: no clear bearing, using the front from above" % bid)
+        x, y, z = pick
+        shot(x, y, z, b["x"], b["y"], -int(math.degrees(math.atan2(z - tz, math.hypot(x - b["x"], y - b["y"])))) - 2)
     if "wellhead_b" in B and "silos" in B:
         w, sl = B["wellhead_b"], B["silos"]
         mx, my = (w["x"] + sl["x"]) / 2, (w["y"] + sl["y"]) / 2
         ang = math.atan2(sl["y"] - w["y"], sl["x"] - w["x"]) + math.pi / 2
-        shot(mx + 2200 * math.cos(ang), my + 2200 * math.sin(ang), max(w.get("z", -4800), sl.get("z", -4800)) + 450, mx, my, -6)
+        for s_ in (1, -1):
+            cx_, cy_ = mx + s_ * 2200 * math.cos(ang), my + s_ * 2200 * math.sin(ang)
+            if ground(cx_, cy_) > -4967 + 40:
+                break
+        shot(cx_, cy_, max(ground(cx_, cy_), w.get("z", -4800), sl.get("z", -4800)) + 450, mx, my, -6)
     sp = L.get("spine") or L["roads"][0]
     k = len(sp) // 2
-    shot(sp[k][0], sp[k][1], B.get("plant_office", B["tower"]).get("z", -4800) + 175, sp[min(len(sp) - 1, k + 8)][0], sp[min(len(sp) - 1, k + 8)][1], -3)
+    for dk in sorted(range(-len(sp) // 3, len(sp) // 3), key=abs):          # the nearest spine point a pawn fits on
+        q = min(len(sp) - 9, max(0, len(sp) // 2 + dk))
+        if not any(math.hypot(sp[q][0] - cx_, sp[q][1] - cy_) < 260 for cx_, cy_ in CLUT) and                 not any(math.hypot(sp[q][0] - ob["x"], sp[q][1] - ob["y"]) < radius(o_) * 0.8 + 200 for o_, ob in B.items()):
+            k = q
+            break
+    shot(sp[k][0], sp[k][1], ground(sp[k][0], sp[k][1]) + 175, sp[min(len(sp) - 1, k + 8)][0], sp[min(len(sp) - 1, k + 8)][1], -3)
     lines.append("quit")
     return "\n".join(lines) + "\n"
 

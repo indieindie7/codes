@@ -86,6 +86,10 @@ roads = L.get("roads", [])
 for r in roads:
     for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
         droad = np.minimum(droad, seg_dist(ax, ay, bx, by))
+for wk in L.get("walks", []):                    # the worn foot paths (walks.py) stay clear like roads
+    p = wk.get("path") or []
+    for (ax, ay), (bx, by) in zip(p[:-1], p[1:]):
+        droad = np.minimum(droad, seg_dist(ax, ay, bx, by) + 0.4)
 dbld = np.full((N, N), np.inf)
 for bid, b in B.items():
     dbld = np.minimum(dbld, np.hypot(WX - b["x"], WY - b["y"]) / CELL)

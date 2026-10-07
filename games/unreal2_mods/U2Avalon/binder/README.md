@@ -36,6 +36,7 @@ Citizen header keys (binder/citizens/*.md):
     lives: tower                 building id
     works: tower                 building id
     routine: 0600 tower_mess; 0700 tower; 1900 tower_mess; 2100 tower    "HHMM building_id" pairs
+    headcount: 12                a group sheet (the hands): how many walk each routine trip (default 1)
     wants: ...
     fears: ...
 
