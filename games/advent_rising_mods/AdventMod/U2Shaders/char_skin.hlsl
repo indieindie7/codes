@@ -9,7 +9,8 @@
 //     diffuse light; they stay in the highlight);
 //   - a soft rim from the ambient light at grazing angles, stronger facing up, and a broad
 //     low highlight (skin oil).
-// Kept small for ps_2_a: 32 constants, 16 of them the lights.
+// Kept small for ps_2_a: 32 constants, 16 of them the lights. Also writes the skin mask
+// (COLOR1) that sss.hlsl blurs under.
 
 sampler2D Tex       : register(s0);
 sampler2D Layer     : register(s1);   // Advent's skin shader: a second lit layer,
@@ -27,8 +28,14 @@ float4    Lights[16] : register(c8);
 
 static const float3 SKINWRAP = float3(0.75, 0.42, 0.32);
 
-float4 main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD2, float2 uv3 : TEXCOORD3,
-	float3 normal : TEXCOORD4, float3 pos : TEXCOORD5) : COLOR
+struct Out
+{
+	float4 Colour : COLOR0;
+	float4 Skin   : COLOR1;   // the skin mask for sss.hlsl (render target 1 when sss=1; ignored otherwise)
+};
+
+Out main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD2, float2 uv3 : TEXCOORD3,
+	float3 normal : TEXCOORD4, float3 pos : TEXCOORD5)
 {
 	float3 ng = normalize(normal);
 	float3 v = normalize(-pos);
@@ -79,5 +86,8 @@ float4 main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD
 	float3 ambient = Ambient.rgb * (0.6 + 0.4 * sky);
 	float3 rim = Ambient.rgb * 0.55 * pow(1 - nv, 4) * sky;
 	float3 c = t.rgb * saturate(ambient + direct + rim) * Setup.x + shine * 0.12 * Setup.z * Setup.x;
-	return float4(lerp(saturate(c), own, glow), t.a);
+	Out o;
+	o.Colour = float4(lerp(saturate(c), own, glow), t.a);
+	o.Skin = float4(1, 1 - glow, 1, t.a);       // glowing parts (lights on a suit) are not skin
+	return o;
 }
