@@ -5,7 +5,7 @@ layer: boom
 kind: office
 at: 12400 300 120
 size: 18 12 9
-users: okafor
+users: okafor plant_staff security
 doors: front:personnel left:personnel
 roof: flat
 wear: 0.05

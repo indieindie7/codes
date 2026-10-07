@@ -5,8 +5,9 @@ layer: core
 kind: tower
 at: 0 0 300
 size: 36 36 110
-users: hawkins oduya vask nkemelu
+users: garrison hawkins nkemelu oduya vask
 doors: front:personnel
+beds: 60
 roof: none
 wear: 0.5
 lit: no

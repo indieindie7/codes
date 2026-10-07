@@ -78,6 +78,19 @@ def side_toward(b, target):
 
 def check(citizens, buildings, verbose=True):
     problems, notes = [], []
+    # beds: the people who live in a building (headcount: on group sheets) must fit its beds: line x count
+    living = {}
+    for c in citizens.values():
+        if c.get("lives"):
+            living[c["lives"]] = living.get(c["lives"], 0) + int(float(c.get("headcount", 1) or 1))
+    for bid, n in sorted(living.items()):
+        b = buildings.get(bid)
+        if b is None or not b.get("beds"):
+            continue
+        if n > int(b["beds"]):
+            problems.append(f"{bid}: {n} people live here but it has {b['beds']} beds")
+        elif verbose:
+            notes.append(f"{bid}: {n} of {b['beds']} beds taken")
     for c in citizens.values():
         for key in ("lives", "works"):
             if c.get(key) and c[key] not in buildings:

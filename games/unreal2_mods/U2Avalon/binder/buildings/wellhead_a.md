@@ -6,7 +6,7 @@ kind: rig
 at: 21500 1200 40
 size: 14 16 22
 card: DrillingRigHY 2400
-users: reyes
+users: mine_crew reyes
 doors:
 roof: none
 wear: 0.2

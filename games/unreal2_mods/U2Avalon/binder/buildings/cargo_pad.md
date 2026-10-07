@@ -5,7 +5,7 @@ layer: boom
 kind: pad
 at: 16400 -3400 300
 size: 50 50 2
-users: benedek
+users: benedek dock_gang security
 doors:
 roof: none
 wear: 0.1

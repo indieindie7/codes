@@ -1,0 +1,20 @@
+id: shanty_a
+name: Tin Row, the upper end
+owner: nobody
+layer: decline
+kind: house
+at: 9400 -3600 70
+size: 7 5 3.5
+count: 4 along
+users: tin_row_traders
+beds: 32
+doors: front:personnel
+roof: pitched
+wear: 0.75
+lit: yes
+mesh: B_old_camp
+provides: workers
+needs: 
+ref: processing_hall
+
+Scrap-panel huts outside the fence where the first camp stood: contract workers who stayed after their contract, traders, families. Water carried from the dock in drums.

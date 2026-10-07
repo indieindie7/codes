@@ -5,7 +5,7 @@ layer: boom
 kind: rig
 at: 22500 6800 0
 size: 26 32 38
-users: reyes
+users: reyes rig_crews
 doors:
 roof: none
 wear: 0.1

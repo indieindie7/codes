@@ -5,7 +5,7 @@ layer: core
 kind: pad
 at: 1800 900 300
 size: 40 40 2
-users: vask hawkins
+users: garrison hawkins vask
 doors:
 roof: none
 wear: 0.4

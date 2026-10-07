@@ -7,7 +7,7 @@ at: 15900 -4400 300
 size: 7 7 9
 count: 2 across
 mesh: storage_tank_2_kiln
-users: haldane benedek vask
+users: benedek haldane hauliers vask
 doors:
 roof: dome
 wear: 0.3

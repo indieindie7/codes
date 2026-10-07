@@ -5,7 +5,7 @@ layer: boom
 kind: hall
 at: 15300 1500 30
 size: 36 16 11
-users: hands okafor
+users: hands night_line okafor
 doors: front:roller left:personnel back:roller
 bays: front back
 roof: sawtooth

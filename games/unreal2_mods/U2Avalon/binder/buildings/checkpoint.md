@@ -5,7 +5,7 @@ layer: core
 kind: house
 at: 4200 -300 120
 size: 6 5 3.5
-users: nkemelu
+users: garrison nkemelu
 doors: front:personnel
 roof: flat
 wear: 0.45

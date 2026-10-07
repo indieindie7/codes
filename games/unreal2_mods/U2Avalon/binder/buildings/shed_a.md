@@ -5,7 +5,7 @@ layer: boom
 kind: hall
 at: 18000 4600 210
 size: 8 6 4
-users: haldane
+users: haldane hauliers
 doors: front:roller
 roof: flat
 wear: 0.5

@@ -5,7 +5,7 @@ layer: core
 kind: pump
 at: 17100 -1300 120
 size: 8 6 5
-users: arashiro
+users: arashiro plant_staff
 doors: front:personnel right:personnel
 roof: flat
 wear: 0.4

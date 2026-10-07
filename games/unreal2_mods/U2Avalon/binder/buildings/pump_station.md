@@ -5,7 +5,7 @@ layer: boom
 kind: pump
 at: 16800 2600 210
 size: 7 5 4
-users: haldane arashiro
+users: arashiro haldane hauliers
 doors: front:personnel
 roof: flat
 wear: 0.35

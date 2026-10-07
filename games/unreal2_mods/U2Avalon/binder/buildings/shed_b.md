@@ -5,7 +5,7 @@ layer: core
 kind: hall
 at: 11800 2800 210
 size: 8 6 4
-users: haldane
+users: haldane hauliers
 doors: front:roller
 roof: pitched
 wear: 0.6

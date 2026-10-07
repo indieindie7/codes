@@ -6,7 +6,7 @@ kind: silo
 at: 15500 -1900 30
 size: 9 9 22
 count: 3 across
-users: hands
+users: hands mine_crew
 doors:
 roof: cone
 wear: 0.3

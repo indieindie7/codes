@@ -5,7 +5,7 @@ layer: core
 kind: hall
 at: 13900 -700 30
 size: 30 14 8
-users: hands okafor
+users: hands night_line okafor
 doors: front:roller left:personnel right:roller
 bays: front
 roof: sawtooth
