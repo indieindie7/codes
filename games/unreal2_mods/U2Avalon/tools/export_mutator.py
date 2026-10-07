@@ -121,7 +121,7 @@ txt = open(INI, newline="").read().replace("\r\n", "\n")
 txt = re.sub(r"(?m)^(Props|Blocks|Cards)\[\d+\]=.*\n", "", txt)
 head = "[U2AvalonCards.AvalonCards]\n"
 i = txt.index(head) + len(head)
-txt = (txt[:i] + "".join("Props[%d]=%s\n" % (k, p) for k, p in enumerate(props[:64]))
+txt = (txt[:i] + "".join("Props[%d]=%s\n" % (k, p) for k, p in enumerate(props[:64] if WRITE_PROPS else []))
        + "".join("Cards[%d]=%s\n" % (k, c) for k, c in enumerate(cards[:64])) + txt[i:])
 open(INI, "w", newline="").write(txt.replace("\n", "\r\n"))
 print(len(props) if WRITE_PROPS else 0, "props,", len(cards), "cards ->", INI, "(shift %.0f)" % SHIFT)
@@ -155,5 +155,5 @@ if LAYOUT:
 if T3D:
     open(T3D, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
     print(len(actors), "StaticMeshActors ->", T3D)
-if len(props) > 64:
+if WRITE_PROPS and len(props) > 64:
     print("WARNING: more than 64 props; raise Props[] in AvalonCards.uc")
