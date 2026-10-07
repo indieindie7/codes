@@ -102,6 +102,9 @@ var Material FootTex[3], AlienFootTex[3];           // fresh, fading, nearly gon
 var Material FootTexL[3], AlienFootTexL[3];         // the left boot, mirrored
 var Material Burns[4];                               // a plasma burn cooling: white-hot, orange, ember, soot
 var config float BurnChance;                        // the share of wall hits that burn (glow and cool) rather than scorch
+var Material WallHoles[6];                           // bullet holes dug into walls: the layer's parallax rule reads their darkness as depth
+var config bool bWallHoles;                         // walls take holes (parallax) and lose chips where shots land
+var config int ChipCount;                           // chips of wall knocked out per hit (tiny rubble), 0: none
 var Material DripTex, AlienDripTex;                 // drip streaks a coat pans down after a hit
 var config bool bFootprints;
 var config int FootSteps;
@@ -1275,10 +1278,53 @@ function ShotGone(vector Loc, vector Vel)
 	// a scorch on walls, floors and level meshes; nothing on characters (they bleed instead)
 	if (bImpacts && A != None && (A == Level || A.bWorldGeometry || A.bStatic) && Pawn(A) == None)
 	{
+		// a wall or ceiling: the shot digs a hole (the layer's parallax rule makes it read as
+		// sunk in) and knocks chips out; floors keep the flat scorch
+		if (bWallHoles && HitN.Z < 0.5)
+		{
+			AddHole(WallHoles[Rand(6)], HitL, HitN, DecalScale * (0.2 + 0.1 * FRand()));
+			Chips(HitL, HitN);
+		}
 		if (FRand() < BurnChance)
 			Burn(HitL, HitN, DecalScale * (0.34 + 0.12 * FRand()));
-		else
+		else if (!bWallHoles || HitN.Z >= 0.5 || FRand() < 0.5)
 			AddHole(Scorches[Rand(3)], HitL, HitN, DecalScale * (0.3 + 0.12 * FRand()));
+	}
+}
+
+// chips of wall knocked out by a shot: tiny rubble, out and down, gone within the minute
+function Chips(vector Spot, vector N)
+{
+	local int i;
+	local ModRubble R;
+	local float K;
+	local vector V;
+
+	if (MaxRubble <= 0 || ChipCount <= 0)
+		return;
+	for (i = 0; i < ChipCount; i++)
+	{
+		if (FRand() < 0.3)
+			continue;
+		while (Rubble.Length > 0 && (Rubble.Length >= MaxRubble || Rubble[0] == None || Rubble[0].bDeleteMe))
+		{
+			if (Rubble[0] != None && !Rubble[0].bDeleteMe)
+				Rubble[0].Destroy();
+			Rubble.Remove(0, 1);
+		}
+		R = Spawn(class'ModRubble',,, Spot + N * 8 + VRand() * 4, RotRand());
+		if (R == None)
+			continue;
+		K = 0.5 + 0.9 * FRand() * FRand();
+		R.Gore = self;
+		R.SetStaticMesh(R.Shapes[Rand(2)]);
+		R.SetDrawScale(K);
+		R.Size = vect(1,1,1) * K;
+		R.Stay = 25 + 20 * FRand();
+		R.LifeSpan = 70;
+		V = Normal(N * 1.5 + VRand()) * (90 + 170 * FRand());
+		R.Launch(V, PhysicsVolume.Gravity.Z, K * 0.5);
+		Rubble[Rubble.Length] = R;
 	}
 }
 
@@ -1927,6 +1973,14 @@ defaultproperties
      Burns(2)=Texture'AdventMod.Blood.Burn2'
      Burns(3)=Texture'AdventMod.Blood.Burn3'
      BurnChance=0.35
+     WallHoles(0)=Texture'AdventMod.Dirt.WallHole0'
+     WallHoles(1)=Texture'AdventMod.Dirt.WallHole1'
+     WallHoles(2)=Texture'AdventMod.Dirt.WallHole2'
+     WallHoles(3)=Texture'AdventMod.Dirt.WallHole3'
+     WallHoles(4)=Texture'AdventMod.Dirt.WallHole4'
+     WallHoles(5)=Texture'AdventMod.Dirt.WallHole5'
+     bWallHoles=True
+     ChipCount=2
      CasingTex=Texture'AdventMod.Blood.Casing0'
      bCasings=True
      MaxClutter=150
@@ -1981,7 +2035,7 @@ defaultproperties
      RagdollMaxTimestep=0.016000
      RagdollContactSoftness=0.000000
      bImpacts=True
-     MaxHoles=60
+     MaxHoles=110
      bBlood=True
      MaxDecals=80
      SprayReach=260.000000

@@ -38,6 +38,13 @@ class ModBloodTextures extends Object;
 #exec TEXTURE IMPORT NAME=Burn1 FILE=Textures\burn1.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=Burn2 FILE=Textures\burn2.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=Burn3 FILE=Textures\burn3.tga GROUP=Blood MIPS=1 ALPHA=1
+// bullet holes on walls, drawn through the layer's parallax rule (tools/make_wall_holes.py)
+#exec TEXTURE IMPORT NAME=WallHole0 FILE=Textures\wall_hole0.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=WallHole1 FILE=Textures\wall_hole1.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=WallHole2 FILE=Textures\wall_hole2.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=WallHole3 FILE=Textures\wall_hole3.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=WallHole4 FILE=Textures\wall_hole4.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=WallHole5 FILE=Textures\wall_hole5.tga GROUP=Dirt MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=DripsH FILE=Textures\drips_h.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=DripsA FILE=Textures\drips_a.tga GROUP=Blood MIPS=1 ALPHA=1
 // live pools: placeholders the d3d8 layer swaps for its simulated sheets (tools/make_blood_live.py)
