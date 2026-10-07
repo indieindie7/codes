@@ -283,6 +283,22 @@ def building(b, rng):
 
 ASSEMBLED = ("hall", "office", "dorm", "house", "pump", "jetty", "pad", "barge")
 citizens, buildings = binder.load()
+# extra parts that are not buildings: the retaining wall (one heightmap cell long: 10.24 m, 0.6 thick, 2.2 high;
+# concrete with the dirt band and a rust streak; origin at the bottom centre like every part)
+if not ONLY or "wall" in ONLY:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    MATS.clear()
+    box(0, 0, 1.1, 10.24, 0.6, 2.2, "concrete")
+    box(0, 0, 0.22, 10.3, 0.68, 0.44, "dark")                # the dirt band at ground contact
+    box(0, 0, 2.15, 10.3, 0.7, 0.14, "grey")                 # the coping
+    for x in (-3.6, 0.9, 3.1):
+        box(x, 0, 1.0, 0.5, 0.64, 1.6, "rust")               # drain streaks
+    for x in (-5.0, 5.0):
+        box(x, 0, 1.1, 0.3, 0.9, 2.2, "grey")                # end posts
+    for ob in bpy.context.scene.objects:
+        ob.select_set(ob.type == "MESH")
+    bpy.ops.export_scene.gltf(filepath=os.path.join(out, "B_wall.glb"), use_selection=True, export_format="GLB", export_apply=True)
+    print("BUILT wall ->", os.path.join(out, "B_wall.glb"))
 for bid, b in buildings.items():
     if b["kind"] not in ASSEMBLED or "size" not in b:
         continue

@@ -180,8 +180,8 @@ for j, i in cand[:min(90, int(len(cand) * 0.03 * TREES))]:
 # 6. retaining walls: where the pads changed the ground by more than 1.5 m, a wall band along the rim on the
 #    cut/fill side (the plinth or terrace wall every slope-site strategy draws as a visible band)
 n_walls = 0
-WALL = "Mission_03M.CityScape.OuterWallSection03"          # 9216 x 1024 x 2048 units: scaled to one cell long
-if BEFORE and os.path.exists(BEFORE):
+WALL = o.get("wall", "AvalonSM.Liandri.B_wall")   # our own part: 512 u long (one cell), 2.2 m high, origin bottom centre, long axis = Y at yaw 0
+if WALL and BEFORE and os.path.exists(BEFORE):
     rawb = open(BEFORE, "rb").read()
     offb = struct.unpack_from("<I", rawb, 10)[0]
     wb, hb = struct.unpack_from("<ii", rawb, 18)
@@ -199,12 +199,11 @@ if BEFORE and os.path.exists(BEFORE):
                 if not changed[j + dj, i + di]:
                     x = WX[j, i] + di * CELL * 0.5
                     y = WY[j, i] + dj * CELL * 0.5
-                    yawd = 90 if di else 0
+                    yawd = 0 if di else 90                      # the part is long along Y at yaw 0: rim along Y when the neighbour is east/west
                     hgt = min(abs(dZ[j, i]), 400)
                     actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'%s'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
-                                  "    Rotation=(Yaw=%d)\n    DrawScale3D=(X=%.4f,Y=%.3f,Z=%.4f)\n    bStatic=True\nEnd Actor"
-                                  % (WALL, x, y, min(Z[j, i], Zb[j, i]) + hgt / 2 - 20, int(yawd * 65536 / 360),
-                                     CELL / 9216.0, 0.06, hgt / 2048.0))
+                                  "    Rotation=(Yaw=%d)\n    DrawScale3D=(X=1,Y=1,Z=%.3f)\n    bStatic=True\nEnd Actor"
+                                  % (WALL, x, y, min(Z[j, i], Zb[j, i]) - 10, int(yawd * 65536 / 360), max(0.5, hgt / 110.0)))
                     n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
 print(f"clutter: {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
