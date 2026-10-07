@@ -11,7 +11,12 @@
 // Every kind is logged ("Grime: kind ..."), which doubles as a survey of the
 // small props each map has.
 //
-// Live: walking into a piece kicks it (GrimeProp.Kick).
+// Live: walking into a piece kicks it (GrimeProp.Kick); shooting it breaks it into
+// shards of its own mesh (GrimeProp.TakeDamage, Shatter), the way Black's props chip and
+// break. Shots reach a piece two ways: the engine's own (the piece stops hitscan traces
+// and touches projectiles, so the weapon calls TakeDamage), and ShotWatch as a fallback
+// (when the player's ammo drops, the aim is traced and a piece on it breaks), so the log
+// says which path works in Unreal II (BrokenByDamage / BrokenByShot).
 //
 // Console: "set GrimeClutter bShow False" hides the clutter, "set GrimeClutter
 // ViewProp N" stands in front of piece N. GrimeManager's bRebuild redoes both.
@@ -40,6 +45,15 @@ var() int MaxPerSpot;
 var() int MaxPieces;
 var() int MeasurePerTick;
 var() bool bKick;
+// breaking
+var() bool bBreakable;
+var() int BreakDamage;             // the least damage that breaks a piece
+var() int ShardCount;
+var() float ShardLife;             // seconds the shards lie there
+var() string DustTemplate;         // a ParticleGenerator template ("Package.Name") for the puff, "" = none
+var() string BreakSound;           // a Sound ("Package.Name"), "" = none
+var() bool bShotWatch;             // the fallback: trace the player's aim at each shot
+var int Broken, BrokenByDamage, BrokenByShot;
 
 var bool bShow, bShown;
 var int ViewProp, LastViewProp;
@@ -48,6 +62,11 @@ var GrimeManager Manager;
 var int Phase;               // 0 collecting, 1 measuring, 2 placing, 3 live
 var int Index, Measured, Unmeasured, TooBig, Floating;
 var float KickClock;
+var U2Weapon LastWeapon;
+var int LastAmmo;
+var ParticleGenerator DustSample;  // the template, loaded once
+var Sound BreakSample;
+var bool bEffectsLooked;
 var array<StaticMeshActor> Pending;
 var array<GrimeKind> Kinds;
 var array<GrimeProp> Pieces;
@@ -251,6 +270,9 @@ function bool TryPiece(GrimeSpot S, int k)
 		return false;
 	G.Setup(Kinds[k].Mesh, Kinds[k].Scale * (0.9 + 0.2 * FRand()), Kinds[k].Scale3D, Kinds[k].Radius, Kinds[k].Lift, Kinds[k].Source);
 	G.Away = S.WallNormal;
+	G.Clutter = self;
+	if (!bBreakable)
+		G.SetCollision(false, false, false);
 	if (!bShown)
 		G.bHidden = true;
 	Pieces[Pieces.Length] = G;
@@ -304,6 +326,97 @@ function KickCheck()
 				Pieces[i].Kick(P.Velocity);
 		}
 	}
+}
+
+// the puff and the sound where a piece broke
+function BreakEffects(vector Spot, vector Dir)
+{
+	local ParticleGenerator Puff;
+
+	if (!bEffectsLooked)
+	{
+		bEffectsLooked = true;
+		if (DustTemplate != "")
+		{
+			DustSample = ParticleGenerator(DynamicLoadObject(DustTemplate, class'ParticleGenerator'));
+			Log("Grime: dust template "$DustTemplate$": "$DustSample);
+		}
+		if (BreakSound != "")
+		{
+			BreakSample = Sound(DynamicLoadObject(BreakSound, class'Sound'));
+			Log("Grime: break sound "$BreakSound$": "$BreakSample);
+		}
+	}
+	if (DustSample != None)
+	{
+		Puff = class'ParticleGenerator'.static.CreateNew(self, DustSample, Spot);
+		if (Puff != None)
+		{
+			Puff.Trigger(self, None);
+			Puff.LifeSpan = 4;
+		}
+	}
+	if (BreakSample != None)
+		PlaySound(BreakSample, SLOT_None, 1.0, false, 600, 0.9 + 0.2 * FRand());
+}
+
+// the fallback: the player fired (ammo went down); the piece nearest along the aim, within
+// its radius of the line and in view, breaks
+function ShotWatch()
+{
+	local PlayerController PC;
+	local U2Weapon W;
+	local int Ammo, i, Best;
+	local vector Eye, Dir, D, HitLoc, HitNorm;
+	local float Along, Off, BestAlong;
+
+	foreach DynamicActors(class'PlayerController', PC)
+		break;
+	if (PC == None || PC.Pawn == None)
+		return;
+	W = U2Weapon(PC.Pawn.Weapon);
+	if (W != LastWeapon)
+	{
+		LastWeapon = W;
+		if (W != None)
+			LastAmmo = W.GetAmmoAmount();
+		return;
+	}
+	if (W == None)
+		return;
+	Ammo = W.GetAmmoAmount();
+	if (Ammo >= LastAmmo)
+	{
+		LastAmmo = Ammo;
+		return;
+	}
+	LastAmmo = Ammo;
+	Eye = PC.Pawn.Location + vect(0,0,1) * PC.Pawn.EyeHeight;
+	Dir = vector(PC.Rotation);
+	Best = -1;
+	BestAlong = 1500;
+	for (i = 0; i < Pieces.Length; i++)
+	{
+		if (Pieces[i] == None || Pieces[i].bDeleteMe)
+			continue;
+		D = Pieces[i].Location - Eye;
+		Along = D dot Dir;
+		if (Along < 16 || Along > BestAlong)
+			continue;
+		Off = VSize(D - Dir * Along);
+		if (Off > Pieces[i].Radius + 4)
+			continue;
+		if (Trace(HitLoc, HitNorm, Pieces[i].Location, Eye, false) != None)
+			continue;                           // a wall in the way
+		Best = i;
+		BestAlong = Along;
+	}
+	if (Best < 0)
+		return;
+	Broken++;
+	BrokenByShot++;
+	Log("Grime: "$Pieces[Best].StaticMesh$" broken by the player's shot ("$W.Class.Name$", "$int(BestAlong)$" units)");
+	Pieces[Best].Shatter(Dir);
 }
 
 function ShowAll(bool bNewShown)
@@ -377,13 +490,18 @@ event Tick(float DeltaTime)
 		Phase = 3;
 		return;
 	}
-	if (Phase == 3 && bKick)
+	if (Phase == 3)
 	{
-		KickClock += DeltaTime;
-		if (KickClock >= 0.1)
+		if (bBreakable && bShotWatch)
+			ShotWatch();
+		if (bKick)
 		{
-			KickClock = 0;
-			KickCheck();
+			KickClock += DeltaTime;
+			if (KickClock >= 0.1)
+			{
+				KickClock = 0;
+				KickCheck();
+			}
 		}
 	}
 }
@@ -411,6 +529,11 @@ defaultproperties
 	MaxPieces=80
 	MeasurePerTick=20
 	bKick=True
+	bBreakable=True
+	BreakDamage=1
+	ShardCount=4
+	ShardLife=30.000000
+	bShotWatch=True
 	bShow=True
 	bShown=True
 	ViewProp=-1
