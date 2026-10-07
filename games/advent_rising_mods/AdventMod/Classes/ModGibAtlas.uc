@@ -10,6 +10,12 @@
 // redraws a ScriptedTexture that something on screen uses, so the card waits on the floor
 // at one unit across (drawn, too small to see) and grows to its size once its tile is taken. A tile in use again
 // removes its old card (the oldest snapshot goes first).
+// STATUS (2026-10-07): off by default. Proven: the atlas is redrawn while a waiting card is on
+// screen (RenderTexture fires), DrawTile into it shows on the cards (CardDebug=1: red tiles), the
+// tile mapping is right (TexScaler divides by its scale), cards replace the gibs. Not working:
+// DrawPortal leaves the tile black, even with this actor moved to the camera first. Suspect the
+// d3d8 layer (it swaps the scene's depth and render targets for the post chain; a second scene
+// render into a 512 render target may hit that). Next: trace the layer during a capture.
 //=============================================================================
 class ModGibAtlas extends Info
 	config(AdventMod);
@@ -82,6 +88,9 @@ event RenderTexture(ScriptedTexture Tex)
 		Y = (T / Tiles) * (Size / Tiles);
 		if (CardDebug > 0)
 			Tex.DrawTile(X, Y, Size / Tiles, Size / Tiles, 0, 0, 2, 2, Texture'Engine.WhiteSquareTexture', class'Canvas'.static.MakeColor(255, 0, 0));
+		// the portal starts from the camera actor's zone: this actor goes to the camera first (left
+		// where it spawned, it sat outside the level and every snapshot came out black)
+		SetLocation(Shots[i].Cam);
 		if (CardDebug != 1)
 			Tex.DrawPortal(X, Y, Size / Tiles, Size / Tiles, self, Shots[i].Cam, rot(-16384,0,0), Shots[i].FOV, true);
 		Shots[i].State = 1;
@@ -93,7 +102,9 @@ function Material TileMaterial(ModGibCard C)
 {
 	local float K;
 
-	K = 1.0 / Tiles;
+	// UE2's TexScaler divides the coordinates by its scale (a scale of 4 shows a quarter of
+	// the texture: a card showed the whole atlas four times over with 0.25); offsets in texels
+	K = Tiles;
 	C.Scaler = TexScaler(Level.ObjectPool.AllocateObject(class'TexScaler'));
 	C.Scaler.Material = Atlas;
 	C.Scaler.UScale = K;
