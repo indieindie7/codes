@@ -120,11 +120,11 @@ def pilot_script(name, layout_json):
     f0 = face(tower["x"], tower["y"], cx, cy)
     for dy, pitch in ((0, -22), (18, -18), (-16, -20)):
         lines += ["console hub face %d" % ((f0 + dy) % 360), "turn 0 %d 0.3" % pitch, "wait 0.6", "shot"]
-    lines += ["console ghost", "console hub tp %.0f %.0f %.0f" % (px, py, gz + 5200), "console hub face %d" % face(px, py, cx, cy),
+    lines += ["console hub tp %.0f %.0f %.0f hold" % (px, py, gz + 5200), "console hub face %d" % face(px, py, cx, cy),
               "turn 0 -32 0.3", "wait 1", "shot",
-              "console hub tp %.0f %.0f %.0f" % (sx, sy, gz + 1400), "console hub face %d" % face(sx, sy, cx, cy),
+              "console hub tp %.0f %.0f %.0f hold" % (sx, sy, max(gz, -4967) + 1400), "console hub face %d" % face(sx, sy, cx, cy),
               "turn 0 -4 0.3", "wait 1", "shot",
-              "console hub tp %.0f %.0f %.0f" % (back_off(cx, cy, 9000, face(cx, cy, tower["x"], tower["y"]) + 90) + (gz + 12000,)),
+              "console hub tp %.0f %.0f %.0f hold" % (back_off(cx, cy, 9000, face(cx, cy, tower["x"], tower["y"]) + 90) + (gz + 12000,)),
               "console hub face %d" % face(*back_off(cx, cy, 9000, face(cx, cy, tower["x"], tower["y"]) + 90), cx, cy),
               "turn 0 -45 0.3", "wait 1", "shot", "quit"]
     return "\n".join(lines) + "\n"
@@ -182,10 +182,10 @@ def closeup_script(name, layout_json, ids=("hall_a", "hall_b", "silos", "dorm", 
     def face(fx, fy, tx, ty):
         return int(math.degrees(math.atan2(ty - fy, tx - fx))) % 360
     lines = ["# close-ups generated from %s" % os.path.basename(layout_json), "background",
-             "map %s?Mutator=U2AvalonCards.AvalonCards" % name, "waitcontrol 240", "wait 2", "console god", "console ghost"]
+             "map %s?Mutator=U2AvalonCards.AvalonCards" % name, "waitcontrol 240", "wait 2", "console god"]
 
     def shot(x, y, z, tx, ty, pitch):
-        lines.extend(["console hub tp %.0f %.0f 0" % (x, y), "console hub face %d" % face(x, y, tx, ty),
+        lines.extend(["console hub tp %.0f %.0f %.0f hold" % (x, y, z), "console hub face %d" % face(x, y, tx, ty),
                       "turn 0 %d 0.3" % pitch, "wait 1", "shot"])
     # the ground the cameras stand on: the graded heightmap when there is one
     hm = L.get("heightmap", "")
@@ -228,6 +228,45 @@ def closeup_script(name, layout_json, ids=("hall_a", "hall_b", "silos", "dorm", 
                     return False
         return True
 
+    def inside_any(x, y, margin=250):
+        """in (or within margin of) any of our buildings' footprints - every instance - or on a clutter prop"""
+        if any(math.hypot(x - cx_, y - cy_) < 220 for cx_, cy_ in CLUT):
+            return True
+        for o_, ob in B.items():
+            sz = sheets.get(o_, {}).get("size")
+            if not sz or sheets[o_]["kind"] in ("islet",):
+                continue
+            W, D = sz[0] * 50, sz[1] * 50
+            spec = sheets[o_].get("count", "1").split()
+            gap = max(W, D) * 1.5
+            pts = [(0, 0)]
+            if spec[0].lower() == "2x2":
+                pts = [(-gap / 2, -gap / 2), (gap / 2, -gap / 2), (-gap / 2, gap / 2), (gap / 2, gap / 2)]
+            elif len(spec) == 2:
+                n_ = int(spec[0])
+                pts = [((k_ - (n_ - 1) / 2) * gap, 0) if spec[1] == "along" else (0, (k_ - (n_ - 1) / 2) * gap) for k_ in range(n_)]
+            a_ = math.radians(ob["yaw"])
+            ca, sa = math.cos(a_), math.sin(a_)
+            for da, dc in pts:
+                cx_, cy_ = ob["x"] + da * ca - dc * sa, ob["y"] + da * sa + dc * ca
+                lx, ly = (x - cx_) * ca + (y - cy_) * sa, -(x - cx_) * sa + (y - cy_) * ca
+                if abs(lx) <= D / 2 + margin and abs(ly) <= W / 2 + margin:
+                    return True
+        return False
+
+    def tries(tx, ty, dist, yaw0, wet=False, cap=18):
+        """the bearing:scale pairs the game may try, best guess first, none inside our own meshes"""
+        out = []
+        for sc in (1.0, 0.7, 1.4):
+            for k_ in range(16):
+                yaw = yaw0 + 22.5 * ((k_ + 1) // 2) * (1 - 2 * (k_ % 2))
+                a_ = math.radians(yaw)
+                x, y = tx + dist * sc * math.cos(a_), ty + dist * sc * math.sin(a_)
+                if (ground(x, y) <= -4967 + 40 and not wet) or inside_any(x, y):
+                    continue
+                out.append("%d:%g" % (round(yaw) % 360, sc))
+        return ",".join(out[:cap])
+
     for bid in ids:
         if bid not in B or bid not in sheets:
             continue
@@ -239,41 +278,35 @@ def closeup_script(name, layout_json, ids=("hall_a", "hall_b", "silos", "dorm", 
         d = longest * 1.6 + 8 * 50
         tz = max(b.get("z", -4800), -4967) + size[2] * 25
         # bearings from the front round both ways; the first with dry ground and a clear line wins
-        pick = None
+        # the game picks the final spot (hub frame: in-engine traces see TutA's own geometry too); this
+        # check only orders the bearings so the first one tried is the best guess from the heightmap
+        wet = sheets[bid]["kind"] in ("dock", "jetty", "barge")             # a boat's view of a quay
+        yaw0 = b["yaw"]
         for off_ in (0, 45, -45, 90, -90, 135, -135, 180):
-            for dd in (d, d * 0.75, d * 1.3):
-                a = math.radians(b["yaw"] + off_)
-                x, y = b["x"] + dd * math.cos(a), b["y"] + dd * math.sin(a)
-                z = max(ground(x, y), -4967) + 140                         # eye height on the ground
-                if clear(bid, x, y, z, b["x"], b["y"], tz):
-                    pick = (x, y, z)
-                    break
-            if pick:
-                break
-        if pick is None:
-            a = math.radians(b["yaw"])
+            a = math.radians(b["yaw"] + off_)
             x, y = b["x"] + d * math.cos(a), b["y"] + d * math.sin(a)
-            pick = (x, y, max(ground(x, y), b.get("z", -4800), -4967) + 400)
-            print("  close-up %s: no clear bearing, using the front from above" % bid)
-        x, y, z = pick
-        shot(x, y, z, b["x"], b["y"], -int(math.degrees(math.atan2(z - tz, math.hypot(x - b["x"], y - b["y"])))) - 2)
+            if clear(bid, x, y, max(ground(x, y), -4967 + 120) + 170, b["x"], b["y"], tz, wet):
+                yaw0 = b["yaw"] + off_
+                break
+        lines.extend(["console hub frame %.0f %.0f %.0f %.0f %.0f%s try=%s" % (b["x"], b["y"], tz, d, yaw0 % 360, " wet" if wet else "",
+                                                                         tries(b["x"], b["y"], d, yaw0, wet)),
+                      "wait 1", "shot"])
     if "wellhead_b" in B and "silos" in B:
+        # the ore line from the side: the game finds a bearing near square-on with a clear view
         w, sl = B["wellhead_b"], B["silos"]
         mx, my = (w["x"] + sl["x"]) / 2, (w["y"] + sl["y"]) / 2
-        ang = math.atan2(sl["y"] - w["y"], sl["x"] - w["x"]) + math.pi / 2
-        for s_ in (1, -1):
-            cx_, cy_ = mx + s_ * 2200 * math.cos(ang), my + s_ * 2200 * math.sin(ang)
-            if ground(cx_, cy_) > -4967 + 40:
-                break
-        shot(cx_, cy_, max(ground(cx_, cy_), w.get("z", -4800), sl.get("z", -4800)) + 450, mx, my, -6)
+        mz = max(ground(mx, my), -4967) + 400
+        side = math.degrees(math.atan2(sl["y"] - w["y"], sl["x"] - w["x"])) + 90
+        lines.extend(["console hub frame %.0f %.0f %.0f 2600 %.0f try=%s" % (mx, my, mz, side % 360, tries(mx, my, 2600, side)), "wait 1", "shot"])
+    # the street: stand on the spine and look along it (the target is a spine point 8 steps on)
     sp = L.get("spine") or L["roads"][0]
     k = len(sp) // 2
-    for dk in sorted(range(-len(sp) // 3, len(sp) // 3), key=abs):          # the nearest spine point a pawn fits on
-        q = min(len(sp) - 9, max(0, len(sp) // 2 + dk))
-        if not any(math.hypot(sp[q][0] - cx_, sp[q][1] - cy_) < 260 for cx_, cy_ in CLUT) and                 not any(math.hypot(sp[q][0] - ob["x"], sp[q][1] - ob["y"]) < radius(o_) * 0.8 + 200 for o_, ob in B.items()):
-            k = q
-            break
-    shot(sp[k][0], sp[k][1], ground(sp[k][0], sp[k][1]) + 175, sp[min(len(sp) - 1, k + 8)][0], sp[min(len(sp) - 1, k + 8)][1], -3)
+    t_ = sp[min(len(sp) - 1, k + 8)]
+    dist = max(800.0, math.hypot(t_[0] - sp[k][0], t_[1] - sp[k][1]))
+    back = math.degrees(math.atan2(sp[k][1] - t_[1], sp[k][0] - t_[0]))
+    lines.extend(["console hub frame %.0f %.0f %.0f %.0f %.0f try=%s" % (t_[0], t_[1], ground(t_[0], t_[1]) + 300, dist * 1.6 + 400, back % 360,
+                                                                tries(t_[0], t_[1], dist * 1.6 + 400, back)),
+                  "wait 1", "shot"])
     lines.append("quit")
     return "\n".join(lines) + "\n"
 

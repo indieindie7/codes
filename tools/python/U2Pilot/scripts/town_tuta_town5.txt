@@ -19,18 +19,17 @@ console hub face 291
 turn 0 -20 0.3
 wait 0.6
 shot
-console ghost
-console hub tp 4950 -5799 1593
+console hub tp 4950 -5799 1593 hold
 console hub face 306
 turn 0 -32 0.3
 wait 1
 shot
-console hub tp 11158 -28431 -2207
+console hub tp 11158 -28431 -2207 hold
 console hub face 99
 turn 0 -4 0.3
 wait 1
 shot
-console hub tp 902 -15539 8393
+console hub tp 902 -15539 8393 hold
 console hub face 36
 turn 0 -45 0.3
 wait 1

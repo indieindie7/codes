@@ -1,0 +1,20 @@
+background
+map TutA_Town5?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+console hub land
+console hub tp 8348 -11566 -3457
+wait 0.5
+console hub land
+console hub tp 2166 -2833 -3458
+wait 0.5
+console hub land
+console hub tp 6498 -12966 -3457
+wait 0.5
+console hub land
+console hub tp 8018 -8931 -3457
+wait 0.5
+console hub tp 12348 -11566 0
+wait 0.5
+quit

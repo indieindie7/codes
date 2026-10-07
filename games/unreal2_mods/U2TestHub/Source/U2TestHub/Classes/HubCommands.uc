@@ -17,6 +17,13 @@
 //   hub info                          your shadows: light, darkness, fade
 //   hub probe                         log frame hitches (U2Hover.FrameProbe)
 //   hub goto MAP                      open a level, e.g. hub goto M08A1
+//   hub tp X Y Z [hold]               move there (Z 0 = onto the ground);
+//                                     hold = hover there, no collision
+//   hub land                          end a hold: fall and walk again
+//   hub frame X Y Z DIST [YAW] [wet] [try=Y:S,...]  stand where Z (a building's middle)
+//                                     is seen: bearings from YAW round both
+//                                     ways, eye height on open ground, no roof
+//                                     over the eye, clear sight line; held
 //
 // Everything is also written to Unreal2.log (prefix "Hub:"), so scripted
 // pilot runs can read the results.
@@ -111,6 +118,8 @@ exec function Hub(optional string Args)
 	else if (Cmd == "TRACER")               TracerTest();
 	else if (Cmd == "LINE")                 LineTest();
 	else if (Cmd == "TP")                   Teleport(Args);
+	else if (Cmd == "LAND")                 Land();
+	else if (Cmd == "FRAME")                Frame(Args);
 	else if (Cmd == "FACE")                 Face(NumOr(Word(Args), 0));
 	else if (Cmd == "MESH")                 MeshTest(Word(Args), NumOr(Word(Args), 1.0));
 	else if (Cmd == "LOADMESH")             LoadMesh(Word(Args));
@@ -704,16 +713,28 @@ function LineTest()
 	}
 }
 
-// hub tp X Y Z - move the player there (testing progress-based scripting)
+// hub tp X Y Z [hold] - move the player there (testing progress-based scripting);
+// hold = stay at that height (cheat flying, no velocity) until "hub land"
 function Teleport(string Args)
 {
 	local vector V, HitLoc, HitNorm;
+	local bool bHold;
 
 	if (PC.Pawn == None)
 		return;
 	V.X = float(Word(Args));
 	V.Y = float(Word(Args));
 	V.Z = float(Word(Args));
+	bHold = Caps(Word(Args)) == "HOLD";
+	if (bHold)
+	{
+		// fly first: a walking pawn placed in the air falls before the next frame's picture
+		PC.bCheatFlying = true;
+		PC.Pawn.SetCollision(false, false, false);
+		PC.Pawn.bCollideWorld = false;
+		PC.Pawn.SetPhysics(PHYS_Flying);
+		PC.GotoState('PlayerFlying');
+	}
 	// a Z of 0 (or none) means: find the ground from high up
 	if (V.Z == 0)
 	{
@@ -721,9 +742,163 @@ function Teleport(string Args)
 			V = HitLoc + vect(0,0,1) * (PC.Pawn.CollisionHeight + 8);
 	}
 	if (PC.Pawn.SetLocation(V))
-		Say("tp: now at ("$int(V.X)$","$int(V.Y)$","$int(V.Z)$")");
+	{
+		if (bHold)
+			Say("tp: now at ("$int(V.X)$","$int(V.Y)$","$int(V.Z)$") (hold)");
+		else
+			Say("tp: now at ("$int(V.X)$","$int(V.Y)$","$int(V.Z)$")");
+	}
 	else
 		Say("tp: blocked at ("$int(V.X)$","$int(V.Y)$","$int(V.Z)$")");
+	if (bHold)
+	{
+		PC.Pawn.Velocity = vect(0,0,0);
+		PC.Pawn.Acceleration = vect(0,0,0);
+	}
+}
+
+// hub frame X Y Z DIST [YAW] [wet] [try=Y1:S1,Y2:S2,...] - the game picks the camera. Without try=
+// it tries 16 bearings (YAW first, then alternating either side) at DIST, 0.7 DIST and 1.4 DIST;
+// with try= only those bearings (degrees) and distance scales, in that order (the caller knows where
+// its own meshes stand: a pawn fits inside a closed mesh and a trace from inside one sees nothing).
+// A spot counts when the ground under it is open (nothing over the eye, traced from above), not much
+// above the target (not on the tower), dry (unless wet: the sea surface at Z -4967 is the floor),
+// the pawn fits there, and the eye sees the target or its own walls.
+function bool FrameSpot(vector T, float Dist, float Yaw, float Scale, bool bWet, float Reach, out vector Eye, out int Why)
+{
+	local vector P, HitLoc, HitNorm;
+	local rotator R;
+	local Actor Hit;
+
+	R.Yaw = int(Yaw * 65536.0 / 360.0);
+	P = T + vector(R) * Dist * Scale;
+	Hit = PC.Trace(HitLoc, HitNorm, P - vect(0,0,30000), P + vect(0,0,20000), false);
+	Why = 0;
+	if (Hit == None)
+		return false;
+	if (HitLoc.Z < -4967)
+	{
+		if (!bWet)
+			return false;
+		HitLoc.Z = -4967;
+	}
+	Why = 1;
+	if (HitLoc.Z > T.Z + 800)
+		return false;                                            // a roof or the tower top, not the ground
+	Eye = HitLoc + vect(0,0,170);
+	Why = 2;
+	if (PC.Trace(HitLoc, HitNorm, Eye, Eye + vect(0,0,3000), true, vect(8,8,8)) != None)
+		return false;                                            // something over the eye
+	Why = 3;
+	Hit = PC.Trace(HitLoc, HitNorm, T, Eye, true, vect(8,8,8));
+	if (Hit != None && VSize((HitLoc - T) * vect(1,1,0)) > Reach)
+		return false;                                            // something else is in the way
+	Why = 4;
+	PC.Pawn.SetCollision(true, true, true);
+	PC.Pawn.bCollideWorld = true;
+	if (!PC.Pawn.SetLocation(Eye))
+		return false;                                            // no room for the pawn
+	return true;
+}
+
+function Frame(string Args)
+{
+	local vector T, Eye;
+	local rotator R;
+	local float Dist, Yaw0, Yaw, Scale, Reach;
+	local bool bWet, bFound;
+	local int k, s, Why, n[5], c;
+	local string W, Tries, Item;
+
+	if (PC.Pawn == None)
+		return;
+	T.X = float(Word(Args));
+	T.Y = float(Word(Args));
+	T.Z = float(Word(Args));
+	Dist = NumOr(Word(Args), 1500);
+	Yaw0 = NumOr(Word(Args), 0);
+	W = Word(Args);
+	while (W != "")
+	{
+		if (Caps(W) == "WET")
+			bWet = true;
+		else if (Caps(Left(W, 4)) == "TRY=")
+			Tries = Mid(W, 4);
+		W = Word(Args);
+	}
+	Reach = FMax(300, (Dist - 400) / 1.6 * 0.8);                // the target's own walls count as seeing it
+	if (Tries != "")
+	{
+		while (Tries != "" && !bFound)
+		{
+			c = InStr(Tries, ",");
+			if (c < 0)
+			{
+				Item = Tries;
+				Tries = "";
+			}
+			else
+			{
+				Item = Left(Tries, c);
+				Tries = Mid(Tries, c + 1);
+			}
+			c = InStr(Item, ":");
+			Yaw = float(Left(Item, c));
+			Scale = float(Mid(Item, c + 1));
+			if (FrameSpot(T, Dist, Yaw, Scale, bWet, Reach, Eye, Why))
+				bFound = true;
+			else
+				n[Why]++;
+		}
+	}
+	else
+	{
+		for (s = 0; s < 3 && !bFound; s++)
+		{
+			Scale = 1.0;
+			if (s == 1) Scale = 0.7;
+			if (s == 2) Scale = 1.4;
+			for (k = 0; k < 16 && !bFound; k++)
+			{
+				Yaw = Yaw0 + 22.5 * ((k + 1) / 2) * (1 - 2 * (k % 2));
+				if (FrameSpot(T, Dist, Yaw, Scale, bWet, Reach, Eye, Why))
+					bFound = true;
+				else
+					n[Why]++;
+			}
+		}
+	}
+	if (!bFound)
+	{
+		Say("frame: no clear view of ("$int(T.X)$","$int(T.Y)$","$int(T.Z)$") - rejected: no ground "$n[0]$", too high "$n[1]$", roofed "$n[2]$", blocked "$n[3]$", no room "$n[4]);
+		return;
+	}
+	PC.bCheatFlying = true;
+	PC.Pawn.SetCollision(false, false, false);
+	PC.Pawn.bCollideWorld = false;
+	PC.Pawn.SetPhysics(PHYS_Flying);
+	PC.GotoState('PlayerFlying');
+	PC.Pawn.SetLocation(Eye);
+	PC.Pawn.Velocity = vect(0,0,0);
+	PC.Pawn.Acceleration = vect(0,0,0);
+	R = rotator(T - Eye);
+	PC.SetRotation(R);
+	PC.Pawn.SetRotation(R);
+	PC.ClientSetRotation(R);
+	Say("frame: at ("$int(Eye.X)$","$int(Eye.Y)$","$int(Eye.Z)$") bearing "$int(Yaw)$" scale "$Scale);
+}
+
+// hub land - end a "tp ... hold": collision back on, fall to the ground, walk
+function Land()
+{
+	if (PC.Pawn == None)
+		return;
+	PC.bCheatFlying = false;
+	PC.Pawn.SetCollision(true, true, true);
+	PC.Pawn.bCollideWorld = true;
+	PC.Pawn.SetPhysics(PHYS_Falling);
+	PC.GotoState('PlayerWalking');
+	Say("land: walking");
 }
 
 // hub tpto NAME [dist] - stand DIST units from the actor whose name contains NAME
