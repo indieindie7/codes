@@ -20,6 +20,8 @@ var float LiveSize;                              // the pool's width in world un
 var vector AxU, AxV;                             // the texture's axes in the world
 var float LiveAge, LastStampT;
 var int LiveKind;                                // 0 red, 1 purple
+// a wall RUN region: blood that lands on it runs down (the d3d8 layer's runs.hpp, commands Blood:run/drip)
+var int RunSlot;                                 // -1: not a run region
 var ModGore Gore;
 
 // Projector attaches itself at spawn (before it has a texture or a place): not yet
@@ -85,6 +87,53 @@ function bool Local(vector Spot, out float U, out float W)
 	U = 0.5 + (D Dot AxU) / LiveSize;
 	W = 0.5 + (D Dot AxV) / LiveSize;
 	return U > 0.08 && U < 0.92 && W > 0.08 && W < 0.92;
+}
+
+// this region runs blood down a wall in slot Slot (the d3d8 layer simulates it): Size world
+// units across; "down" across the texture is worked out from the decal's own axes, so it holds
+// however the projector ended up turned
+function GoRun(int Slot, Material Placeholder, float Size, int Kind)
+{
+	local vector X, Y, Z;
+
+	RunSlot = Slot;
+	LiveSize = Size;
+	LiveKind = Kind;
+	ProjTexture = Placeholder;
+	GrowTime = 0;
+	SetDrawScale(Size / 64.0);
+	GetAxes(Rotation, X, Y, Z);
+	AxU = Y;
+	AxV = Z;
+	class'ModSettings'.static.NativeCall("Blood:run " $ Slot $ " " $ Kind $ " " $ (vect(0,0,-1) Dot AxU) $ " " $ (vect(0,0,-1) Dot AxV));
+	DetachProjector(true);
+	AttachProjector();
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: wall run region slot " $ Slot $ " at " $ Location $ " size " $ Size $ " down " $ (vect(0,0,-1) Dot AxU) $ " " $ (vect(0,0,-1) Dot AxV));
+}
+
+// where a spot falls on a run region (0..1), false off it or off its wall
+function bool RunLocal(vector Spot, out float U, out float W)
+{
+	local vector D, X, Y, Z;
+
+	if (RunSlot < 0)
+		return false;
+	GetAxes(Rotation, X, Y, Z);
+	D = Spot - Location;
+	if (Abs((D Dot X) - 16) > 30)               // the projector stands 16 off the wall, looking into it (+X)
+		return false;
+	U = 0.5 + (D Dot AxU) / LiveSize;
+	W = 0.5 + (D Dot AxV) / LiveSize;
+	return U > 0.05 && U < 0.95 && W > 0.05 && W < 0.95;
+}
+
+function EndRun()
+{
+	if (RunSlot < 0)
+		return;
+	class'ModSettings'.static.NativeCall("Blood:rstop " $ RunSlot);
+	RunSlot = -1;
 }
 
 // another body in this region: its blood pours in where it lies (pools run together)
@@ -178,6 +227,7 @@ event Destroyed()
 {
 	if (LiveSlot >= 0)
 		class'ModSettings'.static.NativeCall("Blood:stop " $ LiveSlot);
+	EndRun();
 	Super.Destroyed();
 }
 
@@ -211,6 +261,7 @@ event Tick(float DeltaTime)
 defaultproperties
 {
      LiveSlot=-1
+     RunSlot=-1
      FrameBufferBlendingOp=PB_Modulate
      FOV=0
      MaxTraceDistance=40

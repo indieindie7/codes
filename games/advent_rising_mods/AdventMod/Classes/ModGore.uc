@@ -94,6 +94,12 @@ var Material AlienSplats[4], AlienSprays[2], AlienPool, AlienRemains[2];
 var Material PoolFrames[12], AlienPoolFrames[12];   // a pool spreading: frames of an offline fluid run (tools/make_blood_pool.py)
 var Material PoolLive[8];                            // live pools: placeholders the d3d8 layer simulates (tools/make_blood_live.py)
 var ModBloodDecal LiveOwner[8];
+var Material RunLive[8];                             // wall runs: placeholders the d3d8 layer simulates (tools/make_blood_runs.py)
+var ModBloodDecal RunOwner[8];
+var int NextRun;
+var config bool bWallRuns;                           // blood landing on a wall runs down it
+var config float RunSize;                            // a run region's width (world units)
+var config float RunChance;                          // the share of wall sprays that run
 var int NextLive;
 var config bool bLivePools;
 var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long
@@ -321,6 +327,61 @@ function GoLive(ModBloodDecal D, float Size, int Kind)
 	D.GoLive(K, PoolLive[K], Size, LivePour, LivePourSecs, Kind);
 }
 
+// blood landing on a wall runs down it: into the run region already there, or a new one with
+// the spot near its top (the slot whose region is farthest from the player is reused)
+function WallRun(vector Spot, vector N, int Kind, float Amount)
+{
+	local int i, K;
+	local float U, W, Far, D;
+	local vector Down, Across, Center;
+	local ModBloodDecal R;
+
+	if (!bWallRuns || Abs(N.Z) > 0.5 || FRand() > RunChance)
+		return;
+	for (i = 0; i < 8; i++)
+		if (RunOwner[i] != None && !RunOwner[i].bDeleteMe && RunOwner[i].RunLocal(Spot, U, W))
+		{
+			class'ModSettings'.static.NativeCall("Blood:drip " $ RunOwner[i].RunSlot $ " " $ U $ " " $ W $ " " $ Amount $ " " $ Kind);
+			return;
+		}
+	// a new region: the slot that is free, or whose region is farthest from the player
+	K = -1;
+	for (i = 0; i < 8 && K < 0; i++)
+		if (RunOwner[i] == None || RunOwner[i].bDeleteMe)
+			K = i;
+	if (K < 0 && Level.GetLocalPlayerController() != None && Level.GetLocalPlayerController().Pawn != None)
+		for (i = 0; i < 8; i++)
+		{
+			D = VSize(RunOwner[i].Location - Level.GetLocalPlayerController().Pawn.Location);
+			if (D > Far)
+			{
+				Far = D;
+				K = i;
+			}
+		}
+	if (K < 0)
+	{
+		K = NextRun;
+		NextRun = (NextRun + 1) % 8;
+	}
+	if (RunOwner[K] != None && !RunOwner[K].bDeleteMe)
+		RunOwner[K].Destroy();
+	// down along the wall, and the region's middle below the spot (blood has the room to run)
+	Down = vect(0,0,-1) - N * (vect(0,0,-1) Dot N);
+	Down = Normal(Down);
+	Across = Normal(N Cross Down);
+	Center = Spot + Down * RunSize * 0.3;
+	R = Spawn(class'ModBloodDecal',,, Center + N * 16);
+	if (R == None)
+		return;
+	R.Gore = self;
+	R.Place(RunLive[K], Center, N, Across, RunSize / 64.0);
+	R.GoRun(K, RunLive[K], RunSize, Kind);
+	RunOwner[K] = R;
+	if (R.RunLocal(Spot, U, W))
+		class'ModSettings'.static.NativeCall("Blood:drip " $ K $ " " $ U $ " " $ W $ " " $ Amount $ " " $ Kind);
+}
+
 // a body's blood goes into the live region under it; if no region covers the spot, a new one
 // is laid there (a free slot, else the region farthest from the player, whose blood is gone)
 function bool PourInto(vector Spot, vector N, int Kind)
@@ -494,7 +555,12 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	// the spray behind the victim, along the shot (a little downward: blood falls)
 	Dir = Normal(Dir + vect(0,0,-0.25));
 	if (Trace(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius, false) != None)
+	{
 		Mark(SprayTex(Victim), HitL, HitN, Dir, Size * (0.8 + 0.6 * VSize(HitL - HitLocation) / SprayReach));
+		// on a wall the spray runs down it (WallRun: the d3d8 layer's running drops)
+		if (Abs(HitN.Z) < 0.5)
+			WallRun(HitL, HitN, int(BloodKind(Victim) == 2), FClamp(Damage / 40.0, 0.35, 1.6));
+	}
 	// drips under the hit
 	if (FRand() < 0.85 && Trace(HitL, HitN, HitLocation - vect(0,0,400), HitLocation, false) != None)
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
@@ -2135,6 +2201,17 @@ defaultproperties
      PoolLive(6)=Texture'AdventMod.Blood.BloodLive6'
      PoolLive(7)=Texture'AdventMod.Blood.BloodLive7'
      bLivePools=True
+     bWallRuns=True
+     RunSize=150.000000
+     RunChance=0.800000
+     RunLive(0)=Texture'AdventMod.Blood.BloodRun0'
+     RunLive(1)=Texture'AdventMod.Blood.BloodRun1'
+     RunLive(2)=Texture'AdventMod.Blood.BloodRun2'
+     RunLive(3)=Texture'AdventMod.Blood.BloodRun3'
+     RunLive(4)=Texture'AdventMod.Blood.BloodRun4'
+     RunLive(5)=Texture'AdventMod.Blood.BloodRun5'
+     RunLive(6)=Texture'AdventMod.Blood.BloodRun6'
+     RunLive(7)=Texture'AdventMod.Blood.BloodRun7'
      FootTex(0)=Texture'AdventMod.Blood.FootprintH0'
      FootTex(1)=Texture'AdventMod.Blood.FootprintH1'
      FootTex(2)=Texture'AdventMod.Blood.FootprintH2'

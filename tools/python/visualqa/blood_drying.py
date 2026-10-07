@@ -32,7 +32,7 @@ from visual_qa import load, lab, frames_in   # noqa: E402
 def blood_mask(img):
     f = img.astype(np.float32)
     r, g, b = f[..., 0], f[..., 1], f[..., 2]
-    red = (r > 35) & (r > 2.2 * g) & (r > 1.6 * b)
+    red = (r > 25) & (r > 2.6 * g) & (r > 1.8 * b)
     purple = (r > 35) & (b > 35) & (r > 1.5 * g) & (b > 1.5 * g)
     m = ((red | purple).astype(np.uint8)) * 255
     m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
