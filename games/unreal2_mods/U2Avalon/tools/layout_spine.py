@@ -27,6 +27,9 @@ o = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)
 SEED = int(o.get("seed", 1))
 PNG = o.get("png")
 CAMERA_K = float(o.get("camera", 2.0))     # how strongly the camera term counts against systems/ring pulls
+WINDOW_K = float(o.get("window", 4.0))   # how strongly the hero and the story want the command-room window
+HERO = o.get("hero", "cooling_towers")
+DBG = []
 VIS = None                            # vis=<viewshed npz>: how much the player sees each cell (viewshed.py)
 if o.get("vis"):
     _v = np.load(o["vis"])["score"]
@@ -282,6 +285,8 @@ def branches_to_room(max_branches=2):
     for x, y in sp[::3]:
         dsp = np.minimum(dsp, np.hypot(WX - x, WY - y) / M)
     cand = np.where(MAIN & (dsp > 70) & (dsp < 320) & (D_WATER > 30), ROOM, -1)
+    if VIS is not None:                   # the camera: the first branch runs onto the stage in front of the window
+        cand = np.where(cand >= 0, cand + 1.0 * ((dang <= WINDOW[1] * 0.9) & (VIS > 0.05)), cand)
     made = 0
     for _ in range(max_branches):
         j, i = np.unravel_index(int(cand.argmax()), cand.shape)
@@ -390,8 +395,12 @@ for bid, b in buildings.items():
 LAYERS = {"core": 0, "boom": 1, "decline": 2}
 PRIORITY = ["plant_office", "hall_a", "hall_b", "hall_c", "silos", "generator_house", "tank_farm", "dorm", "cooling_towers"]
 order = [bid for bid in buildings if "at" in buildings[bid] and bid not in placed]
-order.sort(key=lambda i: (LAYERS.get(buildings[i].get("layer", "boom"), 1), PRIORITY.index(i) if i in PRIORITY else 99, i))
+order.sort(key=lambda i: (0 if (VIS is not None and i == HERO) else 1,      # the camera: the hero is placed first
+                          LAYERS.get(buildings[i].get("layer", "boom"), 1), PRIORITY.index(i) if i in PRIORITY else 99, i))
 ordered, pending = [], list(order)
+if VIS is not None and HERO in pending:         # the camera: the hero takes its stage before its suppliers
+    ordered.append(HERO)
+    pending.remove(HERO)
 while pending:
     prog = False
     for i in list(pending):
@@ -438,6 +447,8 @@ def try_place(bid, b):
     front = wdt_m + GAP_M
     kind = b["kind"]
     lo, hi = STRETCH.get(kind, (0.0, 1.4))
+    if VIS is not None and (bid == HERO or camera_weight(bid, buildings[bid]) > 1.5):
+        lo = 0.0                          # the camera: story buildings may stand at the dock end, in the window
     if bid.startswith("wellhead"):                                   # the mine end of the road
         lo, hi = (S_MINE - 260 * M) / max(1.0, S_TOWER), S_MINE / max(1.0, S_TOWER)
     want_side = SIDE.get(kind, 0)
@@ -479,6 +490,12 @@ def try_place(bid, b):
                     score += 1.5 * (zb(cx, cy) - SEA_Z) / 4000.0            # the view
                 if VIS is not None:                                          # the camera: seen ground is worth more
                     score += CAMERA_K * camera_weight(bid, buildings[bid]) * at(VIS, cx, cy)
+                    # the money shot: the command room's window (yaw 300 +- 34) frames the hero and the story
+                    wa = math.degrees(math.atan2(cy - TOWER_WORLD[1], cx - TOWER_WORLD[0]))
+                    if abs((wa - WINDOW[0] + 180) % 360 - 180) <= WINDOW[1] * 0.9:
+                        if o.get("debug") and bid == HERO:
+                            DBG.append((round(score, 2), road.name, int(s0 / M)))
+                        score += WINDOW_K * (1.5 if bid == HERO else (0.6 if camera_weight(bid, buildings[bid]) > 1.5 else 0.0))
                 score += rng.uniform(0, 0.15)
                 if best is None or score > best[0]:
                     best = (score, road, s0, s1, side, cx, cy, ux, uy, nx, ny)

@@ -53,6 +53,19 @@ var config string Blocks[128];
 // the card's larger side), Frames = how many views were baked (8).
 var config string Cards[64];
 
+// haze between the view's depth layers (the cinematography report: atmospheric perspective): the zones
+// that already use distance fog (the outdoor ones) get HazeStart..HazeEnd in HazeColour; HazeEnd 0 = the
+// map's own fog. Every zone's own fog is logged ("Cards: zone").
+var config float HazeStart, HazeEnd;
+var config color HazeColour;
+var config bool bHazeAllZones;
+
+// motion in the window: a static mesh flying a circle (AvalonFlyer); FlyerMesh "" = none.
+// FlyerCentre Z = the flight height; FlyerSpeed in units per second (negative = the other way round).
+var config string FlyerMesh;
+var config vector FlyerCentre;
+var config float FlyerRadius, FlyerSpeed, FlyerScale;
+
 var bool bRebuild;
 var array<Actor> Made;
 var Texture TreeTex[3];
@@ -163,6 +176,45 @@ function Survey()
 	}
 }
 
+function Haze()
+{
+	local ZoneInfo Z;
+
+	foreach AllActors(class'ZoneInfo', Z)
+	{
+		Log("Cards: zone "$Z$" fog "$Z.bDistanceFog$" "$Z.DistanceFogStart$"-"$Z.DistanceFogEnd$" colour "$Z.DistanceFogColor.R$","$Z.DistanceFogColor.G$","$Z.DistanceFogColor.B);
+		if (HazeEnd > 0 && (Z.bDistanceFog || bHazeAllZones))
+		{
+			Z.bDistanceFog = true;
+			Z.DistanceFogStart = HazeStart;
+			Z.DistanceFogEnd = HazeEnd;
+			Z.DistanceFogColor = HazeColour;
+			Log("Cards: haze on "$Z$" "$HazeStart$"-"$HazeEnd);
+		}
+	}
+}
+
+function Fly()
+{
+	local StaticMesh M;
+	local AvalonFlyer F;
+
+	if (FlyerMesh == "")
+		return;
+	M = StaticMesh(DynamicLoadObject(FlyerMesh, class'StaticMesh', true));
+	if (M == None)
+	{
+		Log("Cards: flyer mesh "$FlyerMesh$" not found");
+		return;
+	}
+	F = Spawn(class'AvalonFlyer',,, FlyerCentre);
+	if (F == None)
+		return;
+	F.Setup(M, FlyerCentre, FlyerRadius, FlyerSpeed, FlyerScale, 0);
+	Made[Made.Length] = F;
+	Log("Cards: flyer "$FlyerMesh$" round "$FlyerCentre$" r "$FlyerRadius);
+}
+
 function Build()
 {
 	local int i;
@@ -176,6 +228,8 @@ function Build()
 		if (Made[i] != None)
 			Made[i].Destroy();
 	Made.Length = 0;
+	Haze();
+	Fly();
 
 	// the landing pad and the dropship on it
 	if (PadMesh != "" && Ground(PadSpot, HitL, HitN))

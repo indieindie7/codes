@@ -54,6 +54,13 @@ JJ, II = np.mgrid[0:A.shape[0], 0:A.shape[1]]
 dist_m = np.hypot(II - TI, JJ - TJ) * 10.24
 t = np.clip((dist_m - 400) / 450, 0, 1)
 w = 0.65 + 0.35 * t * t * (3 - 2 * t)                    # 65 % of the stock relief at the town, 100 % far out
+# the plant's plain in front of the command room's window (island_form's PLAIN, cells 96..106 x 33..46)
+# stays exactly as generated, the relief fading in over ~6 cells round it: it is the money shot's stage
+# (with the full remap the window looked onto a 20-46 degree coastal slope with no room for a building)
+PI0, PI1, PJ0, PJ1 = 96, 106, 33, 46
+dpl = np.hypot(np.clip(np.maximum(PI0 - II, II - PI1), 0, None), np.clip(np.maximum(PJ0 - JJ, JJ - PJ1), 0, None))
+tp = np.clip(dpl / 6.0, 0, 1)
+w = w * (tp * tp * (3 - 2 * tp))
 B = A + w * (B - A)
 B = np.where(land, np.maximum(B, SEA_H + 4), A)          # land stays land
 Hn = np.clip(np.round(B), 0, 65535).astype("<u2")

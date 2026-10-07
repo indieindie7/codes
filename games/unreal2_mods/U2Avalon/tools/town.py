@@ -14,6 +14,7 @@ TOOLS = os.path.join(HERE, "tools")
 sys.path.insert(0, TOOLS)
 import island_batch as ib  # noqa  (helpers: run, pilot_script, populate, enable_map, island_png, TEMPLATE, PILOT, GAME)
 import systems  # noqa
+import compose  # noqa
 
 args = [a for a in sys.argv[1:] if "=" not in a]
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
@@ -22,7 +23,8 @@ STYLE = o.get("style", "plateau")
 NAME = o.get("name", "TutA_Town")
 PILOT = o.get("pilot", "1") != "0"
 SHIFT = o.get("shift", "-5300")
-REROLLS = int(o.get("rerolls", 3))
+COMPOSE = o.get("compose", "1") != "0"   # score layouts through the command room window and keep the best
+REROLLS = int(o.get("rerolls", 6 if COMPOSE else 3))
 METHOD = o.get("method", "spine")      # spine = street first, plots along it (layout_spine.py); interest = layout.py
 name = "%s%d" % (NAME, seed)
 RUN = os.path.join(r"C:\Users\john\Documents\U2_research\towns", name)
@@ -64,16 +66,22 @@ for k in range(REROLLS):
     step("layout %s (seed %d)" % (METHOD, lseed), lambda: ib.run(["py", os.path.join(TOOLS, tool), base + "_e.bmp", cand,
                                                                   "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png", "vis=" + base + "_vis.npz"]))
     Lc, core_unmet = systems.run(cand, report=True)
-    key = (len(core_unmet), -Lc["systems"]["score"])
+    # the money shot: how the layout reads through the command room's window (compose.py)
+    frame = compose.score(base + "_e.bmp", cand) if COMPOSE else {"total": 0.0}
+    print("  seed %d: systems %.2f, %d core unmet, window frame %.2f (%s buildings, hero %s)" % (
+        lseed, Lc["systems"]["score"], len(core_unmet), frame["total"], frame.get("in_frame", "-"), frame.get("hero")), flush=True)
+    key = (len(core_unmet), -(0.5 * Lc["systems"]["score"] + 0.5 * frame["total"]))
     if best is None or key < best[0]:
-        best = (key, cand)
-    if not core_unmet:
+        best = (key, cand, frame)
+    if not core_unmet and not COMPOSE:
         break
-    print("  re-rolling: %d core needs unmet" % len(core_unmet), flush=True)
 shutil.copy(best[1], layout)
 shutil.copy(best[1][:-5] + ".png", base + "_layout.png")
 L = json.load(open(layout))
-print("  using", os.path.basename(best[1]), "score %.2f, %d core unmet" % (L["systems"]["score"], best[0][0]), flush=True)
+FRAME = best[2]
+if COMPOSE:
+    compose.score(base + "_e.bmp", layout, png=base + "_frame.png")
+print("  using", os.path.basename(best[1]), "score %.2f, %d core unmet, window frame %.2f" % (L["systems"]["score"], best[0][0], FRAME["total"]), flush=True)
 open(os.path.join(RUN, "systems.txt"), "w").write(
     "needs %d unmet %d score %.2f\n" % (L["systems"]["needs"], len(L["systems"]["unmet"]), L["systems"]["score"])
     + "".join("  %s needs %s: %s\n" % tuple(u) for u in L["systems"]["unmet"]))
@@ -126,6 +134,8 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
        "## Systems", "needs %d, unmet %d, score %.2f; pipes %d m, cables %d m, conveyors %d m" % (
            S["needs"], len(S["unmet"]), S["score"], S["pipes_m"], S["cables_m"], S["conveyors_m"]),
        *("- %s needs %s: %s" % tuple(u) for u in S["unmet"]), "",
+       "## The window frame", "score %.2f: %s buildings in frame, hero %s at u=%s (thirds %s), town span %s, depth %s, leading line %s (isl_frame.png)" % (
+           FRAME.get("total", 0), FRAME.get("in_frame"), FRAME.get("hero"), FRAME.get("hero_u"), FRAME.get("thirds"), FRAME.get("span"), FRAME.get("depth"), FRAME.get("lead")), "",
        "## Walks", "%d trips a day, %.1f km on foot; checks:" % (
            sum(1 for w in L.get("walks", []) if w.get("path")), sum((w.get("m") or 0) * w.get("n", 1) for w in L.get("walks", [])) / 1000),
        *("- " + c for c in L.get("walk_checks", [])), "- (none)" if not L.get("walk_checks") else "", "",
