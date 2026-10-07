@@ -27,6 +27,17 @@ class ModBloodTextures extends Object;
 #exec TEXTURE IMPORT NAME=FootprintA0 FILE=Textures\footprint_a0.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=FootprintA1 FILE=Textures\footprint_a1.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=FootprintA2 FILE=Textures\footprint_a2.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintHL0 FILE=Textures\footprint_hl0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintHL1 FILE=Textures\footprint_hl1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintHL2 FILE=Textures\footprint_hl2.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintAL0 FILE=Textures\footprint_al0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintAL1 FILE=Textures\footprint_al1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=FootprintAL2 FILE=Textures\footprint_al2.tga GROUP=Blood MIPS=1 ALPHA=1
+// plasma burns on walls: four frames from white-hot to cold soot (tools/make_blood_marks.py)
+#exec TEXTURE IMPORT NAME=Burn0 FILE=Textures\burn0.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=Burn1 FILE=Textures\burn1.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=Burn2 FILE=Textures\burn2.tga GROUP=Blood MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=Burn3 FILE=Textures\burn3.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=DripsH FILE=Textures\drips_h.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=DripsA FILE=Textures\drips_a.tga GROUP=Blood MIPS=1 ALPHA=1
 // live pools: placeholders the d3d8 layer swaps for its simulated sheets (tools/make_blood_live.py)

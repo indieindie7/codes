@@ -28,20 +28,13 @@ What it does:
   Gore (new in 2.1)
       Blood on walls and floors where people are hit; bodies bleed into real
       pools on the floor that spread, run together with the next body's and
-      leave footprints when anyone walks through them (simulated in the
-      Direct3D layer). Bodies come apart under heavy hits into pieces that
+      leave boot prints (left and right, in that blood's colour) when anyone
+      walks through them (simulated in the Direct3D layer). Some plasma hits
+      on walls glow white-hot and cool to soot. Bodies come apart under heavy hits into pieces that
       settle in the blood; stumps, blood-soaked skins, screen blood, rubble
       from explosions and brass from guns. Ragdolls on the mod's own joint
       limits, and new death animations by where the hit landed.
       Everything is adjustable in System\AdventMod.ini ([AdventMod.ModGore]).
-
-  Destructible armour (Seeker soldiers)
-      Six plates (head, torso, arms, legs) with points of their own, as in the
-      new Wolfenstein games: a plate soaks up most of the damage until it
-      breaks and flies off, then the flesh under it takes extra damage (break
-      the helmet, then headshots count). Explosions rattle every plate. The
-      total damage to kill a Seeker is unchanged: the armour moves the damage
-      around in time rather than adding health ([AdventMod.ModArmor]).
 
   Fixes
       The game ran its frames at a few hundred a second; the frame rate is now

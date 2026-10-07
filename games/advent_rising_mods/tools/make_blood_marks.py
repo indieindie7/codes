@@ -38,33 +38,71 @@ def mix(colour, cov):
     return (r, g, b, int(round(250 * cov)))
 
 
-def footprint(colour, strength, seed):
-    """a boot sole pointing +Y (the decal's +X axis is turned to the walker's direction by
-    ModBloodDecal.Place, which maps the texture's X; so the sole points along texture +X)"""
+def sole_width(t):
+    """half-width of a boot outsole at 0 (heel) .. 1 (toe), in units of the sole's length;
+    a rounded heel, a waist, a wide ball and a rounded toe"""
+    if t < 0 or t > 1:
+        return -1.0
+    if t < 0.1:
+        return 0.13 * math.sqrt(max(0.0, 1 - ((0.1 - t) / 0.1) ** 2))     # the heel, rounded
+    if t < 0.3:
+        return 0.13
+    if t < 0.5:
+        return 0.13 - 0.035 * math.sin((t - 0.3) / 0.2 * math.pi)        # the waist
+    if t < 0.8:
+        return 0.13 + 0.04 * math.sin((t - 0.5) / 0.3 * math.pi)         # the ball, the widest
+    return 0.155 * math.sqrt(max(0.0, 1 - ((t - 0.8) / 0.2) ** 2))       # the toe, rounded
+
+
+def footprint(colour, strength, seed, left=False):
+    """a boot sole pointing along texture +X (ModBloodDecal.Place turns the texture's X to
+    the walker's direction): an outsole outline, a bare arch, rows of tread lugs on the
+    ball and heel, a toe cap, and the inner edge straighter than the outer one; the left
+    print is the mirror image. Our own drawing, no photo."""
     random.seed(seed)
-    N = 64
+    N = 128
+    L = 0.82                       # the sole's length as a fraction of the texture
     px = []
     for y in range(N):
         for x in range(N):
-            # the sole along X: heel at x ~ 14, toe at x ~ 50; narrow in the middle
-            u = (x - 32) / 32.0
-            v = (y - 32) / 32.0
-            # width profile along the sole: heel 0.42, waist 0.3, ball 0.5, toe tapering
-            t = (u + 0.6) / 1.2      # 0 at heel .. 1 at toe
-            if t < 0 or t > 1:
-                inside = 0.0
+            u = (x + 0.5) / N - 0.5
+            v = (y + 0.5) / N - 0.5
+            if left:
+                v = -v
+            t = (u + L / 2) / L       # 0 heel .. 1 toe
+            w = sole_width(t)
+            if w < 0:
+                px.append(mix(colour, 0.0))
+                continue
+            # asymmetric: the inner edge (v < 0) is straighter, the outer edge bulges
+            if v < 0:
+                w *= 0.9 if 0.5 < t < 0.8 else 1.0
             else:
-                width = 0.42 * (1 - t) ** 0.5 if t < 0.35 else (0.3 + 0.2 * math.sin((t - 0.35) / 0.65 * math.pi))
-                if t > 0.85:
-                    width *= (1 - t) / 0.15 + 0.2
-                edge = width - abs(v)
-                inside = max(0.0, min(1.0, edge / 0.08))
-            # tread: stripes across the sole, and a bare arch
-            tread = 0.75 + 0.25 * (1 if int((t * 14) % 2) == 0 else -0.3)
-            if 0.38 < t < 0.5:
-                tread *= 0.35
-            cov = inside * tread * strength * random.uniform(0.85, 1.0)
-            px.append(mix(colour, max(0.0, min(1.0, cov))))
+                w *= 1.1 if 0.5 < t < 0.8 else 1.0
+            edge = w - abs(v)
+            if edge < 0:
+                px.append(mix(colour, 0.0))
+                continue
+            rim = max(0.0, min(1.0, edge / 0.01))             # anti-aliased outline
+            # the outsole: a solid band along the edge, lugs inside
+            cov = 1.0 if edge < 0.018 else 0.0
+            if edge >= 0.018:
+                if t < 0.3:                                       # heel block: three bars across
+                    row = (t - 0.03) / 0.27 * 3
+                    cov = 0.95 if (row % 1.0) > 0.3 else 0.1
+                elif t < 0.5:                                     # the arch: bare
+                    cov = 0.08
+                elif t < 0.8:                                     # the ball: chevron lugs
+                    ph = (t - 0.5) / 0.3 * 5 + abs(v) * 9
+                    cov = 0.95 if (ph % 1.0) > 0.4 else 0.12
+                else:                                             # the toe cap: solid
+                    cov = 0.9
+            # a worn, uneven print: a little noise and a lighter outer third (the foot rolls)
+            cov *= random.uniform(0.8, 1.0)
+            if v > w * 0.45:
+                cov *= 0.75
+            cov = max(0.0, min(1.0, cov * rim * strength))
+            px.append(mix(colour, cov))
     return px
 
 
@@ -90,12 +128,55 @@ def drips(colour, seed):
     return px
 
 
+def burn(frame, seed):
+    """a plasma burn on a wall, 64x64, four frames from fresh to cold: a white-hot core
+    with an orange ember ring over a dark scorch (frame 0), the glow shrinking and
+    reddening (1, 2), and the cold scorch alone (3). Decal-style: over 50 % grey brightens
+    the wall (the ember glow), under it darkens (the soot)."""
+    random.seed(seed)
+    N = 64
+    heat = (1.0, 0.55, 0.25, 0.0)[frame]
+    # a ragged rim: several harmonics with random phases, the same for every frame
+    harm = [(k, random.uniform(0, 6.3), random.uniform(0.03, 0.09)) for k in (3, 4, 6, 9, 13)]
+    px = []
+    for y in range(N):
+        for x in range(N):
+            u = (x + 0.5) / N - 0.5
+            v = (y + 0.5) / N - 0.5
+            r = math.hypot(u, v) * 2            # 0 centre .. 1 edge
+            a = math.atan2(v, u)
+            wob = 1 + sum(amp * math.sin(a * k + ph) for k, ph, amp in harm)
+            # soot: dense at the centre, thinning out to a soft, broken edge
+            soot = max(0.0, 1 - (r / (0.8 * wob)) ** 1.6) * random.uniform(0.75, 1.0)
+            soot = min(1.0, soot * 1.25)
+            # the ember: a core that shrinks as it cools, a ring around it
+            core = 0.26 * heat
+            glow = max(0.0, 1 - (r / max(core, 1e-3)) ** 2) * heat
+            ring = max(0.0, 1 - ((r - core * 1.2) / (0.16 * heat + 1e-3)) ** 2) * 0.7 * heat if heat > 0 else 0.0
+            # colour: soot darkens (toward 20), the ember brightens toward white-yellow,
+            # the ring toward orange-red
+            base = 128 * (1 - soot) + 22 * soot
+            rr, gg, bb = base, base, base
+            rr = rr * (1 - ring) + 215 * ring
+            gg = gg * (1 - ring) + 95 * ring
+            bb = bb * (1 - ring) + 40 * ring
+            rr = rr * (1 - glow) + 255 * glow
+            gg = gg * (1 - glow) + 236 * glow
+            bb = bb * (1 - glow) + 170 * glow
+            alpha = max(soot, glow, ring)
+            px.append((int(rr), int(gg), int(bb), int(250 * min(1.0, alpha))))
+    return px
+
+
 def main():
     for tag, colour in (("h", HUMAN), ("a", ALIEN)):
         for k, strength in enumerate((1.0, 0.6, 0.3)):
-            write_tga(os.path.join(OUT, "footprint_%s%d.tga" % (tag, k)), 64, 64, footprint(colour, strength, 11 + k))
+            write_tga(os.path.join(OUT, "footprint_%s%d.tga" % (tag, k)), 128, 128, footprint(colour, strength, 11 + k))
+            write_tga(os.path.join(OUT, "footprint_%sl%d.tga" % (tag, k)), 128, 128, footprint(colour, strength, 11 + k, left=True))
         write_tga(os.path.join(OUT, "drips_%s.tga" % tag), 128, 128, drips(colour, 5))
-    print("footprints and drips written to", OUT)
+    for k in range(4):
+        write_tga(os.path.join(OUT, "burn%d.tga" % k), 64, 64, burn(k, 3))
+    print("footprints, drips and burns written to", OUT)
 
 
 if __name__ == "__main__":

@@ -386,7 +386,7 @@ event Tick(float DeltaTime)
 
 defaultproperties
 {
-     bArmor=True
+     bArmor=False
      PlateHead=0.2
      PlateTorso=0.5
      PlateArm=0.25

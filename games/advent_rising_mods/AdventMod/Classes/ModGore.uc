@@ -98,7 +98,10 @@ var config bool bLivePools;
 var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long
 var config float RegionSize;                        // a live sheet covers a floor square this wide: every body in it pours into the same sheet (pools run together, prints everywhere in it)
 // bloody footprints: whoever stands in a live pool leaves prints for FootSteps steps
-var Material FootTex[3], AlienFootTex[3];           // fresh, fading, nearly gone
+var Material FootTex[3], AlienFootTex[3];           // fresh, fading, nearly gone (the right boot)
+var Material FootTexL[3], AlienFootTexL[3];         // the left boot, mirrored
+var Material Burns[4];                               // a plasma burn cooling: white-hot, orange, ember, soot
+var config float BurnChance;                        // the share of wall hits that burn (glow and cool) rather than scorch
 var Material DripTex, AlienDripTex;                 // drip streaks a coat pans down after a hit
 var config bool bFootprints;
 var config int FootSteps;
@@ -355,14 +358,20 @@ function BloodyFeet(Pawn P, int Kind)
 	Wet[Wet.Length] = F;
 }
 
-function Material FootTexture(int Kind, int Step)
+function Material FootTexture(int Kind, int Step, bool bRight)
 {
 	local int Level;
 
 	Level = Clamp(Step * 3 / Max(FootSteps, 1), 0, 2);
 	if (Kind == 1)
-		return AlienFootTex[Level];
-	return FootTex[Level];
+	{
+		if (bRight)
+			return AlienFootTex[Level];
+		return AlienFootTexL[Level];
+	}
+	if (bRight)
+		return FootTex[Level];
+	return FootTexL[Level];
 }
 
 function Material DripMaterial(int Kind)
@@ -396,7 +405,7 @@ function WalkPrints()
 		else
 			Foot = P.Location - Side * 7;
 		if (Trace(HitL, HitN, Foot - vect(0,0,1) * (P.CollisionHeight + 60), Foot, false) != None && HitN.Z > 0.6)
-			Mark(FootTexture(Wet[i].Kind, FootSteps - Wet[i].Left), HitL, HitN, Dir, DecalScale * 0.22);
+			Mark(FootTexture(Wet[i].Kind, FootSteps - Wet[i].Left, Wet[i].bRight), HitL, HitN, Dir, DecalScale * 0.3);
 		Wet[i].Left--;
 		Wet[i].bRight = !Wet[i].bRight;
 		Wet[i].LastSpot = P.Location;
@@ -1265,7 +1274,27 @@ function ShotGone(vector Loc, vector Vel)
 		class'ModSettings'.static.Note("gore: shot gone at " $ Loc $ " hit " $ A $ " at " $ HitL);
 	// a scorch on walls, floors and level meshes; nothing on characters (they bleed instead)
 	if (bImpacts && A != None && (A == Level || A.bWorldGeometry || A.bStatic) && Pawn(A) == None)
-		AddHole(Scorches[Rand(3)], HitL, HitN, DecalScale * (0.3 + 0.12 * FRand()));
+	{
+		if (FRand() < BurnChance)
+			Burn(HitL, HitN, DecalScale * (0.34 + 0.12 * FRand()));
+		else
+			AddHole(Scorches[Rand(3)], HitL, HitN, DecalScale * (0.3 + 0.12 * FRand()));
+	}
+}
+
+// a plasma burn: the spot glows white-hot and cools to soot over a few seconds (the
+// decal's frames, three per burn texture, run by its Grow)
+function Burn(vector Spot, vector N, float Size)
+{
+	local ModBloodDecal D;
+	local int i;
+
+	D = AddHole(Burns[0], Spot, N, Size);
+	if (D == None)
+		return;
+	for (i = 0; i < 12; i++)
+		D.Frames[i] = Burns[Min(i / 3, 3)];
+	D.Grow(D.DrawScale, D.DrawScale * 1.12, 2.5 + FRand());
 }
 
 event Tick(float DeltaTime)
@@ -1839,6 +1868,12 @@ defaultproperties
      AlienFootTex(0)=Texture'AdventMod.Blood.FootprintA0'
      AlienFootTex(1)=Texture'AdventMod.Blood.FootprintA1'
      AlienFootTex(2)=Texture'AdventMod.Blood.FootprintA2'
+     FootTexL(0)=Texture'AdventMod.Blood.FootprintHL0'
+     FootTexL(1)=Texture'AdventMod.Blood.FootprintHL1'
+     FootTexL(2)=Texture'AdventMod.Blood.FootprintHL2'
+     AlienFootTexL(0)=Texture'AdventMod.Blood.FootprintAL0'
+     AlienFootTexL(1)=Texture'AdventMod.Blood.FootprintAL1'
+     AlienFootTexL(2)=Texture'AdventMod.Blood.FootprintAL2'
      DripTex=Texture'AdventMod.Blood.DripsH'
      AlienDripTex=Texture'AdventMod.Blood.DripsA'
      bFootprints=True
@@ -1887,6 +1922,11 @@ defaultproperties
      Scorches(0)=Texture'AdventMod.Blood.Scorch0'
      Scorches(1)=Texture'AdventMod.Blood.Scorch1'
      Scorches(2)=Texture'AdventMod.Blood.Scorch2'
+     Burns(0)=Texture'AdventMod.Blood.Burn0'
+     Burns(1)=Texture'AdventMod.Blood.Burn1'
+     Burns(2)=Texture'AdventMod.Blood.Burn2'
+     Burns(3)=Texture'AdventMod.Blood.Burn3'
+     BurnChance=0.35
      CasingTex=Texture'AdventMod.Blood.Casing0'
      bCasings=True
      MaxClutter=150

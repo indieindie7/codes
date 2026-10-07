@@ -41,7 +41,10 @@ pad axis after it has been near the centre, and drops it again after 1.5 s froze
 at one exact off-centre value. Mouse and keyboard are untouched (the mouse is
 added after the filter). `bPadDriftFix=False` turns it off.
 
-**Destructible armour (Seeker soldiers).** The way the new Wolfenstein games do it:
+**Destructible armour (Seeker soldiers), parked 2026-10-06.** Off in the shipped mod
+(`bArmor=False`): the exposed-flesh repaint read as a pink sheen in play. The code stays;
+[ARMOUR.md](ARMOUR.md) has what worked, what didn't and the rebuild plan (plates as their own
+actors on the bones). As built, the way the new Wolfenstein games do it:
 Seeker infantry, elites, commanders and pilots carry six plates (head, torso, each arm,
 each leg) with points of their own. While a plate holds, a hit on it loses 70 % of its
 damage to the plate; when the points run out the plate
