@@ -38,6 +38,7 @@ var float GloomOn;        // how much of it is applied now
 // the cycle: Clear s of clear weather, Ramp s building, Hold s of storm, Ramp s clearing; Clear 0 = always storm
 var float ClearTime, RampTime, HoldTime, PhaseT, Intensity;
 var int Phase;
+var bool bForced;         // live editing held the weather (Force)
 
 function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float FogEnd, color Fog, Sound Rain, Sound WindLoop, float SkyFogEnd)
 {
@@ -108,6 +109,19 @@ function Cycle(float Clear, float Ramp, float Hold)
 		return;
 	Phase = Rand(4);
 	PhaseT = FRand() * 0.8 * PhaseLength();
+}
+
+// live editing: P = 2 the storm now, 0 clear now (held until Force(-1) puts the cycle back)
+function Force(int P)
+{
+	if (P < 0)
+	{
+		bForced = false;
+		return;
+	}
+	bForced = true;
+	Phase = P;
+	PhaseT = 0;
 }
 
 function float PhaseLength()
@@ -258,7 +272,15 @@ function Weather(float DeltaTime)
 {
 	local float G;
 
-	if (ClearTime > 0)
+	if (bForced)
+	{
+		// ease toward the forced state over a few seconds
+		if (Phase == 2)
+			Intensity = FMin(1, Intensity + DeltaTime / 8);
+		else
+			Intensity = FMax(0, Intensity - DeltaTime / 8);
+	}
+	else if (ClearTime > 0)
 	{
 		PhaseT += DeltaTime;
 		if (PhaseT >= PhaseLength())

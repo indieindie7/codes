@@ -122,6 +122,14 @@ var config float BrownoutMinGap, BrownoutMaxGap, BrownoutDepth;
 var config string BrownoutDown, BrownoutUp;
 var config string DecayLamp, DecayBuzz;
 
+// live editing (AvalonLive): every LivePoll seconds "exec LiveFile" through the player's console; 0 = off
+var config float LivePoll;
+var config string LiveFile;
+var int LiveSeq;          // the last batch applied
+var bool bLiveRun;        // the batch being read is new
+var float LiveWait;
+var AvalonStorm LiveStorm;
+
 var bool bRebuild;
 var array<Actor> Made;
 var Texture TreeTex[3];
@@ -148,6 +156,7 @@ function string MapName()
 
 event Timer()
 {
+	LiveTick();
 	if (bRebuild)
 	{
 		bRebuild = false;
@@ -206,6 +215,138 @@ function Speakers()
 	PA.Begin(PAMinGap, PAMaxGap, PARadius, PAVolume);
 	Made[Made.Length] = PA;
 	Log("Cards: public address, "$PA.Speakers.Length$" loudspeakers");
+}
+
+// ---------------------------------------------------------------- live editing
+
+// give every player the "avalon" command, and read the live file now and then
+function LiveTick()
+{
+	local PlayerController PC;
+	local AvalonLive L;
+	local int i;
+	local bool bHas;
+
+	if (LivePoll <= 0)
+		return;
+	PC = Level.PlayerControllerList;
+	if (PC == None)
+		return;
+	bHas = false;
+	for (i = 0; i < PC.ExecManagers.Length; i++)
+		if (AvalonLive(PC.ExecManagers[i]) != None)
+			bHas = true;
+	if (!bHas)
+	{
+		L = new(PC) class'AvalonLive';
+		L.Cards = Self;
+		L.PC = PC;
+		PC.ExecManagers[PC.ExecManagers.Length] = L;
+		Log("Cards: live editing on, reading "$LiveFile$" every "$LivePoll$" s");
+	}
+	LiveWait -= 0.5;
+	if (LiveWait > 0)
+		return;
+	LiveWait = LivePoll;
+	bLiveRun = false;
+	PC.ConsoleCommand("exec "$LiveFile);
+}
+
+// the rest of S after its first word
+function string Rest(string S)
+{
+	if (InStr(S, " ") < 0)
+		return "";
+	return Mid(S, InStr(S, " ") + 1);
+}
+
+function Live(string S, PlayerController PC)
+{
+	local string Cmd, Arg;
+	local int i, N;
+	local vector V;
+
+	Cmd = Caps(Word(S, 0));
+	Arg = Rest(S);
+	if (Cmd == "BATCH")
+	{
+		N = int(Arg);
+		bLiveRun = N > LiveSeq;
+		if (bLiveRun)
+		{
+			LiveSeq = N;
+			Log("Cards: live batch "$N);
+		}
+		return;
+	}
+	// typed by hand at the console (no batch line before it) it runs too
+	if (!bLiveRun && LiveWait < LivePoll - 0.25)
+		bLiveRun = true;
+	if (!bLiveRun)
+		return;
+	i = int(Word(Arg, 0));
+	switch (Cmd)
+	{
+	case "SAY":
+		if (PC != None)
+			PC.ClientMessage("[Claude] "$Arg);
+		break;
+	case "EXTRA":
+		if (i >= 0 && i < ArrayCount(Extras))
+			Extras[i] = Rest(Arg);
+		break;
+	case "CARD":
+		if (i >= 0 && i < ArrayCount(Cards))
+			Cards[i] = Rest(Arg);
+		break;
+	case "PROP":
+		if (i >= 0 && i < ArrayCount(Props))
+			Props[i] = Rest(Arg);
+		break;
+	case "PLUME":
+		if (i >= 0 && i < ArrayCount(Plumes))
+			Plumes[i] = Rest(Arg);
+		break;
+	case "TRUCK":
+		if (i >= 0 && i < ArrayCount(Trucks))
+			Trucks[i] = Rest(Arg);
+		break;
+	case "HAZE":
+		HazeStart = float(Word(Arg, 0));
+		HazeEnd = float(Word(Arg, 1));
+		HazeColour.R = int(Word(Arg, 2));
+		HazeColour.G = int(Word(Arg, 3));
+		HazeColour.B = int(Word(Arg, 4));
+		break;
+	case "WEATHER":
+		foreach DynamicActors(class'AvalonStorm', LiveStorm)
+		{
+			if (Caps(Arg) == "STORM")
+				LiveStorm.Force(2);
+			else if (Caps(Arg) == "CLEAR")
+				LiveStorm.Force(0);
+			else
+				LiveStorm.Force(-1);
+		}
+		break;
+	case "REBUILD":
+		Build();
+		break;
+	case "SAVE":
+		SaveConfig();
+		break;
+	case "WHERE":
+		if (PC != None && PC.Pawn != None)
+		{
+			V = PC.Pawn.Location;
+			PC.ClientMessage("[Claude] you are at "$int(V.X)$" "$int(V.Y)$" "$int(V.Z)$" yaw "$int(PC.Rotation.Yaw * 360.0 / 65536.0) % 360);
+		}
+		break;
+	default:
+		Log("Cards: live, unknown command "$S);
+		return;
+	}
+	Log("Cards: live "$LiveSeq$" "$S);
 }
 
 function Backwater()
@@ -692,6 +833,8 @@ defaultproperties
 	SmokeStyle=6
 	RevealSpeed=3000.000000
 	PAMinGap=45.000000
+	LivePoll=2.000000
+	LiveFile="AvalonLive.txt"
 	RadioSpot=(X=-349.000000,Y=1388.000000,Z=4330.000000)
 	RadioMinGap=50.000000
 	RadioMaxGap=120.000000
