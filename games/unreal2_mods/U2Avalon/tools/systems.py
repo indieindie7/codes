@@ -21,6 +21,7 @@ M = 50.0
 # resource -> (carrier, reach in metres, carrier kind)
 RELAY_M = 120.0          # a pylon every 120 m carries power beyond the cable's own reach, up to RELAY_MAX
 RELAY_MAX = 1400.0
+CONVEYOR_M = 60.0        # a tower every 60 m along the ore line (Longyearbyen's cableway: 74 towers)
 RES = {
     "ore":     ("conveyor", 220),
     "power":   ("cable", 350),
@@ -102,7 +103,15 @@ def run(layout_path, out_path=None, report=True):
             ok = d <= reach
             relays = []
             a, c = (B[pid]["x"], B[pid]["y"]), (B[bid]["x"], B[bid]["y"])
-            path = l_route(a, c, road_pts) if carrier in ("pipe", "cable", "conveyor") else [list(a), list(c)]
+            # a conveyor runs STRAIGHT (the dominant line of a plant, towers every CONVEYOR_M); pipes and cables follow the roads
+            path = l_route(a, c, road_pts) if carrier in ("pipe", "cable") else [list(a), list(c)]
+            if carrier == "conveyor":
+                ok = ok or d <= 900
+                seg = d
+                n = int(seg // CONVEYOR_M)
+                for k in range(1, n + 1):
+                    t = k * CONVEYOR_M / seg
+                    relays.append([round(a[0] + (c[0] - a[0]) * t), round(a[1] + (c[1] - a[1]) * t), round(math.degrees(math.atan2(c[1] - a[1], c[0] - a[0])))])
             if not ok and res == "power" and d <= RELAY_MAX:
                 ok = True                                   # a pylon line: relays along the L path every RELAY_M
                 for (x0, y0), (x1, y1) in zip(path[:-1], path[1:]):

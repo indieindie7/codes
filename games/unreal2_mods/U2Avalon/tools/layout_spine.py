@@ -257,6 +257,37 @@ class Road:
 
 SPINE = Road(spine, "spine")
 ROADS = [SPINE]
+
+
+def branches_to_room(max_branches=2):
+    """side roads from the spine toward the roomiest flats within 320 m of it (the works get room), least-cost"""
+    sp = np.array(SPINE.pts)
+    dsp = np.full((N, N), np.inf)
+    for x, y in sp[::3]:
+        dsp = np.minimum(dsp, np.hypot(WX - x, WY - y) / M)
+    cand = np.where(MAIN & (dsp > 70) & (dsp < 320) & (D_WATER > 30), ROOM, -1)
+    made = 0
+    for _ in range(max_branches):
+        j, i = np.unravel_index(int(cand.argmax()), cand.shape)
+        if cand[j, i] < 0.45:
+            break
+        target = cell_to_world(i + 0.5, j + 0.5)
+        k = int(np.argmin([math.hypot(x - target[0], y - target[1]) for x, y in SPINE.pts]))
+        start = SPINE.pts[k]
+        cells_b = path(start, target)
+        if len(cells_b) > 3:
+            pts = chaikin([cell_to_world(ci + 0.5, cj + 0.5) for ci, cj in cells_b], 1)
+            pts[0] = start
+            ROADS.append(Road(pts, "branch%d" % len(ROADS)))
+            s_k = SPINE.s[k]
+            for side in (+1, -1):
+                SPINE.taken[side].append((s_k - 14 * M, s_k + 14 * M))     # the junction stays open
+            made += 1
+        cand = np.where(np.hypot(WX - target[0], WY - target[1]) / M < 220, -1, cand)
+    return made
+
+
+N_BRANCH = branches_to_room()
 S_DOCK = 0.0
 S_TOWER = SPINE.s[int(np.argmin([math.hypot(x - tx, y - ty) for x, y in SPINE.pts]))]     # where the road passes the tower
 S_MINE = SPINE.length
@@ -307,7 +338,7 @@ if "dock" in buildings:
     place("dock", DOCK[0] + dx * L_dock * 0.35, DOCK[1] + dy * L_dock * 0.35, dock_yaw)
 
 
-def water_site(bid, dmin, dmax, near=None, near_max=None):
+def water_site(bid, dmin, dmax, near=None, near_max=None, in_window=False):
     cand = np.nonzero(WATER & (DEPTH > 2.5) & (D_LAND > dmin) & (D_LAND < dmax))
     pts = list(zip(cand[1], cand[0]))
     if near is not None:
@@ -315,7 +346,10 @@ def water_site(bid, dmin, dmax, near=None, near_max=None):
     if not pts:
         return None
     # never in the window's way (the tower looks at the works, the rig stands off to a side)
-    pts.sort(key=lambda p: -(abs(((math.degrees(math.atan2(WY[p[1], p[0]] - ty, WX[p[1], p[0]] - tx)) - LOOK + 180) % 360) - 180)) * rng.uniform(0.5, 1.0))
+    def off_window(p):
+        return abs(((math.degrees(math.atan2(WY[p[1], p[0]] - ty, WX[p[1], p[0]] - tx)) - LOOK + 180) % 360) - 180)
+    # rigs stay out of the window's way; far scenery stands IN it (the horizon the command room looks at)
+    pts.sort(key=lambda p: (off_window(p) if in_window else -off_window(p)) * rng.uniform(0.5, 1.0))
     i, j = pts[0] if rng.random() < 0.7 else pts[int(rng.integers(min(len(pts), 6)))]
     return cell_to_world(i + rng.uniform(0.2, 0.8), j + rng.uniform(0.2, 0.8))
 
@@ -333,7 +367,7 @@ for bid, b in buildings.items():
         p = water_site(bid, 30, 250)
         if p: place(bid, p[0], p[1], rng.uniform(0, 360))
     elif b["kind"] == "islet":                                      # far scenery: out at sea, deep, far from land
-        p = water_site(bid, 450, 2000)
+        p = water_site(bid, 450, 2000, in_window=True)
         if p: place(bid, p[0], p[1], rng.uniform(0, 360))
 
 # --- 4. plots along the roads, in binder layer order, providers before consumers --------------------------------

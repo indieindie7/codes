@@ -84,7 +84,7 @@ step("export", lambda: ib.run(["py", os.path.join(TOOLS, "export_mutator.py"), "
                                "heightmap=" + base + "_ec.bmp", "props=0"]))
 # clutter and vegetation: lamps along the trunk roads, crates and barrels in the yards, fences, rocks, trees
 clut = base + "_clutter.t3d"
-step("clutter", lambda: ib.run(["py", os.path.join(TOOLS, "clutter.py"), base + "_ec.bmp", layout, clut, "seed=%d" % seed]))
+step("clutter", lambda: ib.run(["py", os.path.join(TOOLS, "clutter.py"), base + "_ec.bmp", layout, clut, "seed=%d" % seed, "before=" + base + "_e.bmp"]))
 with open(t3d, "a") as f:                      # one import: the clutter actors are appended to the buildings' T3D
     body = open(clut).read()
     f.write("\n" + body[body.index("\n") + 1:body.rindex("End Map")])

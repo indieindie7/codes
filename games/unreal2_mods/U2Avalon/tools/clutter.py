@@ -17,6 +17,7 @@ import numpy as np
 
 src, layout, out = sys.argv[1:4]
 o = dict(a.split("=", 1) for a in sys.argv[4:] if "=" in a)
+BEFORE = o.get("before")           # the heightmap before the pads were cut: terrace rims get retaining walls
 SEED = int(o.get("seed", 1))
 TREES, ROCKS = float(o.get("trees", 1.0)), float(o.get("rocks", 1.0))
 rng = np.random.default_rng(SEED)
@@ -176,5 +177,34 @@ for j, i in cand[:min(90, int(len(cand) * 0.03 * TREES))]:
         actor(TREES_M[int(rng.integers(len(TREES_M)))], x, y, rng.uniform(0, 360), rng.uniform(0.8, 1.35), lift=-10)
         n_trees += 1
 
+# 6. retaining walls: where the pads changed the ground by more than 1.5 m, a wall band along the rim on the
+#    cut/fill side (the plinth or terrace wall every slope-site strategy draws as a visible band)
+n_walls = 0
+WALL = "Mission_03M.CityScape.OuterWallSection03"          # 9216 x 1024 x 2048 units: scaled to one cell long
+if BEFORE and os.path.exists(BEFORE):
+    rawb = open(BEFORE, "rb").read()
+    offb = struct.unpack_from("<I", rawb, 10)[0]
+    wb, hb = struct.unpack_from("<ii", rawb, 18)
+    Hb = np.frombuffer(rawb[offb:offb + wb * abs(hb) * 2], dtype="<u2").reshape(abs(hb), wb).astype(float)
+    if hb > 0:
+        Hb = Hb[::-1]
+    Zb = LOC[2] + (Hb - 32768) * 0.5
+    dZ = Z - Zb                                        # + = fill, - = cut
+    changed = np.abs(dZ) > 130                        # rims of 2.6 m and more get a wall; smaller steps stay earth
+    for j in range(1, N - 1):
+        for i in range(1, N - 1):
+            if not changed[j, i] or WATER[j, i]:
+                continue
+            for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                if not changed[j + dj, i + di]:
+                    x = WX[j, i] + di * CELL * 0.5
+                    y = WY[j, i] + dj * CELL * 0.5
+                    yawd = 90 if di else 0
+                    hgt = min(abs(dZ[j, i]), 400)
+                    actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'%s'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
+                                  "    Rotation=(Yaw=%d)\n    DrawScale3D=(X=%.4f,Y=%.3f,Z=%.4f)\n    bStatic=True\nEnd Actor"
+                                  % (WALL, x, y, min(Z[j, i], Zb[j, i]) + hgt / 2 - 20, int(yawd * 65536 / 360),
+                                     CELL / 9216.0, 0.06, hgt / 2048.0))
+                    n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
-print(f"clutter: {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees -> {out}")
+print(f"clutter: {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
