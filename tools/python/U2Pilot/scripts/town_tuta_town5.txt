@@ -7,30 +7,30 @@ console god
 turn 270 0 0.5
 move 1 0 2.2
 wait 0.8
-console hub face 307
+console hub face 316
 turn 0 -22 0.3
 wait 0.6
 shot
-console hub face 325
+console hub face 334
 turn 0 -18 0.3
 wait 0.6
 shot
-console hub face 291
+console hub face 300
 turn 0 -20 0.3
 wait 0.6
 shot
-console hub tp 4950 -5799 1593 hold
-console hub face 306
+console hub tp 2659 -1592 2735 hold
+console hub face 315
 turn 0 -32 0.3
 wait 1
 shot
-console hub tp 11158 -28431 -2207 hold
-console hub face 99
+console hub tp 15930 -23124 -1065 hold
+console hub face 118
 turn 0 -4 0.3
 wait 1
 shot
-console hub tp 902 -15539 8393 hold
-console hub face 36
+console hub tp 184 -11845 9535 hold
+console hub face 44
 turn 0 -45 0.3
 wait 1
 shot

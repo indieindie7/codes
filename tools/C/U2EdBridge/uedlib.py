@@ -400,9 +400,31 @@ class Ed(Editor):
         return capture_window(h, path, crop)
 
 
+def park_windows(pid, x=-3000, y=0):
+    """move the editor's top-level windows off the left edge of the desktop (no activation, no resize):
+    a mouse passing over the viewport while a TerrainInfo rebuilds crashes UnrealEd
+    (ATerrainInfo::LineCheckWithQuad <- MousePosition <- WM_MOUSEMOVE, seen 2026-10-07)"""
+    found = []
+    proto = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+
+    def cb(hwnd, _):
+        p = wt.DWORD()
+        u32.GetWindowThreadProcessId(hwnd, ctypes.byref(p))
+        if p.value == pid and u32.IsWindowVisible(hwnd):
+            found.append(hwnd)
+        return True
+    u32.EnumWindows(proto(cb), 0)
+    for h in found:
+        u32.SetWindowPos(h, 0, x, y, 0, 0, 0x0001 | 0x0004 | 0x0010)     # NOSIZE | NOZORDER | NOACTIVATE
+    return len(found)
+
+
 def session(fn, *a, **k):
-    """run fn(ed) in a fresh editor and always stop it (dgVoodoo back), printing the crash text if any"""
+    """run fn(ed) in a fresh editor and always stop it (dgVoodoo back), printing the crash text if any.
+    The editor's windows are parked off-screen (U2ED_PARK=0 keeps them where they open)."""
     ed = Ed.start()
+    if os.environ.get("U2ED_PARK", "1") != "0":
+        park_windows(ed.pid)
     try:
         return fn(ed, *a, **k)
     except EditorCrashed as e:

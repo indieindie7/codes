@@ -8,7 +8,7 @@ props into U2AvalonCards.ini, map enabled) -> U2Pilot run of the cards_binder vi
 Documents\U2_research\terrain\rand\Rand<seed>_sheet.png with the island picture beside it.
 The UnrealEd and game steps run one at a time; the GPU announcement to the Advent chat is the caller's job.
 """
-import os, re, shutil, struct, subprocess, sys
+import os, re, shutil, struct, subprocess, sys, time
 
 import numpy as np
 
@@ -34,9 +34,16 @@ RUN_PILOT = o.get("pilot", "1") != "0"   # pilot=0: no game run (editor pictures
 NAME = o.get("name", "TutA_Rand")    # map name prefix        # form = designed island by the terrain tool (island_form.py); noise = random_island.py + erosion
 
 
-def run(cmd, **k):
+def run(cmd, retries=0, **k):
+    """run a step; retries= re-runs it after a failure (editor steps: UnrealEd now and then crashes in
+    ATerrainInfo::LineCheckWithQuad on a mouse-move while a TerrainInfo rebuilds; the step is idempotent)"""
     print("$", " ".join(str(c) for c in cmd)[:160], flush=True)
     r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **k)
+    while r.returncode and retries > 0:
+        retries -= 1
+        print("    failed, retrying (%d left)" % retries, flush=True)
+        time.sleep(3)
+        r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **k)
     tail = [l for l in (r.stdout + r.stderr).splitlines() if not re.match(r"\s*(Matched Viewport|Allocating|.*arbage)", l)]
     for l in tail[-6:]:
         print("   ", l[:160], flush=True)

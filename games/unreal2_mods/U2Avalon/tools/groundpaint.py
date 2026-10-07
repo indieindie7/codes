@@ -101,8 +101,8 @@ if len(wi):
 beach = np.clip(1 - (dwater - 0.5) / 1.5, 0, 1)
 sand = np.clip(np.maximum.reduce([road, yard, beach, lines, paths]), 0, 1)
 # plant life: gentle ground, not on sand, thinner high up and on steep slopes
-height_t = np.clip((Z - SEA_Z) / 4500.0, 0, 1)
-plant = np.clip(1 - SLOPE / 28.0, 0, 1) * (1 - 0.7 * height_t) * (1 - sand)
+height_t = np.clip((Z - SEA_Z) / 9000.0, 0, 1)        # the island now rises to ~180 m like the stock one
+plant = np.clip(1 - SLOPE / 34.0, 0, 1) * (1 - 0.5 * height_t) * (1 - sand)
 rng = np.random.default_rng(int(L.get("seed", 1)))
 plant *= np.clip(0.75 + 0.5 * rng.random((N, N)), 0, 1.2)
 plant = np.where(WATER, 0, np.clip(plant, 0, 1))

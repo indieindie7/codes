@@ -47,6 +47,14 @@ lo, hi = land & (A <= ht), land & (A > ht)
 match(lo, S[sland & (S <= st)])
 match(hi, S[sland & (S > st)])
 B[TJ, TI] = st
+# ease in with distance from the tower: the town ground (within ~400 m) gets 65 % of the remap, the stock
+# relief is full beyond ~850 m. Without this the plain stayed at tower level while everything a little higher
+# jumped to stock hill heights, and the town stood in a canyon of cut walls (first rebuild, 2026-10-07).
+JJ, II = np.mgrid[0:A.shape[0], 0:A.shape[1]]
+dist_m = np.hypot(II - TI, JJ - TJ) * 10.24
+t = np.clip((dist_m - 400) / 450, 0, 1)
+w = 0.65 + 0.35 * t * t * (3 - 2 * t)                    # 65 % of the stock relief at the town, 100 % far out
+B = A + w * (B - A)
 B = np.where(land, np.maximum(B, SEA_H + 4), A)          # land stays land
 Hn = np.clip(np.round(B), 0, 65535).astype("<u2")
 pix = (Hn if up else Hn[::-1]).tobytes()
