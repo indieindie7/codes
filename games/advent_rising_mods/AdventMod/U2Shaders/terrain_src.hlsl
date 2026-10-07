@@ -77,14 +77,62 @@ float4 NoTile(sampler2D s, float2 uv, float k)
 	return lerp(a, b, smoothstep(0.2, 0.8, f - 0.1 * (m.r + m.g + m.b)));
 }
 
+// ---- hex-tiling (Mikkelsen 2022, "Practical Real-Time Hex-Tiling", JCGT 11(2)) -------------
+// Self-contained: copy HexHash, HexGrid and HexTile into any ps_2_a shader. The plane is cut
+// into a triangle grid whose vertices are the centres of a hex grid; each vertex gets its own
+// random offset into the texture; a pixel blends the three vertices around it by barycentric
+// weight, sharpened and biased toward the brighter sample so the blend keeps the texture's
+// contrast instead of greying it (the paper's luminance-weighted blend, simplified). Offsets
+// only, no rotation: the texture's gradients stay the plain ones (tex2Dgrad), mips stay right,
+// and baked lighting in the texture keeps its direction. Three reads per call.
+float2 HexHash(float2 p)
+{
+	return frac(sin(float2(dot(p, float2(127.1, 311.7)), dot(p, float2(269.5, 183.3)))) * 43758.5453);
+}
+
+// the three hex centres around st (in hex units) and their weights
+void HexGrid(float2 st, out float3 w, out float2 v1, out float2 v2, out float2 v3)
+{
+	st *= 3.4641016;                                          // 2 sqrt(3): one hex per unit
+	float2 skew = float2(st.x - 0.57735027 * st.y, 1.15470054 * st.y);
+	float2 b = floor(skew);
+	float3 t = float3(frac(skew), 0);
+	t.z = 1 - t.x - t.y;
+	float s = step(0, -t.z), s2 = 2 * s - 1;
+	w = float3(-t.z * s2, s - t.y * s2, s - t.x * s2);
+	v1 = b + float2(s, s);
+	v2 = b + float2(s, 1 - s);
+	v3 = b + float2(1 - s, s);
+}
+
+// cell: how many texture repeats one hex spans (about 1-2: smaller cells break the grid more,
+// larger ones keep more of the texture's own layout)
+float4 HexTile(sampler2D s, float2 uv, float cell)
+{
+	float2 dx = ddx(uv), dy = ddy(uv);
+	float3 w;
+	float2 v1, v2, v3;
+	HexGrid(uv / cell, w, v1, v2, v3);
+	float4 a = tex2Dgrad(s, uv + HexHash(v1), dx, dy);
+	float4 b = tex2Dgrad(s, uv + HexHash(v2), dx, dy);
+	float4 c = tex2Dgrad(s, uv + HexHash(v3), dx, dy);
+	float3 lum = float3(dot(a.rgb, float3(0.3, 0.59, 0.11)), dot(b.rgb, float3(0.3, 0.59, 0.11)), dot(c.rgb, float3(0.3, 0.59, 0.11)));
+	float3 k = w * w * w * w * w * w * (0.4 + lum);           // sharpen the seams, favour the brighter
+	k /= max(k.x + k.y + k.z, 0.0001);
+	return a * k.x + b * k.y + c * k.z;
+}
+// ---------------------------------------------------------------------------------------------
+
 float4 main(In I) : COLOR
 {
 	float3 world = float3(dot(ViewX, float4(I.Cam, 1)), dot(ViewY, float4(I.Cam, 1)), dot(ViewZ, float4(I.Cam, 1)));
 	float k = Fx.y > 0 ? Noise(world.xy / 700.0) : 0;
 	float4 w = tex2D(Weights, I.W);
 
-	float4 t1 = Fx.y > 0 ? NoTile(Layer1, I.U1, k) : tex2D(Layer1, I.U1);
-	float4 t2 = Fx.y > 0 ? NoTile(Layer2, I.U2, k) : tex2D(Layer2, I.U2);
+	// anti-tiling (Fx.y > 0): hex-tiling on the two main layers. It replaced IQ's two-read blend
+	// (NoTile, kept above): ps_2 compiles both sides of a branch, and both did not fit in 512 slots
+	float4 t1 = Fx.y > 0 ? HexTile(Layer1, I.U1, 1.5) : tex2D(Layer1, I.U1);
+	float4 t2 = Fx.y > 0 ? HexTile(Layer2, I.U2, 1.5) : tex2D(Layer2, I.U2);
 	float4 t3 = tex2D(Layer3, I.U3);
 #if LAYERS > 3
 	float4 t4 = tex2D(Layer4, I.U4);
