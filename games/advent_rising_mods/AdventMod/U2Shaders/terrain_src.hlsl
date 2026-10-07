@@ -37,6 +37,7 @@ float4 Fx      : register(c4);   // blend depth, anti-tiling, variation, fog fal
 float4 Fog     : register(c5);   // fog colour, density
 float4 Fog2    : register(c6);   // fog base height, most fog
 float4 Fx2     : register(c7);   // terrainfx2= relief strength, relief scale, slope rock, strata
+float4 Tone    : register(c8);   // terraintone= ground lift (x brightness, 0 = off), desaturate 0..1, rock brightness
 
 struct In
 {
@@ -129,6 +130,15 @@ float4 main(In I) : COLOR
 	if (Fx.z > 0)
 		c.rgb *= 1 + Fx.z * (Noise(world.xy / 3000.0) * 2 - 1);
 
+	// 4b: tone (terraintone=): real desert ground measured off photos (Goblin Valley, Wadi Rum,
+	//     the Pinnacles) is twice as bright and a third less saturated than this level paints
+	//     it; lift and desaturate the blended ground before the lighting and the haze
+	if (Tone.x > 0)
+	{
+		float lt = dot(c.rgb, float3(0.3, 0.59, 0.11));
+		c.rgb = lerp(c.rgb, lt.xxx, saturate(Tone.y)) * Tone.x;
+	}
+
 	// 5: the ground's shape, which the flat vertex lighting hides (terrainfx2=):
 	//    x relief: the first layer's own brightness read as a height map from a coarse mip (bumps
 	//      metres wide, not texels), lit by a fixed low sun, so hollows darken and brows catch light;
@@ -160,7 +170,7 @@ float4 main(In I) : COLOR
 		{
 			float steep = saturate((1 - n.z - 0.22) / 0.28) * Fx2.z;   // 0 under ~26 deg, full over ~44
 			float l = dot(c.rgb, lum3);
-			float3 rock = lerp(c.rgb, l * float3(0.66, 0.62, 0.56), 0.75);
+			float3 rock = lerp(c.rgb, l * float3(0.66, 0.62, 0.56), 0.75) * (Tone.z > 0 ? Tone.z : 1);
 			if (Fx2.w > 0)
 			{
 				float band = 0.5 + 0.5 * sin(world.z / 26.0 + 2.5 * Noise(world.xy / 300.0));
