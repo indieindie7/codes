@@ -41,6 +41,7 @@ struct ArmorState
 	var byte Broken[6];
 	var Material Top;       // the plain skin the flesh is blended over
 	var byte bSkinned;      // the chain is on the body
+	var ModArmorPlate Worn[6];   // the plate actors on the bones (bPlateActors)
 };
 var array<ArmorState> Bodies;
 var name Bones[12];                 // the bones a hit is measured against (ModReact's list)
@@ -51,6 +52,14 @@ var config float PlateStay;         // seconds a fallen plate lies there before 
 var config bool bPlates;            // the region's own mesh piece flies off (phase 2); off: chunks only
 var int LastBone;                   // the bone Region() settled on
 var config bool bExpose;            // the flesh shows where a plate is gone (phase 3)
+// the rebuild (ARMOUR.md): plates as their own meshes on the bones, metal, thrown off whole
+var config bool bPlateActors;
+var name WearBone[6];               // the bone each region's plate rides
+var byte WearShape[6];              // ModArmorPlate.Shapes: 0 chest, 1 helmet, 2 shoulder, 3 thigh
+var byte WearSide[6];               // 1: out to the body's side (shoulders), 0: out to the front
+var config float WearOut[6], WearUp[6], WearScale[6];   // offsets and size, x the character's collision height (config: tunable in the ini)
+var array<ModArmorPlate> AllPlates;
+var float Look;
 var config float ExposeMix;         // how much of the flesh shows through (1: the mask as made)
 var localized string RegionNames[6];
 var array<ModRubble> Pieces;
@@ -106,10 +115,97 @@ function int Body(Pawn P)
 	}
 	for (r = 0; r < 6; r++)
 		S.Plate[r] = S.Max[r];
+	if (bPlateActors)
+		for (r = 0; r < 6; r++)
+			S.Worn[r] = Wear(P, r);
 	Bodies[Bodies.Length] = S;
 	if (bArmorLog)
 		class'ModSettings'.static.Note("armor: " $ P $ " wears plates " $ int(S.Max[0]) $ "/" $ int(S.Max[1]) $ "/" $ int(S.Max[2]) $ "/" $ int(S.Max[4]));
 	return Bodies.Length - 1;
+}
+
+// a plate on the region's bone, placed from how the body stands now: out of the front (or the
+// side, for shoulders) by WearOut, up by WearUp, its +X facing out and +Z up; the placement is
+// worked out in the world and turned into the bone's own frame for AttachToBone
+function ModArmorPlate Wear(Pawn P, int r)
+{
+	local ModArmorPlate A;
+	local coords BC;
+	local vector F, Left, Out, W, D, X, Y, Z, RelL;
+	local float H, Sgn;
+
+	BC = P.GetBoneCoords(WearBone[r]);
+	if (BC.Origin == vect(0,0,0))
+		return None;
+	H = FMax(P.CollisionHeight, P.default.CollisionHeight);
+	F = vector(P.Rotation);
+	F.Z = 0;
+	F = Normal(F);
+	Left = F Cross vect(0,0,1);
+	Out = F;
+	if (WearSide[r] != 0)
+	{
+		Sgn = 1;
+		if ((BC.Origin - P.Location) Dot Left < 0)
+			Sgn = -1;
+		Out = Normal(Left * Sgn + vect(0,0,0.3));
+	}
+	W = BC.Origin + Out * WearOut[r] * H + vect(0,0,1) * WearUp[r] * H;
+	A = Spawn(class'ModArmorPlate', P,, W);
+	if (A == None)
+		return None;
+	A.Wearer = P;
+	A.Region = r;
+	A.Bone = WearBone[r];
+	A.SetStaticMesh(A.Shapes[WearShape[r]]);
+	A.SetDrawScale(WearScale[r] * H);
+	if (!P.AttachToBone(A, WearBone[r]))
+	{
+		A.Destroy();
+		return None;
+	}
+	// the plate's axes in the world, then in the bone's frame
+	X = Out;
+	Z = Normal(vect(0,0,1) - X * (X Dot vect(0,0,1)));
+	Y = Z Cross X;
+	D = W - BC.Origin;
+	RelL.X = D Dot BC.XAxis;
+	RelL.Y = D Dot BC.YAxis;
+	RelL.Z = D Dot BC.ZAxis;
+	A.SetRelativeLocation(RelL);
+	A.SetRelativeRotation(OrthoRotation(
+		vect(1,0,0) * (X Dot BC.XAxis) + vect(0,1,0) * (X Dot BC.YAxis) + vect(0,0,1) * (X Dot BC.ZAxis),
+		vect(1,0,0) * (Y Dot BC.XAxis) + vect(0,1,0) * (Y Dot BC.YAxis) + vect(0,0,1) * (Y Dot BC.ZAxis),
+		vect(1,0,0) * (Z Dot BC.XAxis) + vect(0,1,0) * (Z Dot BC.YAxis) + vect(0,0,1) * (Z Dot BC.ZAxis)));
+	AllPlates[AllPlates.Length] = A;
+	if (bArmorLog)
+		class'ModSettings'.static.Note("armor: " $ P $ " wears a " $ RegionNames[r] $ " plate on " $ WearBone[r] $ " (scale " $ A.DrawScale $ ")");
+	return A;
+}
+
+// a worn plate comes off whole: a loose copy flies from where it sat (the worn one goes)
+function ThrowPlate(ModArmorPlate A, vector Dir)
+{
+	local ModRubble R;
+	local vector V;
+
+	if (A == None || A.bDeleteMe)
+		return;
+	R = Spawn(class'ModRubble',,, A.Location, A.Rotation);
+	if (R != None)
+	{
+		R.Gore = Gore;
+		R.SetStaticMesh(A.StaticMesh);
+		R.Skins[0] = A.Dented;
+		R.SetDrawScale(A.DrawScale);
+		R.Size = vect(1,1,1) * A.DrawScale * 0.5;
+		R.Stay = PlateStay * (0.8 + 0.4 * FRand());
+		V = Normal(Dir * 1.2 + VRand() * 0.4 + vect(0,0,0.8)) * (220 + 180 * FRand());
+		R.Launch(V, PhysicsVolume.Gravity.Z, A.DrawScale * 0.25);
+	}
+	if (A.Wearer != None)
+		A.Wearer.DetachFromBone(A);
+	A.Destroy();
 }
 
 // the plate points that leave the damage-to-kill through a region unchanged
@@ -189,6 +285,11 @@ function int Strike(int Damage, Pawn Injured, Pawn Instigator, vector HitLocatio
 		Through = Max(1, Damage - int(Block));
 		if (bArmorLog)
 			class'ModSettings'.static.Note("armor: " $ Injured $ " " $ RegionNames[r] $ " plate " $ int(Bodies[b].Plate[r]) $ "/" $ int(Bodies[b].Max[r]) $ " took " $ int(Block) $ " of " $ Damage $ ", " $ Through $ " through");
+		if (Bodies[b].Worn[r] != None && !Bodies[b].Worn[r].bDented && Bodies[b].Plate[r] < Bodies[b].Max[r] * 0.5)
+		{
+			Bodies[b].Worn[r].bDented = true;
+			Bodies[b].Worn[r].Skins[0] = Bodies[b].Worn[r].Dented;
+		}
 		if (Bodies[b].Plate[r] <= 0)
 			Shatter(b, r, HitLocation, Dir);
 		return Through;
@@ -218,7 +319,12 @@ function Shatter(int b, int r, vector HitLocation, vector Dir)
 	Set = -1;
 	if (Gore != None)
 		Set = Gore.GibSet(P);
-	if (bPlates && Set >= 0)
+	if (Bodies[b].Worn[r] != None)
+	{
+		ThrowPlate(Bodies[b].Worn[r], Dir);
+		Bodies[b].Worn[r] = None;
+	}
+	else if (bPlates && Set >= 0)
 		Plate(P, Set, HitLocation, Dir);
 	if (bExpose && Set >= 0)
 		Expose(b, r, Set);
@@ -375,10 +481,29 @@ event Tick(float DeltaTime)
 {
 	local int i;
 
+	local Pawn P;
+
+	// armoured characters get their plates when they first come near (not at their first hit)
+	Look -= DeltaTime;
+	if (bArmor && bPlateActors && Look <= 0)
+	{
+		Look = 0.5;
+		ForEach DynamicActors(class'Pawn', P)
+			if (P.Health > 0 && !P.bHidden && Wears(P))
+				Body(P);
+	}
 	Sweep -= DeltaTime;
 	if (Sweep > 0)
 		return;
 	Sweep = 3;
+	// plates go with their body (it stays on a corpse until the game removes it)
+	for (i = AllPlates.Length - 1; i >= 0; i--)
+		if (AllPlates[i] == None || AllPlates[i].bDeleteMe || AllPlates[i].Wearer == None || AllPlates[i].Wearer.bDeleteMe)
+		{
+			if (AllPlates[i] != None && !AllPlates[i].bDeleteMe)
+				AllPlates[i].Destroy();
+			AllPlates.Remove(i, 1);
+		}
 	for (i = Bodies.Length - 1; i >= 0; i--)
 		if (Bodies[i].P == None || Bodies[i].P.bDeleteMe || Bodies[i].P.Health <= 0)
 			Bodies.Remove(i, 1);
@@ -386,7 +511,40 @@ event Tick(float DeltaTime)
 
 defaultproperties
 {
-     bArmor=False
+     bArmor=True
+     bPlateActors=True
+     WearBone(0)=head
+     WearBone(1)=spine2
+     WearBone(2)=leftArm
+     WearBone(3)=rightArm
+     WearBone(4)=leftUpLeg
+     WearBone(5)=rightUpLeg
+     WearShape(0)=1
+     WearShape(1)=0
+     WearShape(2)=2
+     WearShape(3)=2
+     WearShape(4)=3
+     WearShape(5)=3
+     WearSide(2)=1
+     WearSide(3)=1
+     WearOut(0)=0.02
+     WearOut(1)=0.30
+     WearOut(2)=0.20
+     WearOut(3)=0.20
+     WearOut(4)=0.25
+     WearOut(5)=0.25
+     WearUp(0)=0.05
+     WearUp(1)=0.0
+     WearUp(2)=0.03
+     WearUp(3)=0.03
+     WearUp(4)=-0.12
+     WearUp(5)=-0.12
+     WearScale(0)=0.30
+     WearScale(1)=0.50
+     WearScale(2)=0.32
+     WearScale(3)=0.32
+     WearScale(4)=0.34
+     WearScale(5)=0.34
      PlateHead=0.2
      PlateTorso=0.5
      PlateArm=0.25
@@ -402,8 +560,8 @@ defaultproperties
      BlastShare=0.4
      Chunks=2
      MaxChunks=40
-     bPlates=True
-     bExpose=True
+     bPlates=False
+     bExpose=False
      ExposeMix=1.0
      PlateScale=0.9
      PlateStay=18.0

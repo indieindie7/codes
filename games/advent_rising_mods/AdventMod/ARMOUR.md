@@ -1,4 +1,4 @@
-# Destructible armour (parked 2026-10-06)
+# Destructible armour (parked 2026-10-06, rebuilt 2026-10-07)
 
 Wolfenstein-style plates on the Seeker soldiers. Built in three phases and verified in
 game; switched off in the shipped mod (`bArmor=False` in `ModArmor`) after the user's
@@ -64,3 +64,31 @@ Estimated half a day. Gotchas to remember: no bool arrays in structs (byte); `Br
 reserved word (hence `Shatter`); locals are case-insensitive against parameters; a config
 dynamic array is emptied by an ini section that lacks the key (`Armored` is therefore not
 config); the pilot's `hurt N` arrives doubled; hits at or over `GibOverkill` gib the body.
+
+## Rebuilt (2026-10-07): plates as their own actors
+
+Done as planned above, and back on by default (`bArmor=True`, `bPlateActors=True`; the flesh
+repaint `bExpose` and the gib-piece throw `bPlates` are off).
+
+- **Meshes and textures are ours** (`tools/make_plates.py`): a chest plate (wrapped breastplate
+  with a ridge and arm-hole cut), a helmet dome with a visor slot, shoulder pauldrons and thigh
+  guards; light brushed steel with rim bevel, panel lines, rivets and scratches, and a dented,
+  scorched variant. Both windings on every triangle.
+- **ModArmorPlate** (one per region) is attached with `AttachToBone` to head, spine2,
+  leftArm/rightArm and leftUpLeg/rightUpLeg. Placement is worked out once, when the character is
+  first seen (ModArmor's Tick scans every 0.5 s): out of the body's front (shoulders: out to the
+  side and a little up) by `WearOut` and up by `WearUp`, times the collision height, its +X facing
+  out and +Z up; the world placement is turned into the bone's frame (`SetRelativeLocation`,
+  `SetRelativeRotation` from `OrthoRotation` of the axes expressed in the bone's coords).
+  `WearOut`, `WearUp`, `WearScale` are config (static arrays: `WearOut[1]=0.3` in
+  `[AdventMod.ModArmor]`).
+- **Damage look**: at half its points a plate swaps to the dented texture.
+- **Break**: the worn plate is detached and a loose copy (ModRubble's fake physics, the plate's
+  mesh, the dented texture) is thrown away from the shot; the body underneath is the untouched
+  Seeker, so no pink.
+- **Calibration lesson**: the Seekers are hunched and deep; offsets that look small (0.12 x height
+  for the chest) leave the plate inside the body. Working values: chest 0.30, shoulders 0.20,
+  thighs 0.25 out; sizes chest 0.50, shoulders 0.32, thighs 0.34, helmet 0.30 (x collision height).
+- Verified in the harness: all six plates spawn on placed and spawned Seekers, the helmet and chest
+  plate read clearly, breaks detach and throw, bare regions take the bonus. Not yet seen in motion
+  by the user; the shoulders and thighs may still want tuning.
