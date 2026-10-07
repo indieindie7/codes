@@ -1,0 +1,28 @@
+# live remake test (cards + procedural only): the user's mark, a generated street sent live, cards, undo
+background
+map TutA_Town5_Side?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+console hub face 302
+turn 0 -22 0.3
+wait 1
+console avalon weather clear
+console avalon mark remake the plain below the window as a staff row
+wait 2
+shot
+wait 20
+shot
+console avalon row CraneTower 9000 -6000 12000 -2000 2 2500
+console avalon scatter TinShack 6500 -5500 900 4 320
+wait 3
+shot
+console avalon undo
+console avalon move 0 0 500
+wait 2
+shot
+console avalon journal
+quit

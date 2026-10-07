@@ -15,6 +15,17 @@
 //   list [CLASS] [RADIUS]     the actors round the player (default StaticMeshActor, 3000)
 //   journal / forget I        the recorded edits / drop one (applies on the next rebuild)
 //
+// For remaking an area while the user plays (they point, Claude rebuilds):
+//   mark [NOTE]               the player's place and view, what's under the crosshair, and a
+//                             screenshot (System\Shot*.bmp): "where I'm looking, remake this"
+//   spawn MESH X Y [YAW] [SCALE]        X Y only = stood on the ground there
+//   clear X Y R               hide the map's own static meshes within R of X Y (journalled)
+//   row CARD X1 Y1 X2 Y2 N SIZE [FACEX FACEY]  N imposter cards along a line
+//   scatter CARD X Y R N SIZE [FACEX FACEY]    N imposter cards within R
+//                             (cards face FACEX FACEY - default the command room's window)
+//   cardat NAME X Y YAW SIZE  an imposter card (U2AvalonCards.NAME0..7, or Pkg.Group.Name) on the ground
+//   undo                      take back the last edit of this session
+//
 // The map's own static actors can't move at run time (bStatic), so the first
 // move/turn/scale swaps one for a movable copy (CardMesh, the same mesh, skins
 // and scale) and hides the original. Every edit is written into the journal
@@ -23,13 +34,22 @@
 // "avalon save" keeps it in U2AvalonCards.ini, so a session's edits can be
 // baked into the map later (U2Avalon/tools/live_bake.py).
 //=============================================================================
-class AvalonEditor extends Info;
+class AvalonEditor extends Info
+	config(U2AvalonCards);
+
+// the user's call (2026-10-07): live edits are procedural generation and imposter cards only, for now.
+// The mesh tools (move, turn, scale, hide, show, delete, spawn, clear) stay in the code, off unless
+// bMeshEdits is set in U2AvalonCards.ini [U2AvalonCards.AvalonEditor].
+var config bool bMeshEdits;
 
 var AvalonCards Cards;
 var Actor Picked;
 var string PickedName;      // the journal's name for it: the map actor's name, or "mesh#I"
 var array<Actor> Made;      // what the journal replay spawned (copies, new meshes)
 var array<string> MadeName; // each one's journal name: the map actor it stands in for, or "mesh#I"
+var array<int> Undo;        // journal lines written this session, newest last
+var array<string> UndoWas;  // what each line said before (to restore)
+var int Marks;
 
 function Say(PlayerController PC, coerce string S)
 {
@@ -104,7 +124,144 @@ function Record(string Kind, string N, string Rest)
 		Log("Cards: edit journal full");
 		return;
 	}
+	Push(i);
 	Cards.Ops[i] = Kind$" "$N$" "$Rest;
+}
+
+// where cards should face: words From, From+1 of Arg, or the command room's window (the tower)
+function vector Facing(string Arg, int From)
+{
+	local vector F;
+
+	if (Cards.Word(Arg, From + 1) != "")
+	{
+		F.X = float(Cards.Word(Arg, From));
+		F.Y = float(Cards.Word(Arg, From + 1));
+	}
+	else
+	{
+		F.X = -349;
+		F.Y = 1388;
+	}
+	return F;
+}
+
+function int FaceYaw(vector P, vector F)
+{
+	local rotator R;
+
+	R = rotator(F - P);
+	return R.Yaw * 360 / 65536;
+}
+
+function Push(int i)
+{
+	Undo[Undo.Length] = i;
+	UndoWas[UndoWas.Length] = Cards.Ops[i];
+}
+
+// the ground (terrain, level geometry) under X Y, ignoring meshes (roofs)
+function float GroundZ(float X, float Y)
+{
+	local vector S, E, HitL, HitN;
+
+	S.X = X; S.Y = Y; S.Z = 50000;
+	E.X = X; E.Y = Y; E.Z = -50000;
+	if (Trace(HitL, HitN, E, S, false) != None)
+		return HitL.Z;
+	return 0;
+}
+
+function int MadeIndex(string N)
+{
+	local int i;
+
+	for (i = 0; i < MadeName.Length; i++)
+		if (MadeName[i] ~= N && Made[i] != None)
+			return i;
+	return -1;
+}
+
+// a new mesh on the journal and in the world
+function Actor NewMesh(string Path, vector P, int YawDeg, float Scale)
+{
+	local Actor A;
+	local rotator R;
+	local int n;
+
+	n = FreeOp();
+	if (n < 0)
+		return None;
+	A = SpawnMesh(Path, P);
+	if (A == None)
+		return None;
+	R.Yaw = YawDeg * 65536 / 360;
+	A.SetRotation(R);
+	if (Scale > 0)
+		A.SetDrawScale(Scale);
+	MadeName[MadeName.Length - 1] = "mesh#"$n;
+	Push(n);
+	Cards.Ops[n] = "mesh "$A.StaticMesh$" "$Transform(A);
+	return A;
+}
+
+// an imposter card on the journal and in the world
+function Actor NewCard(string Line)
+{
+	local int n;
+
+	n = FreeOp();
+	if (n < 0)
+		return None;
+	Cards.PlaceCard(Line$" 8");
+	if (Cards.Made.Length == 0)
+		return None;
+	Made[Made.Length] = Cards.Made[Cards.Made.Length - 1];
+	MadeName[MadeName.Length] = "card#"$n;
+	Push(n);
+	Cards.Ops[n] = "card "$Line;
+	return Made[Made.Length - 1];
+}
+
+function TakeBack(PlayerController PC)
+{
+	local int i, k;
+	local string Op, N;
+	local Actor A;
+
+	if (Undo.Length == 0)
+	{
+		Say(PC, "nothing to undo");
+		return;
+	}
+	i = Undo[Undo.Length - 1];
+	Op = Cards.Word(Cards.Ops[i], 0);
+	N = Cards.Word(Cards.Ops[i], 1);
+	if (Op == "mesh" || Op == "card")
+	{
+		k = MadeIndex(Op$"#"$i);
+		if (k >= 0)
+			Made[k].Destroy();
+	}
+	else if (Op == "hide" || Op == "place")
+	{
+		k = MadeIndex(N);
+		if (Op == "place" && k >= 0)
+			Made[k].Destroy();
+		A = Find(N);
+		if (A != None)
+		{
+			A.bHidden = False;
+			A.SetCollision(True, True, True);
+		}
+	}
+	Cards.Ops[i] = UndoWas[UndoWas.Length - 1];
+	if (Cards.Ops[i] != "")
+		Say(PC, "undo: back to "$Cards.Ops[i]$" (applies on the next rebuild)");
+	else
+		Say(PC, "undo: "$Op$" "$N);
+	Undo.Length = Undo.Length - 1;
+	UndoWas.Length = UndoWas.Length - 1;
 }
 
 function string Transform(Actor A)
@@ -169,6 +326,15 @@ function Replay()
 			C = CopyOf(A);
 			if (C != None)
 				Apply(C, Cards.Ops[i], 2);
+		}
+		else if (Op == "card")
+		{
+			Cards.PlaceCard(Mid(Cards.Ops[i], 5)$" 8");
+			if (Cards.Made.Length > 0)
+			{
+				Made[Made.Length] = Cards.Made[Cards.Made.Length - 1];
+				MadeName[MadeName.Length] = "card#"$i;
+			}
 		}
 		else if (Op == "mesh")
 		{
@@ -320,7 +486,14 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 	local float D, BestD, Rad;
 	local int i, n;
 	local class<Actor> Cls;
+	local vector F;
 
+	if (!bMeshEdits && (Cmd == "MOVE" || Cmd == "MOVETO" || Cmd == "TURN" || Cmd == "SCALE" || Cmd == "HIDE"
+		|| Cmd == "SHOW" || Cmd == "DELETE" || Cmd == "SPAWN" || Cmd == "CLEAR"))
+	{
+		Say(PC, Cmd$" is off: live edits are procedural generation and imposter cards for now");
+		return true;
+	}
 	switch (Cmd)
 	{
 	case "PICK":
@@ -431,7 +604,10 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 		{
 			P.X = float(Cards.Word(Arg, 1));
 			P.Y = float(Cards.Word(Arg, 2));
-			P.Z = float(Cards.Word(Arg, 3));
+			if (Cards.Word(Arg, 3) == "" || Cards.Word(Arg, 3) ~= "g")
+				P.Z = GroundZ(P.X, P.Y);
+			else
+				P.Z = float(Cards.Word(Arg, 3));
 		}
 		else
 			UnderCrosshair(PC, P);
@@ -447,8 +623,68 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 			A.SetDrawScale(float(Cards.Word(Arg, 5)));
 		MadeName[MadeName.Length - 1] = "mesh#"$n;
 		SetPicked(A);
+		Push(n);
 		Cards.Ops[n] = "mesh "$A.StaticMesh$" "$Transform(A);
 		Say(PC, "spawned "$Describe(A));
+		return true;
+	case "MARK":
+		Marks++;
+		if (PC == None || PC.Pawn == None)
+			return true;
+		A = UnderCrosshair(PC, HitL);
+		Log("Cards: edit MARK "$Marks$" at "$int(PC.Pawn.Location.X)$" "$int(PC.Pawn.Location.Y)$" "$int(PC.Pawn.Location.Z)
+			$" yaw "$(int(PC.Rotation.Yaw * 360.0 / 65536.0) % 360)$" pitch "$(((PC.Rotation.Pitch + 32768) & 65535) - 32768) * 360 / 65536
+			$" looking-at "$int(HitL.X)$" "$int(HitL.Y)$" "$int(HitL.Z)$" "$Describe(A)$" note "$Arg);
+		PC.ConsoleCommand("shot");
+		Say(PC, "mark "$Marks$" taken: Claude can see this spot now");
+		return true;
+	case "CLEAR":
+		P.X = float(Cards.Word(Arg, 0));
+		P.Y = float(Cards.Word(Arg, 1));
+		Rad = float(Cards.Word(Arg, 2));
+		n = 0;
+		foreach AllActors(class'Actor', A)
+		{
+			if (!A.IsA('StaticMeshActor') || A.bHidden || VSize((A.Location - P) * vect(1,1,0)) > Rad)
+				continue;
+			Record("hide", string(A.Name), "");
+			HideActor(A);
+			n++;
+		}
+		Say(PC, "cleared "$n$" meshes within "$int(Rad)$" of "$int(P.X)$" "$int(P.Y));
+		return true;
+	case "ROW":
+		n = int(Cards.Word(Arg, 5));
+		F = Facing(Arg, 7);
+		for (i = 0; i < n; i++)
+		{
+			D = (i + 0.5) / FMax(n, 1);
+			P.X = Lerp(D, float(Cards.Word(Arg, 1)), float(Cards.Word(Arg, 3)));
+			P.Y = Lerp(D, float(Cards.Word(Arg, 2)), float(Cards.Word(Arg, 4)));
+			NewCard(Cards.Word(Arg, 0)$" "$int(P.X)$" "$int(P.Y)$" "$FaceYaw(P, F)$" "$Cards.Word(Arg, 6));
+		}
+		Say(PC, "row of "$n$" "$Cards.Word(Arg, 0));
+		return true;
+	case "SCATTER":
+		n = int(Cards.Word(Arg, 4));
+		Rad = float(Cards.Word(Arg, 3));
+		F = Facing(Arg, 6);
+		for (i = 0; i < n; i++)
+		{
+			D = FRand() * 6.2832;
+			BestD = Rad * Sqrt(FRand());
+			P.X = float(Cards.Word(Arg, 1)) + BestD * Cos(D);
+			P.Y = float(Cards.Word(Arg, 2)) + BestD * Sin(D);
+			NewCard(Cards.Word(Arg, 0)$" "$int(P.X)$" "$int(P.Y)$" "$FaceYaw(P, F)$" "$Cards.Word(Arg, 5));
+		}
+		Say(PC, "scattered "$n$" "$Cards.Word(Arg, 0));
+		return true;
+	case "CARDAT":
+		A = NewCard(Arg);
+		Say(PC, "card "$Arg$" -> "$A);
+		return true;
+	case "UNDO":
+		TakeBack(PC);
 		return true;
 	case "LIST":
 		Cls = ClassNamed(Cards.Word(Arg, 0));

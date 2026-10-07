@@ -105,8 +105,39 @@ def send(cmds, wait=20.0):
     return n, []
 
 
+def marks(n=3):
+    """the user's last marks ("avalon mark [note]"): place, view, what the crosshair was on, and the
+    screenshot taken with each (the newest Shot*.bmp files, saved next to the game as PNGs)"""
+    import glob
+    text = open(LOG, "rb").read().decode("latin1", "replace") if os.path.exists(LOG) else ""
+    found = [l.split("Cards: edit ", 1)[1] for l in text.splitlines() if "Cards: edit MARK" in l][-n:]
+    shots = sorted(glob.glob(os.path.join(SYS, "Shot*.bmp")) + glob.glob(os.path.join(GAME, "ScreenShots", "Shot*.bmp")),
+                   key=os.path.getmtime)[-len(found):] if found else []
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "marks")
+    os.makedirs(out, exist_ok=True)
+    pngs = []
+    for s in shots:
+        try:
+            from PIL import Image
+            p = os.path.join(out, os.path.splitext(os.path.basename(s))[0] + ".png")
+            Image.open(s).convert("RGB").save(p)
+            pngs.append(os.path.abspath(p))
+        except Exception as e:
+            pngs.append("%s (%s)" % (s, e))
+    for i, m in enumerate(found):
+        print(m)
+        if i < len(pngs):
+            print("   shot:", pngs[i])
+    if not found:
+        print("no marks yet (in game: avalon mark [note])")
+    return found, pngs
+
+
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("wait=")]
+    if args and args[0] == "--marks":
+        marks(int(args[1]) if len(args) > 1 else 3)
+        sys.exit(0)
     w = float(next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("wait=")), 20))
     if args and args[0] == "--status":
         up, m = native_up()
