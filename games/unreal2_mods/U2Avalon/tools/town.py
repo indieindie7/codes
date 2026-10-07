@@ -83,7 +83,7 @@ L = json.load(open(layout))
 # the ground paint: rock base, sand on roads / yards / beach, plant life on gentle ground (TutA's three layers)
 ALPHA_TPL = os.path.join(r"C:\Users\john\Documents\U2_research\terrain", "alphas")
 step("ground paint", lambda: ib.run(["py", os.path.join(TOOLS, "groundpaint.py"), base + "_ec.bmp", layout, ALPHA_TPL, os.path.join(RUN, "alphas")]))
-step("terrain", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_apply.py"), base + "_ec.bmp", name, "alphas=" + os.path.join(RUN, "alphas")], retries=2))
+step("terrain", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_apply.py"), base + "_ec.bmp", name, "alphas=" + os.path.join(RUN, "alphas"), "stock=" + ib.TEMPLATE], retries=2))
 t3d = base + "_actors.t3d"
 step("export", lambda: ib.run(["py", os.path.join(TOOLS, "export_mutator.py"), "shift=" + SHIFT, "layout=" + layout, "t3d=" + t3d,
                                "heightmap=" + base + "_ec.bmp", "props=0"]))
