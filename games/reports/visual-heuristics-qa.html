@@ -1,0 +1,187 @@
+<title>Visual Heuristics QA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column with a calibration-card header; wide tables scroll inside their own frames */
+:root {
+  --bg: #f3f3f6;
+  --paper: #ffffff;
+  --ink: #1b1c24;
+  --muted: #5b5d6e;
+  --rule: #d9dae3;
+  --accent: #b0125e;        /* calibration magenta: the "missing texture" colour, used sparingly */
+  --accent-soft: #f6dbe8;
+  --ok: #1f7a4d;
+  --warn: #9a5b00;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14151b; --paper: #1c1d25; --ink: #e7e7ee; --muted: #a2a4b6; --rule: #33353f;
+    --accent: #ff5ca7; --accent-soft: #3a1a2b; --ok: #5fd39a; --warn: #f0b45a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14151b; --paper: #1c1d25; --ink: #e7e7ee; --muted: #a2a4b6; --rule: #33353f;
+  --accent: #ff5ca7; --accent-soft: #3a1a2b; --ok: #5fd39a; --warn: #f0b45a; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.6; padding-inline: 16px; padding-block: 0 64px; }
+.wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 40px; }
+header { padding-block: 40px 8px; display: grid; gap: 14px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(34px, 6vw, 54px); line-height: 1.02; margin: 0; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { max-width: 64ch; color: var(--muted); font-size: 19px; margin: 0; }
+.ramp { display: grid; grid-template-columns: repeat(11, 1fr); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; max-width: 520px; }
+.ramp span { aspect-ratio: 1.6; display: grid; place-items: end center; font-family: var(--mono); font-size: 10px; padding-bottom: 2px; }
+.ramp-cap { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+section { display: grid; gap: 14px; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 28px; line-height: 1.15; margin: 0; text-wrap: balance; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 20px; margin: 8px 0 0; }
+p, li { max-width: 68ch; }
+p { margin: 0; }
+ul, ol { margin: 0; padding-left: 1.25em; display: grid; gap: 6px; }
+code, .mono { font-family: var(--mono); font-size: .86em; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.frame { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); }
+table { border-collapse: collapse; width: 100%; min-width: 680px; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+td.k { font-weight: 600; white-space: nowrap; }
+.lic { font-family: var(--mono); font-size: 12px; white-space: nowrap; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--rule); }
+.lic.free { color: var(--ok); }
+.lic.nc { color: var(--warn); border-color: var(--warn); }
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 6px 6px 0; max-width: 72ch; }
+.steps { counter-reset: s; list-style: none; padding: 0; gap: 12px; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 2.2em 1fr; gap: 10px; }
+.steps li::before { content: counter(s); font-family: var(--mono); font-weight: 600; color: var(--accent); border: 1px solid var(--rule); border-radius: 4px; height: 1.9em; display: grid; place-items: center; background: var(--paper); }
+.steps li > div { min-width: 0; }
+footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--rule); padding-top: 16px; }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Advent Rising &amp; Unreal II · automated visual QA · 2026-10-07</div>
+  <h1>Checking game frames against <em>design heuristics</em>, automatically</h1>
+  <p class="lede">Design heuristics like the squint test, figure–ground and silhouette readability can be turned into numbers on screenshots. This page lists which ones can be measured, the open-source code that already does it, and a plan to run them on random frames from both games during live QA.</p>
+  <div class="ramp" aria-label="Eleven-step grey value scale, from black to white">
+    <span style="background:#000;color:#bbb">0</span><span style="background:#1a1a1a;color:#bbb">1</span><span style="background:#333;color:#ccc">2</span><span style="background:#4d4d4d;color:#ddd">3</span><span style="background:#666;color:#eee">4</span><span style="background:#808080;color:#111">5</span><span style="background:#999;color:#111">6</span><span style="background:#b3b3b3;color:#111">7</span><span style="background:#ccc;color:#222">8</span><span style="background:#e6e6e6;color:#333">9</span><span style="background:#fff;color:#444">10</span>
+  </div>
+  <div class="ramp-cap">Squint test reference: a readable frame puts its focal point at the far end of this scale from its surroundings.</div>
+</header>
+
+<section>
+  <h2>What this is for</h2>
+  <p>The pilot harness can already teleport the player, turn the camera and save frames in both games. The idea is a "random prints" pass: frames from random places and angles, each scored against design heuristics, with a contact sheet that flags the weak ones. The same metrics in before/after mode tell whether a live look edit (a grade, a LUT, a shader change) made a level read better or worse.</p>
+  <p>All of it runs offline on this PC. The heuristics are rules of thumb, so the scores flag frames for a human to look at. They don't pass or fail a level by themselves.</p>
+</section>
+
+<section>
+  <h2>The heuristics, as measurements</h2>
+  <div class="frame"><table>
+    <thead><tr><th>Heuristic</th><th>What it asks</th><th>How to measure it</th><th>Code that does it</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Squint test</td><td>With detail blurred away, does the focal point still stand out by light and dark?</td><td>Blur and posterize to 3–5 values; measure the value contrast between the focal region and its ring; check the value histogram isn't all mid-grey.</td><td>OpenCV (blur, k-means); do-it-yourself recipe in the notes</td></tr>
+      <tr><td class="k">Where the eye lands</td><td>Is attention on what matters (player, enemy, path, pickup)?</td><td>Saliency map; share of saliency inside the character and objective masks; distance from the peak to the intended focus.</td><td>UNISAL, OpenCV spectral residual, pySaliencyMap; DeepGaze (private)</td></tr>
+      <tr><td class="k">Figure–ground</td><td>Do characters separate from the background?</td><td>Luminance and colour (ΔE) contrast between a character mask and a dilated ring around it.</td><td>AIM figure-ground metric; colour-science for ΔE</td></tr>
+      <tr><td class="k">Silhouette</td><td>Filled black, can you still tell what it is and what it's doing?</td><td>Mask shape statistics: solidity, convexity defects (limbs visible), outline length against area, overlap with other silhouettes.</td><td>Engine mask pass (U2 fork); rembg / BiRefNet / SAM for captures</td></tr>
+      <tr><td class="k">Clutter</td><td>Is the frame noisy enough to hide what matters?</td><td>Feature congestion, subband entropy, edge density; clutter around the focus against the frame average.</td><td>visual-clutter, AIM (Rosenholtz metrics), IC9600 (private)</td></tr>
+      <tr><td class="k">Colour</td><td>Is the palette coherent, and does the accent mark the important thing?</td><td>Palette extraction, Hasler–Süsstrunk colourfulness, hue-template harmony, colour-blind simulation.</td><td>AIM, colorgram.py, colour-science</td></tr>
+      <tr><td class="k">Composition</td><td>Is the focus placed with intent, and do lines lead to it?</td><td>Saliency peak against thirds and centre; Hough lines and their convergence toward the focus.</td><td>CADB / SAMP-Net (trained on photos); OpenCV recipe</td></tr>
+      <tr><td class="k">HUD readability</td><td>Is HUD text legible on whatever is behind it?</td><td>WCAG contrast ratio of HUD glyph pixels against the pixels under them, worst case per frame (4.5:1 target).</td><td>wcag-contrast-ratio or a few lines of numpy</td></tr>
+      <tr><td class="k">Aesthetic</td><td>Overall, is the frame pleasing?</td><td>CLIP or NIMA aesthetic score, used only relative to the same view before and after a change.</td><td>improved-aesthetic-predictor, nima.pytorch, AIM's NIMA</td></tr>
+      <tr><td class="k">Before / after</td><td>What did this change do to the picture?</td><td>Perceptual error map between two captures of the same camera and frame.</td><td>NVIDIA FLIP, LPIPS, scikit-image SSIM, piq</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Game-specific checks</h2>
+  <p>Generic models were trained on photos and UI screenshots. Frames from 2003-era games need some checks of their own, and most of them don't need machine learning:</p>
+  <ul>
+    <li><strong>Missing or default textures:</strong> large areas of exact magenta or of the engine's default checker texture.</li>
+    <li><strong>Black characters:</strong> the lighting bug fixed in Unreal II this month; a character mask whose mean brightness is far below its surroundings.</li>
+    <li><strong>Stretched polygons:</strong> long thin streaks found with line detection, starting at a character.</li>
+    <li><strong>Z-fighting and shimmer:</strong> FLIP between two consecutive frames of a static camera; flicker shows up as speckle.</li>
+    <li><strong>Gameplay glitches:</strong> GliDe (MIT) is a vision-language model pipeline for finding glitches in gameplay video; VideoGameQA-Bench (CC0) and GlitchBench give test material. EA's SEED published a CNN approach (AIIDE 2020) without code; its method (inject glitches into our own captures and train a small classifier) is easy to copy.</li>
+  </ul>
+  <div class="note">Since we control the renderer through the d3d8to9 fork, the best character masks come from the engine itself: a pass that draws characters in flat white. That is exact, costs nothing, and beats any segmentation model. ML masks (rembg, SAM) are for frames from games we don't render ourselves.</div>
+</section>
+
+<section>
+  <h2>The pipeline</h2>
+  <ol class="steps">
+    <li><div><strong>Random prints.</strong> A pilot step picks random navigation points and camera angles in the current map (both games), lets the frame settle, then saves the frame plus a mask frame (characters in white). In live sessions the same step can run on demand.</div></li>
+    <li><div><strong>Score each frame.</strong> One Python tool (<code>tools/visual_qa.py</code>) runs the checks above and writes a JSON record per frame: saliency share on characters, figure–ground contrast, silhouette solidity, clutter, palette, HUD contrast, glitch flags.</div></li>
+    <li><div><strong>Calibrate.</strong> A baseline set from the stock game gives each metric its normal range per level, so a flag means "worse than this level usually is", not an absolute grade from a photo-trained model.</div></li>
+    <li><div><strong>Report.</strong> A contact sheet with the saliency overlay and the squint version beside each frame, sorted by how many checks it fails, plus the numbers.</div></li>
+    <li><div><strong>Before/after mode for live edits.</strong> When a look edit lands (grade, LUT, shader), the same camera positions are captured again and the report shows FLIP maps and the change in each metric.</div></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Licences</h2>
+  <p>The mods are GPL and non-commercial. Anything we ship or put in the repo needs a permissive or GPL-compatible licence. Code that is non-commercial only, or has no licence at all, can still be run privately for analysis on this PC, but can't be copied into the repo or redistributed.</p>
+  <ul>
+    <li><strong>Safe core:</strong> AIM metrics (MIT, except its UMSI saliency module), visual-clutter (MIT), OpenCV (Apache), UNISAL (Apache), colour-science (BSD), FLIP (BSD), LPIPS (BSD), scikit-image (BSD), piq (Apache), rembg (MIT), SAM (Apache).</li>
+    <li><strong>Private use only:</strong> pyiqa (now PolyForm Noncommercial), Q-Align, UMSI, visimportance, and DeepGaze, UEyes, IC9600 and GlitchBench (no licence).</li>
+    <li><strong>Copyleft to note:</strong> ultralytics YOLO and aesthetic-predictor-v2-5 are AGPL-3.0.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>The code that exists</h2>
+  <p>Every repository was checked on GitHub on 2026-10-07. Full notes, with maintenance status and install details, are in <code>games/research_notes/Visual heuristics automation/sources.md</code>.</p>
+  <div class="frame"><table>
+    <thead><tr><th>Project</th><th>Measures</th><th>Licence</th><th>Offline on CPU</th></tr></thead>
+    <tbody>
+      <tr><td class="k"><a href="https://github.com/aalto-ui/aim">AIM</a></td><td>clutter, figure–ground, colourfulness, harmony, NIMA, colour-blind sim</td><td><span class="lic free">MIT*</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/kargaranamir/visual-clutter">visual-clutter</a></td><td>feature congestion, subband entropy maps</td><td><span class="lic free">MIT</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/opencv/opencv_contrib">OpenCV contrib</a></td><td>spectral residual and fine-grained saliency</td><td><span class="lic free">Apache-2.0</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/akisatok/pySaliencyMap">pySaliencyMap</a></td><td>Itti–Koch saliency</td><td><span class="lic free">MIT</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/rdroste/unisal">UNISAL</a></td><td>image and video saliency</td><td><span class="lic free">Apache-2.0</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/LJOVO/TranSalNet">TranSalNet</a></td><td>saliency</td><td><span class="lic free">MIT</span></td><td>yes, slow</td></tr>
+      <tr><td class="k"><a href="https://github.com/alexanderkroner/saliency">MSI-Net</a></td><td>saliency (TensorFlow)</td><td><span class="lic free">MIT</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/matthias-k/DeepGaze">DeepGaze</a></td><td>top-ranked fixation prediction</td><td><span class="lic nc">none</span></td><td>yes, slow</td></tr>
+      <tr><td class="k"><a href="https://github.com/matthias-k/pysaliency">pysaliency</a></td><td>saliency evaluation metrics</td><td><span class="lic free">MIT</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/diviz-mit/predimportance-public">UMSI</a></td><td>importance maps for designs and UI</td><td><span class="lic nc">non-commercial</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/YueJiang-nj/UEyes-CHI2023">UEyes</a></td><td>UI saliency dataset and models</td><td><span class="lic nc">none</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/tinglyfeng/IC9600">IC9600</a></td><td>image complexity score and map</td><td><span class="lic nc">none</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/colour-science/colour">colour-science</a></td><td>ΔE, colour spaces, colour-blind sim</td><td><span class="lic free">BSD-3</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/obskyr/colorgram.py">colorgram.py</a></td><td>palette extraction</td><td><span class="lic free">MIT</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/christophschuhmann/improved-aesthetic-predictor">improved-aesthetic-predictor</a></td><td>CLIP aesthetic score 1–10</td><td><span class="lic free">Apache-2.0</span></td><td>yes, slow</td></tr>
+      <tr><td class="k"><a href="https://github.com/truskovskiyk/nima.pytorch">nima.pytorch</a></td><td>NIMA aesthetic</td><td><span class="lic free">MIT</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/chaofengc/IQA-PyTorch">pyiqa</a></td><td>~50 quality and aesthetic metrics</td><td><span class="lic nc">PolyForm NC</span></td><td>mostly</td></tr>
+      <tr><td class="k"><a href="https://github.com/photosynthesis-team/piq">piq</a></td><td>SSIM, LPIPS, DISTS, BRISQUE, CLIP-IQA</td><td><span class="lic free">Apache-2.0</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/NVlabs/flip">FLIP</a></td><td>perceptual error map for rendered images</td><td><span class="lic free">BSD-3</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/richzhang/PerceptualSimilarity">LPIPS</a></td><td>learned perceptual difference</td><td><span class="lic free">BSD-2</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/scikit-image/scikit-image">scikit-image</a></td><td>SSIM and PSNR difference maps</td><td><span class="lic free">BSD-3</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/bcmi/Image-Composition-Assessment-Dataset-CADB">CADB / SAMP-Net</a></td><td>composition score and pattern</td><td><span class="lic free">MIT</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/danielgatis/rembg">rembg</a></td><td>subject mask</td><td><span class="lic free">MIT</span></td><td>yes</td></tr>
+      <tr><td class="k"><a href="https://github.com/ZhengPeng7/BiRefNet">BiRefNet</a></td><td>high-resolution subject mask</td><td><span class="lic free">MIT</span></td><td>slow</td></tr>
+      <tr><td class="k"><a href="https://github.com/facebookresearch/segment-anything">SAM</a></td><td>promptable masks</td><td><span class="lic free">Apache-2.0</span></td><td>slow</td></tr>
+      <tr><td class="k"><a href="https://github.com/SandyyyZheng/GliDe">GliDe</a></td><td>glitch detection in gameplay video</td><td><span class="lic free">MIT</span></td><td>needs a VLM</td></tr>
+      <tr><td class="k"><a href="https://github.com/asgaardlab/videogameqa-bench">VideoGameQA-Bench</a></td><td>game QA and glitch benchmark</td><td><span class="lic free">CC0</span></td><td>data</td></tr>
+      <tr><td class="k"><a href="https://github.com/GlitchBench/Benchmark">GlitchBench</a></td><td>glitch test set for VLMs</td><td><span class="lic nc">none</span></td><td>data</td></tr>
+    </tbody>
+  </table></div>
+  <p class="mono" style="font-size:13px;color:var(--muted)">* AIM's UMSI saliency module (m9) is non-commercial; the rest is MIT.</p>
+</section>
+
+<section>
+  <h2>Suggested next steps</h2>
+  <ol class="steps">
+    <li><div>A first <code>visual_qa.py</code> with the cheap, licence-safe checks: squint values, spectral-residual saliency, figure–ground, clutter, palette, HUD contrast, FLIP diffs.</div></li>
+    <li><div>A pilot "random prints" step in both games, and a character mask pass in the fork.</div></li>
+    <li><div>A baseline run on stock levels to set each metric's normal range.</div></li>
+    <li><div>Add UNISAL saliency and the glitch checks, then try GliDe on recorded play.</div></li>
+  </ol>
+</section>
+
+<footer>Research and write-up by Claude for the Advent Rising and Unreal II modding projects. Sources checked 2026-10-07.</footer>
+</div>
