@@ -124,6 +124,9 @@ var config string DecayLamp, DecayBuzz;
 
 // live editing (AvalonLive): every LivePoll seconds "exec LiveFile" through the player's console; 0 = off
 var config float LivePoll;
+// the live edit journal (AvalonEditor): "place NAME X Y Z YAW SCALE", "hide NAME", "mesh PATH X Y Z YAW SCALE"
+var config string Ops[128];
+var AvalonEditor Editor;
 var config string LiveFile;
 var int LiveSeq;          // the last batch applied
 var bool bLiveRun;        // the batch being read is new
@@ -285,8 +288,18 @@ function Live(string S, PlayerController PC)
 	if (!bLiveRun)
 		return;
 	i = int(Word(Arg, 0));
+	if (Editor != None && Editor.Command(Cmd, Arg, PC))
+	{
+		Log("Cards: live "$LiveSeq$" "$S);
+		return;
+	}
 	switch (Cmd)
 	{
+	case "RAW":
+		// any console command, once (a raw line in the file would run on every poll)
+		if (PC != None && Caps(Left(Arg, 4)) != "EXEC")
+			PC.ConsoleCommand(Arg);
+		break;
 	case "SAY":
 		if (PC != None)
 			PC.ClientMessage("[Claude] "$Arg);
@@ -686,6 +699,13 @@ function Build()
 	for (i = 0; i < ArrayCount(Extras); i++)
 		if (Extras[i] != "")
 			PlaceCard(Extras[i]);
+	if (Editor == None)
+		Editor = Spawn(class'AvalonEditor');
+	if (Editor != None)
+	{
+		Editor.Cards = Self;
+		Editor.Replay();
+	}
 	Log("Cards: built "$Made.Length$" things on "$MapName());
 }
 

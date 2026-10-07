@@ -1,0 +1,40 @@
+# U2AvalonCards motion test: plumes (steam / smoke / flare), trucks, the staged reveal pass
+background
+map TutA_Town5_Side?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+turn 270 0 0.5
+move 1 0 2.2
+wait 0.8
+console hub face 302
+turn 0 -22 0.3
+wait 0.6
+shot
+wait 3
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+wait 6
+shot
+quit

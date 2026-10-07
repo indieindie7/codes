@@ -20,6 +20,9 @@
 //   avalon rebuild                 tear down and rebuild everything the mutator made
 //   avalon save                    write the current values into U2AvalonCards.ini
 //   avalon where                   log and show the player's position (to place things)
+//   avalon raw CONSOLE COMMAND     any console command, once (set, hub, slomo, summon...)
+//   avalon pick / picknear / move / moveto / turn / scale / hide / show / delete / spawn / info /
+//          list / journal / forget  - live control of any actor: see AvalonEditor
 //
 // It is added to the player's ExecManagers (as U2TestHub's HubCommands is).
 //=============================================================================

@@ -1,27 +1,36 @@
 r"""Live editing: change the running game while the user plays (AvalonLive in U2AvalonCards).
 
-    py tools/live.py "say hello" "weather storm" "extra 20 CraneTower 1000 -9000 120 6000 8" [wait=10]
+    py tools/live.py "say hello" "weather storm" "extra 20 CraneTower 1000 -9000 120 6000 8" [wait=20]
     py tools/live.py --file cmds.txt          one command per line
     py tools/live.py --where                  ask where the player stands (prints it from the log)
+    py tools/live.py --status                 is the game listening, and how
 
-Each call writes System\AvalonLive.txt as one new batch ("avalon batch N" + "avalon <cmd>" lines) and,
-unless wait=0, watches Unreal2.log until the game reports the batch ("Cards: live batch N"). The game
-polls the file every couple of seconds through its console's EXEC command, so nothing is typed into
-the user's game and nothing needs a reload. Commands: see AvalonLive.uc (say, extra, card, prop, plume,
-truck, haze, weather, rebuild, save, where).
+Each call writes one new batch ("avalon batch N" + "avalon <cmd>" lines) two ways:
+  * the native channel, when it is up (the d3d8 fork with live=1 in U2Shaders.ini rewrites
+    System\U2Live.status every 2 s): System\U2Live.cmd, run at the next frame through the console and
+    acknowledged in System\U2Live.ack - well under a second;
+  * System\AvalonLive.txt, which the U2AvalonCards mutator EXECs every couple of seconds (the fallback,
+    and what re-applies the last batch after a map load).
+A batch runs once, whichever way arrives first. Unless wait=0 it waits for the game to confirm
+("Cards: live batch N" in Unreal2.log). Nothing is typed into the user's game and nothing needs a
+reload. Commands: see AvalonLive.uc and AvalonEditor.uc.
 """
 import os, re, sys, time
 
 GAME = r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening"
-LIVE = os.path.join(GAME, "System", "AvalonLive.txt")
-LOG = os.path.join(GAME, "System", "Unreal2.log")
+SYS = os.path.join(GAME, "System")
+LIVE = os.path.join(SYS, "AvalonLive.txt")
+LOG = os.path.join(SYS, "Unreal2.log")
+CMD = os.path.join(SYS, "U2Live.cmd")
+ACK = os.path.join(SYS, "U2Live.ack")
+STATUS = os.path.join(SYS, "U2Live.status")
 STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".live_seq")
 
 
 def next_seq():
-    # above anything already in the file, so a new batch always counts as new for the game
+    # above anything already sent, so a new batch always counts as new for the game
     n = 0
-    for path in (STATE, LIVE):
+    for path in (STATE, LIVE, ACK):
         try:
             m = re.search(r"(?:batch\s+)?(\d+)", open(path).read())
             n = max(n, int(m.group(1)) if m else 0)
@@ -32,21 +41,50 @@ def next_seq():
     return n
 
 
-def send(cmds, wait=10.0):
-    n = next_seq()
-    start = os.path.getsize(LOG) if os.path.exists(LOG) else 0
-    tmp = LIVE + ".tmp"
+def native_up():
+    """the fork's channel: U2Live.status rewritten in the last ~5 s ("up <unix> <exe> <map>")"""
+    try:
+        w = open(STATUS).read().split()
+        t = float(w[1]) if len(w) > 1 and w[0] == "up" else os.path.getmtime(STATUS)
+        return time.time() - t < 5, (w[3] if len(w) > 3 else "?")
+    except (OSError, ValueError, IndexError):
+        return False, None
+
+
+def write_atomic(path, n, cmds):
+    tmp = path + ".tmp"
     with open(tmp, "w", newline="\r\n") as f:
         f.write("avalon batch %d\n" % n)
         for c in cmds:
             f.write("avalon %s\n" % c.strip())
-    os.replace(tmp, LIVE)                    # whole, never half-written when the game reads it
-    print("batch %d: %d command(s) -> %s" % (n, len(cmds), LIVE))
+    os.replace(tmp, path)                    # whole, never half-written when the game reads it
+
+
+def acked(n):
+    try:
+        return int(open(ACK).read().split()[-1]) >= n
+    except (OSError, ValueError, IndexError):
+        return False
+
+
+def send(cmds, wait=20.0):
+    n = next_seq()
+    start = os.path.getsize(LOG) if os.path.exists(LOG) else 0
+    write_atomic(LIVE, n, cmds)
+    up, mapname = native_up()
+    if up:
+        write_atomic(CMD, n, cmds)
+    print("batch %d: %d command(s) -> %s%s" % (n, len(cmds), "native channel (%s) + " % mapname if up else "", LIVE))
     if wait <= 0:
         return n, []
     t0 = time.time()
+    resent = False
     while time.time() - t0 < wait:
-        time.sleep(0.5)
+        time.sleep(0.25)
+        # the fork drops a batch while the map is loading: send it once more if it wasn't acknowledged
+        if up and not resent and not os.path.exists(CMD) and time.time() - t0 > 2.5 and not acked(n):
+            write_atomic(CMD, n, cmds)
+            resent = True
         try:
             with open(LOG, "rb") as f:
                 f.seek(start)
@@ -54,12 +92,12 @@ def send(cmds, wait=10.0):
         except OSError:
             continue
         if "Cards: live batch %d" % n in new:
-            time.sleep(0.6)
+            time.sleep(0.5)
             with open(LOG, "rb") as f:
                 f.seek(start)
                 new = f.read().decode("latin1", "replace")
-            lines = [l for l in new.splitlines() if "Cards: live" in l]
-            print("applied in %.1f s" % (time.time() - t0))
+            lines = [l for l in new.splitlines() if "Cards: live" in l or "Cards: edit" in l]
+            print("applied in %.1f s%s" % (time.time() - t0, " (native)" if acked(n) else ""))
             for l in lines:
                 print("  ", l.split("ScriptLog:")[-1].strip())
             return n, lines
@@ -70,6 +108,10 @@ def send(cmds, wait=10.0):
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("wait=")]
     w = float(next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("wait=")), 20))
+    if args and args[0] == "--status":
+        up, m = native_up()
+        print("native channel:", "up, map %s" % m if up else "down (file poll only)")
+        sys.exit(0)
     if args and args[0] == "--file":
         cmds = [l for l in open(args[1]).read().splitlines() if l.strip() and not l.startswith("#")]
     elif args and args[0] == "--where":
