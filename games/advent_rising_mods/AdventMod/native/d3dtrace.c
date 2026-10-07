@@ -155,9 +155,38 @@ static void DumpDraw(const wchar_t* Kind, UINT Prims)
 	}
 }
 
+/* gib cards (ModGibAtlas): what a pass into a 512x512 colour target holds - the depth buffer
+   bound with it, the clears, the draws, and the first draws' viewport and projection - to see
+   why a DrawPortal into a ScriptedTexture comes out black */
+static int AtlasOn, AtlasLogs, AtlasDraws, AtlasClears, AtlasDetail;
+static DWORD AtlasZ[2], AtlasFmt;
+static void* AtlasDev;
+static void AtlasDraw(void* D)
+{
+	typedef HR (__stdcall *GetVp_t)(void*, DWORD*);
+	typedef HR (__stdcall *GetTf_t)(void*, DWORD, float*);
+	DWORD Vp[6] = {0};
+	float P[16] = {0}, V[16] = {0};
+	AtlasDraws++;
+	if (AtlasDetail >= 4) return;
+	AtlasDetail++;
+	((GetVp_t)VT(D)[41])(D, Vp);
+	((GetTf_t)VT(D)[38])(D, 3, P);      /* D3DTS_PROJECTION */
+	((GetTf_t)VT(D)[38])(D, 2, V);      /* D3DTS_VIEW */
+	Note(L"d3dtrace: ATLAS draw %d: viewport %lu,%lu %lux%lu z %.2f..%.2f proj %.3f %.3f %.3f %.3f view pos %.0f %.0f %.0f zen %lu zwr %lu zfunc %lu cull %lu blend %lu cw %lx stage0 tex %p op %lu",
+		AtlasDraws, Vp[0], Vp[1], Vp[2], Vp[3], *(float*)&Vp[4], *(float*)&Vp[5], P[0], P[5], P[10], P[14], V[12], V[13], V[14], Rs[7], Rs[14], Rs[23], Rs[22], Rs[27], Rs[168], Tex[0], Tss[0][1]);
+}
+static void AtlasEnd(void)
+{
+	if (!AtlasOn) return;
+	AtlasOn = 0;
+	Note(L"d3dtrace: ATLAS pass ends: %d clears, %d draws (depth bound %lux%lu)", AtlasClears, AtlasDraws, AtlasZ[0], AtlasZ[1]);
+}
+
 static void Count(void)
 {
 	Draws++;
+	if (AtlasOn) AtlasDraw(AtlasDev);
 	if (SmallRT) { OffDraws++; OffDetail(); }
 	if (ProjectedActive()) ProjDraws++;
 	if (CamPosActive()) CamPosDraws++;
@@ -216,6 +245,7 @@ static int WantWorldStack;
 static BYTE* MainEsp;               /* stack depth of the main scene's colour clear */
 static HR __stdcall HookClear(void* D, DWORD N, const void* R, DWORD Flags, DWORD Color, float Z, DWORD St)
 {
+	if (AtlasOn) { AtlasClears++; Note(L"d3dtrace: ATLAS clear %lu rects flags %lx color %08lx z %.2f", N, Flags, Color, Z); }
 	if ((Flags & 1) && !SmallRT) MainEsp = (BYTE*)_AddressOfReturnAddress();
 	if (Flags == 2 && Details >= 2 && WantWorldStack == 0) { WantWorldStack = 1; StackScan(L"z clear before the world"); }
 	FlushPlain();
@@ -235,6 +265,14 @@ static HR __stdcall HookSetRenderTarget(void* D, void* RT, void* Z)
 		((GetDesc_t)(*(void***)RT)[8])(RT, Desc);
 		CurRT = RT;
 		FlushPlain();
+		AtlasEnd();
+		if (Desc[6] == 512 && Desc[7] == 512 && AtlasLogs < 10)
+		{
+			AtlasLogs++; AtlasOn = 1; AtlasDraws = AtlasClears = AtlasDetail = 0; AtlasDev = D; AtlasFmt = Desc[0];
+			AtlasZ[0] = AtlasZ[1] = 0;
+			if (Z) { DWORD Zd[8] = {0}; typedef HR (__stdcall *GetDesc_t)(void*, DWORD*); ((GetDesc_t)(*(void***)Z)[8])(Z, Zd); AtlasZ[0] = Zd[6]; AtlasZ[1] = Zd[7]; }
+			Note(L"d3dtrace: ATLAS bind %p 512x512 format %lu, depth %p (%lux%lu), frame %d", RT, Desc[0], Z, AtlasZ[0], AtlasZ[1], Frames);
+		}
 		if (Dumping()) { DumpLines++; Note(L"d3dtrace: DUMP target %d (%lux%lu)", RtOfSurf(RT), Desc[6], Desc[7]); }
 		SmallRT = Desc[6] && Desc[6] <= 512 && Desc[7] <= 512;
 		if (SmallRT) { OffTargets++; RTW = Desc[6]; RTH = Desc[7]; RTFmt = Desc[0]; }

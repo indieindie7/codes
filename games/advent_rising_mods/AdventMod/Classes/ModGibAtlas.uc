@@ -3,19 +3,18 @@
 // fight's mess stays on the floor without dozens of gib actors (the user's idea: a runtime
 // "super texture", Rage-style, made from what is already on screen).
 //
-// One ScriptedTexture of Size x Size, cut into Tiles x Tiles tiles. When the gibs of one
-// spot have all lain still for CardDelay seconds, a camera straight above them renders them
-// and the blood around them into a free tile (ScriptedTexture.DrawPortal); a ModGibCard
-// showing that tile is laid on the floor in their place and the gibs go. The engine only
-// redraws a ScriptedTexture that something on screen uses, so the card waits on the floor
-// at one unit across (drawn, too small to see) and grows to its size once its tile is taken. A tile in use again
-// removes its old card (the oldest snapshot goes first).
-// STATUS (2026-10-07): off by default. Proven: the atlas is redrawn while a waiting card is on
-// screen (RenderTexture fires), DrawTile into it shows on the cards (CardDebug=1: red tiles), the
-// tile mapping is right (TexScaler divides by its scale), cards replace the gibs. Not working:
-// DrawPortal leaves the tile black, even with this actor moved to the camera first. Suspect the
-// d3d8 layer (it swaps the scene's depth and render targets for the post chain; a second scene
-// render into a 512 render target may hit that). Next: trace the layer during a capture.
+// Up to Tiles x Tiles snapshots, each its own Size x Size ScriptedTexture. When the gibs of
+// one spot have all lain still for CardDelay seconds, a camera straight above them renders them
+// and the blood around them into a free one (ScriptedTexture.DrawPortal); a ModGibCard showing
+// it is laid on the floor in their place and the gibs go. The engine only redraws a
+// ScriptedTexture that something on screen uses, so the card waits on the floor at one unit
+// across (drawn, too small to see) and grows to its size once its snapshot is taken. A slot in
+// use again removes its old card (the oldest snapshot goes first).
+// History: it began as one 512 atlas of 4 x 4 tiles, and every card came out black: each
+// redraw of a ScriptedTexture starts by clearing all of it (found with the d3d8 fork's
+// rtdump=N, which saves a 512 target as the game leaves it: the newest tile held the
+// snapshot, every other tile had been cleared). One texture per snapshot is drawn once and
+// then left alone.
 //=============================================================================
 class ModGibAtlas extends Info
 	config(AdventMod);
@@ -26,9 +25,9 @@ var config float CardReach;        // gibs within this of each other make one ca
 var config float CardLife;         // seconds a card stays
 var config float CamHeight;        // how high above the gibs the snapshot camera wants to be
 var config bool bCardLog;
-var config int CardDebug;          // 1: tiles filled red instead of the camera's view (is the atlas shown at all?), 2: red then the view on top
+var config int CardDebug;          // 1: snapshots filled red instead of the camera's view (is the texture shown at all?), 2: red then the view on top
 
-var ScriptedTexture Atlas;
+var ScriptedTexture Snaps[16];     // one per card slot, made when first needed
 var int Size, Tiles, NextTile;
 var ModGibCard Cards[16];
 
@@ -49,70 +48,68 @@ var float Look;
 event PostBeginPlay()
 {
 	Super.PostBeginPlay();
-	if (!bGibCards)
-		return;
-	Atlas = ScriptedTexture(Level.ObjectPool.AllocateObject(class'ScriptedTexture'));
-	if (Atlas == None)
-		return;
-	Atlas.SetSize(Size, Size);
-	Atlas.Client = self;
-	if (bCardLog)
-		class'ModSettings'.static.Note("gibcards: atlas " $ Atlas $ " " $ Size $ "x" $ Size);
+	if (bGibCards && bCardLog)
+		class'ModSettings'.static.Note("gibcards: on, up to " $ (Tiles * Tiles) $ " snapshots of " $ Size $ "x" $ Size);
 }
 
 event Destroyed()
 {
-	if (Atlas != None)
-	{
-		Atlas.Client = None;
-		Level.ObjectPool.FreeObject(Atlas);
-		Atlas = None;
-	}
+	local int i;
+
+	for (i = 0; i < 16; i++)
+		if (Snaps[i] != None)
+		{
+			Snaps[i].Client = None;
+			Level.ObjectPool.FreeObject(Snaps[i]);
+			Snaps[i] = None;
+		}
 	Super.Destroyed();
 }
 
-// the camera's snapshot of every waiting shot, into its tile
+// slot T's texture (made the first time)
+function ScriptedTexture SlotTexture(int T)
+{
+	if (Snaps[T] == None)
+	{
+		Snaps[T] = ScriptedTexture(Level.ObjectPool.AllocateObject(class'ScriptedTexture'));
+		if (Snaps[T] == None)
+			return None;
+		Snaps[T].SetSize(Size, Size);
+		Snaps[T].Client = self;
+	}
+	return Snaps[T];
+}
+
+// the camera's snapshot, into the waiting card's own texture
 event RenderTexture(ScriptedTexture Tex)
 {
-	local int i, X, Y, T;
-
-	if (bCardLog)
-		class'ModSettings'.static.Note("gibcards: atlas drawn (" $ Shots.Length $ " waiting)");
+	local int i, T;
 
 	for (i = 0; i < Shots.Length; i++)
 	{
 		if (Shots[i].State != 0 || Shots[i].Card == None)
 			continue;
 		T = Shots[i].Card.Tile;
-		X = (T % Tiles) * (Size / Tiles);
-		Y = (T / Tiles) * (Size / Tiles);
+		if (Snaps[T] != Tex)
+			continue;
+		if (bCardLog)
+			class'ModSettings'.static.Note("gibcards: snapshot " $ T $ " taken");
 		if (CardDebug > 0)
-			Tex.DrawTile(X, Y, Size / Tiles, Size / Tiles, 0, 0, 2, 2, Texture'Engine.WhiteSquareTexture', class'Canvas'.static.MakeColor(255, 0, 0));
+			Tex.DrawTile(0, 0, Size, Size, 0, 0, 2, 2, Texture'Engine.WhiteSquareTexture', class'Canvas'.static.MakeColor(255, 0, 0));
 		// the portal starts from the camera actor's zone: this actor goes to the camera first (left
 		// where it spawned, it sat outside the level and every snapshot came out black)
 		SetLocation(Shots[i].Cam);
 		if (CardDebug != 1)
-			Tex.DrawPortal(X, Y, Size / Tiles, Size / Tiles, self, Shots[i].Cam, rot(-16384,0,0), Shots[i].FOV, true);
+			Tex.DrawPortal(0, 0, Size, Size, self, Shots[i].Cam, rot(-16384,0,0), Shots[i].FOV, true);
 		Shots[i].State = 1;
 	}
 }
 
-// the material showing one tile, with the soft edge
+// the material showing a card's snapshot, with the soft edge
 function Material TileMaterial(ModGibCard C)
 {
-	local float K;
-
-	// UE2's TexScaler divides the coordinates by its scale (a scale of 4 shows a quarter of
-	// the texture: a card showed the whole atlas four times over with 0.25); offsets in texels
-	K = Tiles;
-	C.Scaler = TexScaler(Level.ObjectPool.AllocateObject(class'TexScaler'));
-	C.Scaler.Material = Atlas;
-	C.Scaler.UScale = K;
-	C.Scaler.VScale = K;
-	C.Scaler.UOffset = (C.Tile % Tiles) * (Size / Tiles);
-	C.Scaler.VOffset = (C.Tile / Tiles) * (Size / Tiles);
 	C.Comb = Combiner(Level.ObjectPool.AllocateObject(class'Combiner'));
-	C.Comb.Material1 = C.Scaler;
+	C.Comb.Material1 = Snaps[C.Tile];
 	C.Comb.Material2 = C.Mask;
 	C.Comb.CombineOperation = CO_Use_Color_From_Material1;
 	C.Comb.AlphaOperation = AO_Use_Alpha_From_Material2;
@@ -134,7 +131,6 @@ function FreeCard(int T)
 		return;
 	if (C.Final != None) Level.ObjectPool.FreeObject(C.Final);
 	if (C.Comb != None) Level.ObjectPool.FreeObject(C.Comb);
-	if (C.Scaler != None) Level.ObjectPool.FreeObject(C.Scaler);
 	if (!C.bDeleteMe)
 		C.Destroy();
 }
@@ -177,8 +173,10 @@ function TryCard(ModGib G)
 	T = NextTile;
 	NextTile = (NextTile + 1) % (Tiles * Tiles);
 	FreeCard(T);
+	if (SlotTexture(T) == None)
+		return;
 	// the card waits on the floor at one unit across (still drawn, so the engine asks for the
-	// atlas; under the floor it sat in solid space and was never drawn)
+	// snapshot; under the floor it sat in solid space and was never drawn)
 	S.Card = Spawn(class'ModGibCard',,, HitL + vect(0,0,1.5), rot(0,0,0));
 	if (S.Card == None)
 		return;
@@ -195,9 +193,9 @@ function TryCard(ModGib G)
 	S.Floor = HitL;
 	S.FOV = FOV;
 	Shots[Shots.Length] = S;
-	Atlas.Revision++;
+	Snaps[T].Revision++;
 	if (bCardLog)
-		class'ModSettings'.static.Note("gibcards: " $ Group.Length $ " gibs at " $ Mid $ " -> tile " $ T $ ", " $ int(W) $ " wide, camera " $ int(H) $ " up, FOV " $ FOV);
+		class'ModSettings'.static.Note("gibcards: " $ Group.Length $ " gibs at " $ Mid $ " -> slot " $ T $ ", " $ int(W) $ " wide, camera " $ int(H) $ " up, FOV " $ FOV);
 }
 
 event Tick(float DeltaTime)
@@ -205,7 +203,7 @@ event Tick(float DeltaTime)
 	local int i, k;
 	local ModGib G;
 
-	if (!bGibCards || Atlas == None)
+	if (!bGibCards)
 		return;
 	for (i = Shots.Length - 1; i >= 0; i--)
 	{
@@ -234,7 +232,7 @@ event Tick(float DeltaTime)
 			Shots.Remove(i, 1);
 		}
 		else
-			Atlas.Revision++;
+			Snaps[Shots[i].Card.Tile].Revision++;
 	}
 	Look -= DeltaTime;
 	if (Look > 0)
@@ -250,11 +248,11 @@ event Tick(float DeltaTime)
 
 defaultproperties
 {
-     bGibCards=False
+     bGibCards=True
      CardDelay=6.000000
      CardReach=140.000000
      CardLife=600.000000
      CamHeight=260.000000
-     Size=512
+     Size=128
      Tiles=4
 }
