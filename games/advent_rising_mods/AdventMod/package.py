@@ -5,13 +5,14 @@ System\\d3d8.dll is the U2Shaders d3d8to9 build (github.com/indieindie7/d3d8to9,
 branch gi-cascades) and U2Shaders\\ its shaders."""
 import os, zipfile
 
-VER = "2.0"
+VER = "2.1"
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.expanduser("~"), "Downloads")
 TOP = "AdventMod-" + VER
 URL = "https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods/AdventMod"
 
 files = [("System/" + f, "System/" + f) for f in ("AdventMod.u", "AdventMod.int", "AdventNative.dll", "d3d8.dll")]
+files += [("KarmaData/Advent.ka", "KarmaData/Advent.ka")]   # ragdoll skeletons, read from <game>\KarmaData
 files += [("Install AdventMod.bat", "Install AdventMod.bat"), ("Uninstall AdventMod.bat", "Uninstall AdventMod.bat")]
 # what the layer loads goes to System\U2Shaders; the scripts that generate files are source
 for f in sorted(os.listdir(os.path.join(HERE, "U2Shaders"))):

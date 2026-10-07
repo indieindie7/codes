@@ -183,6 +183,10 @@ try {
         New-Item -ItemType Directory -Force (Join-Path $sys 'U2Shaders') | Out-Null
         Copy-Item (Join-Path $here 'System\U2Shaders\*') (Join-Path $sys 'U2Shaders') -Force
         Say "  copied d3d8.dll, U2Shaders.ini and the U2Shaders folder (shaders)"
+        # the ragdoll skeletons: the engine reads <game>\KarmaData\*.ka
+        New-Item -ItemType Directory -Force (Join-Path $game 'KarmaData') | Out-Null
+        Copy-Item (Join-Path $here 'KarmaData\Advent.ka') (Join-Path $game 'KarmaData\Advent.ka') -Force
+        Say "  copied KarmaData\Advent.ka (ragdolls)"
         foreach ($t in $targets) {
             Add-Controller (Join-Path $t 'Mydefault.ini') $sys
             Add-Mutator (Join-Path $t 'MyDefUser.ini')
@@ -200,6 +204,8 @@ try {
         }
         $dir = Join-Path $sys 'U2Shaders'
         if (Test-Path $dir) { Remove-Item $dir -Recurse -Force; Say "  removed the U2Shaders folder" }
+        $ka = Join-Path $game 'KarmaData\Advent.ka'
+        if (Test-Path $ka) { Remove-Item $ka -Force; Say "  removed KarmaData\Advent.ka" }
         # a d3d8.dll or U2Shaders.ini that was there before the mod comes back
         foreach ($f in 'd3d8.dll', 'U2Shaders.ini') {
             $bak = Join-Path $sys "$f.adventmod-backup"

@@ -1,13 +1,13 @@
-# Nexus page for AdventMod 2.0 (draft; the user posts it)
+# Nexus page for AdventMod 2.1 (draft; the user posts it)
 
-**Title:** AdventMod - Shadows, Post-Processing and In-Game Options
+**Title:** AdventMod - Shadows, Post-Processing, Gore and In-Game Options
 
 **Category:** Visuals and Graphics (or Utilities)
 
 **Summary (short line):**
 Working character shadows from real lights, a modern post-processing chain (bloom, LUT grading, CAS sharpening, SMAA), better terrain, a frame cap, and the launcher's settings inside the game's menus.
 
-**Files to upload:** `AdventMod-2.0-nexus.zip` (no .bat inside; Nexus quarantines them).
+**Files to upload:** `AdventMod-2.1-nexus.zip` (no .bat inside; Nexus quarantines them).
 The GitHub zip with the one-click installer: https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods/AdventMod
 
 **Permissions / third-party content:** yes, third-party code under open licences:

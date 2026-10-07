@@ -1,5 +1,5 @@
-AdventMod 2.0 - shadows, post-processing and in-game options for Advent Rising
-==============================================================================
+AdventMod 2.1 - shadows, post-processing, gore and in-game options for Advent Rising
+====================================================================================
 
 What it does:
 
@@ -22,9 +22,31 @@ What it does:
       Outdoor ground blends its textures by height (sand settles between
       rocks instead of a soft cross-fade) and hides the tiling pattern.
 
+  Global illumination (Graphics page: Off / On / Strong)
+      Light bounced off the surroundings in the Direct3D layer.
+
+  Gore (new in 2.1)
+      Blood on walls and floors where people are hit; bodies bleed into real
+      pools on the floor that spread, run together with the next body's and
+      leave footprints when anyone walks through them (simulated in the
+      Direct3D layer). Bodies come apart under heavy hits into pieces that
+      settle in the blood; stumps, blood-soaked skins, screen blood, rubble
+      from explosions and brass from guns. Ragdolls on the mod's own joint
+      limits, and new death animations by where the hit landed.
+      Everything is adjustable in System\AdventMod.ini ([AdventMod.ModGore]).
+
+  Destructible armour (Seeker soldiers)
+      Six plates (head, torso, arms, legs) with points of their own, as in the
+      new Wolfenstein games: a plate soaks up most of the damage until it
+      breaks and flies off, then the flesh under it takes extra damage (break
+      the helmet, then headshots count). Explosions rattle every plate. The
+      total damage to kill a Seeker is unchanged: the armour moves the damage
+      around in time rather than adding health ([AdventMod.ModArmor]).
+
   Fixes
       The game ran its frames at a few hundred a second; the frame rate is now
       capped at your monitor's refresh rate (much less GPU load).
+      Gamepad axes stuck off-centre no longer spin the camera on their own.
 
   In-game options (the launcher's settings, in the game's own menus)
       Options > Video
@@ -73,6 +95,8 @@ Manual way:
        d3d8.dll      U2Shaders.ini   the U2Shaders folder
    If the game's System folder already has a d3d8.dll, rename it first
    (e.g. d3d8.dll.old) so you can put it back later.
+   Copy the zip's KarmaData folder (Advent.ka, the ragdoll skeletons) next to
+   the game's System folder (...\Advent Rising\KarmaData).
 
 3. Open System\Mydefault.ini. Under the line [Engine.Engine] add:
 
@@ -134,7 +158,8 @@ Double-click "Uninstall AdventMod.bat": it removes the configuration lines and
 the mod's files, puts back a d3d8.dll or U2Shaders.ini you had before, and
 leaves everything else as it was. By hand: remove the lines from steps 3-5,
 delete AdventMod.u, AdventMod.int, AdventNative.dll, d3d8.dll, U2Shaders.ini,
-AdventMod.ini, the logs and the U2Shaders folder from System, and rename your
+AdventMod.ini, the logs and the U2Shaders folder from System, delete
+KarmaData\Advent.ka, and rename your
 old d3d8.dll back if you had one.
 
 
@@ -155,7 +180,7 @@ HOW IT WORKS
   AdventUCC, a small tool that runs the compiler hidden in the game's
   Editor.dll. Source for everything:
   https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods
-  https://github.com/indieindie7/d3d8to9 (branch advent-post)
+  https://github.com/indieindie7/d3d8to9 (branch gi-cascades)
   The Source folder in this zip has the mod's script and C code.
 
 
