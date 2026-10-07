@@ -115,12 +115,34 @@ def main():
     for y in range(0, H // 2, meat.size[1]):
         for x in range(0, W // 2, meat.size[0]):
             tile.paste(meat, (x, y))
+    # torn, not repainted: inside a broken region the flesh shows in ragged patches (about half
+    # the region, noise-thresholded with soft broken edges) and lets the armour's own shading
+    # through (alpha 0.75), and the meat is darkened; a Seeker with every plate gone still
+    # reads as a Seeker with wounds, not a purple mannequin (the user's first play-test)
+    import numpy as np
+    rng = np.random.default_rng(7)
+    ww, hh = W // 2, H // 2
+    noise = np.zeros((hh, ww))
+    amp, cells = 1.0, 6
+    for _ in range(5):
+        g = rng.standard_normal((cells + 1, cells + 1))
+        ys = np.linspace(0, cells, hh, endpoint=False); xs = np.linspace(0, cells, ww, endpoint=False)
+        yi = ys.astype(int); xi = xs.astype(int); fy = (ys - yi)[:, None]; fx = (xs - xi)[None, :]
+        fy = fy * fy * (3 - 2 * fy); fx = fx * fx * (3 - 2 * fx)
+        v = g[yi][:, xi] * (1 - fx) * (1 - fy) + g[yi][:, xi + 1] * fx * (1 - fy) + g[yi + 1][:, xi] * (1 - fx) * fy + g[yi + 1][:, xi + 1] * fx * fy
+        noise += amp * v; amp *= 0.55; cells *= 2
+    noise = (noise - noise.mean()) / noise.std()
+    torn = np.clip((noise - 0.05) / 0.35 + 0.5, 0, 1)            # ~45 % of the region, soft edges
+    torn_im = Image.fromarray((torn * 255).astype(np.uint8))
+    meat_dark = tile.point(lambda v: int(v * 0.62))
     for bits in range(1, 16):
         m = Image.new("L", (W // 2, H // 2), 0)
         for k in range(4):
             if bits & (1 << k):
                 m = ImageChops.lighter(m, group[k])
-        rgba = Image.merge("RGBA", (ImageChops.multiply(tile.getchannel("R"), m), ImageChops.multiply(tile.getchannel("G"), m), ImageChops.multiply(tile.getchannel("B"), m), m))
+        m = ImageChops.multiply(m, torn_im)
+        a = m.point(lambda v: int(v * 0.75))
+        rgba = Image.merge("RGBA", (ImageChops.multiply(meat_dark.getchannel("R"), m), ImageChops.multiply(meat_dark.getchannel("G"), m), ImageChops.multiply(meat_dark.getchannel("B"), m), a))
         fn = "armor_%s_m%02d.tga" % (setname, bits)
         write_tga_rgba(os.path.join(out, fn), rgba)
         combos.append("#exec TEXTURE IMPORT NAME=Armor_%s_m%02d FILE=Textures\\%s GROUP=Armor MIPS=1 ALPHA=1" % (setname, bits, fn))
