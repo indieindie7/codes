@@ -27,11 +27,12 @@ COUNT = 6
 MARK = "# wall bullet holes (tools/make_wall_holes.py): parallax, darker = deeper"
 
 
-def write_tga(path, px):
-    hdr = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, N, N, 32, 0x08)
+def write_tga(path, px, n=None):
+    n = n or N
+    hdr = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, n, n, 32, 0x08)
     body = bytearray()
-    for y in range(N - 1, -1, -1):
-        for r, g, b, a in px[y * N:(y + 1) * N]:
+    for y in range(n - 1, -1, -1):
+        for r, g, b, a in px[y * n:(y + 1) * n]:
             body += bytes((b, g, r, a))
     open(path, "wb").write(hdr + body)
 
@@ -94,12 +95,73 @@ def hole(seed):
     return px
 
 
+BREACHES = 3
+BMARK = "# wall breaches (tools/make_wall_holes.py): clustered hits and blasts, parallax"
+
+
+def breach(seed):
+    """a wall breach, 256 px: the plaster knocked away in a big ragged patch (a lighter broken
+    rim), the block or concrete under it (mid depth, coarse), the deepest core dark with two
+    or three bent rebar lines crossing it, chips scattered round the rim"""
+    rng = random.Random(seed)
+    n = 256
+    rp = rng.uniform(0.36, 0.42)                         # the plaster's broken edge
+    rc = rp * rng.uniform(0.55, 0.65)                    # the core
+    harm = [(k, rng.uniform(0, 6.3), rng.uniform(0.03, 0.08)) for k in (2, 3, 4, 6, 9, 13, 19)]
+    harm2 = [(k, rng.uniform(0, 6.3), rng.uniform(0.05, 0.12)) for k in (2, 3, 5, 8)]
+    bars = [(rng.uniform(-0.12, 0.12), rng.uniform(-0.4, 0.4), rng.uniform(0.6, 1.2)) for _ in range(rng.randint(2, 3))]
+    flakes = [(rng.uniform(0, 6.3), rng.uniform(1.05, 1.35) * rp, rng.uniform(0.02, 0.05)) for _ in range(rng.randint(6, 11))]
+    px = []
+    for y in range(n):
+        for x in range(n):
+            u = (x + 0.5) / n - 0.5
+            v = (y + 0.5) / n - 0.5
+            r = math.hypot(u, v)
+            a = math.atan2(v, u)
+            edge = rp * (1 + sum(amp * math.sin(a * k + ph) for k, ph, amp in harm))
+            core = rc * (1 + sum(amp * math.sin(a * k + ph) for k, ph, amp in harm2))
+            lum, alpha = 128.0, 0.0
+            if r < core:
+                d = 0.75 + 0.25 * (1 - (r / core) ** 2)
+                lum = 128 * (1 - 0.92 * d) * rng.uniform(0.8, 1.1)
+                alpha = 1.0
+                for off, tilt, bend in bars:                  # rebar: bent dark-rusty lines across
+                    yy = v - off - tilt * u - 0.15 * bend * u * u
+                    if abs(yy) < 0.006:
+                        lum = 128 * 0.62                      # rebar sits shallower than the core
+            elif r < edge:
+                t = (r - core) / max(edge - core, 1e-3)       # 0 at the core .. 1 at the plaster edge
+                blocky = 0.85 + 0.15 * math.sin(u * 60) * math.sin(v * 60 + 1.3)
+                d = 0.62 * (1 - t) ** 0.8 * blocky
+                lum = 128 * (1 - d) * rng.uniform(0.85, 1.05)
+                alpha = 1.0
+            else:
+                ring = max(0.0, 1 - (r - edge) / (0.07 + 0.04 * math.sin(a * 5)))
+                lum = 128 + 42 * ring * rng.uniform(0.7, 1.0)  # broken plaster: lighter
+                alpha = ring * ring
+                for fa, fr, fs in flakes:
+                    d = math.hypot(u - fr * math.cos(fa), v - fr * math.sin(fa))
+                    if d < fs:
+                        f = 1 - d / fs
+                        lum = 128 * (1 - 0.5 * f)
+                        alpha = max(alpha, f)
+            lum = max(0, min(255, int(lum)))
+            warm = 5 if alpha > 0.5 and r < edge else 0
+            px.append((min(255, lum + warm), lum, max(0, lum - warm), int(250 * min(1.0, alpha))))
+    return px
+
+
 def main():
     rules = []
     for k in range(COUNT):
         path = os.path.join(TEX, "wall_hole%d.tga" % k)
         write_tga(path, hole(31 + k))
         rules.append("decal=%08x decal_parallax.hlsl" % tga_hash(path))
+    brules = []
+    for k in range(BREACHES):
+        path = os.path.join(TEX, "wall_breach%d.tga" % k)
+        write_tga(path, breach(71 + k), 256)
+        brules.append("decal=%08x decal_parallax.hlsl" % tga_hash(path))
     for ini in INIS:
         if not os.path.exists(ini):
             continue
@@ -109,9 +171,12 @@ def main():
         if MARK in lines:
             i = lines.index(MARK)
             del lines[i:i + 1 + COUNT]
+        if BMARK in lines:
+            i = lines.index(BMARK)
+            del lines[i:i + 1 + BREACHES]
         # before the live-pool block, with the other decal rules
         at = next((i for i, l in enumerate(lines) if l.startswith("# live blood pools")), len(lines))
-        lines[at:at] = [MARK] + rules
+        lines[at:at] = [MARK] + rules + [BMARK] + brules
         open(ini, "w", encoding="ascii", newline=nl).write("\n".join(lines) + "\n")
         print(ini, "updated")
     print("\n".join(rules))

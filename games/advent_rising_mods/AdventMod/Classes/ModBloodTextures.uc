@@ -45,6 +45,10 @@ class ModBloodTextures extends Object;
 #exec TEXTURE IMPORT NAME=WallHole3 FILE=Textures\wall_hole3.tga GROUP=Dirt MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=WallHole4 FILE=Textures\wall_hole4.tga GROUP=Dirt MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=WallHole5 FILE=Textures\wall_hole5.tga GROUP=Dirt MIPS=1 ALPHA=1
+// wall breaches: where hits cluster, and where blasts hit a wall (tools/make_wall_holes.py)
+#exec TEXTURE IMPORT NAME=WallBreach0 FILE=Textures\wall_breach0.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=WallBreach1 FILE=Textures\wall_breach1.tga GROUP=Dirt MIPS=1 ALPHA=1
+#exec TEXTURE IMPORT NAME=WallBreach2 FILE=Textures\wall_breach2.tga GROUP=Dirt MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=DripsH FILE=Textures\drips_h.tga GROUP=Blood MIPS=1 ALPHA=1
 #exec TEXTURE IMPORT NAME=DripsA FILE=Textures\drips_a.tga GROUP=Blood MIPS=1 ALPHA=1
 // live pools: placeholders the d3d8 layer swaps for its simulated sheets (tools/make_blood_live.py)

@@ -105,6 +105,21 @@ var config float BurnChance;                        // the share of wall hits th
 var Material WallHoles[6];                           // bullet holes dug into walls: the layer's parallax rule reads their darkness as depth
 var config bool bWallHoles;                         // walls take holes (parallax) and lose chips where shots land
 var config int ChipCount;                           // chips of wall knocked out per hit (tiny rubble), 0: none
+// wall destruction step 2: hits that cluster on a wall knock the plaster away (a breach: a deep
+// parallax hole with rebar), bigger again as more land; a blast breaches the wall it reaches
+var Material WallBreaches[3];
+var config bool bBreaches;
+var config int BreachHits, BreachHits2;              // holes within BreachReach that open a breach, and grow it
+var config float BreachReach;
+var array<vector> HoleAt, HoleNorm;
+var array<float> HoleTime;
+struct BreachState
+{
+	var vector Spot, N;
+	var int Level;
+};
+var array<BreachState> Breaches;
+var class<Emitter> RockFx, DustFallFx;
 var Material DripTex, AlienDripTex;                 // drip streaks a coat pans down after a hit
 var config bool bFootprints;
 var config int FootSteps;
@@ -205,6 +220,8 @@ event PostBeginPlay()
 	// (an unclamped projector texture draws its whole square darkened, not just the mark)
 	for (i = 0; i < 6; i++)
 		ClampTex(WallHoles[i]);
+	for (i = 0; i < 3; i++)
+		ClampTex(WallBreaches[i]);
 	for (i = 0; i < 4; i++)
 		ClampTex(Burns[i]);
 	for (i = 0; i < 3; i++)
@@ -1313,12 +1330,94 @@ function ShotGone(vector Loc, vector Vel)
 		{
 			AddHole(WallHoles[Rand(6)], HitL, HitN, DecalScale * (0.2 + 0.1 * FRand()));
 			Chips(HitL, HitN);
+			if (bBreaches)
+				WallHit(HitL, HitN);
 		}
 		if (FRand() < BurnChance)
 			Burn(HitL, HitN, DecalScale * (0.34 + 0.12 * FRand()));
 		else if (!bWallHoles || HitN.Z >= 0.5 || FRand() < 0.5)
 			AddHole(Scorches[Rand(3)], HitL, HitN, DecalScale * (0.3 + 0.12 * FRand()));
 	}
+}
+
+// a hole on a wall: where enough land close together the plaster goes (a breach), and a
+// breach grows when more land on it
+function WallHit(vector Spot, vector N)
+{
+	local int i, Count, b;
+	local vector Mid;
+
+	// recent holes only (three minutes), at most 80
+	for (i = HoleAt.Length - 1; i >= 0; i--)
+		if (Level.TimeSeconds - HoleTime[i] > 180)
+		{
+			HoleAt.Remove(i, 1);
+			HoleNorm.Remove(i, 1);
+			HoleTime.Remove(i, 1);
+		}
+	if (HoleAt.Length >= 80)
+	{
+		HoleAt.Remove(0, 1);
+		HoleNorm.Remove(0, 1);
+		HoleTime.Remove(0, 1);
+	}
+	HoleAt[HoleAt.Length] = Spot;
+	HoleNorm[HoleNorm.Length] = N;
+	HoleTime[HoleTime.Length] = Level.TimeSeconds;
+	for (i = 0; i < HoleAt.Length; i++)
+		if (VSize(HoleAt[i] - Spot) < BreachReach && (HoleNorm[i] Dot N) > 0.85)
+		{
+			Count++;
+			Mid += HoleAt[i];
+		}
+	if (Count < BreachHits)
+		return;
+	Mid /= Count;
+	b = -1;
+	for (i = 0; i < Breaches.Length; i++)
+		if (VSize(Breaches[i].Spot - Mid) < BreachReach * 1.3 && (Breaches[i].N Dot N) > 0.85)
+			b = i;
+	if (b < 0)
+		Breach(Mid, N, 1);
+	else if (Breaches[b].Level == 1 && Count >= BreachHits2)
+	{
+		Breaches[b].Level = 2;
+		Breach(Breaches[b].Spot, N, 2);
+	}
+}
+
+// the plaster knocked away: a deep parallax hole (bigger at level 2), a burst of chips and dust
+function Breach(vector Spot, vector N, int Lvl)
+{
+	local int i;
+	local BreachState B;
+	local Emitter E;
+
+	AddDirt(WallBreaches[Rand(3)], Spot, N, DecalScale * (Lvl >= 2 ? 0.68 : 0.42) * (0.9 + 0.2 * FRand()), 900);
+	for (i = 0; i < 3 * Lvl; i++)
+		Chips(Spot, N);
+	if (RockFx == None)
+		RockFx = class<Emitter>(DynamicLoadObject("EonEffects.fx_Boss_bh3_RockImpact", class'Class', true));
+	if (RockFx != None)
+	{
+		E = Spawn(RockFx,,, Spot + N * 6, rotator(N));
+		if (E != None)
+		{
+			E.SetDrawScale(E.DrawScale * (Lvl >= 2 ? 0.6 : 0.4));
+			E.LifeSpan = 4;
+		}
+	}
+	if (Lvl == 1)
+	{
+		if (Breaches.Length >= 40)
+			Breaches.Remove(0, 1);
+		B.Spot = Spot;
+		B.N = N;
+		B.Level = 1;
+		Breaches[Breaches.Length] = B;
+	}
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("dirt: breach level " $ Lvl $ " at " $ Spot);
 }
 
 // chips of wall knocked out by a shot: tiny rubble, out and down, gone within the minute
@@ -1590,6 +1689,8 @@ function BlastMarks(vector Loc, float Radius)
 	local vector HitL, HitN, Dir;
 	local int i;
 	local float Reach;
+	local bool bBreached;
+	local Emitter E;
 
 	Reach = FClamp(Radius * 0.6, 120, 320);
 	// the crater: on the nearest surface below, or else straight ahead of nothing (in the air: none)
@@ -1606,7 +1707,26 @@ function BlastMarks(vector Loc, float Radius)
 		Dir.Z = Dir.Z * 0.5 + 0.2;
 		Dir = Normal(Dir);
 		if (Trace(HitL, HitN, Loc + Dir * Reach, Loc, false) != None && HitN.Z < 0.7)
+		{
 			AddDirt(CrackTex[Rand(2)], HitL, HitN, DecalScale * (0.9 + 0.8 * FRand()), 600);
+			if (bBreaches && !bBreached && VSize(HitL - Loc) < Reach * 0.7)
+			{
+				bBreached = true;
+				Breach(HitL, HitN, Radius >= 300 ? 2 : 1);
+			}
+		}
+	}
+	// dust shaken down from the ceiling over the blast
+	if (bBreaches && Trace(HitL, HitN, Loc + vect(0,0,700), Loc, false) != None && HitN.Z < -0.6)
+	{
+		if (DustFallFx == None)
+			DustFallFx = class<Emitter>(DynamicLoadObject("EonEffects.fx_Level_DustFallSm", class'Class', true));
+		if (DustFallFx != None)
+		{
+			E = Spawn(DustFallFx,,, HitL - vect(0,0,8));
+			if (E != None)
+				E.LifeSpan = 3.5;
+		}
 	}
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("dirt: blast marks at " $ Loc $ " (" $ Dirt.Length $ " marks)");
@@ -2083,6 +2203,13 @@ defaultproperties
      WallHoles(4)=Texture'AdventMod.Dirt.WallHole4'
      WallHoles(5)=Texture'AdventMod.Dirt.WallHole5'
      bWallHoles=True
+     bBreaches=True
+     BreachHits=3
+     BreachHits2=7
+     BreachReach=28.000000
+     WallBreaches(0)=Texture'AdventMod.Dirt.WallBreach0'
+     WallBreaches(1)=Texture'AdventMod.Dirt.WallBreach1'
+     WallBreaches(2)=Texture'AdventMod.Dirt.WallBreach2'
      ChipCount=2
      CasingTex=Texture'AdventMod.Blood.Casing0'
      bCasings=True
