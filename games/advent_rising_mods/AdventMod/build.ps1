@@ -1,6 +1,6 @@
 # Builds AdventMod: compiles Classes\*.uc with AdventUCC, builds AdventNative.dll,
 # and installs AdventMod.u / AdventMod.int / AdventNative.dll into the game's System folder.
-param([string]$Game = 'H:\SteamLibrary\steamapps\common\Advent Rising')
+param([string]$Game = 'H:\SteamLibrary\steamapps\common\Advent Rising', [switch]$GraphicsOnly)
 $ErrorActionPreference = 'Stop'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Ucc = Join-Path (Split-Path -Parent $Here) 'AdventUCC'
@@ -18,6 +18,13 @@ if ($LASTEXITCODE -ne 0) { throw 'make_psa (blade) failed' }
 New-Item -ItemType Directory -Force "$Game\AdventMod\Classes" | Out-Null
 Remove-Item "$Game\AdventMod\Classes\*.uc" -Confirm:$false -ErrorAction SilentlyContinue
 Copy-Item "$Here\Classes\*.uc" "$Game\AdventMod\Classes"
+# -GraphicsOnly: the AdventGraphicalMod build (same classes, gore and combat off by default);
+# the result is kept as System\AdventMod-graphics.u for package.py --graphics, and the game is
+# left with the full build only if you build again without the switch
+if ($GraphicsOnly) {
+  $ms = "$Game\AdventMod\Classes\ModSettings.uc"
+  (Get-Content $ms -Raw) -replace 'bGraphicsOnly=False', 'bGraphicsOnly=True' | Set-Content $ms -NoNewline -Encoding ascii
+}
 # textures the classes import with #exec (paths relative to <game>\AdventMod)
 New-Item -ItemType Directory -Force "$Game\AdventMod\Textures" | Out-Null
 Copy-Item "$Here\Textures\*.tga" "$Game\AdventMod\Textures" -Force
@@ -71,6 +78,7 @@ cmd /c $bat | Select-String 'error|warning'
 if ($LASTEXITCODE -ne 0) { throw 'native build failed' }
 
 # 3. install
-Copy-Item "$Game\System\AdventMod.u" "$Here\System\AdventMod.u" -Force
+if ($GraphicsOnly) { Copy-Item "$Game\System\AdventMod.u" "$Here\System\AdventMod-graphics.u" -Force; "graphics-only build: the game now runs it too; build again without -GraphicsOnly for the full mod" }
+else { Copy-Item "$Game\System\AdventMod.u" "$Here\System\AdventMod.u" -Force }
 Copy-Item "$Here\System\AdventNative.dll", "$Here\System\AdventMod.int" "$Game\System" -Force
 'installed: ' + ((Get-ChildItem "$Game\System" | Where-Object { $_.Name -match '^Advent(Mod|Native)\.' }).Name -join ', ')

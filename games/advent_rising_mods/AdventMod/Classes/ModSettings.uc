@@ -20,6 +20,7 @@ var config bool bShadowFix;           // character shadows: Engine.dll's sky pas
 var config bool bNoGamePostFx;        // remove the game's own camera effects (blurs, distortion, DOF) every frame: the Direct3D layer's post effects replace them
 var config bool bSoftShadows;         // multi-light character shadows (ModShadowManager, ported from U2SoftShadows)
 var bool bStartedUp;                  // Startup has run (once per run of the game)
+var config bool bGraphicsOnly;        // the AdventGraphicalMod build: no gore, armour or combat changes (ModMutator never spawns ModGore); build.ps1 -GraphicsOnly flips the default
 var config bool bPadDriftFix;         // ignore stuck gamepad camera axes: the camera spinning on its own with a pad or receiver connected (ModInput)
 var config float PadCentre;           // an axis counts once it has been this close to the centre
 var config float StuckTime;           // an axis frozen off-centre this long (seconds) stops counting
@@ -412,6 +413,7 @@ defaultproperties
      FOV=75
      MaxFps=-1
      ColorblindStrength=1.000000
+     bGraphicsOnly=False
      bPadDriftFix=True
      PadCentre=0.100000
      StuckTime=1.500000

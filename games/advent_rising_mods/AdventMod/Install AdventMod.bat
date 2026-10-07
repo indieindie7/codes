@@ -184,9 +184,11 @@ try {
         Copy-Item (Join-Path $here 'System\U2Shaders\*') (Join-Path $sys 'U2Shaders') -Force
         Say "  copied d3d8.dll, U2Shaders.ini and the U2Shaders folder (shaders)"
         # the ragdoll skeletons: the engine reads <game>\KarmaData\*.ka
-        New-Item -ItemType Directory -Force (Join-Path $game 'KarmaData') | Out-Null
-        Copy-Item (Join-Path $here 'KarmaData\Advent.ka') (Join-Path $game 'KarmaData\Advent.ka') -Force
-        Say "  copied KarmaData\Advent.ka (ragdolls)"
+        if (Test-Path (Join-Path $here 'KarmaData\Advent.ka')) {
+            New-Item -ItemType Directory -Force (Join-Path $game 'KarmaData') | Out-Null
+            Copy-Item (Join-Path $here 'KarmaData\Advent.ka') (Join-Path $game 'KarmaData\Advent.ka') -Force
+            Say "  copied KarmaData\Advent.ka (ragdolls)"
+        }
         foreach ($t in $targets) {
             Add-Controller (Join-Path $t 'Mydefault.ini') $sys
             Add-Mutator (Join-Path $t 'MyDefUser.ini')
