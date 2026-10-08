@@ -1,0 +1,51 @@
+# Stand-in corpus for proving the splice pipeline without game audio. Original text written for this tool.
+# One line per clip. Phonetically varied ship/radio talk, roughly the register of a crew engineer.
+Welcome back, captain. The ship is ready when you are.
+The engines are running hot again, so keep your hands off the throttle.
+I found a crate of spare parts in the cargo hold this morning.
+Nobody told me the shuttle would be late. Typical.
+We have about three minutes before the shield drops.
+Check the north door first, then meet me at the bridge.
+The station looks quiet from here, but I don't trust it.
+Your armour took a beating down there. I'll patch it tonight.
+If the power fails, the lift will stop between decks.
+That signal is coming from the far side of the canyon.
+I could use a hot meal and twelve hours of sleep.
+Stay low, move fast, and don't stop for anything.
+The pilot says the weather over the landing zone is getting worse.
+Those creatures only come out after dark. Keep your light on.
+Good work out there. The council will want a full report.
+I rebuilt the rifle with a longer barrel and a heavier spring.
+The colony lost contact with the mining camp two days ago.
+Do you want to look at the new weapons before the briefing?
+She never leaves her cabin without checking the charts twice.
+The fuel gauge is broken, so I measure it by hand.
+Radio silence until we clear the asteroid field.
+Something big is moving under the ice. I can hear it on the sensors.
+Follow the red markers down the tunnel and wait for my signal.
+They sent us a box of rations and a very polite letter.
+I told you the reactor would hold. Now trust me on the rest.
+Watch the ridge on your left. Snipers love that kind of cover.
+The doors are sealed from the inside. We need another way in.
+Hold still while I run the scanner over your helmet.
+Every time we land on this planet, something breaks.
+The marines are pinned down near the old water tower.
+Get back to the ship. We are leaving in five minutes.
+I like the quiet hours, when the engines hum and nobody talks.
+That artifact is worth more than this whole ship and everyone on it.
+Move the crates against the wall and clear a path to the hatch.
+The temperature outside is dropping fast. Seal your suit.
+I picked up a distress call from an old freighter called the Morning Star.
+Keep your voice down. The guards change shift at midnight.
+We could fly around the storm, but it would cost us a day.
+The computer thinks we hit a rock. I think somebody shot at us.
+Please don't touch the blue wires. They bite.
+There is a hidden room behind the generator. Go and see what's inside.
+The bridge is yours, captain. I'll be in the engine room.
+Sixty seconds to drop. Check your weapon and your oxygen.
+The whole valley is covered in fog, and the scanners are blind.
+I never liked this job, but somebody has to keep the lights on.
+Bring the prisoner to the medical bay and lock the door behind you.
+The second team is missing. Their last position was near the river.
+We are running low on ammunition, so make every shot count.
+Thank you for coming back for me. I thought I was finished.

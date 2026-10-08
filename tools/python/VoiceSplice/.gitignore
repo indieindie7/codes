@@ -1,0 +1,12 @@
+# VoiceSplice keeps code only. Game audio, extracted dialogue text, banks and outputs live in
+# %USERPROFILE%\Documents\VoiceSplice (VOICESPLICE_HOME), never here.
+*.wav
+*.ogg
+*.mp3
+*.flac
+*.npy
+*.jsonl
+bank.json
+out/
+banks/
+__pycache__/
