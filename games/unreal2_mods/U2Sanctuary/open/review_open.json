@@ -1,0 +1,72 @@
+{
+ "total": 0.7239664500147225,
+ "writer": {
+  "score": 0.5,
+  "checks": {
+   "beats in order": 1.0,
+   "key places exist": 1.0,
+   "story props": 0.0,
+   "Miller's voice": 0.0
+  },
+  "notes": [
+   "0 story props (bodies, the hauler wreck, blood) on the map"
+  ]
+ },
+ "director": {
+  "score": 0.5,
+  "checks": {
+   "weenie from the LZ": 0.0,
+   "weenie on the climb": 0.0,
+   "key frames": 1.0,
+   "back light": 1.0
+  },
+  "notes": [
+   "the plant's company_mast is 27653 UU from the LZ (fog clips at 20000): HIDDEN by the land, BEYOND the clip - it isn't drawn",
+   "on the haul road the weenie first shows never",
+   "the sun is 180 deg off the LZ->plant view (back light toward the plant at dusk)"
+  ]
+ },
+ "engineer": {
+  "score": 0.91,
+  "checks": {
+   "road grades": 0.97,
+   "road widths": 0.67,
+   "pads flat": 1.0,
+   "frame rate": 1.0
+  },
+  "notes": [
+   "3 % of the road length over a 25 % grade",
+   "narrower than 3 bikes: pit_back, jungle_loop",
+   "frame rate 73 fps avg, 79 1% low (pilot, the LZ)"
+  ]
+ },
+ "level": {
+  "score": 0.94,
+  "checks": {
+   "drive pacing": 1.0,
+   "vehicle arenas": 0.77,
+   "arena scores": 0.93,
+   "foot/vehicle mix": 1.0,
+   "loops": 1.0
+  },
+  "notes": [
+   "spine drives: haul_w 24 s, haul_e 21 s, pad_road 9 s",
+   "clear radius for the bike: field 1695, pad 814",
+   "playable areas: lz 0.83, plant 0.94, field 1.00, pit 1.00, power 0.88, pad 0.92",
+   "5 vehicle beats, 6 on foot"
+  ]
+ },
+ "artist": {
+  "score": 0.93,
+  "checks": {
+   "no single mesh dominates": 1.0,
+   "jungle density": 0.93,
+   "one kit family": 0.8,
+   "dusk palette": 1.0
+  },
+  "notes": [
+   "most used: Tree1_clump1, 16 % of 4859",
+   "1115 canopy trees"
+  ]
+ }
+}
