@@ -1,0 +1,13 @@
+# the beacon mast from the LZ (the weenie)
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator,U2Sanctuary.SanctuaryMutator
+waitcontrol 120
+wait 3
+console togglehud
+look -28 6
+wait 1
+shot
+look -53 6
+wait 1
+shot
+quit

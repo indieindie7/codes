@@ -65,6 +65,7 @@ var config array<OBody> Bodies;
 var config array<OProp> Props;
 var config array<OThing> Things;
 var config string DialogDirs, Barks;
+var config vector BeaconAt;        // the relay mast's top (the weenie): a red beacon light there (a placed Light crashed LIGHT APPLY)
 var config bool bEnabled, bLog;
 var config float WaveTimeout, RestAfterFight;   // the next wave comes after this many seconds anyway; a rest before a new encounter
 
@@ -136,12 +137,30 @@ function Start()
 		}
 		DE.LoadDialogFiles(D);
 	}
+	if (BeaconAt != vect(0,0,0))
+		Beacon();
 	PlaceBodies();
 	for (i = 0; i < Props.Length; i++)
 		SpawnProp(Props[i]);
 	for (i = 0; i < Things.Length; i++)
 		SpawnThing(Things[i]);
 	Log("U2Sanctuary open: "$Beats.Length$" beats, "$Waves.Length$" waves, "$Bodies.Length$" bodies, dialogue "$DialogDirs);
+}
+
+function Beacon()
+{
+	local SanctuaryLight L;
+
+	L = Spawn(class'SanctuaryLight',,, BeaconAt);
+	if (L == None)
+		return;
+	L.LightHue = 0;
+	L.LightSaturation = 30;
+	L.LightBrightness = 255;
+	L.LightRadius = 40;
+	L.LightEffect = LE_None;
+	L.LightType = LT_Pulse;
+	L.LightPeriod = 48;
 }
 
 function PlaceBodies()

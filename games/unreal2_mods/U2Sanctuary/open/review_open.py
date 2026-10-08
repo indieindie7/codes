@@ -33,6 +33,7 @@ WORLD, N = S.WORLD, 240
 STEP = 2 * WORLD / N
 FLOOR_Z = -3900
 FOG_END = 20000
+FOG_START = 3500
 SPEED = 1100
 EYE = 160
 
@@ -101,7 +102,9 @@ def main():
     zb = FLOOR_Z + sample(H, w["x"], w["y"]) + w["h"]
     seen = los(H, (lz["x"], lz["y"]), (w["x"], w["y"]), za, zb)
     in_fog = d < FOG_END
-    ch["weenie from the LZ"] = (0.5 if seen else 0.0) + (0.5 if in_fog else 0.0)
+    fogged = float(np.clip((d - FOG_START) / (FOG_END - FOG_START), 0, 1))
+    ch["weenie from the LZ"] = (0.4 if seen else 0.0) + (0.3 if in_fog else 0.0) + (0.3 if fogged <= 0.6 else 0.3 * (1 - fogged) / 0.4)
+    notes.append("the weenie stands %.0f %% into the fog (the game showed 80 %% reads as barely there; want <= 60)" % (100 * fogged))
     notes.append("the plant's %s is %.0f UU from the LZ (fog clips at %d): %s, %s" % (w["id"], d, FOG_END, "over the land" if seen else "HIDDEN by the land",
                                                                                  "inside the clip" if in_fog else "BEYOND the clip - it isn't drawn"))
     # the weenie along the climb: from where on the haul road is it drawn?

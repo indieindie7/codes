@@ -340,14 +340,14 @@ def los(H, a, b, za, zb):
     return True
 
 
-def find_beacon(H, lz, plant, tall=2600):
+def find_beacon(H, lz, plant, tall=3200):
     """the weenie the review asked for: a Liandri relay mast with a beacon on the escarpment, inside the fog's far
     clip from the LZ, its top seen over the land from the LZ - the plant's own mast is past the clip and behind the
     escarpment. Best: high ground, in the direction of the plant, nearest the haul road's line."""
     za = FLOOR_Z + sample(H, lz["x"], lz["y"]) + EYE
     bearing = math.atan2(plant["y"] - lz["y"], plant["x"] - lz["x"])
     best = None
-    for d in range(7000, int(FOG_END * 0.85), 600):
+    for d in range(6000, 12600, 500):                     # (in the game at 16 600 it was 80 % fogged: keep it <= ~55 %)
         for off in np.linspace(-0.45, 0.45, 13):
             a = bearing + off
             x, y = lz["x"] + d * math.cos(a), lz["y"] + d * math.sin(a)
@@ -485,15 +485,17 @@ def write_actors(H, dist_road, water_z, path):
     if bc:
         _, bxx, byy = bc
         bz = FLOOR_Z + sample(H, bxx, byy)
-        brush(bxx, byy, bz - 80, 420, 420, 2600, 0, METAL, METAL)
-        brush(bxx, byy, bz - 80, 900, 900, 160, 0, BASE, FLOOR)
-        prop(BIGANTENNA, bxx, byy, 1.6, sink=-(2600 - 20))
-        out.append(actor("Light", "BeaconLight", (bxx, byy, bz + 2750),
-                         "    LightBrightness=255\n    LightHue=0\n    LightSaturation=40\n    LightRadius=48\n    LightEffect=LE_None\n"))
-        json.dump({"x": bxx, "y": byy, "h": 2600}, open(os.path.join(OUT, "beacon.json"), "w"))
+        brush(bxx, byy, bz - 80, 650, 650, 3200, 0, METAL, METAL)
+        brush(bxx, byy, bz + 1600, 900, 900, 120, 0, BASE, METAL)          # a platform halfway: the silhouette reads as built
+        brush(bxx, byy, bz - 80, 1100, 1100, 160, 0, BASE, FLOOR)
+        prop(BIGANTENNA, bxx, byy, 2.0, sink=-(3200 - 20))
+        # (its red light is spawned at run time by OpenDirector: a Light placed here crashed LIGHT APPLY, 2026-10-08)
+        json.dump({"x": bxx, "y": byy, "h": 3200}, open(os.path.join(OUT, "beacon.json"), "w"))
     # AI path points for the enemies (PATHS DEFINE in build_open.py links them)
-    for k_, (x, y) in enumerate(path_nodes(H, dist_road, PL)):
-        out.append(actor("PathNode", "OpenPath%d" % k_, (x, y, FLOOR_Z + sample(H, x, y) + 60)))
+    # (in their own T3D, imported AFTER the lighting: placed before LIGHT APPLY, 716 path nodes crashed it, 2026-10-08)
+    paths = ["Begin Map\n"] + [actor("PathNode", "OpenPath%d" % k_, (x, y, FLOOR_Z + sample(H, x, y) + 60))
+                               for k_, (x, y) in enumerate(path_nodes(H, dist_road, PL))] + ["End Map\n"]
+    open(os.path.join(OUT, "open_paths.t3d"), "w").write("".join(paths))
     # sky, sun (low, behind the plant from the LZ: dusk, the key art's light), start at the LZ facing the plant
     out.append(actor("SkyZoneInfo", "SkyZoneInfo0", (0, 0, SKY_Z)))
     out.append(actor("StaticMeshActor", "SkyBox", (0, 0, SKY_Z),

@@ -49,6 +49,7 @@ MAP = [r'OBJ LOAD FILE="{SM}\%s.usx"' % p for p in LOADS] + [r'OBJ LOAD FILE="{G
     r'MAP IMPORTADD FILE="{P}\open_actors.t3d"',
     r'MAP REBUILD',
     r'LIGHT APPLY',
+    r'MAP IMPORTADD FILE="{P}\open_paths.t3d"',        # the AI path points after the lighting (before it, they crash LIGHT APPLY)
     r'MAP SAVE FILE="{MAPS}\%s.un2"' % NAME,
 ]
 

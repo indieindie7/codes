@@ -22,7 +22,8 @@
    "back light": 1.0
   },
   "notes": [
-   "the plant's beacon mast is 16600 UU from the LZ (fog clips at 20000): over the land, inside the clip",
+   "the weenie stands 52 % into the fog (the game showed 80 % reads as barely there; want <= 60)",
+   "the plant's beacon mast is 12000 UU from the LZ (fog clips at 20000): over the land, inside the clip",
    "on the haul road the weenie first shows after 0 s of the 24 s climb",
    "the sun is 180 deg off the LZ->plant view (back light toward the plant at dusk)"
   ]
@@ -38,7 +39,7 @@
   "notes": [
    "3 % of the road length over a 25 % grade",
    "narrower than 3 bikes: none",
-   "frame rate 101 fps avg, 83 1% low (pilot, the LZ)"
+   "frame rate 102 fps avg, 95 1% low (pilot, the LZ)"
   ]
  },
  "level": {

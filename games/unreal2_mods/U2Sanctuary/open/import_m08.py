@@ -146,6 +146,10 @@ def main():
         if o["kind"] == "cover" and rng.random() < 0.35:
             things.append(("U2Decorations.ExplosiveCannister", o["x"] + 140, o["y"]))   # "a lot of that stuff is unstable"
     L = ["[U2Sanctuary.OpenDirector]", "bEnabled=True", "bLog=True", "DialogDirs=PA_Sanctuary,M08A,M08B", "Barks=" + barks]
+    bj = os.path.join(OUT, "beacon.json")
+    if os.path.exists(bj):
+        b = json.load(open(bj))
+        L.append("BeaconAt=(X=%.0f,Y=%.0f,Z=%.0f)" % (b["x"], b["y"], gz(b["x"], b["y"]) + b["h"] + 150))
     for b in beats:
         L.append('Beats=(Id="%s",At=%s,Radius=%.0f,Topics="%s",Objective="%s",Encounter="%s",After="%s")' % (
             b[0], v(b[1][0], b[1][1], 100), b[2], b[3], b[4], b[5], b[6]))
