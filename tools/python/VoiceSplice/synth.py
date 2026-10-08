@@ -1,7 +1,13 @@
 """Text -> spliced voice line from a bank (TF2/VOX-style concatenation with unit selection).
 
     py -3.13 synth.py <bank> "New line of dialogue." [out=<path.wav>] [ogg=<path.ogg>]
-                      [oov=phones|tts] [fallback=<piper voice>]
+                      [mode=hybrid|hybrid_raw|vcline|splice|tts|piper|phones] [vc_voice=<piper voice>]
+
+Modes (stage 2, see say()): hybrid (default) keeps runs of words the speaker really said, renders new
+words as one Piper phrase converted into his voice with kNN-VC (vc_knn.py, torch venv), and smooths
+F0/energy across the joins with WORLD; when a line would be too choppy (> HYBRID_MAX_NEW new words or
+> HYBRID_MAX_TIGHT pause-less joins between different recordings) it converts the whole line instead
+(= vcline). splice/tts/phones are the stage-1 planners below.
 
 Planning, cheapest first (costs in plan_line):
   1. runs of words that were spoken together in one source line (n-grams; joins inside are free);
@@ -172,6 +178,8 @@ def plan_line(bank, text, max_cands=30, force_phones=False, oov="phones"):
                 c, sl = ch
                 f0a = f0b = bank.stats["f0_median"]
                 opts_at[i + 1].append((i, "phones", sl, 2.0 + c / max(1, len(sl)), f0a, 0, f0b, 0))
+            elif oov == "vc":
+                opts_at[i + 1].append((i, "vc", (k,), 3.0, 0, 0, 0, 0))
             else:
                 opts_at[i + 1].append((i, "tts", (k,), 6.0, 0, 0, 0, 0))
     # outer Viterbi over options
@@ -261,13 +269,99 @@ def tts_word(word, voice, f0_target):
     return x
 
 
-def render(bank, toks, chain, fallback="en_US-lessac-medium"):
+def piper_text(text, voice):
+    from piper import PiperVoice
+    if voice not in _TTS:
+        _TTS[voice] = PiperVoice.load(os.path.join(vc.PIPER_VOICES, voice + ".onnx"))
+    return np.concatenate([c.audio_float_array for c in _TTS[voice].synthesize(text)]).astype(np.float32)
+
+
+def trim_quiet(x, rel=0.04):
+    r = vc.rms_track(x, vc.SR)
+    on = np.where(r > r.max() * rel)[0]
+    h = int(vc.HOP * vc.SR)
+    return x[on[0] * h:(on[-1] + 1) * h] if len(on) else x
+
+
+def to_bank_pitch(x, f0_target, limit=6):
+    f0 = vc.f0_track(x, vc.SR)
+    if (f0 > 0).any():
+        x = pitch_shift(x, max(-limit, min(limit, vc.semitones(f0_target, float(np.median(f0[f0 > 0]))))))
+    return x
+
+
+class VCWorker:
+    """kNN-VC + pyworld live in the torch venv (vc_knn.py); this keeps one worker process per run."""
+    _proc = None
+
+    @classmethod
+    def call(cls, **req):
+        import subprocess
+        if cls._proc is None or cls._proc.poll() is not None:
+            cls._proc = subprocess.Popen([vc.VC_PY, "-I", os.path.join(vc.HERE, "vc_knn.py"), "serve"],
+                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                                         encoding="utf-8", bufsize=1,
+                                         env=dict(os.environ, VOICESPLICE_MODELS=vc.MODELS,
+                                                  VOICESPLICE_CACHE=vc.CACHE))
+        cls._proc.stdin.write(json.dumps(req) + "\n")
+        cls._proc.stdin.flush()
+        r = json.loads(cls._proc.stdout.readline())
+        if not r.get("ok"):
+            raise RuntimeError("vc_knn: %s" % r.get("error"))
+        return r
+
+
+def tmp_wav(tag):
+    return os.path.join(vc.HOME, "out", "_tmp", "%s_%d.wav" % (tag, os.getpid()))
+
+
+def knn_convert(bank, x):
+    """Piper (or any) audio -> the bank speaker's voice with kNN-VC over the bank's own clips."""
+    a, b = tmp_wav("vc_in"), tmp_wav("vc_out")
+    vc.write_wav(a, x)
+    VCWorker.call(op="convert", bank_dir=vc.bank_dir(bank.name), topk=VC_TOPK, **{"in": a, "out": b})
+    return trim_quiet(vc.read_wav(b)[0], 0.03)
+
+
+def world_smooth(x, joins):
+    if not joins:
+        return x, 0
+    a, b = tmp_wav("sm_in"), tmp_wav("sm_out")
+    vc.write_wav(a, x)
+    r = VCWorker.call(op="smooth", joins=[j / vc.SR for j in joins], **{"in": a, "out": b})
+    return vc.read_wav(b)[0], r["smoothed"]
+
+
+def phrase_text(toks, s, e):
+    return " ".join(k + p for k, p in toks[s:e])
+
+
+def render(bank, toks, chain, fallback="en_US-lessac-medium", vc_voice="en_US-john-medium"):
+    """Returns (audio, report, joins); joins = sample positions of word-to-word joins without a pause."""
     sr, target = vc.SR, bank.stats["rms_median"]
     out = np.zeros(int(0.08 * sr), dtype=np.float32)
-    report = []
-    for o in chain:
+    report, joins, last_gap = [], [], None
+    groups, i = [], 0                       # consecutive "vc" words are converted as one Piper phrase
+    while i < len(chain):
+        if chain[i][1] == "vc":
+            j = i
+            while j + 1 < len(chain) and chain[j + 1][1] == "vc":
+                j += 1
+            groups.append((chain[i][0], "vc", (chain[i][0], chain[j][0] + 1)))
+            i = j + 1
+        else:
+            groups.append(chain[i])
+            i += 1
+    for o in groups:
         s, kind, data = o[0], o[1], o[2]
-        if kind in ("word", "run"):
+        if kind == "vc":
+            s, e = data
+            x = to_bank_pitch(trim_quiet(piper_text(phrase_text(toks, s, e), vc_voice)), bank.stats["f0_median"])
+            x = knn_convert(bank, x)
+            x = fade(x, int(0.004 * sr), int(0.01 * sr))
+            g = target / (np.sqrt(np.mean(x ** 2)) + 1e-6)
+            src = "Piper %s -> kNN-VC" % vc_voice
+        elif kind in ("word", "run"):
             a, b = bank.words[data[0]], bank.words[data[-1]]
             x = slice_(bank, a["clip"], a["s"], b["e"], pad=0.012)
             x = fade(x, int(0.004 * sr), int(0.008 * sr))
@@ -295,28 +389,80 @@ def render(bank, toks, chain, fallback="en_US-lessac-medium"):
             g = target / (np.sqrt(np.mean(x ** 2)) + 1e-6)
             src = "TTS " + fallback
         x = x * float(np.clip(g, 0.5, 2.0))
+        if last_gap is not None and last_gap < 0.1:
+            joins.append(len(out) - int(last_gap * sr / 2))
         out = np.concatenate([out, x])
-        e = s + (len(data) if kind == "run" else 1)
+        e = data[1] if kind == "vc" else s + (len(data) if kind == "run" else 1)
         p = toks[e - 1][1]
         gap = 0.38 if p in (".", "?") else 0.2 if p == "," else 0.025
+        last_gap = gap
         out = np.concatenate([out, np.zeros(int(gap * sr), dtype=np.float32)])
         report.append({"words": " ".join(t for t, _ in toks[s:e]), "kind": kind, "from": src})
     peak = np.abs(out).max()
     if peak > 0.97:
         out *= 0.97 / peak
-    return out, report
+    return out, report, joins
+
+
+def render_line(bank, text, voice, convert):
+    """Whole line from Piper; convert=True puts it through kNN-VC into the bank speaker's voice."""
+    x = trim_quiet(piper_text(text, voice))
+    if convert:
+        x = knn_convert(bank, to_bank_pitch(x, bank.stats["f0_median"]))
+    x = x * float(np.clip(bank.stats["rms_median"] / (np.sqrt(np.mean(x ** 2)) + 1e-6), 0.3, 3.0))
+    x = np.concatenate([np.zeros(int(0.08 * vc.SR), np.float32), x, np.zeros(int(0.3 * vc.SR), np.float32)])
+    peak = np.abs(x).max()
+    if peak > 0.97:
+        x *= 0.97 / peak
+    kind = "vcline" if convert else "piper"
+    return x, [{"words": " ".join(k for k, _ in vc.tokenize(text)), "kind": kind,
+                "from": "Piper %s%s" % (voice, " -> kNN-VC" if convert else "")}]
+
+
+# hybrid falls back to a whole converted line when splicing would be too choppy
+HYBRID_MAX_NEW = 0.5        # share of words the bank lacks
+HYBRID_MAX_TIGHT = 0.6      # share of word-to-word joins with no pause that join two different recordings
+
+MODES = ("hybrid", "hybrid_raw", "vcline", "splice", "tts", "piper", "phones")
+DEFAULT_MODE = "hybrid"
+VC_TOPK = 4                 # kNN-VC neighbours per frame (the paper's default)
+VC_VOICE = "en_US-john-medium"   # Piper voice that kNN-VC converts from
 
 
 _BANKS = {}
 
 
 def say(bank_name, text, out=None, ogg=None, fallback="en_US-lessac-medium", quiet=False, force_phones=False,
-        oov="phones"):
+        oov=None, mode=None, vc_voice=None):
+    """mode: hybrid (default: recorded words + kNN-VC'd Piper for new words, WORLD-smoothed joins, or the
+    whole line converted when splicing would be choppy), hybrid_raw (same, no WORLD pass), vcline (whole
+    line Piper -> kNN-VC), splice (stage-1 units: new words as diphones), tts (stage-1: new words from
+    pitch-moved Piper), piper (plain Piper line), phones (every word as diphones). oov= is the old name."""
+    vc_voice = vc_voice or VC_VOICE
     if bank_name not in _BANKS:
         _BANKS[bank_name] = Bank(bank_name)
+        _BANKS[bank_name].name = bank_name
     bank = _BANKS[bank_name]
-    toks, chain, cost = plan_line(bank, text, force_phones=force_phones, oov=oov)
-    x, report = render(bank, toks, chain, fallback)
+    if mode is None:
+        mode = {"phones": "splice", "tts": "tts", "vc": "hybrid"}.get(oov, "phones" if force_phones else DEFAULT_MODE)
+    cost, smoothed, chosen = 0.0, 0, mode
+    if mode in ("piper", "vcline"):
+        x, report = render_line(bank, text, vc_voice, mode == "vcline")
+    else:
+        plan_oov = {"splice": "phones", "phones": "phones", "tts": "tts"}.get(mode, "vc")
+        toks, chain, cost = plan_line(bank, text, force_phones=(mode == "phones"), oov=plan_oov)
+        n = max(1, len(toks))
+        new = sum(1 for o in chain if o[1] == "vc")
+        ends = [o[0] + (len(o[2]) if o[1] == "run" else 1) for o, nx in zip(chain, chain[1:])
+                if not (o[1] == nx[1] == "vc")]          # a run of new words is one Piper phrase
+        tight = sum(1 for e in ends if toks[e - 1][1] == "") / max(1, n - 1)
+        if mode.startswith("hybrid") and (new / n > HYBRID_MAX_NEW or (n >= 4 and tight > HYBRID_MAX_TIGHT)):
+            chosen = "vcline"
+            x, report = render_line(bank, text, vc_voice, True)
+        else:
+            x, report, joins = render(bank, toks, chain, fallback, vc_voice)
+            if mode == "hybrid":
+                x, smoothed = world_smooth(x, joins)
     out = out or os.path.join(vc.HOME, "out", bank_name, "line.wav")
     vc.write_wav(out, x)
     if ogg:
@@ -325,13 +471,13 @@ def say(bank_name, text, out=None, ogg=None, fallback="en_US-lessac-medium", qui
     for r in report:
         kinds[r["kind"]] = kinds.get(r["kind"], 0) + len(r["words"].split())
     info = {"text": text, "wav": out, "ogg": ogg, "seconds": round(len(x) / vc.SR, 2), "cost": round(cost, 2),
-            "words_by_kind": kinds, "plan": report}
+            "mode": mode, "rendered_as": chosen, "joins_smoothed": smoothed, "words_by_kind": kinds, "plan": report}
     with open(os.path.splitext(out)[0] + ".plan.json", "w", encoding="utf-8") as f:
         json.dump(info, f, ensure_ascii=False, indent=1)
     if not quiet:
         for r in report:
             print("  %-7s %-28s <- %s" % (r["kind"], r["words"], r["from"]))
-        print("%s  (%.2f s, %s)" % (out, info["seconds"], kinds))
+        print("%s  (%.2f s, %s as %s, %s)" % (out, info["seconds"], mode, chosen, kinds))
     return info
 
 
@@ -341,4 +487,5 @@ if __name__ == "__main__":
     if len(a) < 2:
         print(__doc__)
     else:
-        say(a[0], a[1], o.get("out"), o.get("ogg"), o.get("fallback", "en_US-lessac-medium"), oov=o.get("oov", "phones"))
+        say(a[0], a[1], o.get("out"), o.get("ogg"), o.get("fallback", "en_US-lessac-medium"), oov=o.get("oov"),
+            mode=o.get("mode"), vc_voice=o.get("vc_voice"))

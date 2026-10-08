@@ -80,6 +80,7 @@ Code is in `codes/tools/python/VoiceSplice/` (code only; `.gitignore` blocks aud
 | `bank.py` | whisper decides **which** words are trustworthy (text match, p ≥ 0.3); DTW gives **where**. Edges are snapped to energy minima and silence is trimmed. eSpeak phonemes are segmented per word, and f0/RMS are taken at every unit edge → `bank.json`. |
 | `synth.py` | text → plan → splice → WAV/Ogg + `.plan.json` (see §1 table). `oov=phones` (diphones) or `oov=tts` (Piper word, pitch-moved to the bank median: the VC slot). |
 | `evaluate.py` | round trip: splices a test set, whisper transcribes it, word error rate (WER) per mode. |
+| `vc_knn.py` | (stage 2, runs in the `Tools\visualqa` torch venv) kNN-VC matching set / conversion, WORLD join smoothing, WavLM embeddings; a JSON-lines worker that `synth.py` starts |
 | `voicesplice.py` | `build`, `say`, and `serve`: the edit watcher. `requests\*.json` → `<voice_root>\VoiceSplice\<id>.ogg` + `<id>.done.json` (`filename`, `seconds`, plan). |
 
 Run (Isaak, about 30 min of CPU, once):
@@ -118,6 +119,94 @@ What the numbers say:
 - Diphone chains for unseen words are the weak part, and much weaker on real acted speech than on clean Piper speech: the joins are audible and whisper often mishears the word. This is the sentence-mix sound: a style, not a dependable way to say new words.
 - A Piper word moved toward the bank pitch roughly halves the error on new words (Isaak: 1.38 → 0.44), but it is plainly another voice. That slot is where voice conversion (kNN-VC/RVC) goes, and it is the main next step for quality.
 - Whisper WER is a floor for intelligibility, not a quality score. Listen to `out\<bank>\eval\*.wav`.
+
+### Stage 2: voice conversion + hybrid planner (2026-10-08, measured)
+
+**What was downloaded and installed** (approved by the user):
+
+| item | size | where | licence |
+|---|---|---|---|
+| kNN-VC source (bshall/knn-vc master) | 0.3 MB | `H:\VoiceSplice\models\knn-vc-src` | MIT |
+| WavLM-Large weights (knn-vc release v0.1, from microsoft/unilm) | 1.26 GB | `H:\VoiceSplice\models\WavLM-Large.pt` | MIT |
+| prematched HiFi-GAN vocoder (knn-vc v0.1) | 66 MB | `H:\VoiceSplice\models\prematch_g_02500000.pt` | MIT |
+| pyworld 0.3.5 (pip, into the `Tools\visualqa` torch venv) | 0.2 MB | venv | MIT (WORLD: modified BSD) |
+
+- The existing CPU torch 2.14.1 is reused, and no new venv was made.
+- torchaudio was **not** installed. The PyTorch CPU index stops at torchaudio 2.11 (torchaudio is in maintenance), so there is no build for torch 2.14.1. `vc_knn.py` therefore re-implements the small kNN-VC matcher (cosine top-k, mean, vocode) with scipy resampling and an energy trim. It uses only `wavlm/` and `hifigan/models.py` from upstream.
+- Weights load with `torch.load(weights_only=True)`.
+- MFA was skipped (it needs conda). It stays optional.
+
+**What was built** (code in `VoiceSplice/`, see its README):
+
+- `vc_knn.py`: the torch-side worker (JSON lines over stdin/stdout). It handles:
+  - `matchset`: WavLM layer-6 features of all 518 clips, giving 134,917 frames (45.0 min). They are cached at `H:\VoiceSplice\cache\Isaak.wavlm6.f16.npy` (276 MB). The build takes about 3.5 min on the CPU.
+  - `convert`: kNN-VC, k=4.
+  - `smooth`: WORLD F0/energy ramps at the joins.
+  - `embed`: the speaker check.
+- `synth.py` modes:
+  - `hybrid` (the new default):
+    - It plans with recorded words and n-gram runs as before. Words the bank lacks become one Piper phrase per run (john, pitch-moved to the bank median), converted with kNN-VC.
+    - If the line would be choppy, it converts the whole line instead. "Choppy" means more than 50 % new words, or more than 60 % of the pause-less word joins falling between different recordings.
+    - It then runs WORLD (pyworld dio/stonemask/cheaptrick/d4c) over ±100 ms around each pause-less join. Log-F0 and log-energy are ramped so that the two sides meet halfway. Only those windows are re-synthesised, and they are crossfaded back into the original.
+  - `hybrid_raw`: the same, without the WORLD pass.
+  - `vcline`: the whole line from Piper, then kNN-VC.
+  - `piper`: plain Piper.
+  - The stage-1 modes stay as they were. `splice` is the old `units`.
+- `voicesplice.py`:
+  - `serve` uses `hybrid` by default. Override it with `mode=` or with a request's `"mode"`.
+  - `warm=Isaak` preloads the models.
+  - New `matchset <bank>` command.
+- `evaluate.py` adds a speaker score `spk`, computed as follows:
+  - Each output gets a WavLM layer-6 mean embedding.
+  - The embedding is centred on the midpoint between Isaak's matching-set centroid and plain Piper john reading the same lines.
+  - The score is the cosine along that axis. +1 means on Isaak's side and −1 means on Piper john's side.
+  - It is cheap and crude: an axis between two voices, not speaker verification.
+
+**Results** (Isaak bank, the same 7 test lines as above, whisper small):
+- WER is the mean of two full runs. Piper is not deterministic, so single runs of the Piper-based modes move by ±0.1.
+- spk is the mean of the two runs.
+- Real Isaak clips score spk 0.33 (the ceiling).
+- Splice-only keeps 0.41 because it *is* his audio.
+
+| mode | in | mix | new | all | spk | ms/line (warm CPU) |
+|---|---|---|---|---|---|---|
+| splice (stage 1, new words as diphones) | 0.23 | 0.72 | 1.38 | 0.77 | 0.41 | 100 |
+| tts (stage 1, Piper words pitch-moved) | 0.23 | 0.56 | 0.38 | 0.41 | 0.20 | 500 |
+| piper (plain Piper john) | 0.09 | 0.06 | 0.12 | 0.09 | −0.71 | 140 |
+| vcline (Piper → kNN-VC, whole line) | 0.36 | 0.06 | 0.22 | 0.19 | −0.01 | 2,200 |
+| hybrid_raw | 0.23 | 0.08 | 0.22 | 0.17 | 0.12 | 830 |
+| **hybrid** (default) | **0.15** | **0.08** | 0.28 | **0.17** | 0.09 | 840 |
+
+The first converted line after a start takes about 12 s while WavLM, HiFi-GAN and the 276 MB matching set load. After that a converted line takes about 1–2 s.
+
+Source-voice sweep (vcline only, one run each):
+
+| source voice | WER at k=4 | WER at k=8 | spk at k=4 | spk at k=8 |
+|---|---|---|---|---|
+| john | 0.07 | 0.16 | 0.00 | 0.04 |
+| hfc_male | 0.10 | 0.09 | 0.07 | 0.09 |
+| alan | 0.05 | 0.06 | 0.04 | 0.05 |
+| northern_english_male | 0.29 | 0.35 | −0.04 | −0.02 |
+
+All are within the noise except northern_english_male, which is worse. john at k=4 stays the default. hfc_male is the candidate if listening agrees; check its MODEL_CARD/dataset licence first.
+
+What the numbers say:
+- **New words and names are now intelligible in a converted voice.**
+  - On the "new" lines, WER fell from 1.38 (diphones) to about 0.2–0.3.
+  - On the mixed lines, it fell from 0.72 to 0.08.
+  - Whole-line conversion is far more intelligible than any splicing that has to cover a gap.
+- **The choppiness rule matters more than the conversion of single words.**
+  - With the rule off, hybrid kept splicing word by word around the converted phrase, and "mix" stayed at about 0.68 (first run).
+  - Every mixed and new test line tripped the rule, so in practice hybrid = "his real words when the line is mostly his own runs, else convert the whole line".
+  - The test set never exercised a spliced line with a converted gap. It needs lines that are mostly long runs plus one name.
+- **WORLD smoothing helped the spliced lines:** "in" went from 0.23 to 0.15, and "the ship is ready" is no longer heard as "already f-".
+- **kNN-VC moves the voice only halfway on this axis.**
+  - Converted lines sit at spk ≈ 0, against −0.7 for Piper and +0.33 for real Isaak.
+  - The output is made only of Isaak's WavLM frames, so what the score still sees is the source's prosody and pacing plus the 16 kHz HiFi-GAN vocoder. Isaak's acted delivery is not carried over.
+  - This is the main remaining quality gap. Listen before trusting it.
+- Some failures repeat. "I'll wait here" comes out as "take you a time" through VC, and "Ne'Ban" is heard as "then it". Names need a respelling or phoneme hint for Piper.
+
+Listen: `Documents\VoiceSplice\out\Isaak\final1\*.wav`, `final2\*.wav` (one file per mode and line), and `sweep_*\`.
 
 ## 4. In-game side (design only)
 
@@ -160,14 +249,20 @@ U2 lip sync is one animation per line, named after the file. The bank already ha
 |---|---|---|---|
 | 0 | offline prototype: corpus from U2 files, whisper + DTW alignment, bank, unit selection, diphones, splice, Ogg, round-trip WER, request watcher | — | **done** (this note) |
 | 1 | listen pass with the user on Isaak/Aida lines; tune costs (pause lengths, function-word choice, pitch); add a `bank.py` blacklist for bad units; bank Aida, Neban, Meyer | 0.5 day | next |
-| 2 | better joins: PSOLA/WORLD pitch + duration fitting over the whole line (`pyworld`/`psola`, both MIT; needs pip installs, ask first) | 1 day | |
+| 2 | downloads + kNN-VC (Piper → Isaak) + hybrid planner + WORLD join smoothing + speaker score (§3, stage 2) | 1 day | **done** 2026-10-08 |
+| 2b | next quality steps: listen pass; respelling/phoneme hints for names (Ne'Ban, Skaarj); a bigger test set (≥ 30 lines) including "mostly runs + one name" lines; tune the choppiness thresholds by ear; carry Isaak's prosody (pitch contour from a similar recorded line, WORLD duration fit) into converted lines; try hfc_male as the source; RVC on the 45 min if kNN-VC stays at "halfway" | 1–2 days | next |
 | 3 | game hookup (needs the unreal chat for installs/restarts): GMMaster `gm dlg set/play/find/revert`, `DlgRecent`/`DlgEdits` journal, subtitle re-broadcast; serve with `voice_root=<game>\Voice`; check G1–G3 with one hand-made Ogg first | 1–1.5 days | |
 | 4 | fork ImGui "Line" strip on `con != 0`: recent lines, text box, Regenerate/Play/Revert, request JSON writer, status from `PanelState` | 1 day | |
-| 5 | voice-conversion fallback for unseen words: kNN-VC on the bank (no training) behind `oov=vc`; compare with RVC trained on Isaak's 45 min (GPU slot) | 1–2 days | |
+| 5 | voice conversion: kNN-VC part done in stage 2 (`mode=hybrid/vcline`); left: compare with RVC trained on Isaak's 45 min (GPU slot) | 1 day | kNN-VC done |
 | 6 | persistence/commit: re-apply edits on level load, optional override `.dlg` folder (G4), export/import of an edit list | 0.5 day | |
 | 7 | (optional) lip-sync from phone tracks in the fork | 2+ days | parked |
 
-Downloads that later stages need (none were done; each needs the user's OK): `pyworld` or `psola` (small pip packages), kNN-VC + WavLM-Large (about 1.3 GB), PyTorch CPU/GPU (about 2+ GB), and optionally MFA (conda, about 1 GB).
+Downloads:
+- Done in stage 2: pyworld, kNN-VC, WavLM-Large and the prematched vocoder (1.33 GB on H:). The existing CPU torch is reused.
+- Still optional:
+  - RVC and its HuBERT/RMVPE weights (MIT, a GPU slot for training).
+  - MFA (conda, about 1 GB).
+  - A torchaudio build, only if a future torch has one.
 
 ## 6. Rules kept
 

@@ -17,6 +17,10 @@ U2_GAME = os.environ.get("U2_GAME", r"C:\Program Files (x86)\Steam\steamapps\com
 TOOLS = os.path.join(os.path.expanduser("~"), "Documents", "Tools")
 WHISPER_PY = os.path.join(TOOLS, "whisper", "Scripts", "python.exe")
 PIPER_VOICES = os.path.join(TOOLS, "piper_voices")
+# voice conversion (stage 2): kNN-VC runs in the CPU-PyTorch venv; weights and feature caches live on H:
+VC_PY = os.environ.get("VOICESPLICE_VC_PY", os.path.join(TOOLS, "visualqa", "Scripts", "python.exe"))
+MODELS = os.environ.get("VOICESPLICE_MODELS", r"H:\VoiceSplice\models")
+CACHE = os.environ.get("VOICESPLICE_CACHE", r"H:\VoiceSplice\cache")
 SR = 22050          # working rate (Piper's rate; plenty for speech). Game Ogg is written at 44.1 kHz.
 HERE = os.path.dirname(os.path.abspath(__file__))
 

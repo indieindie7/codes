@@ -10,3 +10,14 @@ bank.json
 out/
 banks/
 __pycache__/
+# model weights and feature caches (kept on H:\VoiceSplice, never here)
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+*.bin
+models/
+cache/
+requests/
+voice_out/
