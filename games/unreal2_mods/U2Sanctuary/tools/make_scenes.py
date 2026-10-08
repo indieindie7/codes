@@ -19,6 +19,8 @@ def main():
     lines = ["[U2Sanctuary.SanctuaryDirector]", "bEnabled=True", "bLog=False", "CoverMesh=Mission_08M.Crates.Boxnum2"]
     n = 0
     for f in sorted(glob.glob(os.path.join(REV, "*_redesign.json"))):
+        if "_after_" in f:
+            continue
         m = os.path.basename(f).split("_")[0]
         P = json.load(open(f))["proposals"]
         for g in P["gore"]:

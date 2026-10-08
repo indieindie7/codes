@@ -149,6 +149,14 @@ def parse_op(text):
         if b == "smooth" and h == 0:
             h = 1.0
         return {"kind": "terrain", "brush": b, "x": x, "y": y, "r": r, "h": h}
+    if kind == "light" and len(w) >= 4:
+        # "light X Y Z [BRIGHT HUE SAT RADIUS]": a GM (or co-GM / director) light; baked as a real Light, so
+        # the map's lighting takes it in (at run time GMMaster shows it as a dynamic GMLight)
+        g = lambda i, d: f(w[i]) if len(w) > i else d
+        return {"kind": "light", "loc": (f(w[1]), f(w[2]), f(w[3])), "bright": g(4, 150), "hue": g(5, 24),
+                "sat": g(6, 110), "radius": g(7, 24)}
+    if kind == "gore":
+        raise ValueError("gore lines are U2Gore decals placed at run time (U2Sanctuary's director), never baked")
     if kind == "draw":
         raise ValueError("draw lines are notes, never baked")
     raise ValueError("unknown or short line")
@@ -351,6 +359,18 @@ def mesh_block(op, slot, stamp):
             "    DrawScale=%.6f\n"
             "    Group=\"U2GM\"\n"
             "End Actor" % (stamp, slot, op["path"], x, y, z, yaw_units(op["yaw"]), op["scale"]))
+
+
+def light_block(op, slot, stamp):
+    x, y, z = op["loc"]
+    return ("Begin Actor Class=Light Name=GMLight%d_%d\n"
+            "    LightBrightness=%d\n"
+            "    LightHue=%d\n"
+            "    LightSaturation=%d\n"
+            "    LightRadius=%d\n"
+            "    Location=(X=%.3f,Y=%.3f,Z=%.3f)\n"
+            "    Group=\"U2GM\"\n"
+            "End Actor" % (stamp, slot, op["bright"], op["hue"], op["sat"], op["radius"], x, y, z))
 
 
 def placed_block(block, op):
@@ -622,6 +642,9 @@ class Bake:
                 else:
                     self.log("  WARNING %s not found: %s must already be loaded by the map" % (f, pkg))
             blocks.append(mesh_block(op, slot, self.stamp))
+            self.baked.append((slot, text))
+        for slot, text, op in self.of("light"):
+            blocks.append(light_block(op, slot, self.stamp))
             self.baked.append((slot, text))
         if blocks:
             self.t3d = "Begin Map\n" + "\n".join(b.strip("\n") for b in blocks) + "\nEnd Map\n"

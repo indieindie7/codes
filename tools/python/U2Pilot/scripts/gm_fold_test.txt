@@ -1,0 +1,39 @@
+# gm_fold_test: the creative team's co-GM proposals in the GM (U2GM fold, 2026-10-08) on M08A1:
+# load the proposals, list them, go to one, accept the director's key light and two of the writer's gore lines
+# (journal lines; the SanctuaryDirector stages the gore, GMMaster the light), a hand "gm gore" and "gm light",
+# then undo every line it added so U2GM.ini's journal ends as it started.
+background
+map M08A1
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console gm proposals load
+console gm proposals
+dump GMMaster Stamp
+console gm goto 0
+wait 1
+shot
+console gm accept director
+console gm accept 0
+console gm accept 0
+wait 2
+dump SanctuaryDirector JournalGore Placed Proposed
+dump GMMaster Stamp
+shot
+look 0 -40
+console gm gore smear
+console gm light
+wait 2
+shot
+dump SanctuaryDirector JournalGore
+console gm journal
+console gm undo
+console gm undo
+console gm undo
+console gm undo
+console gm undo
+wait 1
+console gm journal
+dump SanctuaryDirector JournalGore
+quit

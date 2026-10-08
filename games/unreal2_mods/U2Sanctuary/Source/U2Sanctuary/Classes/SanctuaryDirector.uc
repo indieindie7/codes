@@ -11,6 +11,14 @@
 // The marks are U2Gore's own decals, kept for good (LifeSpan 0) and out of its cap;
 // nothing is laid in water (GoreManager.Wet).
 // Scenes=(Map="M08A1",Kind="pool",At=(X=..,Y=..,Z=..),Dir=(..),To=(..)) in U2Sanctuary.ini.
+//
+// With the game master (U2GM, 2026-10-08: "fold the game master tools ... into the director mod"):
+//   - the GM journal's "gore KIND X Y Z DX DY" lines (gm gore, or accepted co-GM proposals) are staged here
+//     too, and again whenever the journal changes (GMMaster.Stamp);
+//   - after the scenes are placed the GM's journal is replayed, so a "gm hide SanctuaryCover2" or a moved
+//     crate sticks across loads (the director's actors are spawned in the same order every time);
+//   - bProposeOnly: the scenes are not placed but handed to the GM as proposals ("gm proposals" lists
+//     them, "gm accept director" takes them all into the journal: lights and crates then bake with gm commit).
 // Console: set SanctuaryDirector bLog True (saves the ini).
 //=============================================================================
 class SanctuaryDirector extends Info
@@ -27,10 +35,15 @@ struct Scene
 var config array<Scene> Scenes;
 var config string CoverMesh;
 var config bool bEnabled, bLog;
+var config bool bProposeOnly;      // hand the scenes to the GM as proposals instead of placing them
 
 var GoreManager Gore;
 var string MapName;
-var int Placed, Skipped;
+var int Placed, Skipped, Proposed, JournalGore;
+var GMMaster GM;
+var int SeenStamp;
+var bool bStaged, bHand;
+var array<GoreDecal> HandMarks;    // the GM journal's gore, redone when the journal changes
 
 event PostBeginPlay()
 {
@@ -46,19 +59,99 @@ event Timer()
 {
 	local int i;
 
-	foreach DynamicActors(class'GoreManager', Gore)
-		break;
-	if (!bEnabled)
-		return;
-	for (i = 0; i < Scenes.Length; i++)
-		if (Caps(Scenes[i].Map) == MapName)
+	if (Gore == None)
+		foreach DynamicActors(class'GoreManager', Gore)
+			break;
+	if (GM == None)
+		foreach DynamicActors(class'GMMaster', GM)
+			break;
+	if (!bStaged)
+	{
+		bStaged = true;
+		SetTimer(1.0, true);
+		if (!bEnabled)
+			return;
+		// proposals need the GM there (it comes with the player, a moment after the map starts)
+		if (bProposeOnly && GM == None)
 		{
-			if (Stage(Scenes[i]))
-				Placed++;
-			else
-				Skipped++;
+			bStaged = false;
+			return;
 		}
-	Log("U2Sanctuary: "$MapName$": "$Placed$" scenes placed, "$Skipped$" skipped (gore "$(Gore != None)$")");
+		for (i = 0; i < Scenes.Length; i++)
+			if (Caps(Scenes[i].Map) == MapName)
+			{
+				if (bProposeOnly)
+					Proposed += Propose(Scenes[i]);
+				else if (Stage(Scenes[i]))
+					Placed++;
+				else
+					Skipped++;
+			}
+		Log("U2Sanctuary: "$MapName$": "$Placed$" scenes placed, "$Skipped$" skipped, "$Proposed$" proposed to the GM (gore "$(Gore != None)$", gm "$(GM != None)$")");
+		// the GM's own edits on top of ours (hide/place lines naming the director's actors)
+		if (GM != None && !bProposeOnly)
+			GM.Replay();
+	}
+	if (GM != None && GM.Stamp != SeenStamp)
+	{
+		SeenStamp = GM.Stamp;
+		StageJournal();
+	}
+}
+
+// the GM journal's gore lines: "gore KIND X Y Z [DX DY]"
+function StageJournal()
+{
+	local int k;
+	local string L;
+	local Scene S;
+
+	if (Gore == None)
+		return;
+	for (k = 0; k < HandMarks.Length; k++)
+		if (HandMarks[k] != None)
+			HandMarks[k].Destroy();
+	HandMarks.Length = 0;
+	JournalGore = 0;
+	bHand = true;
+	for (k = 0; k < ArrayCount(GM.Ops); k++)
+	{
+		L = GM.GetOp(k);
+		if (GM.Word(L, 0) != "gore")
+			continue;
+		S.Map = MapName;
+		S.Kind = Locs(GM.Word(L, 1));
+		S.At.X = float(GM.Word(L, 2));
+		S.At.Y = float(GM.Word(L, 3));
+		S.At.Z = float(GM.Word(L, 4));
+		S.Dir.X = float(GM.Word(L, 5));
+		S.Dir.Y = float(GM.Word(L, 6));
+		S.Dir.Z = 0;
+		S.To = S.At + S.Dir * 400;
+		if (Stage(S))
+			JournalGore++;
+	}
+	bHand = false;
+	if (bLog || JournalGore > 0)
+		Log("U2Sanctuary: "$JournalGore$" gore lines from the GM journal");
+}
+
+// a scene as GM proposal(s): journal lines the GM can accept into the map
+function int Propose(Scene S)
+{
+	local string P;
+
+	P = int(S.At.X)$" "$int(S.At.Y)$" "$int(S.At.Z);
+	switch (S.Kind)
+	{
+		case "keylight":
+			GM.Command("propose director light "$int(S.At.X)$" "$int(S.At.Y)$" "$int(S.At.Z + 170)$" 150 24 110 24 # the reveal: a lit creature, a dark approach");
+			return 1;
+		case "cover":
+			return Cover(S, true);
+	}
+	GM.Command("propose director gore "$S.Kind$" "$P$" "$S.Dir.X$" "$S.Dir.Y$" # the team's redesign: "$S.Kind);
+	return 1;
 }
 
 function bool Stage(Scene S)
@@ -66,7 +159,7 @@ function bool Stage(Scene S)
 	switch (S.Kind)
 	{
 		case "keylight":   return KeyLight(S);
-		case "cover":      return Cover(S);
+		case "cover":      return Cover(S, false) > 0;
 	}
 	if (Gore == None)
 		return false;
@@ -93,6 +186,8 @@ function bool Lay(Texture T, vector Spot, vector N, vector Along, float Size)
 		return false;
 	D.Place(T, Spot, N, Along, Size);
 	D.LifeSpan = 0;
+	if (bHand)
+		HandMarks[HandMarks.Length] = D;
 	if (bLog)
 		Log("U2Sanctuary: "$T.Name$" at "$Spot);
 	return true;
@@ -203,7 +298,7 @@ function bool KeyLight(Scene S)
 	return L != None;
 }
 
-function bool Cover(Scene S)
+function int Cover(Scene S, bool bPropose)
 {
 	local StaticMesh M;
 	local SanctuaryCover C;
@@ -214,7 +309,7 @@ function bool Cover(Scene S)
 
 	M = StaticMesh(DynamicLoadObject(CoverMesh, class'StaticMesh'));
 	if (M == None || Gore == None)
-		return false;
+		return 0;
 	From = S.At + vect(0,0,50);
 	for (i = 0; i < 8 && n < 3; i++)
 	{
@@ -229,6 +324,13 @@ function bool Cover(Scene S)
 		if (!Floor(Spot, HitL, HitN) || Gore.Wet(HitL + vect(0,0,20)))
 			continue;
 		R.Yaw = Rand(65536);
+		if (bPropose)
+		{
+			GM.Command("propose director mesh "$CoverMesh$" "$int(HitL.X)$" "$int(HitL.Y)$" "$int(HitL.Z + 4)$" "$(R.Yaw * 360 / 65536)$" 1 # cover for an arena that had too little");
+			n++;
+			i++;
+			continue;
+		}
 		C = Spawn(class'SanctuaryCover',,, HitL + vect(0,0,4), R);
 		if (C == None)
 			continue;
@@ -238,7 +340,7 @@ function bool Cover(Scene S)
 		n++;
 		i++;          // the next one a quarter turn on, not next to it
 	}
-	return n > 0;
+	return n;
 }
 
 defaultproperties

@@ -30,7 +30,8 @@ generator (U2Avalon/tools/codirect.py), with their rules turned from a generated
                     A3 hero details: zones with at least one mesh used only there
 
     py mapreview.py <map.t3d> [out_dir] [scenes=U2Sanctuary.ini]   -> <map>_review.md/.png, <map>_redesign.json
-                                     (with scenes=: the map as the SanctuaryDirector redesigns it -> <map>_after_*)
+                                     (with scenes=: the map as the SanctuaryDirector redesigns it -> <map>_after_*;
+                                      gm=<game>/System/U2GM.ini: the game master's journal applied too)
 
 The T3D is an EDIT COPY of all actors from UnrealEd (MAP EXPORT writes nothing for the Sanctuary maps), e.g.
 Documents\U2_research\sanctuary\M08A1.t3d. The redesign json is the team's proposals with world positions: the
@@ -117,10 +118,52 @@ def overlay(A, scenes_ini, mapname):
     return added
 
 
-def review(path, scenes=None):
+def gm_overlay(A, gm_ini, mapname):
+    """the game master's journal (U2GM.ini, written by the game) for this map family, applied the way GMMaster
+    replays it: hide/place a map actor by name, mesh = a placed static mesh, light = a light, gore = blood.
+    Returns the counts and the GM's draw notes (routes and areas the GM drew for the level team)."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "U2GM", "tools"))
+    import gm_commit
+    text = gm_commit.read_text(gm_ini)
+    fam = mapname.lower()
+    n = Counter()
+    by_name = {a["name"].lower(): a for a in A}
+    for slot, line in gm_commit.journal(text, fam):
+        w = line.split()
+        k = w[0].lower()
+        try:
+            if k == "hide" and w[1].lower() in by_name:
+                A.remove(by_name.pop(w[1].lower()))
+            elif k == "place" and w[1].lower() in by_name:
+                by_name[w[1].lower()]["p"] = np.array([float(w[2]), float(w[3]), float(w[4])])
+            elif k == "mesh":
+                A.append({"cls": "StaticMeshActor", "name": "mesh#%d" % slot, "zone": -1, "StaticMesh": w[1],
+                          "p": np.array([float(w[2]), float(w[3]), float(w[4])])})
+            elif k == "light":
+                g = lambda i, d: w[i] if len(w) > i else d
+                A.append({"cls": "Light", "name": "light#%d" % slot, "zone": -1, "p": np.array([float(w[1]), float(w[2]), float(w[3])]),
+                          "LightBrightness": g(4, "150"), "LightHue": g(5, "24"), "LightSaturation": g(6, "110"), "LightRadius": g(7, "24")})
+            elif k == "gore":
+                A.append({"cls": "Decal", "name": "gore#%d" % slot, "zone": -1, "Tag": "blood_" + w[1],
+                          "p": np.array([float(w[2]), float(w[3]), float(w[4])])})
+            else:
+                continue
+            n[k] += 1
+        except (IndexError, ValueError):
+            n["bad"] += 1
+    _, arrays = gm_commit.section(text, "U2GM.GMMaster")
+    draws = [v for v in arrays.get("draws", {}).values() if v.lower().startswith("@" + fam + " draw")]
+    return n, draws
+
+
+def review(path, scenes=None, gm=None):
     A = parse(path)
+    name = os.path.splitext(os.path.basename(path))[0]
     if scenes:
-        overlay(A, scenes, os.path.splitext(os.path.basename(path))[0])
+        overlay(A, scenes, name)
+    gm_note = None
+    if gm:
+        gm_note = gm_overlay(A, gm, name)
     by = defaultdict(list)
     for a in A:
         by[a["cls"]].append(a)
@@ -422,6 +465,9 @@ def review(path, scenes=None):
     out["proposals"] = props
     out["_draw"] = {"P": P, "route": R, "nav": [i for i in dist], "lights": lights, "enemies": enemies, "bodies": bodies,
                     "water": water, "pickups": pickups, "start": start["p"], "exit": exits[0]["p"] if exits else None}
+    if gm_note:
+        c, draws = gm_note
+        out["gm"] = {"journal": dict(c), "draws": [d.split(" note ", 1)[-1] if " note " in d else d[:80] for d in draws]}
     out["counts"] = {"actors": len(A), "nav": len(nav), "lights": len(lights), "meshes": len(smesh), "enemies": len(enemies),
                      "bodies": len(bodies), "water": len(water), "walk_s": round(walk_s)}
     return out
@@ -479,6 +525,10 @@ def report(Rv, name):
         L.append("| %s | %.2f | %s |" % (k, Rv[k]["score"], ", ".join("%s %.2f" % kv for kv in Rv[k]["checks"].items())))
     for k in ("writer", "director", "engineer", "level", "artist"):
         L += ["", "## %s" % k.upper()] + ["- " + n for n in Rv[k]["notes"]]
+    if "gm" in Rv:
+        L += ["", "## The game master's journal (applied before scoring)", "",
+              "- lines: " + (", ".join("%s %d" % kv for kv in Rv["gm"]["journal"].items()) or "none for this map")]
+        L += ["- the GM drew: " + d for d in Rv["gm"]["draws"]]
     p = Rv["proposals"]
     L += ["", "## Redesign proposals", "",
           "- gore vignettes: %d (%s)" % (len(p["gore"]), ", ".join("%s %d" % kv for kv in Counter(k for g in p["gore"] for k in g["kinds"]).items())),
@@ -488,13 +538,14 @@ def report(Rv, name):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("scenes=")]
+    args = [a for a in sys.argv[1:] if not a.startswith(("scenes=", "gm="))]
     sc = [a[7:] for a in sys.argv[1:] if a.startswith("scenes=")]
+    gm = [a[3:] for a in sys.argv[1:] if a.startswith("gm=")]
     src = args[0]
     out = args[1] if len(args) > 1 else os.path.dirname(os.path.abspath(src))
     name = os.path.splitext(os.path.basename(src))[0]
-    Rv = review(src, sc[0] if sc else None)
-    if sc:
+    Rv = review(src, sc[0] if sc else None, gm[0] if gm else None)
+    if sc or gm:
         name += "_after"
     open(os.path.join(out, name + "_review.md"), "w", encoding="utf-8").write(report(Rv, name))
     draw(Rv, os.path.join(out, name + "_review.png"))

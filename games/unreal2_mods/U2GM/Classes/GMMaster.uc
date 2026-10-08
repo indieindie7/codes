@@ -67,6 +67,21 @@
 // keyed by the texture's content, not by map; nothing here replays or bakes it, the fork reads it from
 // this ini and re-applies it). It goes through Change like any line, so gm undo / gm redo step through
 // it. Undo and redo keep a slot's whole line, family tag included, so "@*" lines come back as they were.
+//
+// The creative team and the director (the user, 2026-10-08: "fold the game master tools ... into the
+// agents and the director mod"). The journal is the one language for every hand on the level:
+//   light X Y Z [BRIGHT HUE SAT RADIUS]   a light (GMLight at run time; gm commit bakes a real Light)
+//   gore KIND X Y Z [DX DY]               a blood vignette (pool|spray|drag_trail|smear|claw_marks); U2Gore
+//                                         decals placed by U2Sanctuary's SanctuaryDirector, which reads these
+//                                         lines; not baked (decals are run-time)
+//   gm light [B H S R] / gm gore KIND     add one at the crosshair (a light hangs 120 off the surface)
+// Co-GM proposals: the team's agents (U2Sanctuary/tools/cogm.py from mapreview.py's redesign, or
+// any tool) write "gm propose WHO LINE # WHY" commands into System/U2GMProposals_<family>.txt;
+//   gm proposals load|list|clear   read that file (exec) / list what's waiting / drop them all
+//   gm accept N|all|WHO            the proposal(s) become journal lines (undo, commit work as for any edit)
+//   gm reject N|all|WHO            dropped
+//   gm goto N                      GM mode on, the camera at the proposal, looking down at it
+// Stamp goes up with every journal change and replay, so the director (and the panel) can tell.
 //=============================================================================
 class GMMaster extends Info
 	config(U2GM);
@@ -117,6 +132,8 @@ var bool bRay;                      // gm ray: the next command aims along RayS 
 var vector RayS, RayE;
 var bool bConBig, bConQuick;        // the consoles are open (gm con, from Console.ui's triggers)
 var GMCine Cine;                     // cinematic transport (gm cine ...)
+var int Stamp;                      // journal changes + replays so far (the director polls it)
+var array<string> Prop, PropWho, PropWhy;    // co-GM proposals waiting for the GM
 
 event PostBeginPlay()
 {
@@ -386,6 +403,7 @@ function ChangeRaw(int k, string Raw)
 	RedoAt.Length = 0;
 	RedoWas.Length = 0;
 	Ops[k] = Raw;
+	Stamp++;
 	SaveConfig();
 }
 
@@ -540,10 +558,176 @@ function Replay()
 			if (A != None)
 				Apply(A, GetOp(k), 2);
 		}
+		else if (Op == "light")
+			NewLight(GetOp(k), "light#"$k);
 	}
+	Stamp++;
 	// the picked actor again (the replay made new copies)
 	if (PickedName != "")
 		SetPicked(Named(PickedName));
+}
+
+// "light X Y Z [BRIGHT HUE SAT RADIUS]"
+function GMLight NewLight(string Line, string N)
+{
+	local GMLight L;
+	local vector P;
+
+	P.X = float(Word(Line, 1));
+	P.Y = float(Word(Line, 2));
+	P.Z = float(Word(Line, 3));
+	L = Spawn(class'GMLight',,, P);
+	if (L == None)
+		return None;
+	if (Word(Line, 4) != "")
+		L.Set(float(Word(Line, 4)), float(Word(Line, 5)), float(Word(Line, 6)), float(Word(Line, 7)));
+	Made[Made.Length] = L;
+	MadeName[MadeName.Length] = N;
+	return L;
+}
+
+// a light or a gore line at the crosshair: one journal line
+function AddAt(string Kind, string Args)
+{
+	local vector HitL, HitN, P;
+	local int k;
+	local string L;
+
+	if (UnderCrosshair(HitL, HitN) == None && HitL == vect(0,0,0))
+	{
+		Say("nothing under the crosshair");
+		return;
+	}
+	k = FreeOp();
+	if (k < 0)
+	{
+		Say("journal full");
+		return;
+	}
+	if (Kind == "light")
+	{
+		P = HitL + HitN * 120;
+		L = "light "$int(P.X)$" "$int(P.Y)$" "$int(P.Z);
+		if (Word(Args, 1) != "")
+			L = L$" "$Word(Args, 1)$" "$Word(Args, 2)$" "$Word(Args, 3)$" "$Word(Args, 4);
+	}
+	else
+	{
+		if (Word(Args, 1) == "")
+		{
+			Say("gm gore pool|spray|drag_trail|smear|claw_marks");
+			return;
+		}
+		P = HitL + HitN * 4;
+		L = "gore "$Locs(Word(Args, 1))$" "$int(P.X)$" "$int(P.Y)$" "$int(P.Z)$" "$vector(PC.Rotation).X$" "$vector(PC.Rotation).Y;
+	}
+	Change(k, L);
+	Replay();
+	Say("journal "$k$": "$L);
+}
+
+// ---------------------------------------------------------------- co-GM proposals
+
+function ProposalsCmd(string Cmd, string Args)
+{
+	local int k, n;
+	local string A1, W;
+
+	A1 = Word(Args, 1);
+	if (Cmd == "propose")
+	{
+		// gm propose WHO LINE... [# WHY]
+		W = After(Args, 2);
+		if (InStr(W, "#") >= 0)
+		{
+			PropWhy[Prop.Length] = Mid(W, InStr(W, "#") + 1);
+			W = Left(W, InStr(W, "#"));
+		}
+		else
+			PropWhy[Prop.Length] = "";
+		while (Right(W, 1) == " ")
+			W = Left(W, Len(W) - 1);
+		PropWho[Prop.Length] = A1;
+		Prop[Prop.Length] = W;
+		return;
+	}
+	if (Cmd == "proposals")
+	{
+		if (A1 ~= "load")
+		{
+			Prop.Length = 0;
+			PropWho.Length = 0;
+			PropWhy.Length = 0;
+			PC.ConsoleCommand("exec U2GMProposals_"$Family()$".txt");
+			Say(Prop.Length$" proposals for "$Family()$" ('gm proposals' lists them)");
+		}
+		else if (A1 ~= "clear")
+		{
+			Prop.Length = 0;
+			PropWho.Length = 0;
+			PropWhy.Length = 0;
+			Say("proposals dropped");
+		}
+		else
+		{
+			for (k = 0; k < Prop.Length; k++)
+				Say(k$" ["$PropWho[k]$"] "$Prop[k]$"  -- "$PropWhy[k]);
+			Say(Prop.Length$" waiting: gm accept N|all|WHO, gm reject N|all|WHO, gm goto N");
+		}
+		return;
+	}
+	if (Cmd == "goto")
+	{
+		k = int(A1);
+		if (k < 0 || k >= Prop.Length)
+			return;
+		GoToProposal(Prop[k]);
+		Say(k$" ["$PropWho[k]$"] "$Prop[k]$"  -- "$PropWhy[k]);
+		return;
+	}
+	// accept / reject: N, all, or everything one agent proposed
+	for (k = Prop.Length - 1; k >= 0; k--)
+	{
+		if (!(A1 ~= "all" || A1 ~= PropWho[k] || (A1 == string(k))))
+			continue;
+		if (Cmd == "accept")
+		{
+			if (FreeOp() < 0)
+			{
+				Say("journal full");
+				break;
+			}
+			Change(FreeOp(), Prop[k]);
+		}
+		Prop.Remove(k, 1);
+		PropWho.Remove(k, 1);
+		PropWhy.Remove(k, 1);
+		n++;
+	}
+	if (Cmd == "accept" && n > 0)
+		Replay();
+	Say(Cmd$"ed "$n$", "$Prop.Length$" still waiting");
+}
+
+// GM mode on and the camera over a line's spot (words 1-3 are X Y Z for light/gore, 2-4 for mesh/place)
+function GoToProposal(string L)
+{
+	local vector P;
+	local rotator R;
+	local int i;
+
+	i = 1;
+	if (Word(L, 0) == "mesh" || Word(L, 0) == "place")
+		i = 2;
+	P.X = float(Word(L, i));
+	P.Y = float(Word(L, i + 1));
+	P.Z = float(Word(L, i + 2));
+	if (!bOn)
+		SetOn(true);
+	if (PC.Pawn != None)
+		PC.Pawn.SetLocation(P + vect(-250,0,260));
+	R.Pitch = -8000;
+	PC.SetRotation(R);
 }
 
 // what a journal name stands for now: our copy or mesh, else the map's actor
@@ -1275,7 +1459,7 @@ function DoCommand(string Args)
 	// while a commit bakes the journal, the journal must stay what the watcher read
 	if (CommitPending() && (Cmd == "move" || Cmd == "moveto" || Cmd == "turn" || Cmd == "scale" || Cmd == "hide"
 		|| Cmd == "spawn" || Cmd == "raise" || Cmd == "lower" || Cmd == "flatten" || Cmd == "smooth"
-		|| Cmd == "undo" || Cmd == "redo" || Cmd == "preview"))
+		|| Cmd == "undo" || Cmd == "redo" || Cmd == "preview" || Cmd == "light" || Cmd == "gore" || Cmd == "accept"))
 	{
 		Say("commit "$Word(CommitStatus, 0)$" is baking the journal: edits wait until it's done ('gm commit cancel' to edit now)");
 		return;
@@ -1323,6 +1507,8 @@ function DoCommand(string Args)
 		Say("gm draw add [X Y Z] | undo | clear | done open|closed [NOTE] | list | forget N");
 		Say("gm sketch mark NAME [NOTE] (the fork's sketch tool) | con big|quick 1|0 (Console.ui's triggers)");
 		Say("gm tex HASH REV b c g s h sh sm sl sharp (the fork's texture panel; a global '@* tex' journal line)");
+		Say("gm light [BRIGHT HUE SAT RADIUS] | gore pool|spray|drag_trail|smear|claw_marks  (at the crosshair)");
+		Say("gm proposals load|list|clear | accept N|all|WHO | reject N|all|WHO | goto N  (the creative team's co-GM proposals)");
 	}
 	else if (Cmd == "panel")
 	{
@@ -1429,6 +1615,10 @@ function DoCommand(string Args)
 	}
 	else if (Cmd == "spawn")
 		SpawnFromPalette(A1);
+	else if (Cmd == "light" || Cmd == "gore")
+		AddAt(Cmd, Args);
+	else if (Cmd == "propose" || Cmd == "proposals" || Cmd == "accept" || Cmd == "reject" || Cmd == "goto")
+		ProposalsCmd(Cmd, Args);
 	else if (Cmd == "raise" || Cmd == "lower" || Cmd == "flatten" || Cmd == "smooth")
 		TerrainBrush(Cmd, float(A1), float(Word(Args, 2)));
 	else if (Cmd == "palette")
