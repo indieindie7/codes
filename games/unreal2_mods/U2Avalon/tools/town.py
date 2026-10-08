@@ -93,6 +93,8 @@ ib.island_png(base + "_ec.bmp", base + "_map.png")
 step("viewshed (final ground)", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), base + "_ec.bmp", NAV, layout, base]))
 # the citizens' routines walked on the graded ground: desire lines, door wants, travel-time checks
 step("walks", lambda: ib.run(["py", os.path.join(TOOLS, "walks.py"), base + "_ec.bmp", layout, "png=" + base + "_walks.png"]))
+# the architect's thinking drawings (Q36): figure-ground, Nolli plan, sections A/B/C at true scale
+step("drawings", lambda: ib.run(["py", os.path.join(TOOLS, "drawings.py"), base + "_ec.bmp", layout, base]))
 try:                                     # believability (Q35, tools/metrics.py), after the walks' paths join the network
     import metrics
     MET = metrics.score(layout)
@@ -152,8 +154,10 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
        "## Walks", "%d trips a day, %.1f km on foot; checks:" % (
            sum(1 for w in L.get("walks", []) if w.get("path")), sum((w.get("m") or 0) * w.get("n", 1) for w in L.get("walks", [])) / 1000),
        *("- " + c for c in L.get("walk_checks", [])), "- (none)" if not L.get("walk_checks") else "", "",
+       "## Believability", open(os.path.join(RUN, "believability.txt")).read().strip() if os.path.exists(os.path.join(RUN, "believability.txt")) else "-", "",
        "## Terrain", "```", score.strip(), "```", "",
        "## Pictures", "- sketch: isl_sketch.png", "- layout: isl_layout.png", "- pads: isl_map.png", "- walks: isl_walks.png", "- viewshed (what the player sees): isl_vis.png",
+       "- figure-ground: isl_figureground.png, Nolli plan: isl_nolli.png, sections A/B/C: isl_sections.png",
        "- editor: isl_ed_plant.png, isl_ed_side.png, isl_ed_island.png"] + (["- game: pilot_sheet.png, closeups_sheet.png"] if sheet else []) + [
        "", "## Timing", *("- %s: %.0f s" % (t, d) for t, d in log), "- total: %.0f s" % (time.time() - t0)]
 open(os.path.join(RUN, "report.md"), "w", encoding="utf-8").write("\n".join(rep) + "\n")
