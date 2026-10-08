@@ -387,6 +387,17 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional boo
 		class'ModSettings'.static.Note("react: " $ P $ " flinches at " $ F.Bone $ " " $ F.Turn);
 }
 
+// ModMoves: is this body in a spring flinch (then the spine is ours, not the lean's)
+function bool IsFlinching(Pawn P)
+{
+	local int i;
+
+	for (i = 0; i < Flinches.Length; i++)
+		if (Flinches[i].P == P)
+			return true;
+	return false;
+}
+
 // which knockdown / get-up / stun animations a character type has (for the knockdown work)
 function ProbeAnims(Pawn P)
 {

@@ -92,6 +92,7 @@ var array<Claim> Claims;
 function PostBeginPlay()
 {
 	Super.PostBeginPlay();
+	Spawn(class'ModMoves');     // lean and the foot-slide meter (they don't need the minds)
 	if (!bMinds)
 		return;
 	Rules = Spawn(class'ModMindRules');
@@ -567,68 +568,103 @@ function Crouch(ModMind M, bool bDown)
 	}
 }
 
-// a cover spot near M from Enemy: hidden at crouch height, open one step to the side,
-// close to M, not much nearer the enemy, nobody else's
+// position queries (Crytek TPS / Unreal EQS / Killzone position picking): generate the path nodes
+// near the creature, filter, score each on several things at once with cheap tests, then run the
+// costly sight traces only on the best few (best first) until one passes. Scores, cover:
+//   near the creature (a long run under fire is bad), its preferred range from the enemy, not next
+//   to a squad mate (spread out), off the player's current sight (the sweep), further back the
+//   more afraid; must then be hidden at crouch height and open one step to a side (to shoot).
+// Flank: near the wanted flank point, its preferred range, far round from where the player looks,
+// spread from squad mates; must then see the enemy.
+const SPOT_K = 8;
+
+function float MateSpacing(ModMind M, vector At)
+{
+	local int i;
+	local float Pen;
+
+	for (i = 0; i < Minds.Length; i++)
+		if (Minds[i] != M && Minds[i].B.Squad == M.B.Squad && Minds[i].P != None && VSize(Minds[i].P.Location - At) < 220)
+			Pen += 400;
+	for (i = 0; i < Claims.Length; i++)
+		if (Claims[i].M != M && VSize(Claims[i].Spot - At) < 160)
+			Pen += 2000;            // someone's cover spot
+	return Pen;
+}
+
+// keep the best SPOT_K candidates, best first
+static function Keep(NavigationPoint N, float S, out array<NavigationPoint> Top, out array<float> TopS)
+{
+	local int j;
+
+	for (j = 0; j < Top.Length; j++)
+		if (S > TopS[j])
+			break;
+	if (j >= SPOT_K)
+		return;
+	Top.Insert(j, 1);
+	TopS.Insert(j, 1);
+	Top[j] = N;
+	TopS[j] = S;
+	if (Top.Length > SPOT_K)
+	{
+		Top.Length = SPOT_K;
+		TopS.Length = SPOT_K;
+	}
+}
+
 function bool FindCover(ModMind M, Pawn Enemy, out vector Spot)
 {
 	local NavigationPoint N;
-	local vector Eye, Side, Here;
-	local float D, Score, Best, ToEnemyNow, ToEnemy;
-	local int i;
-	local bool bTaken;
-	local int Near, Seen, Blind;
+	local vector Eye, Side;
+	local float D, S, ToEnemyNow, ToEnemy, Pref;
+	local int i, Near, Seen, Blind;
+	local array<NavigationPoint> Top;
+	local array<float> TopS;
 
 	Eye = Enemy.Location + vect(0,0,1) * Enemy.BaseEyeHeight;
 	ToEnemyNow = VSize(M.P.Location - Enemy.Location);
-	Best = -1;
+	Pref = FClamp((M.P.Ability.PreferredMinRange + M.P.Ability.PreferredMaxRange) * 0.5, 500, 1800);
 	for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
 	{
 		D = VSize(N.Location - M.P.Location);
 		if (D > CoverReach || D < 60)
 			continue;
-		Near++;
 		ToEnemy = VSize(N.Location - Enemy.Location);
 		if (ToEnemy < 350 || ToEnemy < ToEnemyNow - 300)
 			continue;
-		// hidden at crouch height (the spot's own height, a little up)
+		Near++;
+		S = 1000 - D * 0.6 - Abs(ToEnemy - Pref) * 0.25 * (1 - M.Fear) + 0.3 * FMin(ToEnemy - ToEnemyNow, 600) * M.Fear - MateSpacing(M, N.Location);
+		if (IsVisible(N))
+			S -= 300;
+		Keep(N, S, Top, TopS);
+	}
+	for (i = 0; i < Top.Length; i++)
+	{
+		N = Top[i];
 		if (FastTrace(N.Location + vect(0,0,10), Eye))
 		{
 			Seen++;
-			continue;
+			continue;               // the enemy sees it even crouched
 		}
-		// open one step to a side, standing
 		Side = Normal((N.Location - Enemy.Location) cross vect(0,0,1)) * 90;
 		if (!FastTrace(N.Location + Side + vect(0,0,40), Eye) && !FastTrace(N.Location - Side + vect(0,0,40), Eye))
 		{
 			Blind++;
-			continue;
+			continue;               // no shot from either side
 		}
-		bTaken = false;
-		for (i = 0; i < Claims.Length; i++)
-			if (Claims[i].M != M && VSize(Claims[i].Spot - N.Location) < 120)
-				bTaken = true;
-		if (bTaken)
-			continue;
-		Score = 1000 - D + 0.25 * FMin(ToEnemy - ToEnemyNow, 600) * M.Fear;
-		if (Score > Best)
-		{
-			Best = Score;
-			Here = N.Location;
-		}
+		Spot = N.Location;
+		for (i = Claims.Length - 1; i >= 0; i--)
+			if (Claims[i].M == M)
+				Claims.Remove(i, 1);
+		Claims.Length = Claims.Length + 1;
+		Claims[Claims.Length - 1].Spot = Spot;
+		Claims[Claims.Length - 1].M = M;
+		Log2(M.P.Name $ " cover: " $ Near $ " candidates, picked #" $ (Seen + Blind + 1) $ " of the best " $ Top.Length $ " (score " $ int(TopS[Seen + Blind]) $ ")");
+		return true;
 	}
-	if (Best < 0)
-	{
-		Log2(M.P.Name $ " no cover: " $ Near $ " nodes near, " $ Seen $ " in the enemy's sight, " $ Blind $ " with no shot from the side");
-		return false;
-	}
-	Spot = Here;
-	for (i = Claims.Length - 1; i >= 0; i--)
-		if (Claims[i].M == M)
-			Claims.Remove(i, 1);
-	Claims.Length = Claims.Length + 1;
-	Claims[Claims.Length - 1].Spot = Spot;
-	Claims[Claims.Length - 1].M = M;
-	return true;
+	Log2(M.P.Name $ " no cover: " $ Near $ " candidates, best " $ Top.Length $ " traced: " $ Seen $ " in the enemy's sight, " $ Blind $ " with no shot from the side");
+	return false;
 }
 
 // the next leg along the level's paths toward Dest (or Dest itself when it is in sight)
@@ -1196,28 +1232,43 @@ function Squads()
 	}
 }
 
-// the path node nearest Want that can see the enemy
+// the flank spot: near Want, at its range from the enemy, far round from where the player looks,
+// spread from squad mates, and it must see the enemy (traced on the best few only)
 function vector FlankSpot(ModMind M, vector Want, Pawn Enemy)
 {
 	local NavigationPoint N;
-	local float D, Best;
-	local vector Here, Eye;
+	local float D, S, Pref, Off;
+	local vector Eye, Facing;
+	local int i;
+	local PlayerController PC;
+	local array<NavigationPoint> Top;
+	local array<float> TopS;
 
 	Eye = Enemy.Location + vect(0,0,1) * Enemy.BaseEyeHeight;
-	Best = 700;
+	Pref = FClamp((M.P.Ability.PreferredMinRange + M.P.Ability.PreferredMaxRange) * 0.5, 500, 1400);
+	PC = PlayerController(Enemy.Controller);
+	if (PC != None)
+		Facing = Normal(Vector(PC.Rotation) * vect(1,1,0));
 	for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
 	{
 		D = VSize(N.Location - Want);
-		if (D >= Best)
+		if (D > 900)
 			continue;
-		if (!FastTrace(N.Location + vect(0,0,50), Eye))
-			continue;
-		Best = D;
-		Here = N.Location;
+		S = 1000 - D * 0.5 - Abs(VSize(N.Location - Enemy.Location) - Pref) * 0.3 - MateSpacing(M, N.Location);
+		if (PC != None)
+		{
+			Off = Acos(FClamp(Normal((N.Location - Enemy.Location) * vect(1,1,0)) dot Facing, -1, 1)) * 57.2958;
+			S += Off * 4;           // round the side or behind the player's view
+		}
+		Keep(N, S, Top, TopS);
 	}
-	if (Best >= 700)
-		return vect(0,0,0);
-	return Here;
+	for (i = 0; i < Top.Length; i++)
+		if (FastTrace(Top[i].Location + vect(0,0,50), Eye))
+		{
+			Log2(M.P.Name $ " flank spot: picked #" $ (i + 1) $ " of the best " $ Top.Length $ " (score " $ int(TopS[i]) $ ")");
+			return Top[i].Location;
+		}
+	return vect(0,0,0);
 }
 
 // a squad that lost half its number: humans fall back together, Seekers and hounds rage
