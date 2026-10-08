@@ -17,6 +17,7 @@ class AvalonStorm extends Actor;
 var array<AvalonPuff> Drops;
 var array<AvalonPuff> Clouds;   // the overcast: giant dark puffs round and over the player, greyed by the fog
 var array<vector> CloudAt;
+var array<float> CloudScale;   // each puff's full size: it grows in and shrinks away with the storm
 var float CloudTurn;
 var float Radius, Fall, Top;
 var vector Wind;
@@ -164,6 +165,7 @@ function Overcast(Texture T, int N, float Size)
 		P.Texture = T;
 		P.Style = STY_Alpha;
 		P.SetDrawScale(Size * (0.8 + 0.4 * FRand()) / 128.0);
+		CloudScale[Clouds.Length] = P.DrawScale;
 		Clouds[Clouds.Length] = P;
 		CloudAt[CloudAt.Length] = O;
 	}
@@ -230,7 +232,12 @@ event Tick(float DeltaTime)
 		if (Clouds[i] != None)
 		{
 			Clouds[i].SetLocation(E + (CloudAt[i] >> Spin));
-			Clouds[i].bHidden = (i + 0.5) / Clouds.Length > Intensity * 1.15;
+			// the user (2026-10-07): clouds vanished too abruptly - each puff now grows in and shrinks
+			// away over a quarter of the storm's rise (about 40 s with a 3 min ramp) instead of popping
+			F = FClamp((Intensity * 1.15 - (i + 0.5) / Clouds.Length) * 4.0, 0, 1);
+			Clouds[i].bHidden = F <= 0.02;
+			if (!Clouds[i].bHidden)
+				Clouds[i].SetDrawScale(CloudScale[i] * (0.3 + 0.7 * F));
 		}
 	M = Wind;
 	M.Z = -Fall;

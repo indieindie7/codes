@@ -153,7 +153,9 @@ class Editor:
         single instruction -- a pid-based post-hoc injection loses that race,
         since UnrealEd creates its D3D8 device in the same synchronous init
         that creates its main window."""
-        if _running("Unreal2.exe"):
+        # U2ED_WITH_GAME=1 (carve.py, live editing): the game may run - its d3d8.dll (the fork since
+        # dgVoodoo went, 2026-10-02) stays loaded in the game while it is renamed aside for the editor
+        if _running("Unreal2.exe") and os.environ.get("U2ED_WITH_GAME") != "1":
             raise BridgeError("the game is running; close it first (the editor needs dgVoodoo off)")
         if _running("UnrealEd.exe"):
             raise BridgeError("UnrealEd is already running; use Editor.attach() or close it")

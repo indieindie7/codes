@@ -372,7 +372,9 @@ function Live(string S, PlayerController PC)
 		else
 			Opts = "";
 		Log("Cards: live reload into "$Arg$Opts);
-		PC.ConsoleCommand("open "$Arg$Opts);
+		// ClientTravel, not ConsoleCommand("open ..."): an "open" run from the polled AvalonLive.txt (an
+		// EXEC inside an EXEC) is dropped silently, so the automatic reload after a carve never happened
+		PC.ClientTravel(Arg$Opts, TRAVEL_Absolute, false);
 		break;
 	case "RAW":
 		// any console command, once (a raw line in the file would run on every poll)

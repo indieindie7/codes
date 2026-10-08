@@ -135,6 +135,39 @@ def main():
             t = (i + 0.5) / n
             x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
             add(x, y, yaw_to(x, y, *face), size, placed, size * 0.6)
+    elif kind == "shanty":
+        # 3D primitive buildings (AvalonSM.B_*), not cards: shacks packed on the slope, each turned to face
+        # downhill (the view), sunk a little on its uphill side; they go into the Props slots from slot=10
+        r, n = float(rest[0]), int(rest[1])
+        slot = int(o.get("slot", 10))
+        tries = 0
+        props = []
+        while len(props) < n and tries < n * 80:
+            tries += 1
+            ang, rad = rnd.uniform(0, 2 * math.pi), r * math.sqrt(rnd.random())
+            x, y = x0 + rad * math.cos(ang), y0 + rad * math.sin(ang)
+            m = rnd.choice(cards)
+            s = rnd.uniform(0.85, 1.2)
+            foot = 520 * s
+            if not ok(Z, x, y, placed, foot, max_slope):
+                continue
+            placed.append((x, y))
+            if Z is not None:
+                d = 300.0
+                gx = ground(Z, x + d, y) - ground(Z, x - d, y)
+                gy = ground(Z, x, y + d) - ground(Z, x, y - d)
+                down = math.degrees(math.atan2(-gy, -gx))
+                lift = -min(150, 0.5 * foot * math.tan(math.radians(slope(Z, x, y))))
+            else:
+                down, lift = yaw_to(x, y, *face), -40
+            yaw = int(down + 90 + rnd.randint(-12, 12)) % 360     # B_ meshes face -Y
+            props.append("prop %d AvalonSM.%s %d %d %d %.2f %d 0 0 0" % (slot + len(props), m, x, y, yaw, s, lift))
+        print("shanty: %d of %d shacks placed" % (len(props), n))
+        for p in props:
+            print("  ", p)
+        if o.get("dry") != "1" and props:
+            live.send(["say shanty town: %d shacks" % len(props)] + props + ["rebuild", "save"], float(o.get("wait", 25)))
+        return
     else:
         sys.exit(__doc__)
     cmds = ["cardat %s %d %d %d %d" % (c, x, y, yaw, size) for c, x, y, yaw, size in out]
