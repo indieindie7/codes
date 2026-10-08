@@ -41,6 +41,12 @@ SEA_Z = -4967.0
 WALK = 1.3                              # m/s, a worker on rough ground
 DOOR_PENALTY = 40.0                     # metres: a wall side is used only when the door detour costs more
 WEAR_T = 24.0                           # trip weight at which ground is fully worn (half price)
+# Q35 pass 5 (games/research_notes/Believable city simulation s. 5): the wear remembers (decays by DECAY a pass) and
+# attracts walkers from a few metres off (a blurred copy prices the ground); then the busiest worn ground off the
+# roads becomes "path" roads, and a path through a fence leaves a gap in it (people cut through)
+DECAY = float(o.get("decay", 0.3))
+PATH_T = float(o.get("path_t", 10.0))   # trips a day over a cell (after the last pass) that make it a path
+PROMOTE = o.get("promote", "1") != "0"
 NOT_WALLED = ("pad", "dock", "jetty", "wellhead", "rig", "islet", "barge", "wreck", "memorial", "mast")
 SHORE = ("dock", "boat_landing", "jetty")
 
@@ -150,7 +156,9 @@ def sl(d):
 def graph(wear, extra=()):
     """8-connected grid as CSR (both directions); extra = (u, v, w) one-way edges"""
     rows, cols, vals = [], [], []
-    base = np.where(ROAD, 0.6, 1.0) * (1 - 0.5 * np.clip(wear / WEAR_T, 0, 1))
+    from scipy.ndimage import gaussian_filter
+    seen = np.maximum(wear, gaussian_filter(wear, 0.8))        # a trail draws walkers from a cell or so away
+    base = np.where(ROAD, 0.6, 1.0) * (1 - 0.5 * np.clip(seen / WEAR_T, 0, 1))
     for di, dj in NB:
         (ja, jb), (ia, ib) = sl(dj), sl(di)
         a, b = (ja, ia), (jb, ib)
@@ -260,7 +268,7 @@ for p in range(PASSES):
         res.update(path=[[round(x, 1), round(y, 1)] for x, y in pts], m=round(metres, 1),
                    min=round(metres / WALK / 60, 1), exits=[side_a, best[1]], frm_at=a, to_at=b)
         results.append(res)
-    wear = new
+    wear = wear * (1 - DECAY) + new                              # trails remember, unused ones fade
     print("pass %d: %d trips, worn cells %d" % (p + 1, len(results), int((wear > 0).sum())), flush=True)
 
 # ---- door wants, checks ----------------------------------------------------------------------------
@@ -289,6 +297,61 @@ for bid, sides in sorted(wants.items()):
 def clean(v):
     return None if isinstance(v, float) and not np.isfinite(v) else v
 
+
+# ---- pass 5: promote the worn trunks to paths ---------------------------------------------------------------
+PATHS = []
+if PROMOTE:
+    hot = (new >= PATH_T) & ~ROAD
+    used = np.zeros_like(hot)
+    for r in sorted(results, key=lambda r: -r["n"]):
+        if not r.get("path"):
+            continue
+        run = []
+        for pt in r["path"] + [None]:
+            if pt is not None:
+                x, y = pt
+                fi, fj = to_fine(x, y)
+                i, j = int(round(fi)), int(round(fj))
+                ok = 0 <= i < NF and 0 <= j < NF and hot[j, i] and not used[j, i]
+            else:
+                ok = False
+            if ok:
+                run.append((x, y, i, j))
+                continue
+            if len(run) >= 2 and math.dist(run[0][:2], run[-1][:2]) / M > 25:
+                PATHS.append([[x_, y_] for x_, y_, _, _ in run])
+                for _, _, i_, j_ in run:
+                    used[max(0, j_ - 1):j_ + 2, max(0, i_ - 1):i_ + 2] = True
+            run = []
+    if PATHS:
+        # join each trunk's ends to the nearest road or path within 20 m (a path starts and ends somewhere)
+        others = [p for r in L.get("roads", []) for p in r]
+        for k, pp in enumerate(PATHS):
+            pool = others + [p for kk, q in enumerate(PATHS) if kk != k for p in q]
+            for end, at_ in ((pp[0], 0), (pp[-1], len(pp))):
+                near = min(pool, key=lambda p: math.dist(p, end), default=None)
+                if near is not None and 0 < math.dist(near, end) / M < 20:
+                    pp.insert(at_, list(near))
+        n0 = len(L.get("roads", []))
+        cls = L.get("road_class") or (["spine"] + ["branch"] * (n0 - 1))
+        rw = L.get("road_w") or ([1.3] + [1.1] * (n0 - 1))
+        L["roads"] = L.get("roads", []) + PATHS
+        L["road_class"] = cls + ["path"] * len(PATHS)
+        L["road_w"] = rw + [0.35] * len(PATHS)
+        # people cut through: a fence a path crosses loses that run (the gap is the gate nobody built)
+        def cross(p, q, a, b):
+            def o_(u, v, w):
+                return (v[0] - u[0]) * (w[1] - u[1]) - (v[1] - u[1]) * (w[0] - u[0])
+            return o_(p, q, a) * o_(p, q, b) < 0 and o_(a, b, p) * o_(a, b, q) < 0
+        fences, cut = [], 0
+        for fn in L.get("fences", []):
+            hit = any(cross(fn[0], fn[1], pp[k], pp[k + 1]) for pp in PATHS for k in range(len(pp) - 1))
+            if hit:
+                cut += 1
+            else:
+                fences.append(fn)
+        L["fences"] = fences
+        print("paths: %d worn trunks promoted (%d fence runs cut through)" % (len(PATHS), cut))
 
 L["walks"] = [{k: clean(v) for k, v in r.items() if k != "gap"} for r in results]
 L["door_wants"] = wants
