@@ -31,7 +31,7 @@ WINDOW_K = float(o.get("window", 4.0))   # how strongly the hero and the story w
 HERO = o.get("hero", "cooling_towers")
 # Q35 (2026-10-08, games/research_notes/Believable city simulation): pass 1 value fields + bid-rent, pass 2 imperfect
 # plots. passes=0 gives the old constant plots (for before/after metrics: tools/metrics.py)
-PASSES = int(o.get("passes", 4))      # 4: + back lanes and connectors (pass 4, the light version)
+PASSES = int(o.get("passes", 4))      # 1 value fields, 2 imperfect plots, 3 epochs (old core at the dock), 4 back lanes + connectors
 WIND = (0.83, -0.55)                  # the prevailing wind (AvalonCards' Wind 60,-40): smoke and soot go this way
 DBG = []
 VIS = None                            # vis=<viewshed npz>: how much the player sees each cell (viewshed.py)
@@ -565,6 +565,13 @@ def try_place(bid, b):
         lo = 0.0                          # the camera: story buildings may stand at the dock end, in the window
     if bid.startswith("wellhead"):                                   # the mine end of the road
         lo, hi = (S_MINE - 260 * M) / max(1.0, S_TOWER), S_MINE / max(1.0, S_TOWER)
+    if PASSES >= 3 and not bid.startswith("wellhead"):
+        # pass 3 (research 1b/1e): the town grew out from the dock - the core layer stands on the dock end of the
+        # spine, the boom ran on toward the tower and the mine, the decline filled in wherever was left
+        lay = b.get("layer", "boom")
+        elo, ehi = {"core": (0.0, 0.8), "boom": (0.1, 9.0), "decline": (0.25, 9.0)}.get(lay, (0.0, 9.0))
+        if max(lo, elo) < min(hi, ehi):
+            lo, hi = max(lo, elo), min(hi, ehi)
     want_side = SIDE.get(kind, 0)
     max_slope = 32.0 if (bid.startswith("wellhead") or kind in ("mast",)) else 20.0
     best = None
@@ -617,6 +624,8 @@ def try_place(bid, b):
                         score += WINDOW_K * (1.5 if bid == HERO else (0.6 if camera_weight(bid, buildings[bid]) > 1.5 else 0.0))
                 if PASSES >= 2 and GAP == 0.0 and any(abs(s0 - b1) < 1.0 for _, b1 in road.taken[side]):
                     score += 0.35                 # dense rows build wall to wall
+                if PASSES >= 3 and road is SPINE and b.get("layer") == "core":
+                    score += 0.6 * math.exp(-s0 / max(1.0, 0.5 * S_TOWER))      # the old core crowds the dock
                 score += rng.uniform(0, 0.15)
                 if best is None or score > best[0]:
                     best = (score, road, s0, s1, side, cx, cy, ux, uy, nx, ny)
@@ -758,6 +767,23 @@ def connectors(max_m=160.0, ratio=1.4):
     return made
 
 
+# pass 3: what time did to each building - additions (lean-tos, annexes, a storey) pile up on the old and the
+# valuable; in the decline the cheapest boom plots stand abandoned (research 1d/1e). Data for the dressing passes.
+ADDITIONS, ABANDONED = {}, set()
+if PASSES >= 3 and PASSES >= 1:
+    boom = []
+    for bid, p in placed.items():
+        lay = buildings[bid].get("layer", "boom")
+        age_k = {"core": 2.0, "boom": 1.0, "decline": 0.3}.get(lay, 1.0)
+        if p["kind"] in ("rig", "barge", "wreck", "islet", "dock", "tower"):
+            continue
+        ADDITIONS[bid] = int(rng.poisson(age_k * (0.6 + value(p["x"], p["y"], bid))))
+        if (lay == "boom" and p["kind"] in ("house", "dorm") and not (SPEC[bid][0] - {"workers"}) and not buildings[bid].get("function")
+                and bid != "directors_house"):            # plain dwellings only: never a provider, a social place or the director
+            boom.append((value(p["x"], p["y"], bid), bid))
+    for v, bid in sorted(boom)[:max(1, len(boom) // 6)]:
+        ABANDONED.add(bid)
+
 N_LANES = N_CONN = 0
 if PASSES >= 4:
     N_LANES = back_lanes()
@@ -788,7 +814,8 @@ out = {"seed": SEED, "shift": -5300, "heightmap": os.path.abspath(src), "method"
        "buildings": {bid: {"x": round(p["x"], 1), "y": round(p["y"], 1), "yaw": round(p["yaw"], 1), "z": round(p["z"], 1),
                            "interest": 1.0, "cells": [list(c) for c in p["cells"]],
                            "layer": buildings[bid].get("layer", "boom"), "age": LAYERS.get(buildings[bid].get("layer", "boom"), 1),
-                           **({"value": round(value(p["x"], p["y"], bid), 3), "nuisance": round(nuisance(p["x"], p["y"], bid), 3)} if PASSES >= 1 else {})}
+                           **({"value": round(value(p["x"], p["y"], bid), 3), "nuisance": round(nuisance(p["x"], p["y"], bid), 3)} if PASSES >= 1 else {}),
+                           **({"additions": ADDITIONS.get(bid, 0), "abandoned": bid in ABANDONED} if PASSES >= 3 else {})}
                      for bid, p in placed.items()},
        "passes": PASSES, "wind": list(WIND),
        "roads": roads_out, "spine": roads_out[0], "plots": PLOTS, "fences": FENCES,
