@@ -116,11 +116,15 @@ var float PanelWait, StateWait;
 var bool bRay;                      // gm ray: the next command aims along RayS -> RayE
 var vector RayS, RayE;
 var bool bConBig, bConQuick;        // the consoles are open (gm con, from Console.ui's triggers)
+var GMCine Cine;                     // cinematic transport (gm cine ...)
 
 event PostBeginPlay()
 {
 	Super.PostBeginPlay();
 	SetTimer(0.25, true);
+	Cine = Spawn(class'GMCine');
+	if (Cine != None)
+		Cine.Master = Self;
 }
 
 // the panel's command file, and the PanelState line kept fresh (a picked character walks)
@@ -1300,6 +1304,11 @@ function DoCommand(string Args)
 	}
 	else if (Cmd == "sketch")
 		SketchCmd(Args);
+	else if (Cmd == "cine")
+	{
+		if (Cine != None)
+			Cine.Command(After(Args, 1));
+	}
 	else if (Cmd == "tex")
 		TexCmd(After(Args, 1));
 	else if (Cmd == "on" || Cmd == "off")
