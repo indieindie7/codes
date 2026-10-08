@@ -19,6 +19,9 @@ class AvalonStorm extends Actor;
 // (StaticMeshes\AvalonSky.usx), set in the sky zone while the storm is on - one lit storm deck at dusk instead
 // of grey sprite blobs
 #exec TEXTURE IMPORT NAME=StormSky FILE=Textures\StormSky.tga MIPS=On VCLAMPMODE=CLAMP
+// lightning: the deck lit from inside for the flash frames (tools\make_sky_flash.py, research action 4)
+#exec TEXTURE IMPORT NAME=StormSkyFlash0 FILE=Textures\StormSkyFlash0.tga MIPS=On VCLAMPMODE=CLAMP
+#exec TEXTURE IMPORT NAME=StormSkyFlash1 FILE=Textures\StormSkyFlash1.tga MIPS=On VCLAMPMODE=CLAMP
 #exec TEXTURE IMPORT NAME=RainDropL FILE=Textures\RainDropL.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
 #exec TEXTURE IMPORT NAME=RainDropC FILE=Textures\RainDropC.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
 #exec TEXTURE IMPORT NAME=RainDropR FILE=Textures\RainDropR.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
@@ -32,6 +35,7 @@ var int NSheets;
 var CardMesh Dome;              // the storm sky in the sky zone (None: AvalonSky.usx missing - the sprite deck only)
 var float DomeR;                // its radius (world units)
 var float DomeOn;               // the storm strength over which it shows
+var int FlashPick;              // which flash-lit sky the current bolt shows
 var int DomeYaw;                // turns the panorama: the bright slot toward the sky box's own sun (render_sky.py sun=250; 5462 put the warm side toward the world's sun glow, about yaw 100: 38230 showed it opposite, so the sky zone turns it; 5462 seen right in game 2026-10-08)
 var float GustT;
 var float StormGust;       // the rain's wind speed (units/s), set by AvalonCards before Setup           // the gusts: the rain's wind swells and drops on two slow waves
@@ -330,6 +334,15 @@ event Tick(float DeltaTime)
 			F *= 0.3;                             // the flicker of a real bolt
 	}
 	SetFog(F);
+	if (Dome != None && !Dome.bHidden)
+	{
+		if (F > 0.3 && FlashPick == 0)
+			Dome.Skins[0] = Texture'StormSkyFlash0';
+		else if (F > 0.3)
+			Dome.Skins[0] = Texture'StormSkyFlash1';
+		else
+			Dome.Skins[0] = Texture'StormSky';
+	}
 	if (ThunderAt > 0 && Level.TimeSeconds >= ThunderAt)
 	{
 		ThunderAt = 0;
@@ -543,6 +556,7 @@ function Bolt()
 	local float Dist;
 
 	Flash = 0.35;
+	FlashPick = Rand(2);
 	for (C = Level.ControllerList; C != None; C = C.NextController)
 		if (PlayerController(C) != None)
 			PlayerController(C).ClientFlash(-0.2, vect(700,700,800));

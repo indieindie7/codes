@@ -522,6 +522,8 @@ function Live(string S, PlayerController PC)
 				LiveStorm.Force(2);
 			else if (Caps(Arg) == "CLEAR")
 				LiveStorm.Force(0);
+			else if (Caps(Arg) == "BOLT")
+				LiveStorm.Bolt();
 			else
 				LiveStorm.Force(-1);
 		}

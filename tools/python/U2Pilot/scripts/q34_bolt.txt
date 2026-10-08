@@ -1,0 +1,21 @@
+# Q34 lightning: the dome's flash-lit sky
+background
+map TutA_Live11?Mutator=U2AvalonCards.AvalonCards,U2TestHub.HubMutator
+waitcontrol 180
+wait 3
+console god
+console avalon weather storm
+wait 15
+console hub tp -20876 3652 -137 hold
+wait 2
+look 100 12
+wait 1
+shot
+console avalon weather bolt
+shot
+look 20 12
+console avalon weather bolt
+shot
+wait 1
+shot
+quit
