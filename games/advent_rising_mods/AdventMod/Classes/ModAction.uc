@@ -106,14 +106,16 @@ function bool Vault(Pawn P, vector Fwd, float Speed)
 
 	Feet = P.Location - vect(0,0,1) * P.CollisionHeight;
 	Reach = P.CollisionRadius + 45;
-	A = Trace(HitLoc, HitNorm, Feet + vect(0,0,35) + Fwd * Reach, Feet + vect(0,0,35), false);
-	if (A == None || Abs(HitNorm.Z) > 0.3 || (HitNorm dot Fwd) > -0.5)
+	// (actors too: breakable furniture is cover to vault, not only world geometry; a waist-high
+	// prop is vaulted, anything else in the way is barged)
+	A = Trace(HitLoc, HitNorm, Feet + vect(0,0,35) + Fwd * Reach, Feet + vect(0,0,35), true);
+	if (A == None || !(A.bWorldGeometry || A.IsA('DamageableObjects') || (A.bStatic && A.bBlockActors)) || Abs(HitNorm.Z) > 0.3 || (HitNorm dot Fwd) > -0.5)
 		return false;               // nothing ahead at knee height, or not facing it
 	if (!FastTrace(Feet + vect(0,0,100) + Fwd * (Reach + 40), Feet + vect(0,0,100)))
 		return false;               // a wall, not cover: chest height is blocked too
 	// its top, a little past the face
 	Far = HitLoc + Fwd * 24;
-	if (Trace(Top, TopNorm, Far - vect(0,0,10), Far + vect(0,0,110), false) == None)
+	if (Trace(Top, TopNorm, Far - vect(0,0,10), Far + vect(0,0,110), true) == None)
 		return false;
 	Height = Top.Z - Feet.Z;
 	if (Height < 30 || Height > 85 || TopNorm.Z < 0.7)

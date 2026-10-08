@@ -32,6 +32,7 @@ var config bool bCasings;          // the game's shell particles become casings 
 var config int MaxClutter;
 var config bool bCorpseShots;      // corpses bleed and twitch when shot
 var config float CorpseKick;       // the push a shot gives a ragdoll
+var config bool bKarmaFreezeFix;   // native: the engine's own ragdoll freeze sets PHYS_None, not PHYS_Falling (karmafix.c). OFF: tested 2026-10-08, the frozen body loses its ragdoll pose and stands up; the script hold (ModReact) keeps bodies lying
 var config bool bHoundRagdolls;    // off: hounds crash the game going limp (levels 03 b and c), cause not found yet. (A config array of skeleton names came up empty in game, and the hounds went limp.)
 var KarmaParamsSkel CorpseParams;  // ragdoll settings for corpses the level gave none (a subobject below, so saves can refer to it)
 // the solver's settings for every ragdoll we start (KSetSimParams; 0 = the engine's own):
@@ -340,6 +341,8 @@ event PostBeginPlay()
 	else
 		Level.Game.GameRulesModifiers.AddGameRules(R);
 	class'ModSettings'.static.Note("gore: watching hits");
+	if (bKarmaFreezeFix)
+		class'ModSettings'.static.NativeCall("KarmaFreezeFix");   // frozen ragdolls stay put instead of falling out of the world
 	if (bBodyStreaks)
 		class'ModSettings'.static.NativeCall("Blood:streakclear");   // the last level's are gone
 	if (bGooStrings)
@@ -3091,6 +3094,7 @@ event Destroyed()
 
 defaultproperties
 {
+     bKarmaFreezeFix=False
      Splats(0)=Texture'AdventMod.Blood.BloodSplat0'
      Splats(1)=Texture'AdventMod.Blood.BloodSplat1'
      Splats(2)=Texture'AdventMod.Blood.BloodSplat2'

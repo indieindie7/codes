@@ -29,7 +29,8 @@ struct Pose
 var array<Pose> Poses;
 var ModMinds Minds;
 var ModReact React;
-var float LogWait;
+var float LogWait, LogStir;
+var string LogLine;
 
 // K1: one critically damped spring step toward Want (state X with velocity V)
 static function SpringTo(out float X, out float V, float Want, float K, float DeltaTime)
@@ -160,12 +161,26 @@ function float Ground(vector At, Pawn P)
 	return HitLoc.Z;
 }
 
+// the log: every 2 s, the most stirred-up creature's pose (calm ones show nothing)
 function Note(ModMind M, string S)
 {
-	if (bBodyLog && Level.TimeSeconds > LogWait)
+	local float Stir;
+
+	if (!bBodyLog)
+		return;
+	Stir = M.Anger + M.Fear;
+	if (Stir > LogStir)
+	{
+		LogStir = Stir;
+		LogLine = "body: " $ M.P.Name $ " (" $ M.SpeciesName $ ", anger " $ M.Pct(M.Anger) $ " fear " $ M.Pct(M.Fear) $ "): " $ S;
+	}
+	if (Level.TimeSeconds > LogWait)
 	{
 		LogWait = Level.TimeSeconds + 2;
-		class'ModSettings'.static.Note("body: " $ M.P.Name $ " (" $ M.SpeciesName $ ", anger " $ M.Pct(M.Anger) $ " fear " $ M.Pct(M.Fear) $ "): " $ S);
+		if (LogLine != "")
+			class'ModSettings'.static.Note(LogLine);
+		LogLine = "";
+		LogStir = 0;
 	}
 }
 

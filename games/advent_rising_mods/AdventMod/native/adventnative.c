@@ -16,6 +16,7 @@
 
 int D3DTraceStart(void);   /* d3dtrace.c */
 int ShadowFixApply(void);  /* shadowfix.c */
+int KarmaFixApply(void);   /* karmafix.c */
 int ShadowAlphaApply(void); /* shadowalpha.c */
 int CaptureNext(int Mask);  /* capture.c */
 int SetMaxFps(int Fps);     /* capture.c */
@@ -232,6 +233,7 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsicmp(Cmd, L"IsBorderless")) return Borderless;
 	if (!_wcsicmp(Cmd, L"D3DTrace")) return D3DTraceStart();
 	if (!_wcsicmp(Cmd, L"ShadowFix")) return ShadowFixApply();
+	if (!_wcsicmp(Cmd, L"KarmaFreezeFix")) return KarmaFixApply();
 	if (!_wcsicmp(Cmd, L"ShadowAlpha")) return ShadowAlphaApply();
 	if (!_wcsicmp(Cmd, L"Capture")) return CaptureNext(-1);
 	if (!_wcsicmp(Cmd, L"CaptureMask")) return CaptureNext(1);   /* the frame and a character mask (U2Shaders layer) */
