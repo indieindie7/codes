@@ -31,7 +31,7 @@ ASSETS = [
     r'BRUSH SAVE FILE="{P}\brushes\bigroom.u3d"',
 ]
 
-LOADS = ["SanctuaryOpenSM", "HoverTestSM", "Mission_05M", "Terran_DecoM", "Mission_08M", "JungleM", "Flora_M",
+LOADS = ["SanctuaryOpenSM", "HoverTestSM", "AvalonSM", "AvalonSM2", "Mission_05M", "Terran_DecoM", "Mission_08M", "JungleM", "Flora_M",
          "MM_WaterfrontM", "Mission_SulferonM", "Mission_10M"]
 TEX = ["ScottT", "Mission_10T", "JungleT", "VertexT", "TerranT"]
 

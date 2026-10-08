@@ -1,0 +1,914 @@
+{
+ "lz": {
+  "score": 0.83,
+  "checks": {
+   "cover": 1.0,
+   "entries": 1.0,
+   "sightlines": 1.0,
+   "high": 0.0,
+   "spawns": 1.0,
+   "program": 1.0
+  },
+  "blocked": 0.31,
+  "seed": 1,
+  "props": [
+   {
+    "id": "dropship",
+    "mesh": "AvalonSM.CargoDropship",
+    "x": -14000.0,
+    "y": 19000.0,
+    "yaw": 90.0,
+    "w": 1100.0,
+    "d": 1500.0,
+    "h": 450.0,
+    "kind": "main"
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Barrels.Metal_Barrel_01",
+    "x": -14531.7,
+    "y": 19535.2,
+    "yaw": 218.8,
+    "w": 90,
+    "d": 90,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.crate_pallet_01",
+    "x": -13076.5,
+    "y": 19110.7,
+    "yaw": 247.3,
+    "w": 160,
+    "d": 160,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.2
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.crate_pallet_01",
+    "x": -13703.7,
+    "y": 19923.4,
+    "yaw": 355.8,
+    "w": 160,
+    "d": 160,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.2
+   },
+   {
+    "id": "cover",
+    "mesh": "Mission_08M.Crates.Boxnum2",
+    "x": -14818.9,
+    "y": 19361.6,
+    "yaw": 190.0,
+    "w": 140,
+    "d": 140,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.crate_pallet_01",
+    "x": -13928.6,
+    "y": 19706.2,
+    "yaw": 19.8,
+    "w": 160,
+    "d": 160,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.2
+   },
+   {
+    "id": "cover",
+    "mesh": "AvalonSM.ore_tank_1_kiln",
+    "x": -14300.5,
+    "y": 19918.6,
+    "yaw": 42.2,
+    "w": 320,
+    "d": 320,
+    "h": 160,
+    "kind": "cover",
+    "scale": 0.3
+   }
+  ],
+  "spawns": [],
+  "entries": [
+   {
+    "at": [
+     -12910.0,
+     17443.0
+    ],
+    "road": "haul_w"
+   },
+   {
+    "at": [
+     -15434.0,
+     17745.0
+    ],
+    "road": "jungle_loop"
+   }
+  ]
+ },
+ "plant": {
+  "score": 0.94,
+  "checks": {
+   "cover": 0.75,
+   "entries": 1.0,
+   "sightlines": 1.0,
+   "high": 1.0,
+   "spawns": 1.0,
+   "program": 0.91
+  },
+  "blocked": 0.31,
+  "seed": 22,
+  "props": [
+   {
+    "id": "hall_b",
+    "mesh": "AvalonSM.B_hall_b",
+    "x": 2881.9,
+    "y": -982.8,
+    "yaw": 317.7,
+    "w": 1800.0,
+    "d": 800.0,
+    "h": 550.0,
+    "kind": "main"
+   },
+   {
+    "id": "hall_a",
+    "mesh": "AvalonSM.B_hall_a",
+    "x": -290.0,
+    "y": -2290.9,
+    "yaw": 83.3,
+    "w": 1500.0,
+    "d": 700.0,
+    "h": 400.0,
+    "kind": "main"
+   },
+   {
+    "id": "shed_a",
+    "mesh": "AvalonSM.B_shed_a",
+    "x": 1892.0,
+    "y": -5122.3,
+    "yaw": 188.5,
+    "w": 400.0,
+    "d": 300.0,
+    "h": 200.0,
+    "kind": "spawn"
+   },
+   {
+    "id": "shed_b",
+    "mesh": "AvalonSM.B_shed_b",
+    "x": 2629.7,
+    "y": -4384.5,
+    "yaw": 210.9,
+    "w": 400.0,
+    "d": 300.0,
+    "h": 200.0,
+    "kind": "spawn"
+   },
+   {
+    "id": "intake",
+    "mesh": "AvalonSM.B_intake",
+    "x": 1722.1,
+    "y": -3689.0,
+    "yaw": 190.6,
+    "w": 250.0,
+    "d": 200.0,
+    "h": 150.0,
+    "kind": "support"
+   },
+   {
+    "id": "pump_house",
+    "mesh": "AvalonSM.B_pump_house",
+    "x": 1756.1,
+    "y": -1476.7,
+    "yaw": 345.9,
+    "w": 400.0,
+    "d": 300.0,
+    "h": 250.0,
+    "kind": "support"
+   },
+   {
+    "id": "silos",
+    "mesh": "AvalonSM.ore_tank_2_kiln",
+    "x": 1674.7,
+    "y": -579.7,
+    "yaw": 354.8,
+    "w": 450.0,
+    "d": 450.0,
+    "h": 1100.0,
+    "kind": "support"
+   },
+   {
+    "id": "tank_farm",
+    "mesh": "AvalonSM.storage_tank_1_kiln",
+    "x": 874.8,
+    "y": -119.1,
+    "yaw": 14.7,
+    "w": 650.0,
+    "d": 650.0,
+    "h": 800.0,
+    "kind": "support"
+   },
+   {
+    "id": "piperack",
+    "mesh": "AvalonSM2.PipeRack",
+    "x": 3747.4,
+    "y": -2083.4,
+    "yaw": 280.5,
+    "w": 800.0,
+    "d": 150.0,
+    "h": 300.0,
+    "kind": "support"
+   },
+   {
+    "id": "company_mast",
+    "mesh": "AvalonSM.radio_mast_1_kiln",
+    "x": 725.0,
+    "y": -4406.8,
+    "yaw": 157.9,
+    "w": 300.0,
+    "d": 350.0,
+    "h": 1500.0,
+    "kind": "high"
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Barrels.Metal_Barrel_01",
+    "x": 2182.0,
+    "y": -2104.0,
+    "yaw": 92.0,
+    "w": 90,
+    "d": 90,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Barrels.Metal_Barrel_01",
+    "x": 1324.5,
+    "y": -3499.4,
+    "yaw": 172.7,
+    "w": 90,
+    "d": 90,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Mission_08M.Crates.Boxnum2",
+    "x": 1528.4,
+    "y": -3324.9,
+    "yaw": 66.0,
+    "w": 140,
+    "d": 140,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   }
+  ],
+  "spawns": [
+   {
+    "x": 1891.955208231941,
+    "y": -5122.25667339263,
+    "door_to": [
+     1500,
+     -2500
+    ]
+   },
+   {
+    "x": 2629.7408731339,
+    "y": -4384.47100849067,
+    "door_to": [
+     1500,
+     -2500
+    ]
+   }
+  ],
+  "entries": [
+   {
+    "at": [
+     -845.0,
+     366.0
+    ],
+    "road": "haul_w"
+   },
+   {
+    "at": [
+     -1292.0,
+     -4943.0
+    ],
+    "road": "haul_e"
+   },
+   {
+    "at": [
+     4991.0,
+     -3896.0
+    ],
+    "road": "pit_ramp"
+   }
+  ]
+ },
+ "field": {
+  "score": 1.0,
+  "checks": {
+   "cover": 1.0,
+   "entries": 1.0,
+   "sightlines": 1.0,
+   "high": 1.0,
+   "spawns": 1.0,
+   "program": 1.0
+  },
+  "blocked": 0.31,
+  "seed": 3,
+  "props": [
+   {
+    "id": "shed_b",
+    "mesh": "AvalonSM.B_shed_b",
+    "x": -10827.5,
+    "y": -9317.2,
+    "yaw": 109.3,
+    "w": 400.0,
+    "d": 300.0,
+    "h": 200.0,
+    "kind": "spawn"
+   },
+   {
+    "id": "piperack",
+    "mesh": "AvalonSM2.PipeRack",
+    "x": -10584.2,
+    "y": -7775.0,
+    "yaw": 70.8,
+    "w": 800.0,
+    "d": 150.0,
+    "h": 300.0,
+    "kind": "support"
+   },
+   {
+    "id": "piperack",
+    "mesh": "AvalonSM2.PipeRack",
+    "x": -8175.9,
+    "y": -6015.8,
+    "yaw": 352.6,
+    "w": 800.0,
+    "d": 150.0,
+    "h": 300.0,
+    "kind": "support"
+   },
+   {
+    "id": "tank_farm",
+    "mesh": "AvalonSM.storage_tank_1_kiln",
+    "x": -6901.3,
+    "y": -9734.0,
+    "yaw": 232.3,
+    "w": 650.0,
+    "d": 650.0,
+    "h": 800.0,
+    "kind": "support"
+   },
+   {
+    "id": "silocluster",
+    "mesh": "AvalonSM2.SiloCluster",
+    "x": -8234.4,
+    "y": -11411.4,
+    "yaw": 185.2,
+    "w": 700.0,
+    "d": 700.0,
+    "h": 900.0,
+    "kind": "high"
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.crate2_highfull",
+    "x": -8394.5,
+    "y": -9328.8,
+    "yaw": 209.6,
+    "w": 220,
+    "d": 220,
+    "h": 160,
+    "kind": "cover",
+    "scale": 1.2
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.crate_pallet_01",
+    "x": -8947.7,
+    "y": -7990.8,
+    "yaw": 35.1,
+    "w": 160,
+    "d": 160,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.2
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.Crate1Low",
+    "x": -7943.6,
+    "y": -8958.6,
+    "yaw": 260.6,
+    "w": 140,
+    "d": 140,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.3
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.crate2_highfull",
+    "x": -9251.7,
+    "y": -7834.3,
+    "yaw": 118.6,
+    "w": 220,
+    "d": 220,
+    "h": 160,
+    "kind": "cover",
+    "scale": 1.2
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Barrels.Metal_Barrel_01",
+    "x": -9334.6,
+    "y": -8150.2,
+    "yaw": 311.3,
+    "w": 90,
+    "d": 90,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.Crate1Low",
+    "x": -7644.9,
+    "y": -8840.2,
+    "yaw": 351.9,
+    "w": 140,
+    "d": 140,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.3
+   }
+  ],
+  "spawns": [
+   {
+    "x": -10827.542103470661,
+    "y": -9317.157488086046,
+    "door_to": [
+     -8500,
+     -8500
+    ]
+   }
+  ],
+  "entries": [
+   {
+    "at": [
+     -3977.0,
+     -6615.0
+    ],
+    "road": "haul_e"
+   },
+   {
+    "at": [
+     -12368.0,
+     -11509.0
+    ],
+    "road": "haul_e"
+   }
+  ]
+ },
+ "pit": {
+  "score": 1.0,
+  "checks": {
+   "cover": 1.0,
+   "entries": 1.0,
+   "sightlines": 1.0,
+   "high": 1.0,
+   "spawns": 1.0,
+   "program": 1.0
+  },
+  "blocked": 0.31,
+  "seed": 3,
+  "props": [
+   {
+    "id": "new_rig",
+    "mesh": "AvalonSM.DrillingRig",
+    "x": 12344.7,
+    "y": -4543.8,
+    "yaw": 30.6,
+    "w": 1300.0,
+    "d": 1600.0,
+    "h": 1900.0,
+    "kind": "main"
+   },
+   {
+    "id": "shed_a",
+    "mesh": "AvalonSM.B_shed_a",
+    "x": 16124.0,
+    "y": -7924.8,
+    "yaw": 241.5,
+    "w": 400.0,
+    "d": 300.0,
+    "h": 200.0,
+    "kind": "spawn"
+   },
+   {
+    "id": "piperack",
+    "mesh": "AvalonSM2.PipeRack",
+    "x": 14476.2,
+    "y": -7222.3,
+    "yaw": 233.5,
+    "w": 800.0,
+    "d": 150.0,
+    "h": 300.0,
+    "kind": "support"
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.crate2_highfull",
+    "x": 13590.3,
+    "y": -5836.8,
+    "yaw": 246.5,
+    "w": 220,
+    "d": 220,
+    "h": 160,
+    "kind": "cover",
+    "scale": 1.2
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Barrels.Metal_Barrel_01",
+    "x": 14476.1,
+    "y": -6191.5,
+    "yaw": 138.3,
+    "w": 90,
+    "d": 90,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Mission_08M.Crates.Boxnum2",
+    "x": 13195.1,
+    "y": -5749.1,
+    "yaw": 338.3,
+    "w": 140,
+    "d": 140,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Misc.gas_tank",
+    "x": 13974.7,
+    "y": -5987.5,
+    "yaw": 264.8,
+    "w": 240,
+    "d": 240,
+    "h": 160,
+    "kind": "cover",
+    "scale": 1.4
+   }
+  ],
+  "spawns": [
+   {
+    "x": 16123.968260819685,
+    "y": -7924.783504945085,
+    "door_to": [
+     13500,
+     -6500
+    ]
+   }
+  ],
+  "entries": [
+   {
+    "at": [
+     7929.0,
+     -5036.0
+    ],
+    "road": "pit_ramp"
+   },
+   {
+    "at": [
+     12594.0,
+     -12240.0
+    ],
+    "road": "pit_back"
+   }
+  ]
+ },
+ "power": {
+  "score": 0.88,
+  "checks": {
+   "cover": 0.5,
+   "entries": 1.0,
+   "sightlines": 1.0,
+   "high": 1.0,
+   "spawns": 1.0,
+   "program": 0.78
+  },
+  "blocked": 0.31,
+  "seed": 10,
+  "props": [
+   {
+    "id": "generator_house",
+    "mesh": "AvalonSM.B_generator_house",
+    "x": -16980.0,
+    "y": -13238.4,
+    "yaw": 343.6,
+    "w": 800.0,
+    "d": 500.0,
+    "h": 350.0,
+    "kind": "main"
+   },
+   {
+    "id": "shed_a",
+    "mesh": "AvalonSM.B_shed_a",
+    "x": -19173.1,
+    "y": -16107.3,
+    "yaw": 123.5,
+    "w": 400.0,
+    "d": 300.0,
+    "h": 200.0,
+    "kind": "spawn"
+   },
+   {
+    "id": "plant_office",
+    "mesh": "AvalonSM.B_plant_office",
+    "x": -19021.5,
+    "y": -15167.7,
+    "yaw": 96.3,
+    "w": 900.0,
+    "d": 600.0,
+    "h": 450.0,
+    "kind": "support"
+   },
+   {
+    "id": "chimney",
+    "mesh": "AvalonSM2.ChimneyStack",
+    "x": -19770.2,
+    "y": -15668.5,
+    "yaw": 106.4,
+    "w": 300.0,
+    "d": 300.0,
+    "h": 1200.0,
+    "kind": "support"
+   },
+   {
+    "id": "chimney",
+    "mesh": "AvalonSM2.ChimneyStack",
+    "x": -19346.4,
+    "y": -14052.2,
+    "yaw": 62.8,
+    "w": 300.0,
+    "d": 300.0,
+    "h": 1200.0,
+    "kind": "support"
+   },
+   {
+    "id": "pylon",
+    "mesh": "AvalonSM.Pylon",
+    "x": -17539.1,
+    "y": -16765.5,
+    "yaw": 178.7,
+    "w": 300.0,
+    "d": 300.0,
+    "h": 1100.0,
+    "kind": "support"
+   },
+   {
+    "id": "pylon",
+    "mesh": "AvalonSM.Pylon",
+    "x": -17149.7,
+    "y": -17198.9,
+    "yaw": 189.1,
+    "w": 300.0,
+    "d": 300.0,
+    "h": 1100.0,
+    "kind": "high"
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Misc.gas_tank",
+    "x": -17480.7,
+    "y": -13980.1,
+    "yaw": 163.5,
+    "w": 240,
+    "d": 240,
+    "h": 160,
+    "kind": "cover",
+    "scale": 1.4
+   },
+   {
+    "id": "cover",
+    "mesh": "Mission_08M.Crates.Boxnum2",
+    "x": -17239.8,
+    "y": -15933.6,
+    "yaw": 336.2,
+    "w": 140,
+    "d": 140,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   }
+  ],
+  "spawns": [
+   {
+    "x": -19173.09766257701,
+    "y": -16107.303462427275,
+    "door_to": [
+     -17500,
+     -15000
+    ]
+   }
+  ],
+  "entries": [
+   {
+    "at": [
+     -14583.0,
+     -13056.0
+    ],
+    "road": "haul_e"
+   },
+   {
+    "at": [
+     -14464.0,
+     -16786.0
+    ],
+    "road": "pit_back"
+   },
+   {
+    "at": [
+     -19310.0,
+     -18017.0
+    ],
+    "road": "pad_road"
+   },
+   {
+    "at": [
+     -19877.0,
+     -12407.0
+    ],
+    "road": "jungle_loop"
+   }
+  ]
+ },
+ "pad": {
+  "score": 0.92,
+  "checks": {
+   "cover": 1.0,
+   "entries": 0.5,
+   "sightlines": 1.0,
+   "high": 1.0,
+   "spawns": 1.0,
+   "program": 1.0
+  },
+  "blocked": 0.31,
+  "seed": 1,
+  "props": [
+   {
+    "id": "cargo_pad",
+    "mesh": "AvalonSM.B_cargo_pad",
+    "x": -22500.0,
+    "y": -24000.0,
+    "yaw": 90.0,
+    "w": 2500.0,
+    "d": 2500.0,
+    "h": 100.0,
+    "kind": "main"
+   },
+   {
+    "id": "shed_a",
+    "mesh": "AvalonSM.B_shed_a",
+    "x": -22951.8,
+    "y": -24908.0,
+    "yaw": 153.5,
+    "w": 400.0,
+    "d": 300.0,
+    "h": 200.0,
+    "kind": "spawn"
+   },
+   {
+    "id": "floodmast",
+    "mesh": "AvalonSM.Floodmasts",
+    "x": -22421.6,
+    "y": -25217.4,
+    "yaw": 183.7,
+    "w": 150.0,
+    "d": 150.0,
+    "h": 700.0,
+    "kind": "support"
+   },
+   {
+    "id": "floodmast",
+    "mesh": "AvalonSM.Floodmasts",
+    "x": -21441.1,
+    "y": -23316.1,
+    "yaw": 302.9,
+    "w": 150.0,
+    "d": 150.0,
+    "h": 700.0,
+    "kind": "support"
+   },
+   {
+    "id": "floodmast",
+    "mesh": "AvalonSM.Floodmasts",
+    "x": -23323.9,
+    "y": -23170.6,
+    "yaw": 44.8,
+    "w": 150.0,
+    "d": 150.0,
+    "h": 700.0,
+    "kind": "high"
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.Crate1Low",
+    "x": -23064.9,
+    "y": -23594.5,
+    "yaw": 11.0,
+    "w": 140,
+    "d": 140,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.3
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Barrels.Metal_Barrel_01",
+    "x": -21964.5,
+    "y": -24517.4,
+    "yaw": 35.9,
+    "w": 90,
+    "d": 90,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.Crate1Low",
+    "x": -21596.2,
+    "y": -23795.1,
+    "yaw": 155.9,
+    "w": 140,
+    "d": 140,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.3
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Barrels.Metal_Barrel_01",
+    "x": -22487.7,
+    "y": -24603.0,
+    "yaw": 43.7,
+    "w": 90,
+    "d": 90,
+    "h": 70,
+    "kind": "cover",
+    "scale": 1.0
+   },
+   {
+    "id": "cover",
+    "mesh": "Terran_DecoM.Crates.crate2_highfull",
+    "x": -23449.9,
+    "y": -24353.9,
+    "yaw": 41.2,
+    "w": 220,
+    "d": 220,
+    "h": 160,
+    "kind": "cover",
+    "scale": 1.2
+   }
+  ],
+  "spawns": [
+   {
+    "x": -22951.83464578437,
+    "y": -24907.992513194324,
+    "door_to": [
+     -22500,
+     -24000
+    ]
+   }
+  ],
+  "entries": [
+   {
+    "at": [
+     -21727.0,
+     -22455.0
+    ],
+    "road": "pad_road"
+   }
+  ]
+ }
+}

@@ -1,0 +1,81 @@
+# sanctuary_open_trees: canopy candidates spawned one at a time at the LZ (hub mesh), one shot each
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 120
+wait 2
+console god
+console togglehud
+look 0 5
+mark Flora_M.Tree.Tree_S_001
+console hub mesh Flora_M.Tree.Tree_S_001 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Flora_M.Tree.Tree_S_002
+console hub mesh Flora_M.Tree.Tree_S_002 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Flora_M.Tree.Tree_S_004
+console hub mesh Flora_M.Tree.Tree_S_004 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Flora_M.Tree.Tree_S_006
+console hub mesh Flora_M.Tree.Tree_S_006 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Flora_M.Tree.Tree3
+console hub mesh Flora_M.Tree.Tree3 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Flora_M.Tree.Tree1_clump1
+console hub mesh Flora_M.Tree.Tree1_clump1 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Mission_05M.Vegetation.Swamp_tree_new_001
+console hub mesh Mission_05M.Vegetation.Swamp_tree_new_001 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Mission_05M.Vegetation.tree_canopy_001
+console hub mesh Mission_05M.Vegetation.tree_canopy_001 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Mission_05M.Vegetation.highpoly_fern_02
+console hub mesh Mission_05M.Vegetation.highpoly_fern_02 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark Mission_05M.Vegetation.swamp_smalltree_deco
+console hub mesh Mission_05M.Vegetation.swamp_smalltree_deco 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark JungleM.Tree.Bumbershoot_stack1
+console hub mesh JungleM.Tree.Bumbershoot_stack1 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+mark JungleM.Plant.Plant_2_Elephantine
+console hub mesh JungleM.Plant.Plant_2_Elephantine 1.0
+wait 1.2
+shot
+turn 30 0 0.2
+wait 0.3
+quit

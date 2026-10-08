@@ -1,0 +1,10 @@
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 120
+wait 2
+console togglehud
+shot
+turn 180 0 0.5
+shot
+dump HoverBike Location
+quit

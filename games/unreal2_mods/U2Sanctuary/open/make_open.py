@@ -21,7 +21,7 @@ with the land shaped by the site plan instead of one trail:
   - landmarks from the Mission_08M / Terran kits: the plant's comm tower (the weenie seen from the LZ), its tanks
     and superstructure, the power plant's stacks, pad lights; scales are first guesses for the review pass
 """
-import math, os, random, sys
+import json, math, os, random, sys
 
 import numpy as np
 
@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(GAME, "U2Hover"))
 sys.path.insert(0, HERE)
 from make_map import write_ase, tri_facing, actor, NO_COLLISION, ROCKS  # noqa
 import plan as S  # noqa
+import playable  # noqa
 
 WORLD = S.WORLD
 N = 240
@@ -200,6 +201,10 @@ def basin_water(H):
     return (verts, uvs, tris), z
 
 
+CANOPY = ["Flora_M.Tree.Tree1_clump1", "Flora_M.Tree.Tree1_clump1", "Mission_05M.Vegetation.Swamp_tree_new_001"]
+MID = ["JungleM.Tree.Bumbershoot_stack1", "Mission_05M.Vegetation.highpoly_fern_02", "Mission_05M.Vegetation.highpoly_fern_03c"]
+UNDER = ["JungleM.Plant.Plant_2_Elephantine", "JungleM.Plant.Plant_1", "Mission_08M.M08B_Outside.TestFern1",
+         "Mission_05M.Vegetation.m08_grass_001", "Mission_05M.Vegetation.SwampPlantA01"]
 JTREES = ["JungleM.Tree.Bumbershoot_stack1"]
 JPLANTS = ["JungleM.Plant.Plant_2_Elephantine", "JungleM.Plant.Plant_1", "Mission_08M.M08B_Outside.TestFern1",
            "Mission_05M.Vegetation.SwampPlantA01"]
@@ -248,25 +253,36 @@ def write_actors(H, dist_road, water_z, path):
                 return q["id"]
         return None
     lim = WORLD - 2500
-    n_tree = n_plant = 0
-    # the jungle: trees off the roads and the places (a wall the bike drives between), plants under them
-    for _ in range(26000):
+    counts = {"canopy": 0, "mid": 0, "under": 0}
+    CAP = {"canopy": 1500, "mid": 1300, "under": 2800}
+    # the jungle in three layers (the canopy survey, 2026-10-08: Flora_M's Tree1_clump1 and Mission_05M's big swamp
+    # tree read as rainforest; JungleM's umbrella plants and the high-poly fern are the middle; the Sanctuary maps'
+    # own big-leaf plants the floor). Densest in the band the player sees from the roads and places (0.9-3.5 km of
+    # UU from them), thin deep inside where nobody looks: the frame rate goes to what is seen.
+    for _ in range(60000):
         x, y = random.uniform(-lim, lim), random.uniform(-lim, lim)
-        dr, pl = droad(x, y), place_at(x, y, 1.15)
+        dr, pl = droad(x, y), place_at(x, y, 1.1)
         if pl in ("pit", "basin", "plant", "power", "pad", "lz", "shaft"):
             continue
         if pl == "field":
-            if random.random() < 0.015:
+            if random.random() < 0.01:
                 prop(random.choice(STUMPS + DEADTREES), x, y, random.uniform(0.4, 0.7), sink=12)
             continue
-        if dr < 900:
+        if dr < 750:
             continue
-        if dr > 1700 and n_tree < 1100 and random.random() < 0.06:
-            prop(random.choice(JTREES), x, y, random.uniform(0.8, 1.4), sink=30)
-            n_tree += 1
-        elif n_plant < 2600 and random.random() < 0.14:
-            prop(random.choice(JPLANTS + JGRASS + VINES), x, y, random.uniform(0.8, 1.6), sink=6, collide=False)
-            n_plant += 1
+        near = 1.0 if dr < 3500 else 0.35
+        r = random.random()
+        if dr > 1300 and counts["canopy"] < CAP["canopy"] and r < 0.05 * near:
+            prop(random.choice(CANOPY), x, y, random.uniform(0.9, 1.5), sink=30)
+            counts["canopy"] += 1
+        elif counts["mid"] < CAP["mid"] and r < 0.09 * near:
+            mesh = random.choice(MID)
+            prop(mesh, x, y, random.uniform(1.0, 1.8), sink=10, collide=mesh.startswith("JungleM.Tree"))
+            counts["mid"] += 1
+        elif counts["under"] < CAP["under"] and r < 0.2 * near:
+            prop(random.choice(UNDER), x, y, random.uniform(1.0, 2.2), sink=6, collide=False)
+            counts["under"] += 1
+    n_tree, n_plant = counts["canopy"] + counts["mid"], counts["under"]
     # the cleared field: haul debris and pipe racks as cover (stand-ins)
     f = next(q for q in S.PLACES if q["id"] == "field")
     for _ in range(26):
@@ -283,11 +299,14 @@ def write_actors(H, dist_road, water_z, path):
         if droad(x, y) > 600:
             s = random.uniform(1.5, 3.5)
             prop(random.choice(ROCKS), x, y, s, sink=8 * s, rot=(random.randint(-2500, 2500), random.randint(0, 65535), random.randint(-2500, 2500)))
-    # landmarks
-    for pid, items in LANDMARK.items():
-        q = next(x for x in S.PLACES if x["id"] == pid)
-        for mesh, (dx, dy), s in items:
-            prop(mesh, q["x"] + dx, q["y"] + dy, s, sink=10)
+    # the places, laid out by playable.py (the town generator's fork for combat arenas): buildings, gates, enemy
+    # spawn sheds, cover clusters and the high spot, the Manta's lanes kept clear
+    PL = playable.layout_all()
+    json.dump(PL, open(os.path.join(OUT, "playable.json"), "w"), indent=1)
+    for pid, area in PL.items():
+        for o in area["props"]:
+            yaw = int(o["yaw"] * 65536 / 360) & 65535
+            prop(o["mesh"], o["x"], o["y"], o.get("scale", 1.0), sink=8, rot=(0, yaw, 0))
     # sky, sun (low, behind the plant from the LZ: dusk, the key art's light), start at the LZ facing the plant
     out.append(actor("SkyZoneInfo", "SkyZoneInfo0", (0, 0, SKY_Z)))
     out.append(actor("StaticMeshActor", "SkyBox", (0, 0, SKY_Z),
@@ -297,8 +316,11 @@ def write_actors(H, dist_road, water_z, path):
     yaw = int(math.atan2(plant["y"] - lz["y"], plant["x"] - lz["x"]) * 32768 / math.pi) & 65535
     out.append(actor("SunLight", "Sun0", (0, 0, 2500), "    LightBrightness=190.0\n    LightHue=20\n    LightSaturation=150\n", (-5200, (yaw + 32768) & 65535, 0)))
     out.append(actor("ZoneInfo", "ZoneInfo0", (0, 0, 0), "    AmbientBrightness=34\n    AmbientHue=140\n    AmbientSaturation=200\n"
-                     "    bDistanceFog=True\n    DistanceFogColor=(R=46,G=52,B=44)\n    DistanceFogStart=6000\n    DistanceFogEnd=38000\n"))
-    out.append(actor("PlayerStart", "PlayerStart0", (lz["x"], lz["y"], FLOOR_Z + sample(H, lz["x"], lz["y"]) + 150), "", (0, yaw, 0)))
+                     "    bDistanceFog=True\n    DistanceFogColor=(R=46,G=52,B=44)\n    DistanceFogStart=3500\n    DistanceFogEnd=20000\n"))
+    # the start: off the dropship's ramp, 1600 up the haul road, facing the plant
+    a = yaw * math.pi / 32768
+    sx, sy = lz["x"] + 1600 * math.cos(a), lz["y"] + 1600 * math.sin(a)
+    out.append(actor("PlayerStart", "PlayerStart0", (sx, sy, FLOOR_Z + sample(H, sx, sy) + 150), "", (0, yaw, 0)))
     out.append("End Map\n")
     open(path, "w").write("".join(out))
     return n_tree, n_plant, k[0]

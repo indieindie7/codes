@@ -1,0 +1,19 @@
+# sanctuary_open_fog: does a nearer fog end (the far clip in UE2) buy frame rate on Sanctuary Open? 3 x 31 s at the LZ
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 120
+wait 2
+console god
+look 300 0
+wait 31
+console set ZoneInfo DistanceFogEnd 16000
+console set ZoneInfo DistanceFogStart 3000
+wait 1
+shot
+wait 30
+console set ZoneInfo DistanceFogEnd 10000
+console set ZoneInfo DistanceFogStart 2000
+wait 1
+shot
+wait 30
+quit

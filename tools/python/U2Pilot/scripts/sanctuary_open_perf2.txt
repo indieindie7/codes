@@ -1,0 +1,41 @@
+# sanctuary_open_perf2: frame rate + looks after the jungle and playable-areas pass
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 120
+wait 2
+console god
+console togglehud
+look -60 0
+shot
+wait 30
+mark plant
+console hub tp -845 366 0
+wait 1.5
+look -50 -6
+wait 1
+shot
+mark power
+console hub tp -14583 -13056 0
+wait 1.5
+look -146 -6
+wait 1
+shot
+mark field
+console hub tp -3977 -6615 0
+wait 1.5
+look -157 -6
+wait 1
+shot
+mark pit
+console hub tp 7929 -5036 0
+wait 1.5
+look -14 -6
+wait 1
+shot
+console hub tp -14000 19000 0
+wait 1
+console hub tpto HoverBike 120
+wait 0.5
+move 1 0 1.0
+move 1 0 31
+quit

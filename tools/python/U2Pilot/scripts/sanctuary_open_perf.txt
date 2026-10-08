@@ -1,0 +1,15 @@
+# sanctuary_open_perf: frame rate on Sanctuary Open (the fork's perf lines every 30 s in U2Shaders.log + PilotDriver
+# fps samples): stand at the LZ looking at the jungle and the plateau, then drive the haul road to the plant and on
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 120
+wait 2
+console god
+console stat fps
+wait 31
+console hub tpto HoverBike 120
+wait 0.5
+move 1 0 1.0
+move 1 0 32
+shot
+quit

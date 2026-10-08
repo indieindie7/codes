@@ -21,6 +21,24 @@ The key images are in `Documents\design-refs\sanctuary_concepts` (sheet_artist.j
 - **Build:** `make_open.py` (terrain tiles from the DEM plus the site plan, jungle, landmarks) → `build_open.py assets` → `build_open.py map` → `Maps\PrairieSanctuary.un2`. "Prairie*" maps get the Manta from U2Hover's mutator.
 - **Test:** `tools/python/U2Pilot/scripts/sanctuary_open_drive.txt`.
 
+## Phase 2 (2026-10-08): jungle, playable areas, frame rate
+- **Frame rate:** the zone's distance fog end is UE2's far clip. At the LZ: 38000 gives 63 fps, 16000 gives 163, 10000 gives 253. U2 has no per-actor cull distance. The map uses 3500..20000: a humid jungle haze (the key art's look) plus the clip.
+  After the pass, with twice the vegetation: LZ 73 fps (1% low 79), touring and driving 120 fps (1% low 82). It was 62/101 before.
+- **Jungle:** three layers chosen by an in-game canopy survey (`tools/python/U2Pilot/scripts/sanctuary_open_trees.txt`):
+  - Flora_M Tree1_clump1 + Mission_05M Swamp_tree_new_001 (canopy);
+  - JungleM Bumbershoot + high-poly ferns (middle);
+  - Elephantine / Plant_1 / ferns / grass (floor).
+  - Densest within 3500 UU of the roads and places, thin deep inside. Flora_M's Tree_S meshes are bare dead branches floating in the air: not used.
+- **Playable areas:** `playable.py` is a fork of the town generator (layout_spine plots + town.py rerolls) for combat arenas. Per place:
+  - the Liandri prefab kit (AvalonSM B_<id> buildings, binder footprints);
+  - the Manta's lanes kept clear from every entry to the centre;
+  - enemy spawn sheds on the far side from the player's first entry, doors to the centre;
+  - cover clusters 256-1024 UU out until >= 4 pieces and 30-80 % of the 16 sightlines are broken;
+  - a high spot;
+  - the best of 24 seeds by the level designer's arena score.
+  - Scores: plant 0.94, field 1.00, pit 1.00, power 0.88, pad 0.92, LZ 0.83. See `playable.png` and `playable.json` (spawn doors for the enemy pass).
+- Shots: `drive_test_2.png` (the places), `lz_start.png` (the start, off the dropship).
+
 ## Status (phase 1, 2026-10-08)
 Built and driven: the bike boards at the LZ and climbs ~1100 UU up the escarpment to the plateau at cruise speed (`drive_test_1.png`).
 
