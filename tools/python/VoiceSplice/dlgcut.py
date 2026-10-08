@@ -160,6 +160,17 @@ def main():
     if keep != list(range(keep[0], keep[-1] + 1)):
         raise SystemExit("keep one run of sentences (a gap in the middle needs a splice, not a cut)")
     t0, t1 = sp[keep[0] - 1][0], sp[keep[-1] - 1][1]
+    # a breath or a tail between two sentences sits between two short pauses: start the kept span in the LAST pause
+    # before its speech (and end it in the first pause after), so it doesn't open on a breath
+    fine, _, _ = pauses(x, 0.03)
+    if keep[0] > 1:
+        later = [g for g in fine if t0 - 0.05 <= g[0] <= t0 + 0.35]
+        if later:
+            t0 = max(t0, (later[-1][0] + later[-1][1]) / 2)
+    if keep[-1] < len(sents):
+        sooner = [g for g in fine if t1 - 0.35 <= g[1] <= t1 + 0.05]
+        if sooner:
+            t1 = min(t1, (sooner[0][0] + sooner[0][1]) / 2)
     y = x[int(t0 * SR):int(t1 * SR)].copy()
     f = int(0.012 * SR)
     y[:f] *= np.linspace(0, 1, f)
