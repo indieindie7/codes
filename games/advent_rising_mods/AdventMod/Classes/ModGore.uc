@@ -198,6 +198,32 @@ var array<Spurt> Spurts;
 var config float SpurtChance;        // the share of wounds that spurt
 var config float SpurtBeat;          // seconds between pulses
 var config float SpurtReach;         // how far a pulse carries
+// goo strings (the d3d8 layer's strings.hpp, strings=1 in U2Shaders.ini): sticky strands stretched
+// between body parts that just came apart (a severed limb and its stump, gib pieces of one body).
+// They pull a little on the flying pieces, snap once stretched past their limit (or when old),
+// and the layer plays the snap: two halves hanging from the ends, shortening and dripping.
+struct GooString
+{
+	var Actor A, B;        // the ends: actors (gib pieces), or A None: P's bone
+	var Pawn P;
+	var name Bone;
+	var float RA, RB;      // an actor end is pulled in from its centre toward the other end by this
+	var int Kind, Slot, Seed;
+	var float Thick, Rest, Limit, Born, Life, SnapAt;   // SnapAt < 0: whole
+	var float Hold;                                    // seconds it can't break by stretching (but a hard over-stretch)
+	var bool bDied;        // P was dead with it: gone when the game reuses the pawn
+};
+var array<GooString> Goo;
+var array<ModGib> GooMade;        // SpawnGibs: the pieces it just threw (for GooGibs)
+var int GooSlots[12];              // 1: the layer's slot is taken
+var config bool bGooStrings;
+var config float GooRestMin, GooRestMax;        // a string's own length (world units, scaled with the body)
+var config float GooStretchMin, GooStretchMax;  // it snaps past rest length times this (random between)
+var config float GooLifeMin, GooLifeMax;        // ...or after this many seconds
+var config float GooThick;                      // its radius (world units)
+var config float GooDangle;                     // seconds the snapped halves are drawn before the slot is freed
+var config float GooPull;                       // how hard a stretched string pulls on a flying piece
+var config float GooHoldMin, GooHoldMax;        // seconds a fresh string holds before it may snap
 var string LastGuns;                // bGoreLog
 var array<Actor> Seen;
 var array<Projectile> Shots;       // projectiles in flight: where they were and how fast,
@@ -278,6 +304,8 @@ event PostBeginPlay()
 	class'ModSettings'.static.Note("gore: watching hits");
 	if (bBodyStreaks)
 		class'ModSettings'.static.NativeCall("Blood:streakclear");   // the last level's are gone
+	if (bGooStrings)
+		class'ModSettings'.static.NativeCall("Blood:stringclear");
 }
 
 
@@ -719,6 +747,7 @@ function int SpawnGibs(int Set, int Kind, vector Feet, int Yaw, float K, vector 
 	Mid = Feet + vect(0,0,1) * T.default.Sets[Set].Height * K * 0.55;
 	R.Yaw = Yaw - 16384;    // the meshes' forward is their Y
 	Speed = GibSpeed * FClamp(0.8 + Damage / 600.0, 0.8, 1.6);
+	GooMade.Length = 0;
 	for (i = 0; i < T.default.Parts.Length; i++)
 	{
 		if (T.default.Parts[i].Set != T.default.Sets[Set].Name || T.default.Parts[i].Mesh == None)
@@ -751,11 +780,14 @@ function int SpawnGibs(int Set, int Kind, vector Feet, int Yaw, float K, vector 
 		V = Normal(W - Mid + VRand() * 10) * Speed * Push * (0.6 + 0.8 * FRand()) + Dir * Speed * 0.7 * Push + vect(0,0,1) * Speed * (0.4 + 0.5 * FRand());
 		G.Launch(V, PhysicsVolume.Gravity.Z, MinSize * K * 0.5);
 		Gibs[Gibs.Length] = G;
+		GooMade[GooMade.Length] = G;
 	}
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: " $ n $ " gib parts at " $ Feet);
 	if (n == 0)
 		return 0;
+	GooGibs(Kind, K);            // goo strings between neighbouring pieces
+	GooMade.Length = 0;
 	// a burst of blood all round, and the body gone
 	for (i = 0; i < 6; i++)
 	{
@@ -1596,6 +1628,8 @@ event Tick(float DeltaTime)
 	TrackShots();
 	if (bBodyStreaks)
 		SendStreaks();
+	if (Goo.Length > 0)
+		SendGoo(DeltaTime);
 	if (bBleedTrail)
 		BleedTrails(DeltaTime);
 	Spurts_(DeltaTime);
@@ -2163,6 +2197,222 @@ function SendStreaks()
 	}
 }
 
+// a goo string between two ends: actor A (or, with A None, P's bone) and actor B; Thick a
+// multiplier on GooThick, K the body's scale. False: no free slot (12 at most)
+function bool AddGoo(Actor A, Pawn P, name Bone, Actor B, int Kind, float Thick, float K)
+{
+	local GooString G;
+	local int s;
+	local float D;
+
+	if (!bGooStrings || !bBlood || Kind == 0 || B == None || (A == None && (P == None || Bone == '')))
+		return false;
+	for (s = 0; s < 12; s++)
+		if (GooSlots[s] == 0)
+			break;
+	if (s == 12)
+		return false;
+	G.A = A;
+	G.B = B;
+	G.P = P;
+	G.Bone = Bone;
+	G.Kind = Kind;
+	G.Slot = s;
+	G.Seed = 1 + Rand(60000);
+	G.Thick = GooThick * Thick * FClamp(K, 0.6, 1.6);
+	if (ModGib(A) != None)
+		G.RA = ModGib(A).Radius * 0.8;
+	if (ModGib(B) != None)
+		G.RB = ModGib(B).Radius * 0.8;
+	G.Born = Level.TimeSeconds;
+	G.SnapAt = -1;
+	Goo[Goo.Length] = G;
+	// the length it rests at: at least what is between the ends now (it starts slack: it hangs)
+	D = VSize(GooEnd(Goo.Length - 1, true) - GooEnd(Goo.Length - 1, false));
+	Goo[Goo.Length - 1].Rest = FMax(D, (GooRestMin + FRand() * (GooRestMax - GooRestMin)) * FClamp(K, 0.6, 1.6));
+	Goo[Goo.Length - 1].Limit = GooStretchMin + FRand() * (GooStretchMax - GooStretchMin);
+	Goo[Goo.Length - 1].Hold = GooHoldMin + FRand() * (GooHoldMax - GooHoldMin);
+	Goo[Goo.Length - 1].Life = GooLifeMin + FRand() * (GooLifeMax - GooLifeMin);
+	GooSlots[s] = 1;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: goo string " $ s $ " from " $ A $ P $ " " $ Bone $ " to " $ B $ ", rest " $ Goo[Goo.Length - 1].Rest $ ", snaps at x" $ Goo[Goo.Length - 1].Limit);
+	return true;
+}
+
+// where string i's end is now (bB: end B)
+function vector GooEnd(int i, bool bB)
+{
+	local Actor E, O;
+	local vector OL;
+	local float R;
+
+	if (bB)
+	{
+		E = Goo[i].B;
+		O = Goo[i].A;
+		R = Goo[i].RB;
+	}
+	else
+	{
+		E = Goo[i].A;
+		O = Goo[i].B;
+		R = Goo[i].RA;
+	}
+	if (E == None)
+		return Goo[i].P.GetBoneCoords(Goo[i].Bone).Origin;
+	if (O != None)
+		OL = O.Location;
+	else
+		OL = Goo[i].P.GetBoneCoords(Goo[i].Bone).Origin;
+	if (VSize(OL - E.Location) > R * 2)
+		return E.Location + Normal(OL - E.Location) * R;
+	return E.Location;
+}
+
+// is one of string i's ends gone (or hidden: a body blown apart)?
+function bool GooLost(int i)
+{
+	if (Goo[i].B == None || Goo[i].B.bDeleteMe || Goo[i].B.bHidden)
+		return true;
+	if (Goo[i].A != None)
+		return Goo[i].A.bDeleteMe || Goo[i].A.bHidden;
+	return Goo[i].P == None || Goo[i].P.bDeleteMe || Goo[i].P.bHidden;
+}
+
+function GooOff(int i)
+{
+	if (Goo[i].Slot >= 0 && Goo[i].Slot < 12)
+		GooSlots[Goo[i].Slot] = 0;
+	class'ModSettings'.static.NativeCall("Blood:stringoff " $ Goo[i].Slot);
+	Goo.Remove(i, 1);
+}
+
+// every tick: stretch, pull, snap, and the live strings' ends to the layer
+function SendGoo(float DeltaTime)
+{
+	local int i;
+	local vector EA, EB, Dir, HitL, HitN;
+	local float D, Age, Snap;
+	local ModGib G;
+
+	for (i = Goo.Length - 1; i >= 0; i--)
+	{
+		if (Goo[i].P != None && !Goo[i].P.bDeleteMe && Goo[i].P.Health <= 0)
+			Goo[i].bDied = true;
+		if (Goo[i].A == None && Goo[i].P != None && !Goo[i].P.bDeleteMe && Goo[i].bDied && Goo[i].P.Health > 0)
+		{
+			GooOff(i);                   // the game brought the body back
+			continue;
+		}
+		if (GooLost(i))
+		{
+			if (Goo[i].B == None || Goo[i].B.bDeleteMe || (Goo[i].A != None && Goo[i].A.bDeleteMe)
+				|| (Goo[i].A == None && (Goo[i].P == None || Goo[i].P.bDeleteMe)))
+			{
+				GooOff(i);                   // an end is gone
+				continue;
+			}
+			if (Goo[i].SnapAt < 0)
+				Goo[i].SnapAt = Level.TimeSeconds;      // hidden, not gone: it snaps
+		}
+		Age = Level.TimeSeconds - Goo[i].Born;
+		if (Goo[i].SnapAt >= 0 && Level.TimeSeconds - Goo[i].SnapAt > GooDangle)
+		{
+			GooOff(i);
+			continue;
+		}
+		EA = GooEnd(i, false);
+		EB = GooEnd(i, true);
+		D = VSize(EB - EA);
+		if (Goo[i].SnapAt < 0)
+		{
+			// goo holds a moment before it breaks: under GooHold seconds only a hard over-stretch snaps it,
+			// so it shows as a long thinning strand instead of breaking in the first frames of a throw
+			if ((D > Goo[i].Rest * Goo[i].Limit && (Age > Goo[i].Hold || D > Goo[i].Rest * Goo[i].Limit * 4)) || Age > Goo[i].Life)
+			{
+				Goo[i].SnapAt = Level.TimeSeconds;
+				if (class'ModSettings'.default.bGoreLog)
+					class'ModSettings'.static.Note("gore: goo string " $ Goo[i].Slot $ " snaps at " $ D $ " (rest " $ Goo[i].Rest $ ", age " $ Age $ ")");
+				// what it held drips down: a small splat under the middle
+				if (Trace(HitL, HitN, (EA + EB) * 0.5 - vect(0,0,400), (EA + EB) * 0.5, false) != None)
+					Mark(KindSplat(Goo[i].Kind), HitL, HitN, vect(0,0,0), DecalScale * (0.2 + 0.1 * FRand()));
+			}
+			else if (D > Goo[i].Rest && GooPull > 0)
+			{
+				// stretched: it drags on the pieces still flying
+				Dir = Normal(EB - EA);
+				G = ModGib(Goo[i].B);
+				if (G != None && !G.bSettled)
+					G.Vel -= Dir * GooPull * (D - Goo[i].Rest) * DeltaTime;
+				G = ModGib(Goo[i].A);
+				if (G != None && !G.bSettled)
+					G.Vel += Dir * GooPull * (D - Goo[i].Rest) * DeltaTime;
+			}
+		}
+		Snap = -1;
+		if (Goo[i].SnapAt >= 0)
+			Snap = Level.TimeSeconds - Goo[i].SnapAt;
+		class'ModSettings'.static.NativeCall("Blood:string " $ Goo[i].Slot $ " " $ EA.X $ " " $ EA.Y $ " " $ EA.Z $ " " $ EB.X $ " " $ EB.Y $ " " $ EB.Z
+			$ " " $ Goo[i].Kind $ " " $ Goo[i].Thick $ " " $ Goo[i].Rest $ " " $ Age $ " " $ Snap $ " " $ Goo[i].Seed);
+	}
+}
+
+// strings between pieces of one body just blown apart: each from a random piece to the one
+// that was nearest it on the body (its neighbour), 1-3 of them
+function GooGibs(int Kind, float K)
+{
+	local int n, j, i, Near, Tries;
+	local float D, BestD;
+	local array<int> Used;
+
+	if (!bGooStrings || GooMade.Length < 2)
+		return;
+	n = 1 + Rand(3);
+	while (n > 0 && Tries < 8)
+	{
+		Tries++;
+		i = Rand(GooMade.Length);
+		Near = -1;
+		BestD = 1000000;
+		for (j = 0; j < GooMade.Length; j++)
+		{
+			if (j == i || GooMade[j] == None)
+				continue;
+			D = VSize(GooMade[j].Location - GooMade[i].Location);
+			if (D < BestD)
+			{
+				BestD = D;
+				Near = j;
+			}
+		}
+		if (Near < 0 || GooMade[i] == None)
+			continue;
+		// not the same pair twice
+		for (j = 0; j < Used.Length; j += 2)
+			if ((Used[j] == i && Used[j + 1] == Near) || (Used[j] == Near && Used[j + 1] == i))
+				break;
+		if (j < Used.Length)
+			continue;
+		if (!AddGoo(GooMade[i], None, '', GooMade[Near], Kind, 0.6 + 0.5 * FRand(), K))
+			return;
+		Used[Used.Length] = i;
+		Used[Used.Length] = Near;
+		n--;
+	}
+}
+
+// ModPilot GOOLIST: the live strings
+function GooList()
+{
+	local int i;
+
+	for (i = 0; i < Goo.Length; i++)
+		class'ModSettings'.static.Note("goolist: slot " $ Goo[i].Slot $ " " $ Goo[i].A $ Goo[i].P $ " " $ Goo[i].Bone $ " - " $ Goo[i].B
+			$ " length " $ VSize(GooEnd(i, true) - GooEnd(i, false)) $ " rest " $ Goo[i].Rest $ " limit x" $ Goo[i].Limit
+			$ " age " $ (Level.TimeSeconds - Goo[i].Born) $ " snapped " $ (Goo[i].SnapAt >= 0));
+	class'ModSettings'.static.Note("goolist: " $ Goo.Length $ " strings");
+}
+
 // wounds go with their body: when it is removed, blown apart or brought back to life
 function CheckWounds()
 {
@@ -2517,6 +2767,18 @@ defaultproperties
      bBodyStreaks=True
      StreakLife=60.000000
      StreaksPerBody=4
+     bGooStrings=True
+     GooRestMin=18.000000
+     GooRestMax=30.000000
+     GooStretchMin=2.500000
+     GooStretchMax=5.000000
+     GooLifeMin=6.000000
+     GooLifeMax=12.000000
+     GooThick=2.400000
+     GooDangle=3.200000
+     GooPull=14.000000
+     GooHoldMin=0.500000
+     GooHoldMax=1.800000
      MaxWounds=48
      WoundsPerBody=5
      SpurtChance=0.350000

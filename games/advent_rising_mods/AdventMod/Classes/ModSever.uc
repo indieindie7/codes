@@ -150,6 +150,7 @@ function Sever(Pawn P, int c, vector Dir)
 	local string Parts, Part;
 	local class<Emitter> Spurt;
 	local Emitter E;
+	local ModGib G, First, Second;
 
 	Set = Gore.GibSet(P);
 	Kind = Gore.BloodKind(P);
@@ -179,8 +180,24 @@ function Sever(Pawn P, int c, vector Dir)
 			Parts = Mid(Parts, i + 1);
 		}
 		V = Normal(Dir + VRand() * 0.3) * (260 + 160 * FRand()) + vect(0,0,1) * (180 + 120 * FRand());
-		if (Gore.ThrowPart(Set, Kind, Part, Spot + VRand() * 4 + vect(0,0,1) * 6 * n, P.Rotation.Yaw, K, V) != None)
+		G = Gore.ThrowPart(Set, Kind, Part, Spot + VRand() * 4 + vect(0,0,1) * 6 * n, P.Rotation.Yaw, K, V);
+		if (G != None)
+		{
 			n++;
+			if (First == None)
+				First = G;
+			else if (Second == None)
+				Second = G;
+		}
+	}
+	// goo strings from the stump to the piece (sometimes two), and between upper and lower arm
+	if (First != None)
+	{
+		Gore.AddGoo(None, P, Cuts[c].Bone, First, Kind, 0.9 + 0.4 * FRand(), K);
+		if (FRand() < 0.4)
+			Gore.AddGoo(None, P, Cuts[c].Bone, First, Kind, 0.45 + 0.3 * FRand(), K);
+		if (Second != None && FRand() < 0.6)
+			Gore.AddGoo(First, None, '', Second, Kind, 0.6 + 0.3 * FRand(), K);
 	}
 	// a spurt from the cut: the game's own blood burst for this body, and blood around
 	Gore.CutBlood(Spot, Dir, Kind);

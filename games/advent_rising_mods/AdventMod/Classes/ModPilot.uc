@@ -488,6 +488,54 @@ function GibList()
 	Note("giblist: " $ n $ " gibs, player at " $ PC().Pawn.Location);
 }
 
+function GooList()
+{
+	local ModGore G;
+
+	foreach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None)
+		Note("goolist: no ModGore");
+	else
+		G.GooList();
+}
+
+function GooSever(int c)
+{
+	local ModGore G;
+	local Pawn P, Best;
+	local float D, BestD;
+
+	foreach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None || G.Severer == None || PC() == None || PC().Pawn == None || c < 0 || c >= G.Severer.Cuts.Length)
+	{
+		Note("goosever: no ModGore, no player or no cut " $ c);
+		return;
+	}
+	BestD = 1000000;
+	foreach DynamicActors(class'Pawn', P)
+	{
+		if (P == PC().Pawn || P.bHidden || G.GibSet(P) < 0)
+			continue;
+		D = VSize(P.Location - PC().Pawn.Location);
+		if (P.Health > 0)
+			D += 5000;                   // a corpse first
+		if (D < BestD)
+		{
+			BestD = D;
+			Best = P;
+		}
+	}
+	if (Best == None)
+	{
+		Note("goosever: no character with a gib set");
+		return;
+	}
+	G.Severer.Sever(Best, c, Normal(Best.Location - PC().Pawn.Location));
+	Note("goosever: " $ Best $ " loses " $ G.Severer.Cuts[c].Bone $ "; " $ G.Goo.Length $ " goo strings");
+}
+
 function Blade(bool bDrop, float Dist)
 {
 	local ModGore G;
@@ -757,6 +805,15 @@ function StartStep()
 		break;
 	case "GIBLIST":
 		GibList();
+		break;
+	case "GOOLIST":
+		// the live goo strings (ModGore): ends, length against rest, age, snapped
+		GooList();
+		break;
+	case "GOOSEVER":
+		// GOOSEVER [cut]: the nearest other character (a corpse first) loses a part (ModSever.Cuts
+		// index, default 3: the right arm at the shoulder), with its goo strings
+		GooSever(int(ArgF(1, 3)));
 		break;
 	case "BLADE":
 		// BLADE: the energy blade in the player's hands; BLADE DROP [distance]: one lying ahead

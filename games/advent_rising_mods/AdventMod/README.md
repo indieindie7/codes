@@ -93,6 +93,41 @@ the U2Shaders `d3d8.dll` draws it per pixel in world space (`streaks.hpp` in the
 - `py tools/streaks_sim.py [out.png] [width length speed drysecs]` renders the same maths on
   a cylinder at several ages (`tools/streaks_sim.png`), to tune without the game.
 
+**Goo strings (2026-10-08, untested in game).** Sticky strands of blood (purple for Seekers)
+stretch between body parts that just came apart, sag under gravity, thin as they stretch, wobble,
+and snap once stretched past a limit, leaving two short dangling ends that drip. The U2Shaders
+`d3d8.dll` draws them (`strings.hpp` in the fork); `ModGore` owns the pairs:
+
+- A cut (`ModSever.Sever`) makes a string from the cut bone to the thrown piece (40%: a second,
+  thinner one), and 60% one between the upper and lower arm/leg when both fly. A body blown apart
+  (`SpawnGibs`) makes 1-3, each from a random piece to its nearest neighbour on the body. At most
+  12 at once (the layer's slots).
+- Each starts slack: its rest length is `GooRestMin`-`GooRestMax` (18-30, scaled with the body)
+  or the gap if that is longer. It snaps past rest x `GooStretchMin`-`GooStretchMax` (1.6-3, random
+  per string), after `GooLifeMin`-`GooLifeMax` seconds (6-12), or when an end is hidden; a small
+  splat lands under its middle. While stretched it pulls on a flying piece (`GooPull`). The halves
+  are drawn for `GooDangle` seconds (3.2), then the slot is freed.
+- Every tick each live string goes through AdventNative: `Blood:string K ax ay az bx by bz kind
+  radius rest age snap seed` (snap: seconds since it snapped, -1 whole), `Blood:stringoff K` when
+  done, `Blood:stringclear` at level start.
+- The layer draws them once a frame after the world, before the post chain and the HUD (at the
+  first HUD draw), with the scene's view, projection, viewport and fog, depth tested against the
+  game's depth: a camera-facing strip of 16 segments along a curve that sags with the slack
+  (the middle on a damped spring, so it wobbles when the ends jerk), thinner in the middle when
+  stretched, a blob at each end. Shading: a wet cylinder (dark body, specular stripe, wet rim, the
+  thin middle translucent) times a scene light level. Snapped: each half whips back, falls to
+  hang, shortens to a stub over ~1 s, and drips (a bead swells and drops fall).
+- `U2Shaders.ini`: `strings=1` (off when missing), `stringparams=` thickness sag stretch life
+  (multipliers on radius, sag and middle thinning; the halves' shortening time in seconds; 1 1 1 1),
+  `stringfx=` light gloss opacity rim (0.55 1 0.9 0.5). `[AdventMod.ModGore]`: `bGooStrings`,
+  `GooRestMin/Max`, `GooStretchMin/Max`, `GooLifeMin/Max`, `GooThick` (radius, 0.9), `GooDangle`,
+  `GooPull`.
+- Pilot: `GOOSEVER [cut]` (the nearest other character, a corpse first, loses part `cut` of
+  `ModSever.Cuts`, default 3: the right arm), `GOOLIST` (the live strings), `GIBAHEAD` (gibs, with
+  strings).
+- `py tools/strings_sim.py [out.png] [thickness sag stretch life]` renders the same maths from the
+  side, a piece thrown off a stump, over time (`tools/strings_sim.png`).
+
 ## How it works
 
 No stock game file is replaced.

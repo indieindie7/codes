@@ -34,8 +34,11 @@ void Note(const wchar_t* Fmt, ...)
 	va_list A;
 	HANDLE F;
 	DWORD N;
+	/* each line starts with the tick count in ms (GetTickCount), as the d3d8 layer's perf lines do,
+	   so a hitch in U2Shaders.log can be matched with what the mod was doing */
+	swprintf(Line, 16, L"[%lu] ", (unsigned long)GetTickCount());
 	va_start(A, Fmt);
-	_vsnwprintf(Line, 1020, Fmt, A);
+	_vsnwprintf(Line + wcslen(Line), 1000, Fmt, A);
 	va_end(A);
 	Line[1020] = 0;
 	wcscat(Line, L"\r\n");
