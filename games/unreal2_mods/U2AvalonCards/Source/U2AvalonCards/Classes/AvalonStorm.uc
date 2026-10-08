@@ -290,7 +290,7 @@ function Roof(vector E)
 	local bool bIn;
 	local int i;
 
-	A = Trace(HitL, HitN, E + vect(0,0,2000), E, false);
+	A = Trace(HitL, HitN, E + vect(0,0,2000), E, true);     // true: static-mesh ceilings count (the command room's)
 	bIn = A != None && (A == Level || A.bWorldGeometry || StaticMeshActor(A) != None);
 	if (bIn == bIndoors)
 		return;

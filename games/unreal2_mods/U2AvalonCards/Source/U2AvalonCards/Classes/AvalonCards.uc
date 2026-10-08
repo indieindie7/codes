@@ -103,6 +103,8 @@ var config float StormClear, StormRamp, StormHold;   // the cycle in seconds; St
 var config float StormGloom;       // 0..1: how much darker the whole view gets (the sky box takes no fog)
 var config vector StormGloomFog;   // the grey added (0..1000 per channel)
 var config int StormClouds;        // how many giant puffs in the cloud deck (0 = none)
+var config int CloudBanks;         // fair-weather cumulus banks (AvalonClouds; 0 = none)
+var config float CloudHeight, CloudSpread;
 var config float StormCloudSize;
 
 // the Liandri public address (AvalonPA): loudspeakers at PASpots[] ("X Y Lift": over whatever is under),
@@ -575,6 +577,23 @@ function Backwater()
 	Log("Cards: backwater radio "$R$" brownout "$B$" lamp "$F);
 }
 
+function Clouds()
+{
+	local AvalonClouds C;
+	local vector V;
+
+	if (CloudBanks <= 0)
+		return;
+	V = SurveyCentre;
+	V.Z = CloudHeight;
+	C = Spawn(class'AvalonClouds',,, V);
+	if (C == None)
+		return;
+	C.Setup(CloudBanks, CloudHeight, CloudSpread, Wind, Texture(DynamicLoadObject(SteamTexture, class'Texture', true)),
+		Texture(DynamicLoadObject(SmokeTexture, class'Texture', true)));
+	Made[Made.Length] = C;
+}
+
 function Storm()
 {
 	local AvalonStorm St;
@@ -791,6 +810,7 @@ function Build()
 	Fly();
 	Motion();
 	Storm();
+	Clouds();
 	Speakers();
 	Backwater();
 
@@ -994,6 +1014,7 @@ function PlaceProp(string Line)
 	// the lowest ground under the footprint, not under the centre: on a slope the base sinks into the uphill
 	// side instead of floating over the downhill one (the user, 2026-10-08: "not look like the base is floating")
 	G = HitL.Z;
+	P.Z = HitL.Z;
 	// word 10 = the footprint's half size in mesh units (the tools' bounds.json; StaticMesh has no script bounds)
 	Ext = 250;
 	if (Word(Line, 10) != "")
@@ -1010,6 +1031,9 @@ function PlaceProp(string Line)
 				G = FMin(G, HitL.Z);
 		}
 	}
+	// but never deeper than 15% of the footprint below the centre's ground: on a peak the lowest point was
+	// ~50 m down the mountain and the crane tower sank into it (2026-10-08)
+	G = FMax(G, P.Z - 0.15 * Ext);
 	P.Z = G - float(Word(Line, 8)) * Scale + float(Word(Line, 5));
 	P -= (C * Scale) >> R;
 	M = Spawn(class'CardMesh',,, P, R);
@@ -1086,6 +1110,9 @@ defaultproperties
 	PAVolume=2.000000
 	StormDrops=320
 	StormClouds=30
+	CloudBanks=14
+	CloudHeight=11000.000000
+	CloudSpread=60000.000000
 	StormCloudSize=16000.000000
 	StormGloom=0.400000
 	StormGloomFog=(X=45,Y=50,Z=60)
