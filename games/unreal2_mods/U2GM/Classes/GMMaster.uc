@@ -21,6 +21,14 @@
 //   gm smooth R           ... smoothed
 //                         (terrain lines are applied by the d3d8 fork, gmterrain=1 in U2Shaders.ini)
 //
+// The fork's panel (gmpanel=1 in U2Shaders.ini, F7) sends commands through System\U2GMPanel.txt,
+// which this actor execs every PanelPoll seconds (0.25 s while the panel is open). Each line there
+// is "gm q SESSION K CMD": it runs once (K above the last one run, or a new SESSION). Extra
+// commands for the panel: gm panel 1|0 (poll fast/slow), gm ray SX SY SZ EX EY EZ (the next
+// command aims along this line instead of the crosshair: a click in the world), gm preview X Y Z
+// YAW (puts the picked actor there without a journal line: the gizmo's live preview).
+// After every command the PanelState config line (U2GM.ini) says what is picked, for the panel.
+//
 // The world is always the map plus its journal: every edit writes a journal
 // line and the world follows; undo and redo change the journal and replay it.
 // A map's static actors can't move (bStatic): the first move swaps one for a
@@ -39,6 +47,11 @@ var config string Ops[256];         // the journal ("@family op ...")
 var config string Palette[32];      // spawnable static meshes (Package.Group.Name)
 var config float GridSize;          // spawn snap in world units (0 = off)
 var config int YawStep;             // spawn and turn snap in degrees
+// the d3d8 fork's panel (gmpanel=1): its command file, polled; the last line run; what the panel shows
+var config float PanelPoll;         // seconds between reads of PanelFile while the panel is closed (0 = off)
+var config string PanelFile;
+var config int PanelSession, PanelSeq;
+var config string PanelState;           // "seq=S:K on=0 poss=0 frz=0 pick=NAME cls=CLASS mesh=PATH loc=X,Y,Z yaw=D scale=S cam=X,Y,Z"
 
 var PlayerController PC;
 var bool bOn;
@@ -54,6 +67,72 @@ var array<int> RedoAt;
 var array<string> RedoWas;
 var Pawn HomePawn, Taken;           // possession: the player's own body, the one taken over
 var Controller TakenAI;
+var bool bPanelFast;                // the panel is open: read its file every 0.25 s
+var float PanelWait, StateWait;
+var bool bRay;                      // gm ray: the next command aims along RayS -> RayE
+var vector RayS, RayE;
+
+event PostBeginPlay()
+{
+	Super.PostBeginPlay();
+	SetTimer(0.25, true);
+}
+
+// the panel's command file, and the PanelState line kept fresh (a picked character walks)
+event Timer()
+{
+	if (PC == None)
+		return;
+	if (PanelPoll > 0 && PanelFile != "")
+	{
+		PanelWait -= 0.25;
+		if (PanelWait <= 0)
+		{
+			PanelWait = PanelPoll;
+			if (bPanelFast)
+				PanelWait = 0.25;
+			PC.ConsoleCommand("exec "$PanelFile);   // its lines run right here, as typed "gm ..." commands
+		}
+	}
+	StateWait -= 0.25;
+	if (StateWait <= 0)
+	{
+		StateWait = 1.0;
+		SaveState();
+	}
+}
+
+// what the panel shows (written only when it changed)
+function SaveState()
+{
+	local string S;
+	local vector E;
+
+	S = "seq="$PanelSession$":"$PanelSeq$" on="$Pick2(bOn, "1", "0")$" poss="$Pick2(Taken != None, "1", "0")$" frz="$Pick2(Level.bPlayersOnly, "1", "0");
+	if (Picked == None || Picked.bDeleteMe)
+		S = S$" pick=- cls=- mesh=- loc=0,0,0 yaw=0 scale=1";
+	else
+	{
+		S = S$" pick="$PickedName$" cls="$string(Picked.Class.Name);
+		if (Picked.StaticMesh != None)
+			S = S$" mesh="$Picked.StaticMesh;
+		else if (Picked.Mesh != None)
+			S = S$" mesh="$Picked.Mesh;
+		else
+			S = S$" mesh=-";
+		S = S$" loc="$Picked.Location.X$","$Picked.Location.Y$","$Picked.Location.Z;
+		S = S$" yaw="$((Picked.Rotation.Yaw & 65535) * 360.0 / 65536.0)$" scale="$Picked.DrawScale;
+	}
+	if (PC != None)
+	{
+		E = EyeSpot();
+		S = S$" cam="$E.X$","$E.Y$","$E.Z;
+	}
+	if (S == PanelState)
+		return;
+	PanelState = S;
+	SaveConfig();
+}
 
 function Say(coerce string S)
 {
@@ -375,6 +454,11 @@ function Actor UnderCrosshair(out vector HitL, out vector HitN)
 
 	S = EyeSpot();
 	E = S + vector(PC.Rotation) * 60000;
+	if (bRay)
+	{
+		S = RayS;
+		E = RayE;
+	}
 	if (PC.Pawn != None)
 		return PC.Pawn.Trace(HitL, HitN, E, S, true);
 	return Trace(HitL, HitN, E, S, true);
@@ -670,7 +754,56 @@ function TerrainBrush(string Kind, float R, float H)
 
 // ---------------------------------------------------------------- the command
 
+// the rest of S after its first N words
+static function string After(string S, int N)
+{
+	local int k;
+
+	while (Left(S, 1) == " ")
+		S = Mid(S, 1);
+	for (k = 0; k < N; k++)
+	{
+		if (InStr(S, " ") < 0)
+			return "";
+		S = Mid(S, InStr(S, " ") + 1);
+		while (Left(S, 1) == " ")
+			S = Mid(S, 1);
+	}
+	return S;
+}
+
 function Command(string Args)
+{
+	RunOne(Args);
+	SaveState();
+}
+
+function RunOne(string Args)
+{
+	local string Cmd, Rest;
+	local int S, K;
+
+	Cmd = Locs(Word(Args, 0));
+	if (Cmd == "q")
+	{
+		// a line of the panel's file: runs once
+		S = int(Word(Args, 1));
+		K = int(Word(Args, 2));
+		if (S == PanelSession && K <= PanelSeq)
+			return;
+		PanelSession = S;
+		PanelSeq = K;
+		Rest = After(Args, 3);
+		if (Locs(Word(Rest, 0)) != "q")
+			RunOne(Rest);
+		return;
+	}
+	DoCommand(Args);
+	if (Cmd != "ray")
+		bRay = false;
+}
+
+function DoCommand(string Args)
 {
 	local string Cmd, A1;
 	local vector V, HitL, HitN;
@@ -691,6 +824,29 @@ function Command(string Args)
 		Say("gm [on|off] | pick [NAME] | info | move DX DY DZ | moveto X Y Z|here | turn DEG | scale S | hide");
 		Say("gm spawn N|PATH | palette [add PATH|clear] | snap SIZE | yawstep DEG | possess | release | freeze | undo | redo | journal");
 		Say("gm raise R H | lower R H | flatten R | smooth R  (terrain at the crosshair, radius R, height H)");
+		Say("the d3d8 fork's panel (F7) also sends: gm panel 1|0 | ray SX SY SZ EX EY EZ | preview X Y Z YAW");
+	}
+	else if (Cmd == "panel")
+	{
+		bPanelFast = A1 == "1";
+		PanelWait = 0;
+	}
+	else if (Cmd == "ray")
+	{
+		RayS.X = float(A1); RayS.Y = float(Word(Args, 2)); RayS.Z = float(Word(Args, 3));
+		RayE.X = float(Word(Args, 4)); RayE.Y = float(Word(Args, 5)); RayE.Z = float(Word(Args, 6));
+		bRay = true;
+	}
+	else if (Cmd == "preview")
+	{
+		// the gizmo's live preview: moved and turned, no journal line (the drag's end sends moveto / turn)
+		if (!Editable())
+			return;
+		V.X = float(A1); V.Y = float(Word(Args, 2)); V.Z = float(Word(Args, 3));
+		Picked.SetLocation(V);
+		R = Picked.Rotation;
+		R.Yaw = int(float(Word(Args, 4)) * 65536.0 / 360.0);
+		Picked.SetRotation(R);
 	}
 	else if (Cmd == "pick")
 	{
@@ -848,6 +1004,8 @@ defaultproperties
 {
 	GridSize=32
 	YawStep=15
+	PanelPoll=2.0
+	PanelFile="U2GMPanel.txt"
 	Palette(0)="Terran_DecoM.Crates.Crate1Low"
 	RemoteRole=ROLE_None
 }

@@ -67,6 +67,18 @@ static AcquireFn g_realAcquire;
 
 static void *g_mouse, *g_keyboard;
 static int g_spoof;             /* "focus on": pretend the window is active and the mouse acquired */
+
+/* ---------------------------------------------------------------- mouse hold (the GM panel)
+ * The d3d8 fork's GM panel (gmpanel=1, F7) calls the exported U2InputHoldMouse(1) when it opens:
+ * the game's mouse is unacquired (so Windows shows the cursor and sends mouse messages to the
+ * panel), the game reads no movement or buttons (no mouse look, no firing; three button releases
+ * first, so a held button doesn't stick), and WinDrv's SetCursorPos / ClipCursor are swallowed.
+ * U2InputHoldMouse(0) gives the mouse back: it is acquired again on the game's next read. */
+enum { DEV_Unacquire = 8 };
+typedef HRESULT (WINAPI *UnacquireFn)(void *self);
+static UnacquireFn g_realUnacquire;
+static volatile LONG g_hold;
+static int g_holdUnacq, g_holdReleases;
 static int g_mouseUsesData, g_keyUsesData, g_mouseUsesState, g_keyUsesState;
 
 /* ---------------------------------------------------------------- injection state */
@@ -134,7 +146,14 @@ static int TakeDue(int dev, Event *out, int max)
 static HRESULT WINAPI HookGetState(void *self, DWORD cb, void *data)
 {
 	int isMouse = self == g_mouse, isKey = self == g_keyboard;
-	HRESULT hr = (g_spoof && (isMouse || isKey)) ? E_FAIL : g_realGetState(self, cb, data);   /* focus mode: injected only */
+	HRESULT hr;
+	if (isMouse && g_hold)
+	{
+		if (data)
+			memset(data, 0, cb);     /* held by the GM panel: no movement, no buttons */
+		return DI_OK;
+	}
+	hr = (g_spoof && (isMouse || isKey)) ? E_FAIL : g_realGetState(self, cb, data);   /* focus mode: injected only */
 	Event due[32];
 	int n, i, injected = 0;
 
@@ -184,6 +203,40 @@ static HRESULT WINAPI HookGetData(void *self, DWORD cbObj, void *rgdod, DWORD *i
 	DWORD cap = inout ? *inout : 0;
 	HRESULT hr;
 	RunPendingExec();
+	if (self == g_mouse && !(flags & 1 /* DIGDD_PEEK */) && (g_hold || g_holdUnacq))
+	{
+		EnterCriticalSection(&g_lock);
+		if (g_hold)
+		{
+			if (!g_holdUnacq)
+			{
+				if (!g_spoof && g_realUnacquire)
+					g_realUnacquire(self);   /* the cursor is the user's again */
+				g_holdUnacq = 1;
+				g_holdReleases = 3;
+				Log("mouse held (GM panel)");
+			}
+			if (inout)
+				*inout = 0;
+			if (g_holdReleases > 0 && inout && rgdod && cap >= 1 && cbObj >= 16)
+			{
+				/* button 0..2 up, so one held when the panel opened doesn't keep firing */
+				DWORD *rec = (DWORD *)rgdod;
+				memset(rec, 0, cbObj);
+				rec[0] = 12 + (3 - g_holdReleases);
+				rec[2] = GetTickCount();
+				rec[3] = g_seq++;
+				*inout = 1;
+				g_holdReleases--;
+			}
+			LeaveCriticalSection(&g_lock);
+			return DI_OK;
+		}
+		g_holdUnacq = 0;
+		if (!g_spoof)
+			Log("mouse given back (Acquire %08lx)", (unsigned long)g_realAcquire(self));
+		LeaveCriticalSection(&g_lock);
+	}
 	if (g_spoof && (self == g_mouse || self == g_keyboard) && inout)
 	{
 		*inout = 0;               /* focus mode: only injected input, never the real device */
@@ -250,7 +303,17 @@ static HRESULT WINAPI HookAcquire(void *self)
 	   would hand the game the user's actual mouse (exclusive mode confines it). */
 	if (g_spoof && (self == g_mouse || self == g_keyboard))
 		return S_OK;
+	if (g_hold && self == g_mouse)
+		return S_OK;              /* held by the GM panel: stays unacquired */
 	return g_realAcquire(self);
+}
+
+/* exported (dinput8.def): the d3d8 fork's GM panel holds the game's mouse while it is open */
+int WINAPI U2InputHoldMouse(int on)
+{
+	InterlockedExchange(&g_hold, on ? 1 : 0);
+	Log("U2InputHoldMouse(%d)", on);
+	return 1;
 }
 
 static void PatchSlot(void **vtbl, int slot, void *fn, void **orig)
@@ -277,6 +340,8 @@ static HRESULT WINAPI HookCreateDevice(void *self, REFGUID guid, void **dev, voi
 		PatchSlot(vtbl, DEV_GetDeviceState, (void *)HookGetState, (void **)&g_realGetState);
 		PatchSlot(vtbl, DEV_GetDeviceData, (void *)HookGetData, (void **)&g_realGetData);
 		PatchSlot(vtbl, DEV_Acquire, (void *)HookAcquire, (void **)&g_realAcquire);
+		if (!g_realUnacquire)
+			g_realUnacquire = (UnacquireFn)vtbl[DEV_Unacquire];
 	}
 	return hr;
 }
@@ -323,10 +388,12 @@ static BOOL WINAPI HookSetCursorPos(int x, int y)
 		if (g_hwnd && ScreenToClient(g_hwnd, &p)) { g_cursor = p; }
 		return TRUE;
 	}
+	if (g_hold)
+		return TRUE;              /* held by the GM panel: the cursor is the user's */
 	return g_realSetCursorPos(x, y);
 }
 
-static BOOL WINAPI HookClipCursor(const RECT *r) { return g_spoof ? TRUE : g_realClipCursor(r); }
+static BOOL WINAPI HookClipCursor(const RECT *r) { return (g_spoof || (g_hold && r)) ? TRUE : g_realClipCursor(r); }
 
 /* point one import of module mod (e.g. WinDrv.dll) at fn */
 static void PatchImport(HMODULE mod, const char *dll, const char *name, void *fn, void **orig)

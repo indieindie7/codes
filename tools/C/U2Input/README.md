@@ -26,6 +26,13 @@ window (PrintWindow, works when covered) for checking what a click did.
 | focus | WinDrv checks `GetFocus` / `GetForegroundWindow`; DirectInput only delivers to the foreground window | `focus on` answers both with the game window and fakes `Acquire`; the real devices are never acquired (that would take your real mouse) and WinDrv's `SetCursorPos` / `ClipCursor` are swallowed |
 | keyboard | window messages (not DirectInput) | `vkey VK` posts `WM_KEYDOWN` / `WM_KEYUP` |
 
+Export for the d3d8 fork's GM panel (`gmpanel=1`, see `games/unreal2_mods/U2GM/README.md`):
+`int WINAPI U2InputHoldMouse(int on)`. While on, the game's DirectInput mouse is unacquired
+(the OS cursor is free and mouse messages reach the window), the game reads no movement or
+buttons (three button releases first), `Acquire` is refused and WinDrv's `SetCursorPos` /
+`ClipCursor` are swallowed; off, the mouse is acquired again on the game's next read. Not yet
+run in the game.
+
 Pipe commands: `ping`, `focus on|off`, `cursor X Y`, `move DX DY`, `click N`, `down N`,
 `up N`, `vkey VK`, `vdown VK`, `vup VK` (plus `key`/`tap` for DirectInput keyboards, unused by
 Unreal II). Coordinates are client pixels of the game window.
