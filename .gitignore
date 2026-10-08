@@ -3,3 +3,7 @@ __pycache__/
 games/unreal2_mods/U2GM/staging/
 games/unreal2_mods/U2GM/tools/.gm_commit_state.json
 games/advent_rising_mods/AdventMod/U2Shaders/terrain_detail_preview.png
+games/advent_rising_mods/AdventMod/Textures/armor_seekerinfantry_c*.tga
+games/advent_rising_mods/AdventMod/hound_game3.png
+games/advent_rising_mods/AdventMod/U2Shaders/UsersjohnAppDataLocalTemp*.asm
+games/advent_rising_mods/AdventMod/sheet.py
