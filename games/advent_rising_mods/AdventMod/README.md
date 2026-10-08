@@ -128,6 +128,55 @@ and snap once stretched past a limit, leaving two short dangling ends that drip.
 - `py tools/strings_sim.py [out.png] [thickness sag stretch life]` renders the same maths from the
   side, a piece thrown off a stump, over time (`tools/strings_sim.png`).
 
+**Falling drops (2026-10-08, untested in game).** Blood drips off things as real drops that fall
+and land. A drop is a `ModBloodDrop`: a small sprite (STY_Alpha, lit) on the same fake physics as
+the casings and gibs (gravity, one trace a tick for the landing, no collision with pawns or
+anything else), drawn as a round drop and swapped for a thin streak once it falls fast (our own art,
+`tools/make_blood_drops.py` -> `Textures\blood_drop0/1.tga`, `alien_drop0/1.tga`, imported by
+`ModBloodDrop` itself). `ModGore` keeps a pool of at most `MaxDrops` and reuses them (a landed drop
+is only hidden), so dripping makes no garbage. Where drops come from:
+
+- The badly wounded (the bleed trail, `bBleedTrail`): with drips on, each trail drop falls from the
+  body's newest bleeding point (wound, cut or hit), carrying half the body's speed, instead of
+  appearing on the floor; fewer as the wound clots (`BleedClot`).
+- The dead: every bleeding point of a body (`Streaks`: wounds, stumps, hits) drips, fewer as it
+  clots over twice `BleedClot`, but only a point with air under it (24 units): a body lying flat
+  bleeds into its pool, one draped over a step or a ledge drips off it.
+- Fresh blood on walls: a wall spray (and half the walls a gib burst paints) drips off its lower
+  edge for 4-8 s, when there is air under that edge (the edge is the spray's, or a run's when wall
+  runs are on); a spray that reaches the floor doesn't drip.
+- Goo strings that snap: a quick run of drops from the middle (instead of the old splat).
+- Ceilings and overhangs: any blood mark whose surface faces down (normal Z < -0.5) drips every
+  1.5-4 s for 20 s.
+
+A drop that lands on a floor pours into the live pool there (`DropPour`), or leaves a tiny splat
+(one per spot: a ceiling's drips land in one place); on a wall it leaves nothing. Only drops within
+`DripReach` of the player are thrown. `[AdventMod.ModGore]`: `bDrips`, `DripRate` (1 = as tuned,
+2 = twice as often), `MaxDrops` (24, at most 64), `DropSize` (0.15), `DripReach` (2000),
+`DropPour` (0.04).
+
+**Bloody footprints (2026-10-08, untested in game).** Anyone who walks through blood (the player
+and every character) leaves prints for `FootprintSteps` steps (10), fading (three strengths of our
+own boot-sole art, `tools/make_blood_marks.py`, left and right, red and purple) and slightly smaller
+step by step. Blood to step in is: a live pool region (the d3d8 layer says where it is wet,
+`ModBloodDecal.Stamps`), a fresh floor splat, spray or pool (`ModGore` keeps the last 48 that `Mark`
+laid on floors, with their size; they dry after `FootFresh` seconds, 90), or a bleeding body (the
+`Corpses` list, its blood colour). Steps are counted by distance travelled (the game has no
+footstep notify script can use): one every `FootStride` units (45) at walking pace, longer strides
+when running (up to 1.9x, from the pawn's `GroundSpeed x WalkingPct`), none in the air. Each print
+lies along the walking direction, under alternate feet (`FootGap` to the side, 7). Prints are marks
+like the rest (out of `MaxDecals`), and at most `MaxFootprints` (40) at once, the oldest going first,
+so a squad tramping through a pool can't sweep the other blood away. Footprints never count as
+blood to step in. `[AdventMod.ModGore]`: `bFootprints`, `FootprintSteps` (was `FootSteps`),
+`FootStride`, `FootGap`, `MaxFootprints`, `FootFresh`.
+
+Pilot steps for both: `DRIPTEST [ahead]` (a spray on the ceiling over a spot `ahead` units in front,
+a spray high on the wall ahead with drips off its edge, and the nearest living character bleeding
+hard), `DROPLIST` (drops in the air, dripping places, counts), `WALKBLOOD [ahead] [kind]` (a fresh
+pool on the floor ahead, kind 2 purple, to walk through with `move 1 0 2`), `STEPLIST` (bloody
+walkers, fresh floor blood, prints). With `bGoreLog` the log shows "drips from", "bloody feet on"
+and every mark laid.
+
 ## How it works
 
 No stock game file is replaced.

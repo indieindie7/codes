@@ -104,7 +104,7 @@ var int NextLive;
 var config bool bLivePools;
 var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long
 var config float RegionSize;                        // a live sheet covers a floor square this wide: every body in it pours into the same sheet (pools run together, prints everywhere in it)
-// bloody footprints: whoever stands in a live pool leaves prints for FootSteps steps
+// bloody footprints: whoever walks through blood (a live pool, a fresh floor mark, a body) leaves prints for FootprintSteps steps
 var Material FootTex[3], AlienFootTex[3];           // fresh, fading, nearly gone (the right boot)
 var Material FootTexL[3], AlienFootTexL[3];         // the left boot, mirrored
 var Material Burns[4];                               // a plasma burn cooling: white-hot, orange, ember, soot
@@ -129,17 +129,54 @@ var array<BreachState> Breaches;
 var class<Emitter> RockFx, DustFallFx;
 var Material DripTex, AlienDripTex;                 // drip streaks a coat pans down after a hit
 var config bool bFootprints;
-var config int FootSteps;
-var config float FootStride;
+var config int FootprintSteps;      // prints a walker leaves after stepping in blood, fading (8-12 reads well)
+var config float FootStride;        // units between prints at walking pace (longer strides when running)
+var config float FootGap;           // a foot's offset to the side of the walker's line
+var config int MaxFootprints;       // prints at once (they come out of the MaxDecals budget too)
+var config float FootFresh;         // seconds a floor splat or pool stays wet enough to step in
 struct WetFeet
 {
 	var Pawn P;
-	var int Kind;
+	var int Kind;          // 0 red, 1 purple (the live pools' convention: ModBloodDecal.Stamps passes it)
 	var int Left;          // prints still to leave
 	var vector LastSpot;
 	var bool bRight;
 };
-var array<WetFeet> Wet;   // the same in the Seekers' purple
+var array<WetFeet> Wet;
+var array<ModBloodDecal> Prints;    // the footprints down, oldest first (MaxFootprints)
+var bool bPrinting;                 // Mark is laying a footprint: not floor blood to step in
+// fresh blood on the floor that wets feet: splats and pools as Mark lays them (live regions tell
+// ModBloodDecal.Stamps themselves, bodies are the Corpses list)
+struct FloorBlood
+{
+	var vector Spot;
+	var float Radius;      // world units
+	var int Kind;          // BloodKind: 1 red, 2 purple
+	var float Born;
+};
+var array<FloorBlood> FloorMarks;
+var float FeetScan;
+// falling drops (ModBloodDrop, a pool of actors reused): from the bleeding points of the wounded
+// and the dead, off the lower edge of fresh blood on walls, from goo strings that snap and from
+// blood on ceilings; each lands as a tiny splat or into the live pool under it
+var config bool bDrips;
+var config float DripRate;          // how often drops fall (1 = as tuned, 2 = twice as often)
+var config int MaxDrops;            // drops in flight at once (at most 64)
+var config float DropSize;          // the sprite's scale (the texture is 32x64)
+var config float DripReach;         // drops only this near the player (nobody sees the rest)
+var config float DropPour;          // blood a drop adds to a live pool it lands in
+var array<ModBloodDrop> Drops;
+struct DripSrc
+{
+	var vector Spot;       // where the drops leave from
+	var int Kind;          // BloodKind
+	var float Next, EndT; // the next drop; the last (Level.TimeSeconds)
+	var float GapMin, GapMax;
+	var float Size;        // the splats it leaves
+};
+var array<DripSrc> DripSrcs;        // at most 24 (the oldest goes)
+var array<vector> DropSplats;       // the last drop splats (one per spot: a ceiling's drip lands in one place)
+var int DropsThrown, DropsLanded;   // DROPLIST
 var array<ModBloodDecal> Decals, Holes, Clutter;
 var StaticMesh ShellMesh;          // the game's own shell, taken from its shell particles
 var float ShellScale;              // ...and the size those particles draw it at
@@ -180,6 +217,7 @@ struct StreakSrc
 	var float Born, Str;   // when it began; how hard it bleeds (0.2-1.5)
 	var int Seed;          // its rivulets' pattern
 	var bool bDied;        // the body was dead with it: gone when the game reuses the pawn
+	var float NextDrip;    // a dead body's bleeding point: when it lets the next drop fall (bDrips)
 };
 var array<StreakSrc> Streaks;
 var config bool bBodyStreaks;
@@ -495,42 +533,193 @@ function ModBloodDecal RegionAt(vector Spot)
 	return None;
 }
 
-// a walker has stepped in blood: FootSteps prints from here, fading
+// a walker has stepped in blood: FootprintSteps prints from here, fading. Kind: 0 red, 1 purple
+// (the live pools' convention)
 function BloodyFeet(Pawn P, int Kind)
 {
 	local int i;
 	local WetFeet F;
 
-	if (!bFootprints || P == None)
+	if (!bFootprints || !bBlood || P == None)
 		return;
 	for (i = 0; i < Wet.Length; i++)
 		if (Wet[i].P == P)
 		{
-			Wet[i].Left = FootSteps;
+			Wet[i].Left = FootprintSteps;
 			Wet[i].Kind = Kind;
 			return;
 		}
+	if (Wet.Length >= 16)
+		return;
 	F.P = P;
 	F.Kind = Kind;
-	F.Left = FootSteps;
+	F.Left = FootprintSteps;
 	F.LastSpot = P.Location;
 	Wet[Wet.Length] = F;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: bloody feet on " $ P $ " (kind " $ Kind $ ", " $ FootprintSteps $ " steps)");
 }
 
 function Material FootTexture(int Kind, int Step, bool bRight)
 {
-	local int Level;
+	local int Strength;
 
-	Level = Clamp(Step * 3 / Max(FootSteps, 1), 0, 2);
+	Strength = Clamp(Step * 3 / Max(FootprintSteps, 1), 0, 2);
 	if (Kind == 1)
 	{
 		if (bRight)
-			return AlienFootTex[Level];
-		return AlienFootTexL[Level];
+			return AlienFootTex[Strength];
+		return AlienFootTexL[Strength];
 	}
 	if (bRight)
-		return FootTex[Level];
-	return FootTexL[Level];
+		return FootTex[Strength];
+	return FootTexL[Strength];
+}
+
+// fresh blood on the floor (Mark: splats, sprays, pools): feet that pass through it get bloody.
+// Marks close together are one (the bigger radius, the newer time)
+function AddFloorBlood(vector Spot, float Radius, int Kind)
+{
+	local int i;
+	local FloorBlood F;
+
+	if (!bFootprints || Kind == 0)
+		return;
+	for (i = 0; i < FloorMarks.Length; i++)
+		if (VSize(FloorMarks[i].Spot - Spot) < 12)
+		{
+			FloorMarks[i].Radius = FMax(FloorMarks[i].Radius, Radius);
+			FloorMarks[i].Born = Level.TimeSeconds;
+			FloorMarks[i].Kind = Kind;
+			return;
+		}
+	if (FloorMarks.Length >= 48)
+		FloorMarks.Remove(0, 1);
+	F.Spot = Spot;
+	F.Radius = Radius;
+	F.Kind = Kind;
+	F.Born = Level.TimeSeconds;
+	FloorMarks[FloorMarks.Length] = F;
+}
+
+// which blood a mark's texture is: 1 red, 2 purple, 0 not a splat, spray or pool (footprints,
+// live placeholders, dirt)
+function int MarkKind(Material T)
+{
+	local int i;
+
+	if (T == None)
+		return 0;
+	if (T == Pool)
+		return 1;
+	if (T == AlienPool)
+		return 2;
+	for (i = 0; i < 4; i++)
+	{
+		if (T == Splats[i])
+			return 1;
+		if (T == AlienSplats[i])
+			return 2;
+	}
+	for (i = 0; i < 2; i++)
+	{
+		if (T == Sprays[i])
+			return 1;
+		if (T == AlienSprays[i])
+			return 2;
+	}
+	for (i = 0; i < 12; i++)
+	{
+		if (T == PoolFrames[i])
+			return 1;
+		if (T == AlienPoolFrames[i])
+			return 2;
+	}
+	return 0;
+}
+
+// a few times a second: walkers (the player and everyone else near) whose feet are in fresh floor
+// blood or beside a bleeding body get bloody feet; floor blood older than FootFresh has dried
+function WetFeetScan()
+{
+	local Pawn P, Viewer;
+	local PlayerController C;
+	local vector Feet, D;
+	local int i;
+	local bool bFound;
+
+	for (i = FloorMarks.Length - 1; i >= 0; i--)
+		if (Level.TimeSeconds - FloorMarks[i].Born > FootFresh)
+			FloorMarks.Remove(i, 1);
+	C = Level.GetLocalPlayerController();
+	if (C != None)
+		Viewer = C.Pawn;
+	ForEach DynamicActors(class'Pawn', P)
+	{
+		if (P.Health <= 0 || P.bHidden || P.Physics != PHYS_Walking || VSize(P.Velocity) < 20 || P.IsA('Vehicle') || P.IsA('Turret'))
+			continue;
+		if (Viewer != None && VSize(P.Location - Viewer.Location) > 2500)
+			continue;
+		Feet = P.Location - vect(0,0,1) * P.CollisionHeight;
+		bFound = false;
+		for (i = 0; i < FloorMarks.Length; i++)
+		{
+			D = FloorMarks[i].Spot - Feet;
+			if (Abs(D.Z) < 30 && VSize(D * vect(1,1,0)) < FloorMarks[i].Radius * 0.8 + 6)
+			{
+				BloodyFeet(P, int(FloorMarks[i].Kind == 2));
+				bFound = true;
+				break;
+			}
+		}
+		if (bFound)
+			continue;
+		// a body lying there: it has bled all round it
+		for (i = 0; i < Corpses.Length; i++)
+		{
+			if (Corpses[i] == None || Corpses[i] == P || Corpses[i].bDeleteMe || Corpses[i].bHidden || CorpseKind[i] == 0)
+				continue;
+			D = Corpses[i].Location - P.Location;
+			if (Abs(D.Z) < 80 && VSize(D * vect(1,1,0)) < Corpses[i].CollisionRadius + P.CollisionRadius + 10)
+			{
+				BloodyFeet(P, int(CorpseKind[i] == 2));
+				break;
+			}
+		}
+	}
+}
+
+// a footprint: a mark like the others (out of MaxDecals), and at most MaxFootprints of them, so a
+// squad tramping through a pool doesn't sweep the rest of the blood away
+function PrintAt(Material T, vector Spot, vector N, vector Dir, float Size)
+{
+	local ModBloodDecal D;
+
+	while (Prints.Length > 0 && (Prints.Length >= MaxFootprints || Prints[0] == None || Prints[0].bDeleteMe))
+	{
+		if (Prints[0] != None && !Prints[0].bDeleteMe)
+			Forget(Prints[0]);
+		Prints.Remove(0, 1);
+	}
+	bPrinting = true;
+	D = Mark(T, Spot, N, Dir, Size);
+	bPrinting = false;
+	if (D != None)
+		Prints[Prints.Length] = D;
+}
+
+// a mark taken out of the decal list and gone
+function Forget(ModBloodDecal D)
+{
+	local int i;
+
+	for (i = Decals.Length - 1; i >= 0; i--)
+		if (Decals[i] == D)
+		{
+			Decals.Remove(i, 1);
+			break;
+		}
+	D.Destroy();
 }
 
 function Material DripMaterial(int Kind)
@@ -540,31 +729,45 @@ function Material DripMaterial(int Kind)
 	return DripTex;
 }
 
-// the prints: one every FootStride units of travel, under alternate feet, pointing the way
+// the prints: one a step, a step being FootStride units of travel at walking pace and longer when
+// running (up to 1.9x), under alternate feet (FootGap to the side), pointing the way, fading
+// over FootprintSteps steps. Steps are counted by distance: the game has no footstep notify
+// script can hear, and distance holds for every walker alike.
 function WalkPrints()
 {
-	local int i;
+	local int i, Step;
 	local Pawn P;
 	local vector Side, Foot, HitL, HitN, Dir;
+	local float Speed, Stride;
 
 	for (i = Wet.Length - 1; i >= 0; i--)
 	{
 		P = Wet[i].P;
-		if (P == None || P.bDeleteMe || P.Health <= 0 || Wet[i].Left <= 0)
+		if (P == None || P.bDeleteMe || P.Health <= 0 || P.bHidden || Wet[i].Left <= 0)
 		{
 			Wet.Remove(i, 1);
 			continue;
 		}
-		if (VSize(P.Location - Wet[i].LastSpot) < FootStride || VSize(P.Velocity) < 10)
+		Speed = VSize(P.Velocity * vect(1,1,0));
+		// in the air (a jump, a fall): no prints, and the step starts again on landing
+		if (P.Physics != PHYS_Walking)
+		{
+			Wet[i].LastSpot = P.Location;
+			continue;
+		}
+		Stride = FootStride * FClamp(Speed / FMax(P.GroundSpeed * P.WalkingPct, 80), 1.0, 1.9);
+		if (VSize((P.Location - Wet[i].LastSpot) * vect(1,1,0)) < Stride || Speed < 10)
 			continue;
 		Dir = Normal(P.Velocity * vect(1,1,0));
 		Side = Dir Cross vect(0,0,1);
 		if (Wet[i].bRight)
-			Foot = P.Location + Side * 7;
+			Foot = P.Location + Side * FootGap;
 		else
-			Foot = P.Location - Side * 7;
+			Foot = P.Location - Side * FootGap;
+		Step = FootprintSteps - Wet[i].Left;
 		if (Trace(HitL, HitN, Foot - vect(0,0,1) * (P.CollisionHeight + 60), Foot, false) != None && HitN.Z > 0.6)
-			Mark(FootTexture(Wet[i].Kind, FootSteps - Wet[i].Left, Wet[i].bRight), HitL, HitN, Dir, DecalScale * 0.3);
+			PrintAt(FootTexture(Wet[i].Kind, Step, Wet[i].bRight), HitL, HitN, Dir,
+				DecalScale * 0.3 * (1.0 - 0.15 * Step / Max(FootprintSteps, 1)));
 		Wet[i].Left--;
 		Wet[i].bRight = !Wet[i].bRight;
 		Wet[i].LastSpot = P.Location;
@@ -607,9 +810,13 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	if (Trace(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius, false) != None)
 	{
 		Mark(SprayTex(Victim), HitL, HitN, Dir, Size * (0.8 + 0.6 * VSize(HitL - HitLocation) / SprayReach));
-		// on a wall the spray runs down it (WallRun: the d3d8 layer's running drops)
+		// on a wall the spray runs down it (WallRun: the d3d8 layer's running drops), and drips
+		// off its lower edge when there is air under it
 		if (Abs(HitN.Z) < 0.5)
+		{
 			WallRun(HitL, HitN, int(BloodKind(Victim) == 2), FClamp(Damage / 40.0, 0.35, 1.6));
+			WallDrip(HitL, HitN, WallBelow(Size), BloodKind(Victim), 4 + 3 * FRand());
+		}
 	}
 	// drips under the hit
 	if (FRand() < 0.85 && Trace(HitL, HitN, HitLocation - vect(0,0,400), HitLocation, false) != None)
@@ -796,7 +1003,11 @@ function int SpawnGibs(int Set, int Kind, vector Feet, int Yaw, float K, vector 
 		{
 			Mark(KindSpray(Kind), HitL, HitN, V, DecalScale * (0.7 + 0.5 * FRand()));
 			if (Abs(HitN.Z) < 0.5)
+			{
 				WallRun(HitL, HitN, int(Kind == 2), 1.2);
+				if (FRand() < 0.5)
+					WallDrip(HitL, HitN, WallBelow(DecalScale), Kind, 5 + 3 * FRand());
+			}
 		}
 	}
 	if (Trace(HitL, HitN, Mid - vect(0,0,400), Mid, false) != None)
@@ -1617,6 +1828,17 @@ event Tick(float DeltaTime)
 
 	if (Wet.Length > 0)
 		WalkPrints();
+	if (bFootprints && bBlood)
+	{
+		FeetScan -= DeltaTime;
+		if (FeetScan <= 0)
+		{
+			FeetScan = 0.15;
+			WetFeetScan();
+		}
+	}
+	if (bDrips && (DripSrcs.Length > 0 || Streaks.Length > 0))
+		DripTick();
 	CorpseScan -= DeltaTime;
 	if (CorpseScan <= 0)
 	{
@@ -1658,6 +1880,8 @@ event Tick(float DeltaTime)
 							D.Frames[j] = PoolFrames[j];
 					}
 					D.Grow(DecalScale * 0.2, DecalScale * (0.9 + FRand() * 0.4), 5 + FRand() * 3);
+					// wet to step in as far as it will spread
+					AddFloorBlood(HitL, 38 * D.GrowTo, BloodKind(Dying[i]));
 					// or, with the d3d8 layer's live pools, simulated for real: the body pours into the
 					// floor region it lies in (a new region if none), and the baked decal goes
 					if (bLivePools && PourInto(HitL, HitN, int(BloodKind(Dying[i]) == 2)))
@@ -2333,8 +2557,11 @@ function SendGoo(float DeltaTime)
 				Goo[i].SnapAt = Level.TimeSeconds;
 				if (class'ModSettings'.default.bGoreLog)
 					class'ModSettings'.static.Note("gore: goo string " $ Goo[i].Slot $ " snaps at " $ D $ " (rest " $ Goo[i].Rest $ ", age " $ Age $ ")");
-				// what it held drips down: a small splat under the middle
-				if (Trace(HitL, HitN, (EA + EB) * 0.5 - vect(0,0,400), (EA + EB) * 0.5, false) != None)
+				// what it held drips down: a quick run of drops from the middle (they leave the
+				// splats), or without drops a small splat under the middle
+				if (bDrips)
+					AddDripSrc((EA + EB) * 0.5, Goo[i].Kind, 0.05, 0.12, 0.4, 1.6, DecalScale * 0.08);
+				else if (Trace(HitL, HitN, (EA + EB) * 0.5 - vect(0,0,400), (EA + EB) * 0.5, false) != None)
 					Mark(KindSplat(Goo[i].Kind), HitL, HitN, vect(0,0,0), DecalScale * (0.2 + 0.1 * FRand()));
 			}
 			else if (D > Goo[i].Rest && GooPull > 0)
@@ -2485,9 +2712,232 @@ function BleedTrails(float DeltaTime)
 			continue;
 		// a drop every 0.25 s at the worst, every 1.5 s when nearly clotted
 		Bleeders[i].Next = 0.25 + 1.25 * (1 - Bleeders[i].Rate) + 0.2 * FRand();
+		// with drips: a real drop falls from the wound (it leaves the splat where it lands)
+		if (bDrips)
+		{
+			Bleeders[i].Next /= FMax(DripRate, 0.05);
+			if (Drip(BleedSpot(P), P.Velocity * 0.5 + vect(0,0,-20), BloodKind(P), DecalScale * (0.1 + 0.12 * Bleeders[i].Rate)))
+				continue;
+		}
 		if (Trace(HitL, HitN, P.Location - vect(0,0,1) * (P.CollisionHeight + 120), P.Location, false) != None)
 			Mark(SplatTex(P), HitL + VRand() * vect(1,1,0) * 14, HitN, vect(0,0,0), DecalScale * (0.14 + 0.16 * Bleeders[i].Rate));
 	}
+}
+
+// where a living body bleeds from: its newest bleeding point (a wound, a cut or a hit), else
+// somewhere on its middle
+function vector BleedSpot(Pawn P)
+{
+	local int i;
+
+	for (i = Streaks.Length - 1; i >= 0; i--)
+		if (Streaks[i].P == P && (Streaks[i].Bone != '' || (Streaks[i].M != None && !Streaks[i].M.bDeleteMe)))
+			return StreakSpot(i);
+	return P.Location + VRand() * vect(1,1,0) * P.CollisionRadius * 0.4;
+}
+
+// ---- falling drops -----------------------------------------------------------------------
+// a drop falls from Spot with velocity V; false when it can't (drips off, too far from the
+// player to be seen, or every drop of the pool already in the air)
+function bool Drip(vector Spot, vector V, int Kind, float SplatSize)
+{
+	local ModBloodDrop D;
+	local PlayerController C;
+
+	if (!bDrips || !bBlood || Kind == 0)
+		return false;
+	C = Level.GetLocalPlayerController();
+	if (C == None || C.Pawn == None || VSize(Spot - C.Pawn.Location) > DripReach)
+		return false;
+	D = FreeDrop();
+	if (D == None)
+		return false;
+	D.Fall(Spot, V, PhysicsVolume.Gravity.Z, Kind, DropSize * (0.75 + 0.5 * FRand()), SplatSize);
+	DropsThrown++;
+	return true;
+}
+
+// a drop not in the air: one from the pool, or a new one while the pool is under MaxDrops
+function ModBloodDrop FreeDrop()
+{
+	local int i;
+	local ModBloodDrop D;
+
+	for (i = Drops.Length - 1; i >= 0; i--)
+	{
+		if (Drops[i] == None || Drops[i].bDeleteMe)
+		{
+			Drops.Remove(i, 1);
+			continue;
+		}
+		if (!Drops[i].bFlying)
+			return Drops[i];
+	}
+	if (Drops.Length >= Clamp(MaxDrops, 0, 64))
+		return None;
+	D = Spawn(class'ModBloodDrop',,, Location);
+	if (D == None)
+		return None;
+	D.Gore = self;
+	Drops[Drops.Length] = D;
+	return D;
+}
+
+// a drop came down (ModBloodDrop's trace): into the live pool there, or a tiny splat (one per
+// spot: drops falling in one place add to the splat there); nothing on walls
+function DropLanded(ModBloodDrop D, vector HitL, vector HitN)
+{
+	local ModBloodDecal R;
+	local int i;
+
+	DropsLanded++;
+	if (HitN.Z < 0.5)
+		return;
+	if (bLivePools)
+	{
+		R = RegionAt(HitL);
+		if (R != None && R.PourAt(HitL, DropPour, 0.25, int(D.Kind == 2)))
+			return;
+	}
+	for (i = 0; i < DropSplats.Length; i++)
+		if (VSize(DropSplats[i] - HitL) < 6)
+			return;
+	if (DropSplats.Length >= 24)
+		DropSplats.Remove(0, 1);
+	DropSplats[DropSplats.Length] = HitL;
+	Mark(KindSplat(D.Kind), HitL, HitN, vect(0,0,0), D.MarkSize);
+}
+
+// a place that drips for a while: a drop every GapMin-GapMax seconds (over DripRate) from First
+// seconds on, for Life seconds. One source a spot (more blood there keeps it going); at most 24
+function AddDripSrc(vector Spot, int Kind, float First, float GapMin, float GapMax, float Life, float Size)
+{
+	local DripSrc S;
+	local int i;
+
+	if (!bDrips || !bBlood || Kind == 0)
+		return;
+	for (i = 0; i < DripSrcs.Length; i++)
+		if (VSize(DripSrcs[i].Spot - Spot) < 10)
+		{
+			DripSrcs[i].EndT = FMax(DripSrcs[i].EndT, Level.TimeSeconds + Life);
+			return;
+		}
+	if (DripSrcs.Length >= 24)
+		DripSrcs.Remove(0, 1);
+	S.Spot = Spot;
+	S.Kind = Kind;
+	S.Next = Level.TimeSeconds + First;
+	S.EndT = Level.TimeSeconds + Life;
+	S.GapMin = GapMin;
+	S.GapMax = GapMax;
+	S.Size = Size;
+	DripSrcs[DripSrcs.Length] = S;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: drips from " $ Spot $ " for " $ Life $ " s (" $ DripSrcs.Length $ " sources)");
+}
+
+// how far under its middle a fresh wall mark of this size (a Mark DrawScale) has blood to drip
+// from: a spray covers about 60% of its 128 px square; a running one runs further
+function float WallBelow(float Size)
+{
+	if (bWallRuns)
+		return FMax(128 * Size * 0.3, RunSize * 0.7);
+	return 128 * Size * 0.3;
+}
+
+// fresh blood on a wall: drops leave its lower edge, Below under Spot, a little off the wall.
+// None if the floor (or a ledge) comes before that edge, or lies right under it: the blood stops
+// there. So it drips where there is air under the blood: a spray high on a wall, a wall over a
+// drop, the edge of a walkway.
+function WallDrip(vector Spot, vector N, float Below, int Kind, float Life)
+{
+	local vector Down, Edge, Start, HitL, HitN;
+
+	if (!bDrips || !bBlood || Kind == 0 || Abs(N.Z) > 0.5)
+		return;
+	Down = Normal(vect(0,0,-1) - N * (vect(0,0,-1) Dot N));
+	Start = Spot + N * 3;
+	Edge = Start + Down * Below;
+	if (Trace(HitL, HitN, Edge, Start, false) != None)
+		return;
+	if (!FastTrace(Edge - vect(0,0,12), Edge))
+		return;
+	AddDripSrc(Edge, Kind, 0.8 + 0.8 * FRand(), 0.5, 1.4, Life, DecalScale * 0.07);
+}
+
+// every tick: the dripping places, and the dead bodies' bleeding points (fewer drops as they
+// clot: a body drains for twice BleedClot). A point lying on the floor bleeds into its pool
+// instead: only one with a drop under it drips (a body over a ledge, an arm off a step)
+function DripTick()
+{
+	local int i;
+	local float T, Age, Clot, Str;
+	local vector Spot;
+	local Pawn P;
+
+	T = Level.TimeSeconds;
+	for (i = DripSrcs.Length - 1; i >= 0; i--)
+	{
+		if (T > DripSrcs[i].EndT)
+		{
+			DripSrcs.Remove(i, 1);
+			continue;
+		}
+		if (T < DripSrcs[i].Next)
+			continue;
+		DripSrcs[i].Next = T + (DripSrcs[i].GapMin + FRand() * (DripSrcs[i].GapMax - DripSrcs[i].GapMin)) / FMax(DripRate, 0.05);
+		Drip(DripSrcs[i].Spot + VRand() * vect(1,1,0) * 1.5, vect(0,0,-15), DripSrcs[i].Kind, DripSrcs[i].Size);
+	}
+	for (i = 0; i < Streaks.Length; i++)
+	{
+		P = Streaks[i].P;
+		if (P == None || P.bDeleteMe || P.bHidden || P.Health > 0 || T < Streaks[i].NextDrip)
+			continue;
+		if (Streaks[i].Bone == '' && (Streaks[i].M == None || Streaks[i].M.bDeleteMe))
+			continue;
+		Age = T - Streaks[i].Born;
+		Clot = 1 - Age / FMax(BleedClot * 2, 1);
+		if (Clot <= 0.05)
+			continue;
+		Str = FClamp(Streaks[i].Str / 1.5, 0.15, 1.0) * Clot;
+		Streaks[i].NextDrip = T + (0.35 + 2.0 * (1 - Str)) * (0.8 + 0.4 * FRand()) / FMax(DripRate, 0.05);
+		Spot = StreakSpot(i);
+		if (!FastTrace(Spot - vect(0,0,24), Spot))
+			continue;
+		Drip(Spot, vect(0,0,-10), Streaks[i].Kind, DecalScale * (0.05 + 0.04 * Str));
+	}
+}
+
+// ModPilot DROPLIST: the drops in the air and the dripping places
+function DropList()
+{
+	local int i, n;
+
+	for (i = 0; i < Drops.Length; i++)
+		if (Drops[i] != None && Drops[i].bFlying)
+		{
+			n++;
+			if (n <= 8)
+				class'ModSettings'.static.Note("droplist: drop at " $ Drops[i].Location $ " vel " $ Drops[i].Vel $ " kind " $ Drops[i].Kind $ " age " $ Drops[i].Age);
+		}
+	for (i = 0; i < DripSrcs.Length; i++)
+		class'ModSettings'.static.Note("droplist: source " $ DripSrcs[i].Spot $ " kind " $ DripSrcs[i].Kind $ " next in " $ (DripSrcs[i].Next - Level.TimeSeconds) $ " ends in " $ (DripSrcs[i].EndT - Level.TimeSeconds));
+	class'ModSettings'.static.Note("droplist: " $ n $ " in the air, " $ Drops.Length $ " made (max " $ MaxDrops $ "), " $ DripSrcs.Length $ " sources, "
+		$ Bleeders.Length $ " bleeders, " $ Streaks.Length $ " bleeding points, thrown " $ DropsThrown $ " landed " $ DropsLanded $ ", drips " $ bDrips);
+}
+
+// ModPilot STEPLIST: the wet feet and the fresh floor blood they can step in
+function StepList()
+{
+	local int i;
+
+	for (i = 0; i < Wet.Length; i++)
+		class'ModSettings'.static.Note("steplist: " $ Wet[i].P $ " kind " $ Wet[i].Kind $ " prints left " $ Wet[i].Left $ " at " $ Wet[i].P.Location);
+	for (i = 0; i < FloorMarks.Length; i++)
+		class'ModSettings'.static.Note("steplist: floor blood " $ FloorMarks[i].Spot $ " radius " $ int(FloorMarks[i].Radius) $ " kind " $ FloorMarks[i].Kind $ " age " $ int(Level.TimeSeconds - FloorMarks[i].Born));
+	class'ModSettings'.static.Note("steplist: " $ Wet.Length $ " wet walkers, " $ FloorMarks.Length $ " wet floor marks, " $ Prints.Length $ " prints (max " $ MaxFootprints $ "), "
+		$ Corpses.Length $ " bodies, " $ Decals.Length $ " marks, footprints " $ bFootprints);
 }
 
 // shots into a corpse add up: CorpsePulpHits of them and it comes apart
@@ -2564,6 +3014,7 @@ function ModBloodDecal AddHole(Material T, vector Spot, vector N, float Size)
 function ModBloodDecal Mark(Material T, vector Spot, vector N, vector Along, float Size)
 {
 	local ModBloodDecal D;
+	local int K;
 
 	if (class'ModSettings'.default.DebugDecalTexture != "")
 		T = Material(DynamicLoadObject(class'ModSettings'.default.DebugDecalTexture, class'Material'));
@@ -2590,6 +3041,16 @@ function ModBloodDecal Mark(Material T, vector Spot, vector N, vector Along, flo
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: " $ T.Name $ " at " $ Spot $ " normal " $ N $ " size " $ Size $ " (" $ Decals.Length + 1 $ " marks)");
 	Decals[Decals.Length] = D;
+	if (!bPrinting && (bDrips || bFootprints))
+	{
+		K = MarkKind(T);
+		// blood on a ceiling or an overhang drips for a while
+		if (K != 0 && N.Z < -0.5)
+			AddDripSrc(Spot + N * 2, K, 0.5 + FRand(), 1.5, 4.0, 20, DecalScale * 0.09);
+		// fresh blood on the floor wets the feet that pass through (not the tiny drop splats)
+		if (K != 0 && N.Z > 0.6 && Size >= 0.25)
+			AddFloorBlood(Spot, 38 * Size, K);
+	}
 	return D;
 }
 
@@ -2622,6 +3083,9 @@ event Destroyed()
 	for (i = 0; i < Dirt.Length; i++)
 		if (Dirt[i] != None)
 			Dirt[i].Destroy();
+	for (i = 0; i < Drops.Length; i++)
+		if (Drops[i] != None)
+			Drops[i].Destroy();
 	Super.Destroyed();
 }
 
@@ -2676,8 +3140,17 @@ defaultproperties
      DripTex=Texture'AdventMod.Blood.DripsH'
      AlienDripTex=Texture'AdventMod.Blood.DripsA'
      bFootprints=True
-     FootSteps=7
-     FootStride=38.000000
+     FootprintSteps=10
+     FootStride=45.000000
+     FootGap=7.000000
+     MaxFootprints=40
+     FootFresh=90.000000
+     bDrips=True
+     DripRate=1.000000
+     MaxDrops=24
+     DropSize=0.150000
+     DripReach=2000.000000
+     DropPour=0.040000
      LivePour=1.400000
      LivePourSecs=2.600000
      RegionSize=640.000000

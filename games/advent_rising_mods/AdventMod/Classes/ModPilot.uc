@@ -500,6 +500,109 @@ function GooList()
 		G.GooList();
 }
 
+// DRIPTEST [ahead]: blood that drips, three ways at once: a spray on the ceiling over a spot
+// `ahead` units in front of the player (if there is a ceiling within 1200), a spray high on the
+// wall straight ahead (within 800) with drops off its lower edge, and the nearest other living
+// character bleeding hard (a trail of falling drops from its wound)
+function DripTest(float Ahead)
+{
+	local ModGore G;
+	local Pawn P, Best;
+	local vector X, Y, Z, Spot, Eye, HitL, HitN;
+
+	foreach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None || PC() == None || PC().Pawn == None)
+	{
+		Note("driptest: no ModGore or no player");
+		return;
+	}
+	GetAxes(PC().Rotation, X, Y, Z);
+	X.Z = 0;
+	X = Normal(X);
+	Spot = PC().Pawn.Location + X * Ahead;
+	if (G.Trace(HitL, HitN, Spot + vect(0,0,1200), Spot, false) != None && HitN.Z < -0.5)
+	{
+		G.Mark(G.KindSpray(1), HitL, HitN, vect(0,0,0), G.DecalScale * 0.8);
+		Note("driptest: ceiling spray at " $ HitL $ " (" $ int(HitL.Z - PC().Pawn.Location.Z) $ " over the player)");
+	}
+	else
+		Note("driptest: no ceiling within 1200 over " $ Spot);
+	Eye = PC().Pawn.Location + vect(0,0,1) * (PC().Pawn.EyeHeight + 50);
+	if (G.Trace(HitL, HitN, Eye + X * 800, Eye, false) != None && Abs(HitN.Z) < 0.5)
+	{
+		G.Mark(G.KindSpray(1), HitL, HitN, vect(0,0,-1), G.DecalScale);
+		G.WallDrip(HitL, HitN, G.WallBelow(G.DecalScale), 1, 10);
+		Note("driptest: wall spray at " $ HitL $ " normal " $ HitN);
+	}
+	else
+		Note("driptest: no wall within 800 ahead");
+	foreach DynamicActors(class'Pawn', P)
+		if (P != PC().Pawn && P.Health > 0 && !P.IsA('Vehicle') && G.BloodKind(P) != 0 && (Best == None || VSize(P.Location - PC().Pawn.Location) < VSize(Best.Location - PC().Pawn.Location)))
+			Best = P;
+	if (Best != None)
+	{
+		G.AddStreak(Best, Best.Location + vect(0,0,1) * Best.CollisionHeight * 0.3, None, 1.5);
+		G.Bleed(Best, 200);
+		Note("driptest: " $ Best $ " bleeds, " $ int(VSize(Best.Location - PC().Pawn.Location)) $ " away");
+	}
+	else
+		Note("driptest: no living character to bleed");
+}
+
+// WALKBLOOD [ahead] [kind]: a pool of blood on the floor `ahead` units in front of the player
+// (kind 2: purple), fresh, for the player to walk through (then MOVE 1 0 2 and STEPLIST)
+function WalkBlood(float Ahead, int Kind)
+{
+	local ModGore G;
+	local vector X, Y, Z, Spot, HitL, HitN;
+
+	foreach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None || PC() == None || PC().Pawn == None)
+	{
+		Note("walkblood: no ModGore or no player");
+		return;
+	}
+	GetAxes(PC().Rotation, X, Y, Z);
+	X.Z = 0;
+	Spot = PC().Pawn.Location + Normal(X) * Ahead;
+	if (G.Trace(HitL, HitN, Spot - vect(0,0,400), Spot, false) == None)
+	{
+		Note("walkblood: no floor at " $ Spot);
+		return;
+	}
+	if (Kind == 2)
+		G.Mark(G.AlienPool, HitL, HitN, vect(0,0,0), G.DecalScale);
+	else
+		G.Mark(G.Pool, HitL, HitN, vect(0,0,0), G.DecalScale);
+	Note("walkblood: a pool at " $ HitL $ " (kind " $ Kind $ "), " $ G.FloorMarks.Length $ " wet floor marks");
+}
+
+function DropList()
+{
+	local ModGore G;
+
+	foreach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None)
+		Note("droplist: no ModGore");
+	else
+		G.DropList();
+}
+
+function StepList()
+{
+	local ModGore G;
+
+	foreach DynamicActors(class'ModGore', G)
+		break;
+	if (G == None)
+		Note("steplist: no ModGore");
+	else
+		G.StepList();
+}
+
 function GooSever(int c)
 {
 	local ModGore G;
@@ -814,6 +917,23 @@ function StartStep()
 		// GOOSEVER [cut]: the nearest other character (a corpse first) loses a part (ModSever.Cuts
 		// index, default 3: the right arm at the shoulder), with its goo strings
 		GooSever(int(ArgF(1, 3)));
+		break;
+	case "DRIPTEST":
+		// DRIPTEST [ahead]: a ceiling spray over a spot ahead, a wall spray ahead and the nearest
+		// character bleeding: falling drops from all three (ModGore drips)
+		DripTest(ArgF(1, 150));
+		break;
+	case "WALKBLOOD":
+		// WALKBLOOD [ahead] [kind]: a fresh pool ahead of the player to walk through (footprints)
+		WalkBlood(ArgF(1, 120), int(ArgF(2, 1)));
+		break;
+	case "DROPLIST":
+		// the drops in the air, the dripping places, counts
+		DropList();
+		break;
+	case "STEPLIST":
+		// the walkers with bloody feet, the fresh floor blood, the prints down
+		StepList();
 		break;
 	case "BLADE":
 		// BLADE: the energy blade in the player's hands; BLADE DROP [distance]: one lying ahead
