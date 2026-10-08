@@ -12,7 +12,7 @@ class AvalonSet extends Object
 	perobjectconfig;
 
 var config bool bUsed;
-var config string Props[64];
+var config string Props[128];      // 128 since 2026-10-07 (the shanty ring used 49)
 var config string Blocks[128];
 var config string Cards[64];
 var config string Extras[48];

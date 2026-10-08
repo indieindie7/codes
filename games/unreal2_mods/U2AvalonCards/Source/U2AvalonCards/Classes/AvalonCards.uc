@@ -34,12 +34,12 @@ var config float TreeSize[8];
 var config int TreeLook[8];        // which tree picture (0-2)
 
 // kit-bashed scenery from other levels' static meshes, one per line:
-//   "Package.Group.Name X Y Yaw Scale Lift CX CY MinZ"
+//   "Package.Group.Name X Y Yaw Scale Lift CX CY MinZ [Skin] [HalfSize]"  (Skin "-" = the package palette)
 // X,Y = where the mesh's centre goes (Yaw in degrees); it's stood on whatever is
 // straight below (land, or TutA's sea surface) by its lowest point, then lifted
 // by Lift. CX CY MinZ = the mesh's bounds centre and bottom, in its own units
 // (tools\mesh_bounds.py; tools\make_props.py writes these lines).
-var config string Props[64];
+var config string Props[128];      // 128 since 2026-10-07 (the shanty ring used 49)
 
 // rough blocking: plain boxes, one per line: "X Y Yaw SizeX SizeY SizeZ Lift Colour" (world units, Yaw in
 // degrees, Colour 0 grey / 1 rust / 2 pale / 3 dark). Each box stands on whatever is under its centre,
@@ -972,10 +972,13 @@ function PlaceCard(string Line)
 
 function PlaceProp(string Line)
 {
-	local vector P, C, HitL, HitN;
+	local vector P, C, HitL, HitN, Q;
 	local rotator R;
-	local float Scale;
+	local float Scale, Ext, G;
 	local CardMesh M;
+	local Texture Skin;
+	local string Pkg;
+	local int k;
 
 	P.X = float(Word(Line, 1));
 	P.Y = float(Word(Line, 2));
@@ -988,12 +991,47 @@ function PlaceProp(string Line)
 		Log("Cards: no ground under "$Line);
 		return;
 	}
-	P.Z = HitL.Z - float(Word(Line, 8)) * Scale + float(Word(Line, 5));
+	// the lowest ground under the footprint, not under the centre: on a slope the base sinks into the uphill
+	// side instead of floating over the downhill one (the user, 2026-10-08: "not look like the base is floating")
+	G = HitL.Z;
+	// word 10 = the footprint's half size in mesh units (the tools' bounds.json; StaticMesh has no script bounds)
+	Ext = 250;
+	if (Word(Line, 10) != "")
+		Ext = float(Word(Line, 10));
+	Ext *= 0.8 * Scale;
+	if (Ext > 0)
+	{
+		for (k = 0; k < 8; k++)
+		{
+			Q = P;
+			Q.X += Ext * Cos(k * 0.7854);
+			Q.Y += Ext * Sin(k * 0.7854);
+			if (Ground(Q, HitL, HitN))
+				G = FMin(G, HitL.Z);
+		}
+	}
+	P.Z = G - float(Word(Line, 8)) * Scale + float(Word(Line, 5));
 	P -= (C * Scale) >> R;
 	M = Spawn(class'CardMesh',,, P, R);
 	if (M != None && M.Show(Word(Line, 0), Scale))
+	{
+		// its colours: word 9 names a skin, else the mesh's own package palette (AvalonSM.Pal.Pal,
+		// AvalonSM2.Pal.Pal2): the generated meshes carry no material of their own (make_avalon sets Skins too)
+		Pkg = Word(Line, 0);
+		Pkg = Left(Pkg, InStr(Pkg, "."));
+		if (Word(Line, 9) != "" && Word(Line, 9) != "-")
+			Skin = Texture(DynamicLoadObject(Word(Line, 9), class'Texture', true));
+		else
+		{
+			Skin = Texture(DynamicLoadObject(Pkg$".Pal.Pal", class'Texture', true));
+			if (Skin == None)
+				Skin = Texture(DynamicLoadObject(Pkg$".Pal.Pal2", class'Texture', true));
+		}
+		if (Skin != None)
+			M.Skins[0] = Skin;
 		Made[Made.Length] = M;
-	Log("Cards: prop "$Word(Line, 0)$" at "$P$" ground "$HitL.Z);
+	}
+	Log("Cards: prop "$Word(Line, 0)$" at "$P$" ground "$G$" skin "$Skin);
 }
 
 defaultproperties

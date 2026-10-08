@@ -40,6 +40,8 @@ var float GloomOn;        // how much of it is applied now
 var float ClearTime, RampTime, HoldTime, PhaseT, Intensity;
 var int Phase;
 var bool bForced;         // live editing held the weather (Force)
+var bool bIndoors;        // a roof over the player's eye: no drops, a muffled rain (the user saw rain through the tower's ceilings)
+var float RoofCheck;
 
 function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float FogEnd, color Fog, Sound Rain, Sound WindLoop, float SkyFogEnd)
 {
@@ -221,6 +223,12 @@ event Tick(float DeltaTime)
 
 	E = Eye();
 	SetLocation(E);
+	RoofCheck -= DeltaTime;
+	if (RoofCheck <= 0)
+	{
+		RoofCheck = 0.5;
+		Roof(E);
+	}
 	Weather(DeltaTime);
 	if (WindSnd != None)
 		WindSnd.SetLocation(E);
@@ -274,6 +282,24 @@ event Tick(float DeltaTime)
 	}
 }
 
+// indoors = world geometry within 40 m straight up; drops hide while indoors
+function Roof(vector E)
+{
+	local vector HitL, HitN;
+	local Actor A;
+	local bool bIn;
+	local int i;
+
+	A = Trace(HitL, HitN, E + vect(0,0,2000), E, false);
+	bIn = A != None && (A == Level || A.bWorldGeometry || StaticMeshActor(A) != None);
+	if (bIn == bIndoors)
+		return;
+	bIndoors = bIn;
+	for (i = 0; i < Drops.Length; i++)
+		if (Drops[i] != None)
+			Drops[i].bHidden = bIndoors;
+}
+
 // the cycle, and what the strength sets: the loops' volume and the gloom over the view
 function Weather(float DeltaTime)
 {
@@ -305,7 +331,7 @@ function Weather(float DeltaTime)
 		}
 		Intensity = Intensity * Intensity * (3 - 2 * Intensity);    // smoothstep: eases in and out
 	}
-	SoundVolume = int(190 * Intensity);
+	SoundVolume = int(190 * Intensity * (1 - 0.65 * float(bIndoors)));
 	if (WindSnd != None)
 		WindSnd.SoundVolume = int(60 + 120 * Intensity);
 	// the gloom: PlayerController's constant glow, adjusted by the change since last time

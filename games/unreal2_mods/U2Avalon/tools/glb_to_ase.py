@@ -22,7 +22,12 @@ o = dict(x.split("=", 1) for x in a[2:])
 os.makedirs(out, exist_ok=True)
 SCALE = float(o.get("scale", 1))     # 50 = metres -> Unreal units, so the actors sit at DrawScale 1
 MESH_UVS = o.get("uvs", "palette") == "mesh"   # mesh: keep the GLB's UVs (a baked texture per mesh) instead of palette swatches
-VFLIP = o.get("vflip", "0") == "1"            # 1 = write 1-V (if the ASE importer does not flip V itself)
+VFLIP = o.get("vflip", "0") == "1"
+# a package of its own (AvalonSM2, 2026-10-07) keeps its own palette: pal= the texture's name (and the ASE's
+# material, so the importer binds it by name), stripes= 16 for up to 16 colours (4 px columns)
+PAL = o.get("pal", "Pal")
+STRIPES = int(o.get("stripes", 8))
+MATERIAL = o.get("material", "0") == "1"            # 1 = write 1-V (if the ASE importer does not flip V itself)
 palette = []          # list of (r,g,b)
 
 
@@ -31,11 +36,11 @@ def swatch(rgb):
     if key not in palette:
         palette.append(key)
     i = palette.index(key)
-    if i >= 8:
-        raise SystemExit("more than 8 palette colours: widen Pal.tga")
+    if i >= STRIPES:
+        raise SystemExit("more than %d palette colours: stripes=16" % STRIPES)
     # 8 full-height column stripes on a 64px texture, so the TGA's row order (Blender writes bottom-up and
     # UnrealEd does not flip) cannot matter; UV = the stripe's middle
-    return ((i + 0.5) / 8.0, 0.5)
+    return ((i + 0.5) / STRIPES, 0.5)
 
 
 def mat_colour(m):
@@ -88,9 +93,9 @@ for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
                 idx.append(len(verts) - 1)
             want = (-n.y, n.x, n.z)
             tris.append(tri_facing(verts, tuple(idx), want))
-    write_ase(os.path.join(out, name + ".ase"), name, verts, uvs, tris)
+    write_ase(os.path.join(out, name + ".ase"), name, verts, uvs, tris, material=PAL if MATERIAL else None)
     bounds[name] = {"w": float(hi[1] - lo[1]) * SCALE, "d": float(hi[0] - lo[0]) * SCALE, "h": float(hi[2] - lo[2]) * SCALE,
-                    "texture": (stem if MESH_UVS else "Pal")}
+                    "texture": (stem if MESH_UVS else PAL)}
     print("ASE", name, len(tris), "tris", bounds[name])
 
 # the palette texture (row 0 at the top = V 0)
@@ -101,11 +106,12 @@ if MESH_UVS and not palette:
     palette = [tuple(round(v, 3) for v in c) for c in _pal.COLOURS.values()]
 img = np.zeros((64, 64, 4), np.float32)
 img[..., 3] = 1
+sw = 64 // STRIPES
 for i, c in enumerate(palette):
-    img[:, i * 8:(i + 1) * 8, :3] = c
-tex = bpy.data.images.new("Pal", 64, 64, alpha=True)
+    img[:, i * sw:(i + 1) * sw, :3] = c
+tex = bpy.data.images.new(PAL, 64, 64, alpha=True)
 tex.pixels = img[::-1].ravel()
-tex.filepath_raw = os.path.join(out, "Pal.tga")
+tex.filepath_raw = os.path.join(out, PAL + ".tga")
 tex.file_format = "TARGA_RAW"   # UnrealEd rejects RLE-compressed TGA ("Bad image format")
 tex.save()
 json.dump(bounds, open(os.path.join(out, "bounds.json"), "w"), indent=1)

@@ -10,8 +10,15 @@ def tri_facing(v, tri, want):
     return tri
 
 
-def write_ase(path, name, verts, uvs, tris):
-    L = ["*3DSMAX_ASCIIEXPORT 200", "*GEOMOBJECT {", f'\t*NODE_NAME "{name}"', "\t*MESH {",
+def write_ase(path, name, verts, uvs, tris, material=None):
+    """material= a texture name: a one-entry material list whose bitmap is <material>.tga, so UnrealEd's
+    importer can bind the mesh to the texture of that name already loaded (AvalonSM2's palette)"""
+    L = ["*3DSMAX_ASCIIEXPORT 200"]
+    if material:
+        L += ["*MATERIAL_LIST {", "\t*MATERIAL_COUNT 1", "\t*MATERIAL 0 {", f'\t\t*MATERIAL_NAME "{material}"',
+              '\t\t*MATERIAL_CLASS "Standard"', "\t\t*MAP_DIFFUSE {", f'\t\t\t*MAP_NAME "{material}"',
+              f'\t\t\t*BITMAP "{material}.tga"', "\t\t}", "\t}", "}"]
+    L += ["*GEOMOBJECT {", f'\t*NODE_NAME "{name}"', "\t*MESH {",
          f"\t\t*MESH_NUMVERTEX {len(verts)}", f"\t\t*MESH_NUMFACES {len(tris)}", "\t\t*MESH_VERTEX_LIST {"]
     L += [f"\t\t\t*MESH_VERTEX {k} {-v[0]:.3f} {v[1]:.3f} {v[2]:.3f}" for k, v in enumerate(verts)]
     L += ["\t\t}", "\t\t*MESH_FACE_LIST {"]
@@ -21,7 +28,10 @@ def write_ase(path, name, verts, uvs, tris):
     L += [f"\t\t\t*MESH_TVERT {k} {t[0]:.5f} {t[1]:.5f} 0.0000" for k, t in enumerate(uvs)]
     L += ["\t\t}", f"\t\t*MESH_NUMTVFACES {len(tris)}", "\t\t*MESH_TFACELIST {"]
     L += [f"\t\t\t*MESH_TFACE {k} {t[0]} {t[1]} {t[2]}" for k, t in enumerate(tris)]
-    L += ["\t\t}", "\t}", "}"]
+    L += ["\t\t}", "\t}"]
+    if material:
+        L += ["\t*MATERIAL_REF 0"]
+    L += ["}"]
     open(path, "w").write("\n".join(L) + "\n")
 
 

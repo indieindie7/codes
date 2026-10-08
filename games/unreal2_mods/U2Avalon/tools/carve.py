@@ -10,7 +10,9 @@ stood, with the session's cards and journal kept.
     py tools/carve.py box X Y Z SX SY SZ [add]    level geometry (BSP): a subtract box (add = a solid one)
     py tools/carve.py rail [X1 Y1 Z1 X2 Y2 Z2]    a railing (stock waterfront rail, 1.5 m) from the user's last
                                                    two marks (look at the floor at each end), or the points
-    py tools/carve.py drop ACTOR [SINK]           a floating static mesh (e.g. StaticMeshActor57) set down on
+    py tools/carve.py setprop CLASS PROP VALUE      every actor of CLASS gets PROP=VALUE (FluidSurfaceInfo FluidGridSpacing 6000)
+    py tools/carve.py rescale MESH F               every actor of that static mesh (e.g. AvalonSM.Sea) F times wider
+    py tools/carve.py drop ACTOR [SINK] [how=mean]           a floating static mesh (e.g. StaticMeshActor57) set down on
                                                    the terrain: resting on the highest ground under it, SINK (30) in
     options: base=<map> (default: the map the game last built on), send=0 (don't tell the game), auto=0
              (don't reload by itself: the user types "avalon reload"), mark
@@ -159,7 +161,7 @@ def mesh_bounds(mesh):
     raise SystemExit("no bounds for " + mesh)
 
 
-def make_drop(name, H, sink):
+def make_drop(name, H, sink, how="max"):
     """the actor NAME moved down (or up) so its footprint's lowest ground point meets the mesh's bottom"""
     def num(blk, key, default):
         m = re.search(r"\b%s=([-\d.]+)" % key, blk)
@@ -189,7 +191,10 @@ def make_drop(name, H, sink):
                         if g is not None:
                             grounds.append(g)
                 bottom = z + b[2] * ds * sz
-                newz = z + (max(grounds) - sink) - bottom     # rests on the highest point it touches
+                # max: rests on the highest point it touches; mean: sunk to the average ground under it (a
+                # boulder on a cliff edge still hung over the drop with max - the user: "rock still floating")
+                g = max(grounds) if how == "max" else float(np.mean(grounds))
+                newz = z + (g - sink) - bottom
                 print("drop %s (%s): bottom %.0f, ground under it %.0f..%.0f -> Z %.0f (%+.0f)" % (
                     name, mesh, bottom, min(grounds), max(grounds), newz, newz - z))
                 blk = blk.replace(loc.group(0), "Location=(X=%s,Y=%s,Z=%.3f)" % (loc.group(1), loc.group(2), newz))
@@ -244,6 +249,10 @@ def main():
     kind = a[0]
     if kind == "drop":
         nums = [float(a[2]) if len(a) > 2 else 30.0]
+    elif kind == "rescale":
+        nums = [float(a[2])]
+    elif kind == "setprop":
+        nums = []
     elif kind == "rail":
         nums = [v for p in mark_points(2) for v in p] if len(a) < 7 else [float(v) for v in a[1:7]]
     elif len(a) > 1 and a[1] == "mark":
@@ -267,10 +276,45 @@ def main():
             ed.import_t3d(path, add=True)        # the new sections come in selected
             ed.light(selected=True)
             ed.deselect()
+        elif kind == "setprop":
+            # every actor of class a[1]: property a[2] = a[3] (e.g. FluidSurfaceInfo FluidGridSpacing 6000: the
+            # stock sea is a 64 x 64 grid whose square edge showed inside the haze)
+            def setprop(t3d):
+                out, n = [], 0
+                for m in re.finditer(r"Begin Actor.*?End Actor", t3d, re.S):
+                    blk = m.group(0)
+                    old = re.search(r"(?m)^\s*%s=.*$" % re.escape(a[2]), blk)
+                    line = "    %s=%s" % (a[2], a[3])
+                    blk = blk.replace(old.group(0), line) if old else blk.replace("End Actor", line + "\nEnd Actor")
+                    n += 1
+                    out.append(blk)
+                print("set %s=%s on %d %s" % (a[2], a[3], n, a[1]))
+                return "Begin Map\n" + "\n".join(out) + "\nEnd Map\n"
+            ed.replace_actors(a[1], setprop)
+            ed.deselect()
+        elif kind == "rescale":
+            def rescale(t3d):
+                out, n = [], 0
+                for m in re.finditer(r"Begin Actor.*?End Actor", t3d, re.S):
+                    blk = m.group(0)
+                    if re.search(r"StaticMesh=StaticMesh'%s'" % re.escape(a[1]), blk):
+                        s3 = re.search(r"DrawScale3D=\(X=([-\d.]+),Y=([-\d.]+),Z=([-\d.]+)\)", blk)
+                        sx, sy, sz = (float(v) for v in s3.groups()) if s3 else (1.0, 1.0, 1.0)
+                        new = "DrawScale3D=(X=%.4f,Y=%.4f,Z=%.4f)" % (sx * nums[0], sy * nums[0], sz)
+                        blk = blk.replace(s3.group(0), new) if s3 else blk.replace("End Actor", "    " + new + "\nEnd Actor")
+                        n += 1
+                    out.append(blk)
+                print("rescaled %d actors of %s by %g" % (n, a[1], nums[0]))
+                return "Begin Map\n" + "\n".join(out) + "\nEnd Map\n"
+            ed.replace_actors("StaticMeshActor", rescale)
+            ed.deselect()
+            ed.ok("ACTOR SELECT OFCLASS CLASS=StaticMeshActor")
+            ed.light(selected=True)
+            ed.deselect()
         elif kind == "drop":
             before = os.path.join(tmp, "before.bmp")
             ed.ok('OBJ EXPORT TYPE=Texture NAME="MyLevel.terrain_maps.island1" FILE="%s"' % before)
-            ed.replace_actors("StaticMeshActor", make_drop(a[1], heights_world(before), nums[0]))
+            ed.replace_actors("StaticMeshActor", make_drop(a[1], heights_world(before), nums[0], o.get("how", "max")))
             ed.deselect()
             ed.ok("ACTOR SELECT OFCLASS CLASS=StaticMeshActor")
             ed.light(selected=True)

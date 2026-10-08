@@ -249,19 +249,52 @@ def crane_tower():
     for sgn in (-1, 1):
         cyl(sgn * 9, 5, 30, 2.4, 8, "beige", 12)                # side turrets
         sphere(sgn * 9, 5, 35.5, 2.6, "domered")
-    # the crane: a lattice-ish jib (two chords and rungs) leaning out, cables with red buoys
-    jx, jz, L, ang = 12, 30, 60, math.radians(62)
-    for dy in (-1.2, 1.2):
-        box(jx + L / 2 * math.cos(ang), dy, jz + L / 2 * math.sin(ang), L, 0.5, 0.5, "dark", (0, -ang, 0))
-    for t in range(1, 12):
-        d = L * t / 12
-        box(jx + d * math.cos(ang), 0, jz + d * math.sin(ang), 0.4, 2.6, 0.4, "dark", (0, -ang, 0))
-    tipx, tipz = jx + L * math.cos(ang), jz + L * math.sin(ang)
-    for k, drop in ((0, 0.62), (1, 0.85)):
-        cx_ = tipx - 4 * k
-        cyl(cx_, 0, tipz - (tipz * drop) / 2, 0.1, tipz * drop, "dark", 6)
-        sphere(cx_, 0, tipz - tipz * drop, 1.6, "domered")
-    box(jx, 0, jz - 1, 5, 5, 3, "orange")                       # the crane's cab on the tower's flank
+    # the crane (the user: the thin jib read as "fishing poles"): a real lattice crane on the tower's flank -
+    # a square truss boom with zigzag lacing, an A-frame, backstays to a counterweight, a cab, one hoist
+    # cable with a heavy hook block
+    def strut(x0, y0, z0, x1, y1, z1, t, m):
+        dx, dy, dz = x1 - x0, y1 - y0, z1 - z0
+        L = math.sqrt(dx * dx + dy * dy + dz * dz)
+        rot = (0, math.atan2(math.hypot(dx, dy), dz), math.atan2(dy, dx))
+        bpy.ops.mesh.primitive_cube_add(size=1)
+        ob = bpy.context.object
+        ob.scale = (t, t, L)
+        return place(ob, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, m, rot)
+    bx, bz = 11.0, 34.0                                         # boom foot on the tower's flank
+    box(bx - 1.5, 0, bz - 2.5, 7, 7, 5, "orange")               # the turntable / cab
+    box(bx - 3.2, -3.6, bz - 1.8, 2.2, 0.1, 1.6, "glow")        # cab window
+    box(bx - 6.5, 0, bz - 1.0, 5, 5.5, 4, "steel")              # counterweight block
+    ang, L, w = math.radians(58), 60.0, 4.6                     # boom: 60 m at 58 degrees, chunky enough to read from the window
+    ux, uz = math.cos(ang), math.sin(ang)
+    chords = [(-w / 2, -w / 2), (-w / 2, w / 2), (w / 2, -w / 2), (w / 2, w / 2)]
+    taper = lambda t: 1 - 0.45 * t                              # the truss narrows toward the tip
+    def at(t, c):                                               # a chord point t along the boom
+        nx, nz = -uz, ux                                        # boom-normal in the XZ plane
+        return (bx + ux * L * t + nx * c[0] * taper(t), c[1] * taper(t), bz + uz * L * t + nz * c[0] * taper(t))
+    for c in chords:
+        p0, p1 = at(0, c), at(1, c)
+        strut(*p0, *p1, 0.9, "orange")
+    n = 14
+    for k in range(n):                                          # zigzag lacing on all four faces
+        t0, t1 = k / n, (k + 1) / n
+        for a_, b_ in ((0, 1), (2, 3), (0, 2), (1, 3)):
+            ca, cb = chords[a_], chords[b_]
+            p0 = at(t0, ca if k % 2 == 0 else cb)
+            p1 = at(t1, cb if k % 2 == 0 else ca)
+            strut(*p0, *p1, 0.45, "steel")
+    tip = at(1, (0, 0))
+    box(tip[0], 0, tip[2], 3.4, 3.4, 3.4, "orange")             # the boom head sheave
+    for sy in (-1.6, 1.6):                                      # A-frame over the cab
+        strut(bx - 3, sy, bz, bx - 1, sy * 0.4, bz + 9, 0.4, "steel")
+    ax, az = bx - 1, bz + 9
+    strut(ax, 0, az, tip[0], 0, tip[2], 0.12, "dark")           # luffing cable to the tip
+    strut(ax, 0, az, bx - 6.5, 0, bz + 1, 0.12, "dark")         # backstay to the counterweight
+    hz = tip[2] * 0.42                                          # the hoist cable and the hook block
+    strut(tip[0], 0, tip[2], tip[0], 0, hz + 2.2, 0.3, "dark")
+    box(tip[0], 0, hz + 1.2, 1.8, 1.2, 2.0, "orange")
+    cyl(tip[0], 0, hz - 0.2, 0.35, 1.2, "dark", 8)
+    box(tip[0] + 0.5, 0, hz - 0.9, 1.2, 0.4, 0.4, "dark")       # the hook
+    box(tip[0], 0, hz - 3.4, 3.0, 3.0, 3.0, "domered")          # a red cargo crate on the hook
 
 
 def aframe_hut():

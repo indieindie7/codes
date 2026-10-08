@@ -72,6 +72,10 @@ def on_avalon():
     return (m[-1][1] == "True") if m else True
 
 
+import json as _json
+HALF = {k: max(v["w"], v["d"]) / 2 for k, v in _json.load(open(os.path.join(HERE, "..", "Models", "ase", "bounds.json"))).items()}
+
+
 def main():
     a = [x for x in sys.argv[1:] if "=" not in x]
     o = dict(x.split("=", 1) for x in sys.argv[1:] if "=" in x)
@@ -166,7 +170,8 @@ def main():
             else:
                 down, lift = yaw_to(x, y, *face), -40
             yaw = int(down + rnd.randint(-12, 12)) % 360          # AvalonSM meshes face +X at yaw 0 (glb_to_ase)
-            props.append("prop %d AvalonSM.%s %d %d %d %.2f %d 0 0 0" % (slot + len(props), m, x, y, yaw, s, lift))
+            # lift 0: the mod now sets each prop on the lowest ground under its footprint (word 10 = half size)
+            props.append("prop %d AvalonSM.%s %d %d %d %.2f 0 0 0 0 - %d" % (slot + len(props), m, x, y, yaw, s, HALF.get(m, 250)))
         print("shanty: %d of %d shacks placed" % (len(props), n))
         for p in props:
             print("  ", p)
