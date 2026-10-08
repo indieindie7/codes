@@ -202,7 +202,131 @@ def radio_mast():
     box(0, -1.75, 14, 1.0, 0.1, 10, "orange")
 
 
-BUILDERS = {"cooling_tower": cooling_tower, "processing_hall": processing_hall, "storage_tank": storage_tank,
+# --- round 2 (2026-10-07): the concept cards as geometry - the user found the 8-view cards read as flat
+# billboards from the tower ("make geometric primitives in their place trying to imitate them"). Their own
+# colours (blue + orange stripe huts, the beige crane temple) live in EXTRA: these go into their own package
+# (AvalonSM2) with their own palette, so the shared 8-stripe Pal.tga is untouched.
+EXTRA = {"blue": (0.020, 0.060, 0.330), "beige": (0.560, 0.470, 0.330), "domered": (0.420, 0.020, 0.015),
+         "tin": (0.180, 0.185, 0.190), "sand": (0.360, 0.290, 0.200)}
+_colour = palette.colour
+palette.colour = lambda n: EXTRA[n] if n in EXTRA else _colour(n)
+
+
+def frustum(x, y, z, w0, d0, w1, d1, h, m):
+    """a battered block: a box whose top is w1 x d1 over a w0 x d0 base (Aztec/temple walls)"""
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    ob = bpy.context.object
+    me = ob.data
+    for v in me.vertices:
+        top = v.co.z > 0
+        v.co.x *= (w1 if top else w0)
+        v.co.y *= (d1 if top else d0)
+        v.co.z = (v.co.z + 0.5) * h
+    return place(ob, x, y, z, m)
+
+
+def crane_tower():
+    # the Liandri temple-tower on the mountain: a stepped, battered base (the Aztec read the user loves), a
+    # tall setback tower, red domes, and a lattice crane leaning off one side with red buoys on cables
+    z = 0
+    for k, (w, h) in enumerate(((44, 6), (36, 6), (29, 6))):
+        frustum(0, 0, z, w, w * 0.8, w - 4, (w - 4) * 0.8, h, "beige" if k % 2 == 0 else "sand")
+        z += h
+    for sgn in (-1, 1):                                         # a stair up the front of the steps
+        box(sgn * 3, -16, 9, 1.0, 10, 18, "sand", (math.radians(-38), 0, 0))
+    frustum(0, 0, z, 22, 18, 17, 14, 22, "beige")               # tower body
+    z += 22
+    for sgn in (-1, 1):
+        box(sgn * 9.2, -6, z - 11, 0.6, 1.2, 16, "dark")        # tall slit windows
+        box(sgn * 4, -7.6, z - 9, 2.2, 0.6, 5, "dark")
+    doors(0, -9.5, 18, 4, 7)
+    frustum(0, 0, z, 15, 12, 12, 10, 12, "sand")                # setback
+    z += 12
+    frustum(0, 0, z, 10, 8, 8, 7, 8, "beige")
+    z += 8
+    sphere(0, 0, z + 1.5, 5.5, "domered")                       # the red dome
+    cyl(0, 0, z + 9, 0.35, 12, "dark", 8)                       # mast
+    for sgn in (-1, 1):
+        cyl(sgn * 9, 5, 30, 2.4, 8, "beige", 12)                # side turrets
+        sphere(sgn * 9, 5, 35.5, 2.6, "domered")
+    # the crane: a lattice-ish jib (two chords and rungs) leaning out, cables with red buoys
+    jx, jz, L, ang = 12, 30, 60, math.radians(62)
+    for dy in (-1.2, 1.2):
+        box(jx + L / 2 * math.cos(ang), dy, jz + L / 2 * math.sin(ang), L, 0.5, 0.5, "dark", (0, -ang, 0))
+    for t in range(1, 12):
+        d = L * t / 12
+        box(jx + d * math.cos(ang), 0, jz + d * math.sin(ang), 0.4, 2.6, 0.4, "dark", (0, -ang, 0))
+    tipx, tipz = jx + L * math.cos(ang), jz + L * math.sin(ang)
+    for k, drop in ((0, 0.62), (1, 0.85)):
+        cx_ = tipx - 4 * k
+        cyl(cx_, 0, tipz - (tipz * drop) / 2, 0.1, tipz * drop, "dark", 6)
+        sphere(cx_, 0, tipz - tipz * drop, 1.6, "domered")
+    box(jx, 0, jz - 1, 5, 5, 3, "orange")                       # the crane's cab on the tower's flank
+
+
+def aframe_hut():
+    # the Sana hut: a tall blue A-frame, the orange stripe along the ridge and down the gable edges
+    H, W, D = 9.0, 7.0, 6.0
+    for sgn in (-1, 1):
+        a = math.atan2(W / 2, H)
+        box(sgn * W / 4, 0, H / 2, 0.5, D, H / math.cos(a), "blue", (0, -sgn * a, 0))
+    frustum(0, 0, 0, W - 0.6, D - 0.2, 0.6, D - 0.2, H - 0.2, "blue")      # the solid inside
+    box(0, 0, H, 0.9, D + 0.2, 0.6, "orange")                    # ridge stripe (the orange top)
+    for sgn in (-1, 1):
+        a = math.atan2(W / 2, H)
+        box(sgn * W / 4, -D / 2 - 0.05, H / 2, 0.35, 0.2, H / math.cos(a), "orange", (0, -sgn * a, 0))
+    doors(0, -D / 2 - 0.1, 0, 1.4, 2.4)
+    box(0, -D / 2 - 0.15, 5.5, 1.0, 0.2, 2.4, "glow")            # the lit sign panel
+
+
+def dorm_pod():
+    # a blue sleeping box with an orange slab roof, raised on a narrower blue pedestal
+    box(0, 0, 2.5, 6, 6, 5, "blue")                              # pedestal
+    doors(0, -3, 0, 1.4, 2.4)
+    box(0, 0, 8, 12, 9, 6, "blue")                               # pod
+    box(0, 0, 11.3, 12.6, 9.6, 0.6, "orange")                    # roof slab
+    box(0, -4.55, 10.6, 12.2, 0.2, 0.5, "orange")                # stripe
+    for sx in (-3.5, 0, 3.5):
+        box(sx, -4.56, 8, 2.2, 0.1, 1.6, "glow")                 # window strip
+
+
+def tin_shack():
+    # a grey corrugated tin shed with a pitched roof
+    box(0, 0, 1.6, 8, 5, 3.2, "tin")
+    for sgn in (-1, 1):
+        box(0, sgn * 1.4, 3.75, 8.6, 3.2, 0.25, "steel", (sgn * math.radians(-22), 0, 0))
+    for k in range(-3, 4):
+        box(k * 1.1, -2.52, 1.6, 0.15, 0.06, 3.0, "steel")       # corrugation ribs
+    doors(-2, -2.55, 0, 1.2, 2.2)
+    sphere(-2, -2.7, 2.5, 0.15, "glow")                           # the lamp over the door
+
+
+def twin_towers():
+    # the stilt huts: dark huts on a platform of thin legs over water, a gantry between them
+    box(0, 0, 6, 16, 6, 0.6, "dark")                             # platform
+    for x in (-7, -2.5, 2.5, 7):
+        for y in (-2.5, 2.5):
+            cyl(x, y, 3, 0.25, 6, "rust", 6)
+    for sgn in (-1, 1):
+        box(sgn * 5, 0, 8.5, 4.5, 4.5, 4.5, "rustred")           # huts
+        cyl(sgn * 5, 0, 11.2, 3.0, 0.8, "dark", 16)              # flat hat roofs
+        doors(sgn * 5, -2.25, 6.3, 1.0, 2.0)
+    box(0, 0, 9, 6, 1.0, 0.3, "dark")                            # gantry
+
+
+def water_tower():
+    # a tall column, a flared tank, a red-cone roof
+    cyl(0, 0, 9, 1.4, 18, "brown", 16, r2=1.0)
+    cyl(0, 0, 18.8, 1.2, 1.6, "steel", 16, r2=3.2)
+    cyl(0, 0, 21, 3.2, 3.0, "rustred", 20)
+    box(0, -3.2, 21, 2.0, 0.2, 0.6, "orange")
+    cyl(0, 0, 24.2, 3.6, 3.4, "sand", 20, r2=0.2)               # cone roof
+    sphere(1.2, -2.6, 24, 0.5, "domered")
+
+
+BUILDERS = {"crane_tower": crane_tower, "aframe_hut": aframe_hut, "dorm_pod": dorm_pod, "tin_shack": tin_shack,
+            "twin_towers": twin_towers, "water_tower": water_tower,
+            "cooling_tower": cooling_tower, "processing_hall": processing_hall, "storage_tank": storage_tank,
             "ore_tank": ore_tank, "dock_crane": dock_crane, "drilling_rig": drilling_rig, "dead_rig": dead_rig,
             "cargo_dropship": cargo_dropship, "pylon": pylon, "radio_mast": radio_mast}
 names = o.get("names", ",".join(BUILDERS)).split(",")

@@ -67,7 +67,31 @@ def acked(n):
         return False
 
 
+def pending_batch(timeout=15.0):
+    """wait (up to timeout) until the batch now in the live file has been run: the game reads the file only
+    every LivePoll seconds, so writing the next batch too soon replaced it unseen (2026-10-07: a shanty
+    group was lost that way)"""
+    try:
+        m = re.search(r"batch\s+(\d+)", open(LIVE).read())
+    except OSError:
+        return
+    if not m:
+        return
+    want = "Cards: live batch %s" % m.group(1)
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            with open(LOG, "rb") as f:
+                f.seek(max(0, os.path.getsize(LOG) - 400000))
+                if want.encode() in f.read():
+                    return
+        except OSError:
+            pass
+        time.sleep(0.25)
+
+
 def send(cmds, wait=20.0):
+    pending_batch()
     n = next_seq()
     start = os.path.getsize(LOG) if os.path.exists(LOG) else 0
     write_atomic(LIVE, n, cmds)

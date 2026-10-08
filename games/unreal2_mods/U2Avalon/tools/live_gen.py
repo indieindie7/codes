@@ -144,13 +144,18 @@ def main():
         props = []
         while len(props) < n and tries < n * 80:
             tries += 1
-            ang, rad = rnd.uniform(0, 2 * math.pi), r * math.sqrt(rnd.random())
+            rmin = float(o.get("rmin", 0))                      # rmin= a ring round a summit, not a disc
+            ang, rad = rnd.uniform(0, 2 * math.pi), math.sqrt(rnd.uniform(rmin * rmin, r * r))
             x, y = x0 + rad * math.cos(ang), y0 + rad * math.sin(ang)
             m = rnd.choice(cards)
             s = rnd.uniform(0.85, 1.2)
             foot = 520 * s
             if not ok(Z, x, y, placed, foot, max_slope):
                 continue
+            if "avoid" in o:                                      # avoid=X,Y,R: keep out of an earlier group
+                ax_, ay_, ar_ = (float(v) for v in o["avoid"].split(","))
+                if math.hypot(x - ax_, y - ay_) < ar_:
+                    continue
             placed.append((x, y))
             if Z is not None:
                 d = 300.0
@@ -160,7 +165,7 @@ def main():
                 lift = -min(150, 0.5 * foot * math.tan(math.radians(slope(Z, x, y))))
             else:
                 down, lift = yaw_to(x, y, *face), -40
-            yaw = int(down + 90 + rnd.randint(-12, 12)) % 360     # B_ meshes face -Y
+            yaw = int(down + rnd.randint(-12, 12)) % 360          # AvalonSM meshes face +X at yaw 0 (glb_to_ase)
             props.append("prop %d AvalonSM.%s %d %d %d %.2f %d 0 0 0" % (slot + len(props), m, x, y, yaw, s, lift))
         print("shanty: %d of %d shacks placed" % (len(props), n))
         for p in props:
