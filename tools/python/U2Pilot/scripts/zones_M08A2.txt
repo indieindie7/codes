@@ -1,0 +1,9 @@
+# beat graph: log the level event wiring (hub beats) and zones (hub zones)
+background
+map M08A2
+waitcontrol 180
+wait 1
+console hub zones
+console hub beats
+wait 1
+quit

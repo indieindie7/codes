@@ -1,0 +1,368 @@
+{
+ "writer": {
+  "score": 0.833,
+  "checks": {
+   "W1 evidence first": 1.0,
+   "W2 bodies tell": 1.0,
+   "W3 story spread": 1.0,
+   "W4 gore serves": 0.33
+  },
+  "notes": [
+   "W1: 4 signs (bodies, blood, scares) before the first fight at 6 s",
+   "W2: 12 of 12 bodies placed with a reason nearby (door, prop, weapon, another body)",
+   "W3: 145 story beats on the walk, longest quiet 7 s (want <= 90)",
+   "W4: 4 of 12 bodies have blood scripted near them"
+  ],
+  "veto": null
+ },
+ "director": {
+  "score": 0.611,
+  "checks": {
+   "D1 compression/release": 0.5,
+   "D2 reveal": 0.5,
+   "D3 palette": 0.9,
+   "D4 darkness": 0.55
+  },
+  "notes": [
+   "D1: 2 of 4 30-s windows go from dark to bright",
+   "D2: the first enemy (U2Izarian) stands in light 274 vs the approach 282",
+   "D3: 239 of 267 lights in the brief's families (white, rust/amber, red)",
+   "D4: 19 % of the walk in low light (want 20-50)"
+  ],
+  "veto": null
+ },
+ "engineer": {
+  "score": 0.558,
+  "checks": {
+   "E1 water": 0.0,
+   "E2 light sources": 0.67,
+   "E3 dead ends": 1.0
+  },
+  "notes": [
+   "E1: 5 water volumes, 0 nav points in water; WaterVolume0 gravity default friction default; WaterVolume1 gravity default friction default; WaterVolume3 gravity default friction default",
+   "E2: 87 of 267 lights have no fixture mesh within 160 UU",
+   "E3: 0 dead-end nav points off the route"
+  ],
+  "veto": null
+ },
+ "level": {
+  "score": 0.764,
+  "checks": {
+   "L1 route": 1.0,
+   "L2 pacing": 1.0,
+   "L3 arenas": 0.62,
+   "L4 recovery": 0.88,
+   "L5 first encounter": 0.32
+  },
+  "notes": [
+   "L1 (the game's ReachSpecs (M08A1_zones.log); 2 islands joined by guessed lifts/doors, 1 of them on the route)",
+   "L1: route found, 93 s of walking over 57 nav points to M08a2",
+   "L2: 100 beats, longest gap 14 s (want <= 60)",
+   "L3: 5 of 8 fights have cover and two ways in",
+   "L4: 7 of 8 fights have health within 30 s after",
+   "L5: 6 s of quiet before the first fight (want >= 20)"
+  ],
+  "veto": null
+ },
+ "artist": {
+  "score": 0.956,
+  "checks": {
+   "A1 art fatigue": 1.0,
+   "A2 texture variety": 1.0,
+   "A3 hero details": 0.87
+  },
+  "notes": [
+   "A1: the most used mesh (Mission_08M.M08AX.Service6e) is 10 % of 680 placed",
+   "A2: 15 zones, median 8 textures each, 0 with one",
+   "A3: 13 of 15 zones have a mesh found nowhere else"
+  ],
+  "veto": null
+ },
+ "total": 0.73,
+ "vetoes": [],
+ "proposals": {
+  "gore": [
+   {
+    "at": [
+     -1841.0,
+     1264.0,
+     5953.0
+    ],
+    "body": "U2CivilianScientist3",
+    "kinds": [
+     "pool",
+     "spray",
+     "drag_trail"
+    ],
+    "spray_dir": [
+     -0.98,
+     0.18
+    ],
+    "trail_to": [
+     -1840.0,
+     1264.0,
+     6022.0
+    ]
+   },
+   {
+    "at": [
+     -1599.0,
+     4433.0,
+     6501.0
+    ],
+    "body": "U2CivilianScientist10",
+    "kinds": [
+     "pool",
+     "spray"
+    ],
+    "spray_dir": [
+     -0.96,
+     0.29
+    ]
+   },
+   {
+    "at": [
+     1898.0,
+     1575.0,
+     5792.0
+    ],
+    "body": "U2ColonistHumanMaleA0",
+    "kinds": [
+     "pool",
+     "spray",
+     "drag_trail"
+    ],
+    "spray_dir": [
+     -0.09,
+     1.0
+    ],
+    "trail_to": [
+     1956.0,
+     1680.0,
+     5744.0
+    ]
+   },
+   {
+    "at": [
+     -1025.0,
+     4019.0,
+     6472.0
+    ],
+    "body": "U2CivilianScientist6",
+    "kinds": [
+     "pool",
+     "spray",
+     "drag_trail"
+    ],
+    "spray_dir": [
+     0.8,
+     -0.6
+    ],
+    "trail_to": [
+     -1107.0,
+     3704.0,
+     6608.0
+    ]
+   },
+   {
+    "at": [
+     -1716.0,
+     5288.0,
+     6471.0
+    ],
+    "body": "U2CivilianScientist5",
+    "kinds": [
+     "pool",
+     "spray"
+    ],
+    "spray_dir": [
+     0.43,
+     -0.9
+    ]
+   },
+   {
+    "at": [
+     -1114.0,
+     2946.0,
+     6200.0
+    ],
+    "body": "U2CivilianScientist7",
+    "kinds": [
+     "pool",
+     "spray"
+    ],
+    "spray_dir": [
+     0.5,
+     -0.87
+    ]
+   },
+   {
+    "at": [
+     -1321.0,
+     4471.0,
+     6490.0
+    ],
+    "body": "U2CivilianScientist11",
+    "kinds": [
+     "pool",
+     "spray"
+    ],
+    "spray_dir": [
+     0.98,
+     0.19
+    ]
+   },
+   {
+    "at": [
+     -1132.0,
+     2876.0,
+     5944.0
+    ],
+    "body": "U2CivilianScientist8",
+    "kinds": [
+     "pool",
+     "spray",
+     "drag_trail"
+    ],
+    "spray_dir": [
+     0.47,
+     -0.88
+    ],
+    "trail_to": [
+     -1726.0,
+     2848.0,
+     5977.0
+    ]
+   },
+   {
+    "at": [
+     -1070.0,
+     1216.0,
+     6199.0
+    ],
+    "body": "U2CivilianScientist9",
+    "kinds": [
+     "pool",
+     "spray",
+     "drag_trail"
+    ],
+    "spray_dir": [
+     0.82,
+     0.57
+    ],
+    "trail_to": [
+     -1148.0,
+     903.0,
+     6198.0
+    ]
+   },
+   {
+    "at": [
+     -464.0,
+     1168.0,
+     5767.0
+    ],
+    "body": "U2CivilianScientist2",
+    "kinds": [
+     "pool",
+     "spray"
+    ],
+    "spray_dir": [
+     1.0,
+     0.04
+    ]
+   },
+   {
+    "at": [
+     -13370.0,
+     -2261.0,
+     -858.0
+    ],
+    "body": "U2CivilianScientist1",
+    "kinds": [
+     "pool",
+     "spray"
+    ],
+    "spray_dir": [
+     -0.88,
+     -0.47
+    ]
+   },
+   {
+    "at": [
+     -1447.0,
+     4560.0,
+     6486.0
+    ],
+    "kinds": [
+     "smear"
+    ],
+    "why": "foreshadow the first fight (4 s before it)"
+   },
+   {
+    "at": [
+     -1447.0,
+     4560.0,
+     6486.0
+    ],
+    "kinds": [
+     "smear"
+    ],
+    "why": "foreshadow the first fight (2 s before it)"
+   },
+   {
+    "at": [
+     -1447.0,
+     4560.0,
+     6486.0
+    ],
+    "kinds": [
+     "claw_marks"
+    ],
+    "why": "foreshadow the first fight (1 s before it)"
+   }
+  ],
+  "lights": [
+   {
+    "at": [
+     -1566.0,
+     4423.0,
+     6491.0
+    ],
+    "add": "a low warm key light on the first enemy's spot",
+    "why": "the reveal: lit creature, dark approach (Unreal 1 Skaarj)"
+   }
+  ],
+  "cover": [
+   {
+    "at": [
+     792.0,
+     -9504.0,
+     6689.0
+    ],
+    "add": "3 waist-high cover pieces 256-1024 UU out",
+    "why": "arena at 72 s has 0"
+   },
+   {
+    "at": [
+     4240.0,
+     -11458.0,
+     6689.0
+    ],
+    "add": "3 waist-high cover pieces 256-1024 UU out",
+    "why": "arena at 88 s has 0"
+   }
+  ],
+  "notes": []
+ },
+ "counts": {
+  "actors": 2302,
+  "nav": 140,
+  "lights": 267,
+  "meshes": 680,
+  "enemies": 36,
+  "bodies": 12,
+  "water": 5,
+  "walk_s": 93
+ }
+}
