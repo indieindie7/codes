@@ -99,7 +99,7 @@ ALPHA_TPL = os.path.join(r"C:\Users\john\Documents\U2_research\terrain", "alphas
 step("ground paint", lambda: ib.run(["py", os.path.join(TOOLS, "groundpaint.py"), base + "_ec.bmp", layout, ALPHA_TPL, os.path.join(RUN, "alphas")]))
 step("terrain", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_apply.py"), base + "_ec.bmp", name, "alphas=" + os.path.join(RUN, "alphas"), "stock=" + ib.TEMPLATE], retries=2))
 t3d = base + "_actors.t3d"
-step("export", lambda: ib.run(["py", os.path.join(TOOLS, "export_mutator.py"), "shift=" + SHIFT, "family=" + name.lower(), "layout=" + layout, "t3d=" + t3d,
+step("export", lambda: ib.run(["py", os.path.join(TOOLS, "export_mutator.py"), "shift=" + SHIFT, "family=" + name, "layout=" + layout, "t3d=" + t3d,
                                "heightmap=" + base + "_ec.bmp", "props=0"]))
 # clutter and vegetation: lamps along the trunk roads, crates and barrels in the yards, fences, rocks, trees
 clut = base + "_clutter.t3d"
@@ -112,7 +112,7 @@ ib.enable_map(name)
 if SUN == "low":
     step("low sun", lambda: ib.run(["py", os.path.join(TOOLS, "lowsun.py"), name, "out=" + name, "el=10", "az=136", "hue=24", "sat=100", "bright=150"], retries=1))
 # motion in the view: plumes from the sheets' motion: keys, trucks on the spine, the reveal pass (U2AvalonCards.ini)
-step("motion", lambda: ib.run(["py", os.path.join(TOOLS, "motion.py"), layout, "family=" + name.lower()]))
+step("motion", lambda: ib.run(["py", os.path.join(TOOLS, "motion.py"), layout, "family=" + name]))
 
 # 7. the game
 sheet = None

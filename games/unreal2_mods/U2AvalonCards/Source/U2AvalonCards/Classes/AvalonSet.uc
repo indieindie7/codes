@@ -2,8 +2,8 @@
 // AvalonSet - one Avalon map family's own dressing, so each generated town
 // keeps its cards, props and plumes (2026-10-07: building TutA_Ridge5 wrote its
 // layout over the TutA session's live edits, and the running game wrote them
-// back). Stored per object in U2AvalonCards.ini as [<family> AvalonSet], e.g.
-// [tuta AvalonSet], [tuta_ridge5 AvalonSet]; a carved copy (TutA_Ridge5_Live2)
+// back). Stored per object in U2AvalonCards.ini; U2 names the section after the object
+// only, in the name table's spelling: [TutA], [TutA_Ridge5]; a carved copy (TutA_Ridge5_Live2)
 // belongs to its parent's family. A family with no section yet starts from the
 // global [U2AvalonCards.AvalonCards] values.
 //=============================================================================
