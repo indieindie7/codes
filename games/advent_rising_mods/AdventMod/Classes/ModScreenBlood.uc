@@ -125,6 +125,13 @@ function DrawBlade(Canvas C)
 	}
 }
 
+
+// one splat's fields for other classes (another object's Splats[i].X is too large a context expression)
+function Material SplatTex(int i) { return Splats[i].Tex; }
+function float SplatAge(int i) { return Splats[i].Age; }
+function float SplatSize(int i) { return Splats[i].Size; }
+function DropSplat(int i) { Splats[i].Tex = None; }
+
 defaultproperties
 {
      bVisible=True

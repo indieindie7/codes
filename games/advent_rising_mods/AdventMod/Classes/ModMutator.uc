@@ -15,6 +15,7 @@ var int RemovedFx;
 var ModShadowManager Shadows;
 var ModTargeting Targeting;
 var ModGore Gore;
+var ModPlayerBlood PlayerBlood;
 
 // ticks while the game is paused too (bAlwaysTick), so the FOV slider in the pause menu
 // shows its effect at once
@@ -92,6 +93,8 @@ function Every()
 		PC.Player.InteractionMaster.AddInteraction(string(class'ModScreenBlood'), PC.Player);
 	if (!class'ModSettings'.default.bGraphicsOnly && Gore == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Gore = Spawn(class'ModGore');
+	if (!class'ModSettings'.default.bGraphicsOnly && PlayerBlood == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
+		PlayerBlood = Spawn(class'ModPlayerBlood');   // blood on the player's hands/weapon, lens drops
 	if (Live == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Live = Spawn(class'ModLive');      // live sessions: "mutate live reload" and the place it puts the player back
 	if (class'ModSettings'.default.bD3DTrace)
