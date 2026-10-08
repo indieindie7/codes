@@ -94,8 +94,12 @@ def main():
         ("arrival", (lz["x"], lz["y"]), 2500, "Sanctuary_06_001", "Investigate the installation on Sanctuary to discover the cause of the distress call", "", ""),
         ("road", rmid, 2600, "", "", "road", "arrival"),       # a roadblock by the hauler wreck: the drive gets its contact (pacing research rule 1)
         ("gate", gate, 2600, "Sanctuary_15G_002", "Rescue Miller", "gate", "arrival"),
-        ("yard", (plant["x"], plant["y"]), 1900, "Sanctuary_18G_002,Sanctuary_16G_002", "", "yard", "gate"),   # writer: the warning before the camera line
-        ("basin", (bx, by), 1700, "Sanctuary_10_002,Sanctuary_17G_002", "", "", "yard"),
+        # the gate conversation cut in three (cuts.json): the camera gag above, Miller's introduction once the gate's
+        # Izarian is dead, the hatches to the basin once the yard is cleared
+        ("gate2", gate, 2600, "Sanctuary_15G_006a", "", "", "gate!"),
+        ("yard", (plant["x"], plant["y"]), 1900, "Sanctuary_18G_002,Sanctuary_16G_002", "", "yard", "gate2"),   # writer: the warning before the camera line
+        ("hatches", (plant["x"], plant["y"]), 2600, "Sanctuary_15G_007", "", "", "yard!"),
+        ("basin", (bx, by), 1700, "Sanctuary_10_002,Sanctuary_17G_002", "", "", "hatches"),
         ("drainage", (bx, by), 2600, "Sanctuary_20G_002", "", "drainage", "basin"),
         ("dark", (bx, by), 3200, "Sanctuary_19G_002", "", "", "drainage!"),   # writer: 22G (no security door) + its orphan 23G cut; 19G ("easy ride") moved here, inside the plant
         ("exit", pexit, 2200, "Sanctuary_98_002", "Get to the generator building", "", "dark"),
@@ -205,6 +209,11 @@ def main():
                  (o["x"], o["y"] + o["d"] / 2 + 25, 16384), (o["x"], o["y"] - o["d"] / 2 - 25, 49152)]
         fx, fy, yaw = min(faces, key=lambda f_: math.hypot(f_[0] - bx_, f_[1] - by_))
         L.append('Cams=(Beat="%s",At=(X=%.0f,Y=%.0f,Z=%.0f),Yaw=%d)' % (b[0], fx, fy, gz(o["x"], o["y"]) + o["h"] - 90, yaw))
+    # dialogue cuts (cuts.json, built by make_cuts.py)
+    cb = os.path.join(HERE, "cuts_built.json")
+    for c in (json.load(open(cb)) if os.path.exists(cb) else []):
+        L.append('Cuts=(Node="%s",Op="%s",To="%s",Text="%s",File="%s",Secs=%.2f)' % (
+            c["node"], c["op"], c.get("to", ""), c.get("text", "").replace('"', "'"), c.get("file", ""), c.get("secs", 0)))
     for (x, y), after, items, msg in supplies:
         L.append('Supplies=(At=%s,After="%s",Items="%s",Message="%s")' % (v(x, y, 40), after, items, msg))
     for (x, y), r, enc in nobike:

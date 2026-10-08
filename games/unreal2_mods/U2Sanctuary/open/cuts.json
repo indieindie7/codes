@@ -1,0 +1,11 @@
+{
+ "about": "Sanctuary Open's dialogue cuts (the writer's edits that need the conversations cut up). op: end = the conversation stops after node; jump = after node comes to; clip = keep sentences keep= of the line (1-based, cut at its own pauses by tools/python/VoiceSplice/dlgcut.py, checked by whisper); mute = silent. A split conversation's later part is a mid node named as a later beat's topic (import_m08.py). Build: py make_cuts.py, then py import_m08.py.",
+ "cuts": [
+  {"node": "Sanctuary_15G_005", "op": "end",
+   "why": "gate part 1 is the camera gag (002-005, ~17 s), then the gate's one Izarian - not 59 s of talk with the fight held back (pacing rule 1, dialogue rule 26)"},
+  {"node": "Sanctuary_15G_006c", "op": "end",
+   "why": "gate part 2 (after the gate fight): Miller introduces himself (006a-006c); the hatches part waits for the yard to be cleared"},
+  {"node": "Sanctuary_20G_002", "op": "clip", "keep": "3-",
+   "why": "writer pass: 'Whew! I thought I'd lost you.' comes seconds after Miller last spoke (rule 5/12); keep 'Next up is the drainage room...'"}
+ ]
+}

@@ -48,3 +48,18 @@ Next:
 3. The creative team's open-map review: vehicle lanes, vehicle arenas, the weenie from the LZ, drive pacing.
 4. Key-image cameras: one camera per concept image, compared with pilot shots.
 5. The interiors and beats, the enemies.
+
+## Dialogue cuts (2026-10-08)
+
+The shipped conversations can be cut up without new recordings:
+
+- **cuts.json** lists the cuts, each with the reason:
+  - `end`: the conversation stops after a node;
+  - `jump`: skip to another node;
+  - `clip`: keep some sentences of a line;
+  - `mute`: the node says nothing.
+- **make_cuts.py** builds the `clip` lines with `tools/python/VoiceSplice/dlgcut.py`. It cuts the actor's own take at its pauses, writes `<game>\Voice\U2Cut\...ogg`, and lets whisper check what is heard. A clip with a match under 0.8 is left out. The Oggs are derived from game audio and stay local.
+- **import_m08.py** writes OpenDirector's `Cuts=` lines.
+- **OpenDirector** applies the cuts after loading the dialogue: `NextNodes` for end and jump; `Filename`, `LongText` and `AudioDuration` for clip and mute.
+- **Splitting a conversation:** a later beat names a mid node as its topic. The dialogue engine only starts conversations at a tree's topic, so `StartTalk` points the tree's first node at the mid node.
+- **Verified in game:** the gate conversation now plays in three parts (gate / after the gate fight / after the yard), and the drainage line is clipped. Subtitles were checked; the pilot runs with `-nosound`, so the audio still needs a listen.

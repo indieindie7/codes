@@ -36,6 +36,15 @@ def load_nodes(dirs):
     return nodes
 
 
+CUTS = {}
+
+
+def load_cuts(od):
+    """OpenDirector's Cuts= lines: end / jump / clip / mute, applied as the game applies them"""
+    for m in re.finditer(r'Cuts=\(Node="([^"]*)",Op="([^"]*)",To="([^"]*)",Text="([^"]*)",File="([^"]*)",Secs=([\d.]+)\)', od):
+        CUTS[m.group(1).lower()] = {"op": m.group(2).lower(), "to": m.group(3), "text": m.group(4), "secs": float(m.group(6))}
+
+
 def chain(nodes, topic):
     out, seen, n = [], set(), topic
     n = n.lower() if n else n
@@ -43,10 +52,19 @@ def chain(nodes, topic):
         seen.add(n)
         d = nodes[n]
         txt = d.get("LongText", d.get("ShortText", ""))
+        cut = CUTS.get(n, {})
+        if cut.get("op") == "clip":
+            txt = cut["text"]
+        elif cut.get("op") == "mute":
+            txt = ""
         out.append({"node": d["name"], "speaker": d.get("Speaker", "?"), "sound_actor": d.get("SoundActor", ""),
                     "text": txt, "secs": round(max(1.0, len(txt.split()) / WPS), 1)})
         nx = d.get("next", [])
         n = nx[0].lower() if nx else None
+        if cut.get("op") == "end":
+            n = None
+        elif cut.get("op") == "jump":
+            n = cut["to"].lower()
     return out
 
 
@@ -55,6 +73,7 @@ def main():
     od = ini[ini.find("[U2Sanctuary.OpenDirector]"):]
     dirs = re.search(r"DialogDirs=(.*)", od).group(1).strip().split(",")
     nodes = load_nodes(dirs)
+    load_cuts(od)
     beats = [dict(zip(("id", "x", "y", "r", "topics", "objective", "enc", "after"), m)) for m in re.findall(
         r'Beats=\(Id="(\w+)",At=\(X=([-\d.]+),Y=([-\d.]+),Z=[-\d.]+\),Radius=([\d.]+),Topics="([^"]*)",Objective="([^"]*)",Encounter="([^"]*)",After="([^"]*)"\)', od)]
     waves = re.findall(r'Waves=\(Encounter="(\w+)",Pawns="([^"]*)",Doors="[^"]*",When="([^"]*)",Delay=([\d.]+)', od)

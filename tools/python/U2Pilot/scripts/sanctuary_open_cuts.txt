@@ -1,0 +1,49 @@
+# sanctuary_open_cuts: the gate conversation in three parts (mid-node starts), the clipped drainage line
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator,U2Gore.GoreMutator,U2Sanctuary.SanctuaryMutator,U2FairFights.FairFights
+waitcontrol 120
+wait 8
+console god
+mark gate
+console hub tp -845 366 -1231
+wait 14
+shot
+wait 8
+console hub kill 9000
+wait 6
+console hub kill 9000
+wait 5
+shot
+wait 4
+shot
+wait 4
+shot
+wait 12
+mark yard
+console hub tp 1500 -2500 -1187
+wait 6
+console hub kill 9000
+wait 6
+console hub kill 9000
+wait 6
+console hub kill 9000
+wait 6
+console hub kill 9000
+wait 4
+shot
+wait 4
+shot
+wait 4
+shot
+wait 8
+mark basin
+console hub tp 512 -7936 -2475
+wait 12
+shot
+wait 8
+console hub kill 9000
+wait 4
+shot
+wait 4
+shot
+quit

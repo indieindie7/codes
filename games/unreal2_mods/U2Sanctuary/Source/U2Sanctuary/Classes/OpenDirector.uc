@@ -99,6 +99,22 @@ struct OCam
 };
 var config array<OCam> Cams;       // the security cameras Miller talks through (the shipped maps' CameraArm1a)
 var config string CamMesh;
+// dialogue cuts (open/cuts.json -> import_m08.py; the line clips from tools/python/VoiceSplice/dlgcut.py):
+//  end   the conversation stops after Node (split a long one: the next part is a later beat's Topic, a mid node)
+//  jump  after Node comes To (skip the nodes between)
+//  clip  Node plays File (a cut of its own take, Voice/U2Cut/...) with Text as its subtitle, Secs long
+//  mute  Node says nothing (its events still fire)
+struct OCut
+{
+	var string Node;
+	var string Op;
+	var string To;
+	var string Text;
+	var string File;
+	var float Secs;
+};
+var config array<OCut> Cuts;
+var name CutName;
 var config array<OSupply> Supplies;
 var config array<ONoBike> NoBike;
 var config string HiveMesh, DropMesh, ShipMesh, BurstFX;
@@ -191,6 +207,7 @@ function Start()
 		}
 		DE.LoadDialogFiles(D);
 	}
+	ApplyCuts();
 	if (BeaconAt != vect(0,0,0))
 		Beacon();
 	PlaceCams();
@@ -252,6 +269,94 @@ function CamFor(string Id)
 					Ears[k].SetLocation(Cams[i].At);
 			return;
 		}
+}
+
+function DialogNode NodeOf(string N)
+{
+	SetPropertyText("CutName", N);
+	return class'DialogEngine'.static.GetNode(Self, CutName);
+}
+
+// a node by name: GetNode, else any loaded dialog node with that tag (nodes are actors; GetNode missed some)
+function DialogNode FindNode(string N)
+{
+	local DialogNode DN;
+
+	DN = NodeOf(N);
+	if (DN != None)
+		return DN;
+	foreach AllActors(class'DialogNode', DN)
+		if (string(DN.Tag) ~= N)
+			return DN;
+	return None;
+}
+
+// start a conversation, or a part of one: the dialogue engine only starts at a tree's topic, so for a mid node the
+// tree's first node is pointed at it (the split parts of a cut-up conversation)
+function StartTalk(Pawn P, string T)
+{
+	local DialogNode DN;
+	local DialogTree Tr;
+
+	DN = FindNode(T);
+	if (DN != None && DN.Tree != None && DialogTree(DN) == None && DN.Tree.NextNodes.Length > 0 && DN.Tree.NextNodes[0] != DN
+		&& !(string(DN.Tree.Topic) ~= T))
+	{
+		Tr = DN.Tree;
+		Tr.NextNodes[0] = DN;
+		Tr.Bookmark = None;
+		class'DialogEngine'.static.Initiate(P, None, Tr.Topic);
+		if (bLog)
+			Log("U2Sanctuary open: talk "$T$" (part of "$Tr.Topic$")");
+		return;
+	}
+	SetPropertyText("TopicName", T);
+	class'DialogEngine'.static.Initiate(P, None, TopicName);
+	if (bLog)
+		Log("U2Sanctuary open: talk "$T);
+}
+
+function ApplyCuts()
+{
+	local int i, n;
+	local DialogNode DN, To;
+
+	for (i = 0; i < Cuts.Length; i++)
+	{
+		DN = FindNode(Cuts[i].Node);
+		if (DN == None)
+		{
+			Log("U2Sanctuary open: cut "$Cuts[i].Node$" - no such node");
+			continue;
+		}
+		if (Cuts[i].Op ~= "end")
+			DN.NextNodes.Length = 0;
+		else if (Cuts[i].Op ~= "jump")
+		{
+			To = FindNode(Cuts[i].To);
+			if (To == None)
+				continue;
+			DN.NextNodes.Length = 1;
+			DN.NextNodes[0] = To;
+		}
+		else if (Cuts[i].Op ~= "clip")
+		{
+			DN.Filename = Cuts[i].File;
+			DN.LongText = Cuts[i].Text;
+			DN.AudioDuration = Cuts[i].Secs;
+		}
+		else if (Cuts[i].Op ~= "mute")
+		{
+			DN.Filename = "";
+			DN.LongText = "";
+			DN.AudioDuration = 0.4;
+			DN.PreDelay = 0;
+			DN.PostDelay = 0;
+		}
+		n++;
+	}
+	if (bLog)
+		Log("U2Sanctuary open: "$n$" of "$Cuts.Length$" dialogue cuts applied");
 }
 
 function Beacon()
@@ -551,10 +656,7 @@ event Timer()
 	if (TopicQueue.Length > 0 && Level.TimeSeconds >= NextTalk && !class'DialogEngine'.static.IsAlreadyTalking(PC.Pawn)
 		&& (Left(TopicQueue[0], 1) == "~" || (!FightNear(PC) && Level.TimeSeconds >= LastNear + StoryAfterFight)))
 	{
-		SetPropertyText("TopicName", Mid(TopicQueue[0], int(Left(TopicQueue[0], 1) == "~")));
-		class'DialogEngine'.static.Initiate(PC.Pawn, None, TopicName);
-		if (bLog)
-			Log("U2Sanctuary open: talk "$TopicQueue[0]);
+		StartTalk(PC.Pawn, Mid(TopicQueue[0], int(Left(TopicQueue[0], 1) == "~")));
 		TopicQueue.Remove(0, 1);
 		NextTalk = Level.TimeSeconds + 1.5;
 	}

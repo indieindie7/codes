@@ -46,6 +46,12 @@ Speed (CPU):
 - A converted line takes about 1–2 s once warm.
 - The first converted line takes about 12 s while the models load. Use `warm=`.
 
+## dlgcut.py: cut a line at its own pauses
+
+`py -3.13 dlgcut.py show <Node>` lists the line's sentences and the pauses matched to them. `py -3.13 dlgcut.py cut <Node> keep=3-` keeps sentences 3 to the end and writes a game-format Ogg to `<game>\Voice\U2Cut\<Group>\<Node>.ogg`. It also prints a JSON line with the dotted name the game plays, the kept text, the length, and what whisper heard plus a word match.
+
+The tool never edits the game's own voice files. Used by U2Sanctuary/open/make_cuts.py.
+
 ## Licences of what was downloaded
 
 | item | source | licence |
