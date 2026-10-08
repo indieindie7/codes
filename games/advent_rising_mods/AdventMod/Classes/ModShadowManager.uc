@@ -267,7 +267,7 @@ function Release(Actor P)
 }
 
 // contact hardening indoors only: switched once the player has been outdoors (or back
-// indoors) for a second, so a doorway doesn't flicker it
+// indoors) for 4 s, judged by five points, so doorways, beams and window frames don't flicker it
 function UpdatePcss()
 {
 	local int i, Want;
@@ -275,14 +275,14 @@ function UpdatePcss()
 	Want = PcssState;
 	for (i = 0; i < Controllers.Length; i++)
 		if (Controllers[i] != None && Controllers[i].IsPlayer() && Controllers[i].bPicked)
-			Want = int(!Controllers[i].bOutdoors);
+			Want = int(!Controllers[i].bMostlyOutdoors);
 	if (Want == PcssState || Want < 0)
 	{
 		OutdoorTime = 0;
 		return;
 	}
 	OutdoorTime += 0.5;
-	if (OutdoorTime < 1.0 && PcssState >= 0)
+	if (OutdoorTime < 4.0 && PcssState >= 0)
 		return;
 	OutdoorTime = 0;
 	PcssState = Want;

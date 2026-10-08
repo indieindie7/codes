@@ -59,6 +59,7 @@ var int PickVersion;
 var float LastTotalLight;
 var float LastAmbient;
 var bool bOutdoors;               // the sun reached this character at the last pick
+var bool bMostlyOutdoors;         // most of five points see the sun (the contact-hardening switch)
 var byte StockDark;               // the darkness of the game's own shadow, put back when this controller goes
 var float OutOfPool;              // seconds this character has been outside the manager's shadow pool
 
@@ -209,6 +210,29 @@ function bool SunVisible()
 	return FastTrace(Owner.Location + ToSun, Owner.Location) || FastTrace(Head + ToSun, Head);
 }
 
+// outdoors for the contact-hardening switch: most of five points round the character see the sun
+// (one ray flickered under beams and window frames: 18 switches in 45 s on level03sectionb)
+function bool MostlyOutdoors()
+{
+	local vector ToSun, Side, P;
+	local int i, n;
+
+	if (Manager.SunLightActor == None)
+		return false;
+	ToSun = -vector(Manager.SunLightActor.Rotation) * SunClearance;
+	Side = Normal(ToSun Cross vect(0,0,1)) * 80;
+	for (i = 0; i < 5; i++)
+	{
+		P = Owner.Location;
+		P.Z += Owner.CollisionHeight * 0.8 * (i % 2);   // (% is a float operator in UnrealScript)
+		if (i >= 2)
+			P += Side * (float(i) - 3.0) + vect(0,0,1) * Owner.CollisionHeight * 0.4;
+		if (FastTrace(P + ToSun, P))
+			n++;
+	}
+	return n >= 3;
+}
+
 function float AmbientLight()
 {
 	if (Owner.Region.Zone == None)
@@ -308,6 +332,7 @@ function SelectLights()
 	LastAmbient = AmbientLight();
 	Total = LastAmbient;
 	bOutdoors = SunVisible();
+	bMostlyOutdoors = MostlyOutdoors();
 
 	for (i = 0; i < Manager.StaticLights.Length && !(bOutdoors && bSunOnlyOutdoors); i++)
 	{
