@@ -26,6 +26,22 @@ Copy `Classes` to `<game>\U2GM\Classes`. Add `EditPackages=U2GM` to the `Unreal2
 | `gm flatten R` | terrain within R pulled to the height under the crosshair |
 | `gm smooth R` | terrain within R smoothed |
 
+## The creative team and the director (2026-10-08)
+The user: "fold the game master tools and agent into the agents and the director mod". The journal is now the one language for every hand on a level: the GM's, the creative team's (the five co-director agents of `U2Sanctuary/tools/mapreview.py` and `U2Avalon/tools/codirect.py`), and U2Sanctuary's `SanctuaryDirector`.
+
+| command | does |
+|---|---|
+| `gm light [BRIGHT HUE SAT RADIUS]` | a light 120 units off the surface under the crosshair: journal `light X Y Z B H S R`. It's a dynamic `GMLight` at run time; `gm commit` bakes a real `Light` (gm_commit `light_block`) |
+| `gm gore pool\|spray\|drag_trail\|smear\|claw_marks` | a blood vignette at the crosshair: journal `gore KIND X Y Z DX DY`. U2Sanctuary's director places it with U2Gore's decals, and again whenever the journal changes (`GMMaster.Stamp`). It's never baked |
+| `gm proposals load` | exec `System\U2GMProposals_<family>.txt`, written by the co-GM agent (`U2Sanctuary/tools/cogm.py`): `gm propose WHO LINE # WHY` per proposal |
+| `gm proposals` / `gm proposals clear` | list the waiting proposals (who, line, why) / drop them |
+| `gm goto N` | GM mode on, the camera over proposal N |
+| `gm accept N\|all\|WHO`, `gm reject N\|all\|WHO` | a proposal becomes an ordinary journal line (undo, the panel, commit) / is dropped; WHO = writer, director, engineer, level, artist |
+
+- **The director** (`SanctuaryDirector`, `bProposeOnly=False` by default) places the team's scenes, then replays the GM journal, so a `gm hide SanctuaryCover2` or a moved crate survives reloads. With `bProposeOnly=True` it hands its scenes to the GM as `director` proposals instead.
+- **The agents** see the GM's hand: `mapreview.py ... gm=<game>\System\U2GM.ini` scores the map with the journal applied (hide, place, mesh, light, gore) and lists the GM's draw notes.
+- Test: `tools/python/U2Pilot/scripts/gm_fold_test.txt`. It undoes what it adds.
+
 ## The journal
 Every edit is one line in `System\U2GM.ini` (`[U2GM.GMMaster] Ops[...]`). Only the game writes it; edit it only while the game is closed, because the game rewrites its ini from memory.
 - Each line is tagged with its map family: `@tuta place StaticMeshActor112 X Y Z YAW SCALE`, `@tuta hide NAME`, `@tuta mesh Pkg.Group.Mesh X Y Z YAW SCALE`.
