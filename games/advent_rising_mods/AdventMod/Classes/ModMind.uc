@@ -45,6 +45,7 @@ var vector TaskDest;
 var float NextDecision;             // Level.TimeSeconds before which no new task is picked
 var float NextPin;                  // ... and before which it can't be pinned again (it has to come up some time)
 var float LastHit, LastNearMiss, LastLog;
+var float LastFlank;                // when it last went round the side (flankers rest after)
 var int NearMisses, Hits;
 var float CircleAngle;              // T_Circle: where around the prey (radians)
 
@@ -52,13 +53,31 @@ var float CircleAngle;              // T_Circle: where around the prey (radians)
 var AdventPawnAbilities Own;
 var float BaseCover, BaseFlee, BaseCharge, BaseEnrage, BaseDodge, BaseRandomDodge, BaseAttack, BaseCrouch, BaseReaction;
 var bool bOwnAbility;
-var bool bHeldFire;                 // we switched the bot's fire off (pinned)
+var bool bHeldFire;                 // we switched the bot's fire off (pinned, or no ranged token)
+var bool bPinHold;                  // ... because it is pinned
+// attack tokens (ModMinds.Deal, after DOOM 2016 and U2FairFights): only creatures fighting the player are
+// gated; a ranged token lets it shoot, a melee token lets it charge, leap or strike
+var bool bTokenGated, bRangedToken, bMeleeToken;
+var float LastRanged, LastMelee;
+var float BaseMelee, BaseLeapAttack, BaseChargeAb;
 var bool bCrouched;                 // we crouched the pawn
 
 function string Describe()
 {
+	local string T;
+
+	if (bTokenGated)
+	{
+		T = " tokens";
+		if (bRangedToken)
+			T = T $ " R";
+		if (bMeleeToken)
+			T = T $ " M";
+		if (!bRangedToken && !bMeleeToken)
+			T = T $ " -";
+	}
 	return SpeciesName $ " fear " $ Pct(Fear) $ " anger " $ Pct(Anger) $ " pressure " $ Pct(Pressure)
-		$ " stress " $ Pct(Stress) $ " task " $ TaskName(Task);
+		$ " stress " $ Pct(Stress) $ " task " $ TaskName(Task) $ T;
 }
 
 static function string Pct(float F)

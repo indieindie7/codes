@@ -47,7 +47,13 @@ var config float HoundCircle;       // how far from the prey hounds circle (worl
 
 var array<ModMind> Minds;
 var ModMindRules Rules;
-var float AdoptWait, FlankWait;
+var float AdoptWait, FlankWait, TokenWait;
+var int ShotsAtPlayer, ShotsUntokened;              // projectiles fired by creatures fighting the player (MINDLIST)
+var config int RangedTokens;        // creatures that may shoot at the player at once ...
+var config int RangedPer;           // ... plus one per this many engaged beyond four
+var config int MeleeTokens;         // creatures that may charge, leap or strike at once ...
+var config int MeleePer;            // ... plus one per this many engaged beyond four
+var config float TokenTime;         // seconds between deals
 
 // shots in flight: where each was last tick (for the segment it flew)
 struct Shot
@@ -203,6 +209,9 @@ function OwnAbility(ModMind M)
 	M.BaseAttack = A.AttackAbility;
 	M.BaseCrouch = A.CrouchAbility;
 	M.BaseReaction = A.ReactionTime;
+	M.BaseMelee = A.MeleeAttackAbility;
+	M.BaseLeapAttack = A.LeapAttackAbility;
+	M.BaseChargeAb = A.ChargeAbility;
 	M.bOwnAbility = true;
 }
 
@@ -268,7 +277,20 @@ function SenseShots()
 				break;
 			}
 		if (!bSeen)
+		{
 			S.Last = Pr.Location - Normal(Pr.Velocity) * 200;   // just fired: the bit it already flew
+			M = MindOf(Pr.Instigator);
+			if (M != None && M.B.EnemyInfo.Enemy != None && PlayerController(M.B.EnemyInfo.Enemy.Controller) != None)
+			{
+				ShotsAtPlayer++;
+				if (M.bTokenGated && !M.bRangedToken)
+				{
+					ShotsUntokened++;
+					if (bMindLog && ShotsUntokened < 40)
+						Log2(M.P.Name $ " fired without a token (state " $ M.B.GetStateName() $ ", fire held " $ M.bHeldFire $ ", task " $ M.TaskName(M.Task) $ ")");
+				}
+			}
+		}
 		for (i = 0; i < Minds.Length; i++)
 		{
 			M = Minds[i];
@@ -400,6 +422,20 @@ function Steer(ModMind M)
 	A.CrouchAbility = FClamp(M.BaseCrouch + 0.5 * M.Pressure, 0, 1);
 	// fear and stress slow its reactions, anger quickens them
 	A.ReactionTime = FMax(0.05, M.BaseReaction * (1 + 0.8 * M.Fear + 0.5 * M.Stress - 0.4 * M.Anger));
+	// no melee token: no strikes, leaps or charges from the game's own dice either
+	if (M.bTokenGated && !M.bMeleeToken)
+	{
+		A.MeleeAttackAbility = 0;
+		A.LeapAttackAbility = 0;
+		A.ChargeAbility = 0;
+		A.RandomChargeAbility = 0;
+	}
+	else
+	{
+		A.MeleeAttackAbility = M.BaseMelee;
+		A.LeapAttackAbility = M.BaseLeapAttack;
+		A.ChargeAbility = M.BaseChargeAb;
+	}
 }
 
 // decisions -----------------------------------------------------------------------
@@ -431,13 +467,24 @@ function SetTask(ModMind M, int T, float Limit, string Why)
 	Log2(M.P.Name $ " -> " $ M.TaskName(T) $ " (" $ Why $ "): " $ M.Describe());
 }
 
+// pinned: head down, no shooting
 function HoldFire(ModMind M, bool bHold)
 {
-	if (bHold != M.bHeldFire)
+	M.bPinHold = bHold;
+	ApplyFire(M);
+}
+
+// the bot's fire switch: off while pinned, or while it fights the player without a ranged token
+function ApplyFire(ModMind M)
+{
+	local bool bBlock;
+
+	bBlock = M.bPinHold || (M.bTokenGated && !M.bRangedToken);
+	if (bBlock != M.bHeldFire)
 	{
-		M.B.bDisableTimedFire = bHold;
-		M.bHeldFire = bHold;
-		if (bHold)
+		M.B.bDisableTimedFire = bBlock;
+		M.bHeldFire = bBlock;
+		if (bBlock)
 			M.B.StopFiring();
 	}
 }
@@ -596,6 +643,7 @@ function Decide(ModMind M, float DeltaTime)
 			}
 			else if (!M.B.IsInState('MoveToDestination'))
 			{
+				M.B.bShouldWalk = false;
 				M.B.DoMoveToDestination('Mind_Leg', NextLeg(M, M.TaskDest));
 				if (bMindLog && M.TaskTime - M.LastLog > 2)
 				{
@@ -665,7 +713,7 @@ function Decide(ModMind M, float DeltaTime)
 		return;
 	}
 	// angry: at it
-	if (M.Anger > ChargeAnger && M.Aggression > 0.45 && M.Fear < 0.6)
+	if (M.Anger > ChargeAnger && M.Aggression > 0.45 && M.Fear < 0.6 && (M.bMeleeToken || !M.bTokenGated))
 	{
 		SetTask(M, 5/*T_Charge*/, 5, "enraged");
 		HoldFire(M, false);
@@ -685,6 +733,106 @@ function Decide(ModMind M, float DeltaTime)
 			M.B.DoMoveToDestination('Mind_EarlyCover', NextLeg(M, Spot));
 		}
 	}
+}
+
+// attack tokens (DOOM 2016's token pools, U2FairFights' dealer): every TokenTime the creatures
+// fighting the player are ranked and the best few get a ranged token (they may shoot) and a
+// melee token (they may charge, leap, strike); the others keep moving and taking cover. Feelings
+// decide who asks: the pinned, panicking and afraid ask for nothing, anger asks for melee,
+// calm in sight of the player asks to shoot; waiting long raises the claim (everyone gets a
+// turn), being in sight of the player raises it most (an on-screen creature takes the turn
+// of one the player can't see).
+function Deal()
+{
+	local int i, j, Engaged, RangedN, MeleeN, GivenR, GivenM;
+	local Pawn Player;
+	local ModMind M;
+	local array<ModMind> RankR, RankM;
+	local array<float> ScoreR, ScoreM;
+	local float S, D, Now;
+	local bool bSight, bAsks;
+	local string NamesR, NamesM;
+
+	Now = Level.TimeSeconds;
+	for (i = 0; i < Minds.Length; i++)
+	{
+		M = Minds[i];
+		Player = M.B.EnemyInfo.Enemy;
+		if (M.P.Health <= 0 || Player == None || PlayerController(Player.Controller) == None)
+		{
+			if (M.bTokenGated)
+			{
+				M.bTokenGated = false;
+				M.bRangedToken = false;
+				M.bMeleeToken = false;
+				ApplyFire(M);
+			}
+			continue;
+		}
+		M.bTokenGated = true;
+		Engaged++;
+		D = VSize(Player.Location - M.P.Location);
+		bSight = FastTrace(Player.Location, M.P.Location + vect(0,0,1) * M.P.BaseEyeHeight);
+		bAsks = M.Fear < FleeFear && M.Task != 1/*T_Pinned*/ && M.Task != 7/*T_Panic*/ && M.Task != 3/*T_FallBack*/;
+		// ranged
+		if (bAsks && M.Species != 3/*S_Hound*/)
+		{
+			S = 100 * FMin(Now - M.LastRanged, 20) - 0.2 * D + 300 * M.Anger - 400 * M.Fear;
+			if (bSight)
+				S += 800;
+			for (j = 0; j < RankR.Length; j++)
+				if (S > ScoreR[j])
+					break;
+			RankR.Insert(j, 1);
+			ScoreR.Insert(j, 1);
+			RankR[j] = M;
+			ScoreR[j] = S;
+		}
+		// melee: the angry and the hounds; not the scared
+		if (bAsks && M.Fear < 0.6)
+		{
+			S = 100 * FMin(Now - M.LastMelee, 20) - 0.5 * D + 600 * M.Anger * M.Aggression;
+			if (bSight)
+				S += 400;
+			if (M.Species == 3/*S_Hound*/)
+				S += 300;
+			for (j = 0; j < RankM.Length; j++)
+				if (S > ScoreM[j])
+					break;
+			RankM.Insert(j, 1);
+			ScoreM.Insert(j, 1);
+			RankM[j] = M;
+			ScoreM[j] = S;
+		}
+		M.bRangedToken = false;
+		M.bMeleeToken = false;
+	}
+	if (Engaged == 0)
+		return;
+	RangedN = RangedTokens;
+	if (RangedPer > 0 && Engaged > 4)
+		RangedN += (Engaged - 4) / RangedPer;
+	MeleeN = MeleeTokens;
+	if (MeleePer > 0 && Engaged > 4)
+		MeleeN += (Engaged - 4) / MeleePer;
+	for (j = 0; j < RankR.Length && GivenR < RangedN; j++)
+	{
+		RankR[j].bRangedToken = true;
+		RankR[j].LastRanged = Now;
+		GivenR++;
+		NamesR = NamesR $ " " $ RankR[j].P.Name;
+	}
+	for (j = 0; j < RankM.Length && GivenM < MeleeN; j++)
+	{
+		RankM[j].bMeleeToken = true;
+		RankM[j].LastMelee = Now;
+		GivenM++;
+		NamesM = NamesM $ " " $ RankM[j].P.Name;
+	}
+	for (i = 0; i < Minds.Length; i++)
+		if (Minds[i].bTokenGated)
+			ApplyFire(Minds[i]);
+	Log2("tokens: " $ Engaged $ " fighting the player; ranged " $ GivenR $ "/" $ RangedN $ ":" $ NamesR $ "; melee " $ GivenM $ "/" $ MeleeN $ ":" $ NamesM);
 }
 
 // the squad: a flanker now and then, morale after losses, hound packs
@@ -729,7 +877,7 @@ function Squads()
 			if (O.Task == 4/*T_Flank*/)
 				bFlanking = true;
 			Score = O.Cunning * (1 - O.Fear) * (1 - O.Pressure);
-			if (O.Task == 0/*T_None*/ && O.Species != 3/*S_Hound*/ && Score > Best && !Busy(O))
+			if (O.Task == 0/*T_None*/ && O.Species != 3/*S_Hound*/ && Score > Best && !Busy(O) && Level.TimeSeconds - O.LastFlank > 12)
 			{
 				Best = Score;
 				Pick = O;
@@ -767,12 +915,14 @@ function Squads()
 			Side = 1;
 			if (FRand() < 0.5)
 				Side = -1;
-			Target = Enemy.Location + (ToSquad * Cos(1.3) + (ToSquad cross vect(0,0,1)) * Side * Sin(1.3)) * FClamp(VSize(Pick.P.Location - Enemy.Location), 500, 1400);
+			Target = Enemy.Location + (ToSquad * Cos(1.3) + (ToSquad cross vect(0,0,1)) * Side * Sin(1.3)) * FClamp(VSize(Pick.P.Location - Enemy.Location), 450, 900);
 			Target = FlankSpot(Pick, Target, Enemy);
 			if (Target != vect(0,0,0))
 			{
 				Pick.TaskDest = Target;
-				SetTask(Pick, 4/*T_Flank*/, 12, "flanking (" $ Engaged $ " engaged)");
+				Pick.LastFlank = Level.TimeSeconds;
+				SetTask(Pick, 4/*T_Flank*/, 15, "flanking (" $ Engaged $ " engaged)");
+				Pick.B.bShouldWalk = false;   // flankers run
 				Pick.B.DoMoveToDestination('Mind_Flank', NextLeg(Pick, Target));
 				FlankWait = FlankEvery;
 			}
@@ -857,6 +1007,12 @@ function Tick(float DeltaTime)
 		Steer(M);
 		Decide(M, DeltaTime);
 	}
+	TokenWait -= DeltaTime;
+	if (TokenWait <= 0)
+	{
+		TokenWait = TokenTime;
+		Deal();
+	}
 	Squads();
 }
 
@@ -866,7 +1022,7 @@ function string List()
 	local int i;
 	local string S;
 
-	S = Minds.Length $ " minds";
+	S = Minds.Length $ " minds, " $ ShotsAtPlayer $ " shots at the player so far (" $ ShotsUntokened $ " without a token)";
 	for (i = 0; i < Minds.Length; i++)
 		S = S $ " | " $ Minds[i].P.Name $ " " $ Minds[i].Describe() $ " misses " $ Minds[i].NearMisses $ " hits " $ Minds[i].Hits;
 	return S;
@@ -886,4 +1042,9 @@ defaultproperties
 	NearMissReach=220
 	FlankEvery=6
 	HoundCircle=550
+	RangedTokens=2
+	RangedPer=4
+	MeleeTokens=2
+	MeleePer=6
+	TokenTime=2
 }
