@@ -52,6 +52,153 @@ var float PrintT, PrintSettle;
 var array<NavigationPoint> PrintNavs;
 var name HurtBone;    // HURT's bone (a string can only become a name through SetPropertyText)
 
+function string RouteStr(Controller C, out int N)
+{
+	local int i;
+	local string S;
+
+	N = 0;
+	for (i = 0; i < 16; i++)
+		if (C.RouteCache[i] != None)
+		{
+			S = S $ " " $ C.RouteCache[i].Name;
+			N++;
+		}
+	return S;
+}
+
+function RouteTest(float Dist)
+{
+	local Controller C, Other;
+	local int Seen;
+	local NavigationPoint N, Goal, Mark[4];
+	local Actor Step;
+	local int i, j, k, Len, Marks, Mode, Tries;
+	local float Best, D;
+	local string Base, Got, ModeName;
+	local bool bAvoided;
+	local int OldInt[4];
+	local byte OldBool[4];
+	local ReachSpec R;
+
+	// the engine's search from an AI controller (the player's own returns no routes): the
+	// level's nearest living bot
+	Best = 1000000000.0;
+	for (Other = Level.ControllerList; Other != None; Other = Other.nextController)
+	{
+		Seen++;
+		if (PlayerController(Other) == None && Other.Pawn != None && Other.Pawn.Health > 0 && PC() != None && PC().Pawn != None
+			&& VSize(Other.Pawn.Location - PC().Pawn.Location) < Best)
+		{
+			Best = VSize(Other.Pawn.Location - PC().Pawn.Location);
+			C = Other;
+		}
+	}
+	if (C == None)
+	{
+		Note("routetest: no AI controller with a pawn (" $ Seen $ " controllers)");
+		return;
+	}
+	Note("routetest: searching as " $ C.Name $ " (" $ C.Pawn.Name $ ")");
+	// a goal about Dist away whose route has at least 5 steps (some tries)
+	for (Tries = 0; Tries < 12 && Goal == None; Tries++)
+	{
+		Best = 1000000000.0;
+		N = None;
+		for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+		{
+			D = Abs(VSize(N.Location - C.Pawn.Location) - Dist * (1 + 0.15 * Tries));
+			if (D < Best && N.Tag != 'RouteTried')
+			{
+				Best = D;
+				Goal = N;
+			}
+		}
+		if (Goal == None)
+			break;
+		Step = C.FindPathToward(Goal);
+		RouteStr(C, Len);
+		if (Step == None || Len < 5)
+		{
+			Goal.Tag = 'RouteTried';
+			Goal = None;
+		}
+	}
+	if (Goal == None)
+	{
+		Note("routetest: no goal with a route of 5+ steps near " $ int(Dist));
+		return;
+	}
+	Base = RouteStr(C, Len);
+	// the nodes to make expensive: the route's middle (not its first two nor its last)
+	for (i = 2; i < Len - 1 && Marks < 4; i++)
+		if (NavigationPoint(C.RouteCache[i]) != None)
+			Mark[Marks++] = NavigationPoint(C.RouteCache[i]);
+	Note("routetest: goal " $ Goal.Name $ " " $ int(VSize(Goal.Location - C.Pawn.Location)) $ " away, base route (" $ Len $ "):" $ Base $ "; marking " $ Marks);
+	for (Mode = 0; Mode < 5; Mode++)
+	{
+		// raise
+		for (i = 0; i < Marks; i++)
+		{
+			switch (Mode)
+			{
+				case 0: OldInt[i] = Mark[i].ExtraCost; Mark[i].ExtraCost = 100000; ModeName = "ExtraCost"; break;
+				case 1: OldInt[i] = Mark[i].TransientCost; Mark[i].TransientCost = 100000; ModeName = "TransientCost"; break;
+				case 2: OldInt[i] = Mark[i].FearCost; Mark[i].FearCost = 100000; ModeName = "FearCost"; break;
+				case 3: OldBool[i] = byte(Mark[i].bBlocked); Mark[i].bBlocked = true; ModeName = "bBlocked"; break;
+				case 4:
+					ModeName = "ReachSpec.Distance (into the marked nodes)";
+					break;
+			}
+		}
+		if (Mode == 4)
+		{
+			// every edge that ends at a marked node, made 100x longer
+			k = 0;
+			for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+				for (j = 0; j < N.PathList.Length; j++)
+				{
+					R = N.PathList[j];
+					for (i = 0; i < Marks; i++)
+						if (R != None && R.End == Mark[i])
+							R.Distance *= 100;
+				}
+		}
+		Step = C.FindPathToward(Goal);
+		Got = RouteStr(C, Len);
+		bAvoided = Step != None;
+		for (i = 0; i < 16; i++)
+			for (j = 0; j < Marks; j++)
+				if (C.RouteCache[i] == Mark[j])
+					bAvoided = false;
+		Note("routetest: " $ ModeName $ ": " $ Eval2(Step == None, "NO ROUTE", Eval2(bAvoided, "AVOIDED (read by the search)", "same nodes (ignored)")) $ ", route (" $ Len $ "):" $ Got);
+		// restore
+		for (i = 0; i < Marks; i++)
+		{
+			switch (Mode)
+			{
+				case 0: Mark[i].ExtraCost = OldInt[i]; break;
+				case 1: Mark[i].TransientCost = OldInt[i]; break;
+				case 2: Mark[i].FearCost = OldInt[i]; break;
+				case 3: Mark[i].bBlocked = OldBool[i] != 0; break;
+			}
+		}
+		if (Mode == 4)
+			for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+				for (j = 0; j < N.PathList.Length; j++)
+				{
+					R = N.PathList[j];
+					for (i = 0; i < Marks; i++)
+						if (R != None && R.End == Mark[i])
+							R.Distance /= 100;
+				}
+	}
+	// and after all of it: the base route again (nothing left changed)
+	C.FindPathToward(Goal);
+	Got = RouteStr(C, Len);
+	Note("routetest: after restoring: " $ Eval2(Got == Base, "same as the base route", "DIFFERENT:" $ Got));
+}
+
 function MindList()
 {
 	local ModMinds M;
@@ -920,6 +1067,13 @@ function StartStep()
 		break;
 	case "GIBLIST":
 		GibList();
+		break;
+	case "ROUTETEST":
+		// ROUTETEST [distance]: does the engine's own path search read the path-cost fields script
+		// can set (NavigationPoint ExtraCost, TransientCost, FearCost, bBlocked; ReachSpec Distance)?
+		// A route from the player to a node about that far, then the same search with each field
+		// raised on the route's middle nodes; it passes if the route goes round them
+		RouteTest(ArgF(1, 2500));
 		break;
 	case "MINDLIST":
 		// the creatures' minds (ModMinds): feelings, task, shots past and hits

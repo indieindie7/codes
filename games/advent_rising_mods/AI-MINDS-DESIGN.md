@@ -96,3 +96,23 @@ See the end of this file once the in-game runs are in.
 - Only creatures in a squad are adopted. A pawn the pilot spawns has none, and the Bot's `Do*` functions need one.
 - Moves are straight `MoveTo` legs. Cover must be in a straight line, and flanks and fall-backs re-path each leg.
 - Not yet: suppression on the player's allies from enemy fire (it works for any instigator that is the creature's enemy, but it's untested); voice barks for the feelings (the game has `pawnSoundEvent` lines such as EnragedGrunt); a director that paces encounters by the player's stress; fixing the three stock bugs (Crouch.BeginState calls Super.EndState, LocateNearbyCoverPoint has no None check, Frustration over-increments).
+
+## 7. Path costs (tested 2026-10-08)
+
+The pilot's `ROUTETEST [distance]` runs the engine's own search (`FindPathToward`). It needs an AI controller: the player's returns no routes. It searches once normally, then once with each field raised on the route's middle nodes, and restores everything afterwards.
+
+Results on level03sectionc and level14sectiond: all five are read by the native search. The route goes round the raised nodes:
+- `NavigationPoint.ExtraCost`
+- `TransientCost`
+- `FearCost`
+- `bBlocked`
+- `ReachSpec.Distance`
+
+Where no other way exists, the costs leave the route as it is, and `bBlocked` gives "no route".
+
+So strategy changes can be cost profiles. Raise the costs before a creature's `FindPathTo`/`FindPathToward` and put them back after:
+- exposure to the player's sight;
+- the squad's main route, for flankers;
+- danger, where creatures died.
+
+`ModMinds.NextLeg` is the single place this plugs in.
