@@ -48,6 +48,7 @@ var float LastHit, LastNearMiss, LastLog;
 var float HoldUntil;                 // fairness: no shooting before this (just spotted the player)
 var float LastSawPlayer;             // when it last had the player in sight
 var int AimHeld;                     // fairness: frames its aim was held back (MINDLIST)
+var bool bOrderDone;                 // it has acted on the current order
 var float LastFlank;                // when it last went round the side (flankers rest after)
 var int NearMisses, Hits;
 var float CircleAngle;              // T_Circle: where around the prey (radians)

@@ -199,6 +199,18 @@ function RouteTest(float Dist)
 	Note("routetest: after restoring: " $ Eval2(Got == Base, "same as the base route", "DIFFERENT:" $ Got));
 }
 
+function MindOrder(string S)
+{
+	local ModMinds M;
+
+	foreach DynamicActors(class'ModMinds', M)
+	{
+		M.SetOrder(Locs(S));
+		return;
+	}
+	Note("mindorder: no ModMinds in this level");
+}
+
 function MindList()
 {
 	local ModMinds M;
@@ -1074,6 +1086,10 @@ function StartStep()
 		// A route from the player to a node about that far, then the same search with each field
 		// raised on the route's middle nodes; it passes if the route goes round them
 		RouteTest(ArgF(1, 2500));
+		break;
+	case "MINDORDER":
+		// MINDORDER push|hidden|flank|fallback|none: a strategy for the creatures fighting the player
+		MindOrder(Args[1]);
 		break;
 	case "MINDLIST":
 		// the creatures' minds (ModMinds): feelings, task, shots past and hits

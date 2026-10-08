@@ -116,3 +116,31 @@ So strategy changes can be cost profiles. Raise the costs before a creature's `F
 - danger, where creatures died.
 
 `ModMinds.NextLeg` is the single place this plugs in.
+
+## 8. Cost profiles and orders (built 2026-10-08)
+
+**Exposure:** `ModMinds.Sweep` keeps a live set of the path nodes the player can see. It runs 120 sight traces per tick, round the level's nodes within 4000 units of the player.
+
+**Profiles:** each creature's next leg (`NextLeg`) is planned with a cost profile for what it is doing. The costs are raised on `ExtraCost` for that one `FindPathTo` and restored right after.
+
+| profile | used by | what it costs |
+|---|---|---|
+| push | everything else | nothing: the shortest route |
+| hidden | pinned, in cover | +2000 on nodes the player sees |
+| flank | flankers | hidden, +4000 more in the player's front 120°, +800 on squad mates' routes |
+| fallback | falling back, panicking | hidden, +1500 on nodes nearer the player than the creature |
+
+**Orders:** `MINDORDER push|hidden|flank|fallback|none` (pilot; later the director) sets a strategy for the creatures fighting the player.
+- **push:** shortest routes, no early cover.
+- **hidden:** hidden routes, early cover likely.
+- **flank:** flankers three times as often, several at once.
+- **fallback:** everyone falls back once, toward and behind the squad's centre.
+
+**Test** (level14sectiond, 300 nodes, the same order sequence, two runs each): route nodes in the player's sight, over all planned legs.
+
+| | run 1 | run 2 | overall |
+|---|---|---|---|
+| profiles on | 252/467 | 138/234 | about 56% |
+| profiles off | 124/160 | 531/535 | about 88% |
+
+It is an open arena, so some exposure can't be avoided. Settings: `bPathProfiles`, `SweepBudget`, `ExposeReach`, `ExposeCost`, `FrontCost`, `RouteCost`, `CloserCost`.

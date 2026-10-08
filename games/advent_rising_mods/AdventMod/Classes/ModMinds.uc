@@ -48,7 +48,23 @@ var config float HoundCircle;       // how far from the prey hounds circle (worl
 var array<ModMind> Minds;
 var ModMindRules Rules;
 var float AdoptWait, FlankWait, TokenWait;
-var int ShotsAtPlayer, ShotsUntokened, PlayerHits, PlayerDamage;              // projectiles fired by creatures fighting the player (MINDLIST)
+var int ShotsAtPlayer, ShotsUntokened, PlayerHits, PlayerDamage;
+
+// path costs (AI-MINDS-DESIGN.md section 7: the engine's search reads ExtraCost): which path nodes
+// the player can see right now, swept a few at a time; a creature's next leg is planned with a cost
+// profile for what it is doing (push: shortest; hidden: round what the player sees; flank: round the
+// player's front and the squad's own routes; fallback: hidden and away from the player)
+var config bool bPathProfiles;
+var config int SweepBudget;          // sight traces per tick
+var config float ExposeReach;        // how far from the player nodes are checked (world units)
+var config int ExposeCost, FrontCost, RouteCost, CloserCost;
+var array<NavigationPoint> Nodes;
+var array<float> SeenAt;
+var array<NavigationPoint> Visible, VisibleNext;
+var int SweepAt;
+var bool bNodesBuilt;
+var string Order;                    // a strategy ordered from outside (pilot MINDORDER; later the director)
+var int LegNodes, LegExposed;        // all planned legs: nodes on them, and how many the player could see
 var config int RangedTokens;        // creatures that may shoot at the player at once ...
 var config int RangedPer;           // ... plus one per this many engaged beyond four
 var config int MeleeTokens;         // creatures that may charge, leap or strike at once ...
@@ -616,13 +632,178 @@ function bool FindCover(ModMind M, Pawn Enemy, out vector Spot)
 }
 
 // the next leg along the level's paths toward Dest (or Dest itself when it is in sight)
+// the nodes the player can see: a few sight traces a tick, round the list; the visible set is
+// the last full sweep plus what this sweep has found so far
+function Sweep()
+{
+	local PlayerController PC;
+	local vector Eye;
+	local int Traced, Looked, i;
+	local NavigationPoint N;
+
+	if (!bNodesBuilt)
+	{
+		bNodesBuilt = true;
+		for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+			Nodes[Nodes.Length] = N;
+		SeenAt.Length = Nodes.Length;
+		Log2("paths: " $ Nodes.Length $ " nodes in this level");
+	}
+	PC = Level.GetLocalPlayerController();
+	if (PC == None || PC.Pawn == None || Nodes.Length == 0)
+		return;
+	Eye = PC.Pawn.Location + vect(0,0,1) * PC.Pawn.BaseEyeHeight;
+	while (Traced < SweepBudget && Looked < Nodes.Length && Looked < SweepBudget * 8)
+	{
+		Looked++;
+		i = SweepAt;
+		SweepAt++;
+		if (SweepAt >= Nodes.Length)
+		{
+			SweepAt = 0;
+			Visible = VisibleNext;
+			VisibleNext.Length = 0;
+		}
+		N = Nodes[i];
+		if (N == None || VSize(N.Location - PC.Pawn.Location) > ExposeReach)
+			continue;
+		Traced++;
+		if (FastTrace(N.Location + vect(0,0,40), Eye))
+		{
+			SeenAt[i] = Level.TimeSeconds;
+			VisibleNext[VisibleNext.Length] = N;
+		}
+	}
+}
+
+function bool IsVisible(NavigationPoint N)
+{
+	local int i;
+
+	for (i = 0; i < Visible.Length; i++)
+		if (Visible[i] == N)
+			return true;
+	for (i = 0; i < VisibleNext.Length; i++)
+		if (VisibleNext[i] == N)
+			return true;
+	return false;
+}
+
+// the cost profile for what M is doing (an order from outside overrides): 0 push, 1 hidden,
+// 2 flank, 3 fallback
+function int ProfileFor(ModMind M)
+{
+	if (!M.bTokenGated)
+		return ProfileOwn(M);      // orders are for those fighting the player
+	if (Order == "push")
+		return 0;
+	if (Order == "hidden")
+		return 1;
+	if (M.Task == 4/*T_Flank*/ || Order == "flank")
+		return 2;
+	if (M.Task == 3/*T_FallBack*/ || M.Task == 7/*T_Panic*/ || Order == "fallback")
+		return 3;
+	if (M.Task == 1/*T_Pinned*/ || M.Task == 2/*T_Cover*/)
+		return 1;
+	return 0;
+}
+
+function int ProfileOwn(ModMind M)
+{
+	if (M.Task == 4/*T_Flank*/)
+		return 2;
+	if (M.Task == 3/*T_FallBack*/ || M.Task == 7/*T_Panic*/)
+		return 3;
+	if (M.Task == 1/*T_Pinned*/ || M.Task == 2/*T_Cover*/)
+		return 1;
+	return 0;
+}
+
+static function string ProfileName(int P)
+{
+	switch (P)
+	{
+		case 0: return "push";
+		case 1: return "hidden";
+		case 2: return "flank";
+		case 3: return "fallback";
+	}
+	return "?";
+}
+
 function vector NextLeg(ModMind M, vector Dest)
 {
 	local Actor Step;
+	local int Profile, i, k, j, Seen;
+	local array<NavigationPoint> Raised;
+	local array<int> Old;
+	local PlayerController PC;
+	local vector Facing, ToNode;
+	local NavigationPoint N;
+	local int Cost;
+	local ModMind O;
 
-	if (FastTrace(Dest, M.P.Location))
+	Profile = 0;
+	if (bPathProfiles)
+		Profile = ProfileFor(M);
+	if (FastTrace(Dest, M.P.Location) && (Profile == 0 || VSize(Dest - M.P.Location) < 600))
 		return Dest;
+	PC = Level.GetLocalPlayerController();
+	// raise the costs for this one search, and put them back right after it
+	if (Profile != 0 && PC != None && PC.Pawn != None)
+	{
+		Facing = Normal(Vector(PC.Rotation) * vect(1,1,0));
+		for (i = 0; i < Visible.Length; i++)
+		{
+			N = Visible[i];
+			if (N == None)
+				continue;
+			Cost = ExposeCost;
+			ToNode = Normal((N.Location - PC.Pawn.Location) * vect(1,1,0));
+			if (Profile == 2 && (ToNode dot Facing) > 0.5)
+				Cost += FrontCost;
+			if (Profile == 3 && VSize(N.Location - PC.Pawn.Location) < VSize(M.P.Location - PC.Pawn.Location))
+				Cost += CloserCost;
+			Raised[Raised.Length] = N;
+			Old[Old.Length] = N.ExtraCost;
+			N.ExtraCost += Cost;
+		}
+		// a flanker keeps off its squad mates' routes (they hold the front)
+		if (Profile == 2)
+			for (j = 0; j < Minds.Length; j++)
+			{
+				O = Minds[j];
+				if (O == M || O.B.Squad != M.B.Squad)
+					continue;
+				for (k = 0; k < 16; k++)
+				{
+					N = NavigationPoint(O.B.RouteCache[k]);
+					if (N == None)
+						continue;
+					Raised[Raised.Length] = N;
+					Old[Old.Length] = N.ExtraCost;
+					N.ExtraCost += RouteCost;
+				}
+			}
+	}
 	Step = M.B.FindPathTo(Dest);
+	for (i = Raised.Length - 1; i >= 0; i--)
+		Raised[i].ExtraCost = Old[i];
+	// what the plan exposes (all legs, for MINDLIST; the first one of each task in the log)
+	for (k = 0; k < 16; k++)
+	{
+		N = NavigationPoint(M.B.RouteCache[k]);
+		if (N == None)
+			continue;
+		LegNodes++;
+		if (IsVisible(N))
+		{
+			LegExposed++;
+			Seen++;
+		}
+	}
+	if (bMindLog && M.TaskTime < 0.5)
+		Log2(M.P.Name $ " plans a " $ ProfileName(Profile) $ " leg: " $ Seen $ " of its route's nodes in the player's sight (" $ Raised.Length $ " costs raised)");
 	// the first node on the route is often the one it stands on: then the next one
 	if (Step != None && VSize((Step.Location - M.P.Location) * vect(1,1,0)) < 120 && M.B.RouteCache[1] != None)
 		Step = M.B.RouteCache[1];
@@ -726,6 +907,18 @@ function Decide(ModMind M, float DeltaTime)
 		return;
 	}
 	// pinned: down and into cover
+	// ordered to fall back: everyone fighting the player does, once per order
+	if (Order == "fallback" && M.bTokenGated && !M.bOrderDone)
+	{
+		M.bOrderDone = true;
+		Away = M.P.Location + Normal(M.P.Location - Enemy.Location) * 800;
+		if (M.B.Squad != None && M.B.Squad.FormationCenter() != None && M.B.Squad.FormationCenter() != M.P)
+			Away = M.B.Squad.FormationCenter().Location + Normal(M.B.Squad.FormationCenter().Location - Enemy.Location) * 400;
+		M.TaskDest = Away;
+		SetTask(M, 3/*T_FallBack*/, 8, "ordered to fall back");
+		M.B.DoMoveToDestination('Mind_OrderFallBack', NextLeg(M, Away));
+		return;
+	}
 	if (M.Pressure > PinPressure && Now > M.NextPin && M.Species != 3/*S_Hound*/ && M.Species != 4/*S_Construct*/)
 	{
 		HoldFire(M, true);
@@ -777,7 +970,9 @@ function Decide(ModMind M, float DeltaTime)
 	}
 	// hurt or under fire, and cover-minded: take cover before it has to
 	if (M.Species != 3/*S_Hound*/ && M.Species != 4/*S_Construct*/
-		&& (M.Pressure > 0.35 || M.P.Health < 0.5 * M.P.default.Health) && FRand() < 0.5 * M.Cunning + 0.3 * M.Fear)
+		&& (Order != "push" || !M.bTokenGated)
+		&& (M.Pressure > 0.35 || M.P.Health < 0.5 * M.P.default.Health || (Order == "hidden" && M.bTokenGated))
+		&& (FRand() < 0.5 * M.Cunning + 0.3 * M.Fear || ((Order == "hidden" && M.bTokenGated) && FRand() < 0.6)))
 	{
 		if (FindCover(M, Enemy, Spot))
 		{
@@ -962,7 +1157,7 @@ function Squads()
 		}
 
 		// one flanker at a time: round the side along paths, at its preferred range
-		if (!bFlanking && Pick != None && Engaged >= 2 && FlankWait <= 0 && Pick.Cunning > 0.45 && FRand() < Pick.Cunning)
+		if ((!bFlanking || Order == "flank") && Pick != None && Engaged >= 2 && FlankWait <= 0 && (Pick.Cunning > 0.45 || Order == "flank") && (FRand() < Pick.Cunning || Order == "flank"))
 		{
 			ToSquad = Normal((Centre - Enemy.Location) * vect(1,1,0));
 			Side = 1;
@@ -978,6 +1173,8 @@ function Squads()
 				Pick.B.bShouldWalk = false;   // flankers run
 				Pick.B.DoMoveToDestination('Mind_Flank', NextLeg(Pick, Target));
 				FlankWait = FlankEvery;
+				if (Order == "flank")
+					FlankWait = FlankEvery / 3;
 			}
 		}
 	}
@@ -1039,6 +1236,7 @@ function Tick(float DeltaTime)
 	FlankWait -= DeltaTime;
 	if (Minds.Length == 0)
 		return;
+	Sweep();                // (also with bPathProfiles off: MINDLIST measures what plans expose)
 	SenseShots();
 	SenseAim(DeltaTime);
 	for (i = 0; i < Minds.Length; i++)
@@ -1070,13 +1268,29 @@ function Tick(float DeltaTime)
 	Squads();
 }
 
+// a strategy from outside: push, hidden, flank, fallback ("" or none = the creatures' own)
+function SetOrder(string S)
+{
+	local int i;
+
+	if (S == "none")
+		S = "";
+	Order = S;
+	for (i = 0; i < Minds.Length; i++)
+		Minds[i].bOrderDone = false;
+	if (Order != "")
+		class'ModSettings'.static.Note("minds: order " $ Order);
+	else
+		class'ModSettings'.static.Note("minds: order none (their own)");
+}
+
 // ModPilot's MINDLIST
 function string List()
 {
 	local int i;
 	local string S;
 
-	S = Minds.Length $ " minds, " $ ShotsAtPlayer $ " shots at the player so far (" $ ShotsUntokened $ " without a token), player hit " $ PlayerHits $ " times for " $ PlayerDamage;
+	S = Minds.Length $ " minds, " $ ShotsAtPlayer $ " shots at the player so far (" $ ShotsUntokened $ " without a token), player hit " $ PlayerHits $ " times for " $ PlayerDamage $ ", legs " $ LegExposed $ " of " $ LegNodes $ " nodes in sight, order " $ Order;
 	for (i = 0; i < Minds.Length; i++)
 		S = S $ " | " $ Minds[i].P.Name $ " " $ Minds[i].Describe() $ " misses " $ Minds[i].NearMisses $ " hits " $ Minds[i].Hits $ " aimheld " $ Minds[i].AimHeld;
 	return S;
@@ -1101,6 +1315,13 @@ defaultproperties
 	MeleeTokens=2
 	MeleePer=6
 	TokenTime=2
+	bPathProfiles=True
+	SweepBudget=120
+	ExposeReach=4000
+	ExposeCost=2000
+	FrontCost=4000
+	RouteCost=800
+	CloserCost=1500
 	AcquireGrace=0.6
 	AimMoveRelief=0.5
 }
