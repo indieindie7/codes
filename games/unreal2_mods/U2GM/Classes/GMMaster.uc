@@ -2,7 +2,8 @@
 // GMMaster - the game master: GM mode, the picked actor, the journal, undo.
 //
 //   gm [on|off]           GM mode: free camera through walls, no damage (toggles without a word)
-//   gm pick [NAME]        what's under the crosshair, or an actor by name
+//   gm pick [NAME|pawn]   the scenery under the crosshair (looking past characters), a character
+//                         (pawn: moved live only), or an actor by name
 //   gm info               what is picked
 //   gm move DX DY DZ      nudge it (world units)     gm moveto X Y Z | here
 //   gm turn DEG           turn it round the vertical  gm scale S
@@ -502,6 +503,35 @@ function vector EyeSpot()
 	if (PC.Pawn != None)
 		return PC.Pawn.Location + vect(0,0,1) * PC.Pawn.EyeHeight;
 	return PC.Location;
+}
+
+// what's under the crosshair, looking past characters (they can only move live, not be journalled):
+// "gm pick" picks scenery; "gm pick pawn" picks a character
+function Actor MeshUnderCrosshair(out vector HitL, out vector HitN)
+{
+	local vector S, E, D;
+	local Actor A, Tracer;
+	local int k;
+
+	S = EyeSpot();
+	E = S + vector(PC.Rotation) * 60000;
+	if (bRay)
+	{
+		S = RayS;
+		E = RayE;
+	}
+	D = Normal(E - S);
+	Tracer = PC.Pawn;
+	if (Tracer == None)
+		Tracer = self;
+	for (k = 0; k < 6; k++)
+	{
+		A = Tracer.Trace(HitL, HitN, E, S, true);
+		if (Pawn(A) == None)
+			return A;
+		S = HitL + D * (Pawn(A).CollisionRadius * 2 + 8);
+	}
+	return None;
 }
 
 function Actor UnderCrosshair(out vector HitL, out vector HitN)
@@ -1187,8 +1217,10 @@ function DoCommand(string Args)
 	{
 		if (A1 != "")
 			A = Named(A1);
-		else
+		else if (A1 ~= "pawn")
 			A = UnderCrosshair(HitL, HitN);
+		else
+			A = MeshUnderCrosshair(HitL, HitN);
 		if (A == Level || (A != None && A.IsA('TerrainInfo')))
 			A = None;
 		SetPicked(A);
