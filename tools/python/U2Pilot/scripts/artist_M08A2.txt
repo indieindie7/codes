@@ -1,0 +1,21 @@
+# artist_M08A2: base shots for the artist's Kontext paint-overs (HUD off)
+background
+map M08A2
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console togglehud
+mark drainage
+console hub tp -4366 -2782 344
+wait 1.2
+look 137 -5
+wait 1
+shot
+mark plant
+console hub tp -5634 1233 94
+wait 1.2
+look -17 -26
+wait 1
+shot
+quit

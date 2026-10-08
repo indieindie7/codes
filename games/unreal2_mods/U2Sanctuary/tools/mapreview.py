@@ -46,7 +46,7 @@ import numpy as np
 SPEED = 263.0                     # U2 GroundSpeed, UU/s
 NAV = ("PathNode", "PlayerStart", "SpawnPoint", "PatrolPoint", "PatrolPointRed", "PatrolPointBlue", "PatrolPointGreen",
        "InventorySpot", "AlternatePath", "AutoLadder")
-ENEMY = re.compile(r"U2(Izarian|Skaarj\w*|Araknid\w*|Aida\w*|Merc\w*|Cockroach|Drakk\w*|Strider\w*)$")
+ENEMY = re.compile(r"U2(Izarian|Skaarj\w*|Araknid\w*|Aida\w*|Merc\w*|Drakk\w*|Strider\w*)$")   # (cockroaches are ambience: 1 health)
 COLONIST = re.compile(r"U2(Civilian\w*|Colonist\w*)$")
 PICKUP = re.compile(r"(Health\w*|ammo\w+|weapon\w+|Energy\w*|Shield\w*)$")
 BLOOD = re.compile(r"blood|gore|gut|dead|kill|death|stab|scream", re.I)
@@ -64,7 +64,7 @@ def parse(path):
         p = dict(re.findall(r"([XYZ])=([-\d.]+)", loc.group(1))) if loc else {}
         a["p"] = np.array([float(p.get("X", 0)), float(p.get("Y", 0)), float(p.get("Z", 0))])
         for k in ("Tag", "Event", "CommandFileName", "URL", "StaticMesh", "Mesh", "LightBrightness", "LightHue",
-                  "LightSaturation", "LightRadius", "Prototype", "CsgOper", "Gravity", "FluidFriction", "bHidden", "Group"):
+                  "LightSaturation", "LightRadius", "Prototype", "Capacity", "CsgOper", "Gravity", "FluidFriction", "bHidden", "Group"):
             mm = re.search(r"\n\s*%s=(.*)" % k, head)
             if mm:
                 a[k] = mm.group(1).strip().strip('"')
