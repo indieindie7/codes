@@ -30,6 +30,7 @@ const T_Flank = 4;          // going round the side along paths
 const T_Charge = 5;         // angry: straight at the enemy
 const T_Circle = 6;         // a hound taking its place in the pack around the prey
 const T_Panic = 7;          // broken: running
+const T_Advance = 8;        // ordered to push: closer to the enemy along paths
 
 var Bot B;
 var Pawn P;
@@ -101,6 +102,7 @@ static function string TaskName(int T)
 		case T_Charge: return "charge";
 		case T_Circle: return "circle";
 		case T_Panic: return "panic";
+		case T_Advance: return "advance";
 	}
 	return "?";
 }

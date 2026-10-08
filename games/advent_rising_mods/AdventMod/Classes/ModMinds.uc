@@ -831,6 +831,8 @@ function Decide(ModMind M, float DeltaTime)
 			|| (M.Task == 5/*T_Charge*/ && M.Anger < ChargeAnger - 0.3))
 		{
 			Log2(M.P.Name $ " done with " $ M.TaskName(M.Task) $ " after " $ int(M.TaskTime) $ " s");
+			if (M.Task == 4/*T_Flank*/)
+				M.LastFlank = Now;      // the rest counts from the end of a flank
 			if (M.Task == 1/*T_Pinned*/ || M.Task == 2/*T_Cover*/)
 				Crouch(M, false);
 			if (M.Task == 1/*T_Pinned*/)
@@ -861,6 +863,7 @@ function Decide(ModMind M, float DeltaTime)
 			return;
 		case 3/*T_FallBack*/:
 		case 4/*T_Flank*/:
+		case 8/*T_Advance*/:
 		case 6/*T_Circle*/:
 			if (VSize((M.P.Location - M.TaskDest) * vect(1,1,0)) < 140)
 			{
@@ -872,6 +875,8 @@ function Decide(ModMind M, float DeltaTime)
 					return;
 				}
 				Log2(M.P.Name $ " reached its " $ M.TaskName(M.Task) $ " spot");
+				if (M.Task == 4/*T_Flank*/)
+					M.LastFlank = Level.TimeSeconds;
 				M.Task = 0/*T_None*/;
 				M.B.DoWait('Mind_Arrived', 0.6);
 			}
@@ -917,6 +922,16 @@ function Decide(ModMind M, float DeltaTime)
 		M.TaskDest = Away;
 		SetTask(M, 3/*T_FallBack*/, 8, "ordered to fall back");
 		M.B.DoMoveToDestination('Mind_OrderFallBack', NextLeg(M, Away));
+		return;
+	}
+	// ordered to push: those not already on something close in to their near range, along paths
+	if (Order == "push" && M.bTokenGated && M.Task == 0/*T_None*/ && M.Fear < FleeFear
+		&& VSize(M.P.Location - Enemy.Location) > FMax(M.P.Ability.PreferredMinRange, 450) + 250)
+	{
+		M.TaskDest = Enemy.Location + Normal(M.P.Location - Enemy.Location) * FMax(M.P.Ability.PreferredMinRange, 450);
+		SetTask(M, 8/*T_Advance*/, 7, "ordered to push");
+		M.B.bShouldWalk = false;
+		M.B.DoMoveToDestination('Mind_Advance', NextLeg(M, M.TaskDest));
 		return;
 	}
 	if (M.Pressure > PinPressure && Now > M.NextPin && M.Species != 3/*S_Hound*/ && M.Species != 4/*S_Construct*/)
@@ -1117,7 +1132,8 @@ function Squads()
 			O = Minds[j];
 			if (O.B.Squad != S || O.B.EnemyInfo.Enemy == None)
 				continue;
-			Enemy = O.B.EnemyInfo.Enemy;
+			if (Enemy == None || PlayerController(O.B.EnemyInfo.Enemy.Controller) != None)
+				Enemy = O.B.EnemyInfo.Enemy;   // the player, if anyone in the squad fights the player
 			Engaged++;
 			Centre += O.P.Location;
 			if (O.Species == 3/*S_Hound*/)
@@ -1157,7 +1173,7 @@ function Squads()
 		}
 
 		// one flanker at a time: round the side along paths, at its preferred range
-		if ((!bFlanking || Order == "flank") && Pick != None && Engaged >= 2 && FlankWait <= 0 && (Pick.Cunning > 0.45 || Order == "flank") && (FRand() < Pick.Cunning || Order == "flank"))
+		if ((!bFlanking || Order == "flank") && Pick != None && (Engaged >= 2 || Order == "flank") && FlankWait <= 0 && (Pick.Cunning > 0.45 || Order == "flank") && (FRand() < Pick.Cunning || Order == "flank"))
 		{
 			ToSquad = Normal((Centre - Enemy.Location) * vect(1,1,0));
 			Side = 1;
@@ -1284,13 +1300,48 @@ function SetOrder(string S)
 		class'ModSettings'.static.Note("minds: order none (their own)");
 }
 
+// where the creatures fighting the player stand: how many, how far on average, how many the
+// player can see, how far round from where the player looks (degrees, 0 = straight ahead),
+// and how many are on a task (for checking that orders move them)
+function string Formation()
+{
+	local PlayerController PC;
+	local int i, N, Seen, OnTask;
+	local float Dist, Angle;
+	local vector Eye, Facing, To;
+	local ModMind M;
+
+	PC = Level.GetLocalPlayerController();
+	if (PC == None || PC.Pawn == None)
+		return "formation: no player";
+	Eye = PC.Pawn.Location + vect(0,0,1) * PC.Pawn.BaseEyeHeight;
+	Facing = Normal(Vector(PC.Rotation) * vect(1,1,0));
+	for (i = 0; i < Minds.Length; i++)
+	{
+		M = Minds[i];
+		if (!M.bTokenGated || M.P.Health <= 0)
+			continue;
+		N++;
+		To = (M.P.Location - PC.Pawn.Location) * vect(1,1,0);
+		Dist += VSize(To);
+		Angle += Acos(FClamp(Normal(To) dot Facing, -1, 1)) * 57.2958;
+		if (FastTrace(M.P.Location + vect(0,0,30), Eye))
+			Seen++;
+		if (M.Task != 0)
+			OnTask++;
+	}
+	if (N == 0)
+		return "formation: none fighting the player";
+	return "formation: " $ N $ " fighting the player, mean distance " $ int(Dist / N) $ ", " $ Seen $ " in sight, mean " $ int(Angle / N) $ " deg off the player's view, " $ OnTask $ " on a task";
+}
+
 // ModPilot's MINDLIST
 function string List()
 {
 	local int i;
 	local string S;
 
-	S = Minds.Length $ " minds, " $ ShotsAtPlayer $ " shots at the player so far (" $ ShotsUntokened $ " without a token), player hit " $ PlayerHits $ " times for " $ PlayerDamage $ ", legs " $ LegExposed $ " of " $ LegNodes $ " nodes in sight, order " $ Order;
+	S = Formation() $ " || " $ Minds.Length $ " minds, " $ ShotsAtPlayer $ " shots at the player so far (" $ ShotsUntokened $ " without a token), player hit " $ PlayerHits $ " times for " $ PlayerDamage $ ", legs " $ LegExposed $ " of " $ LegNodes $ " nodes in sight, order " $ Order;
 	for (i = 0; i < Minds.Length; i++)
 		S = S $ " | " $ Minds[i].P.Name $ " " $ Minds[i].Describe() $ " misses " $ Minds[i].NearMisses $ " hits " $ Minds[i].Hits $ " aimheld " $ Minds[i].AimHeld;
 	return S;
@@ -1308,7 +1359,7 @@ defaultproperties
 	ChargeAnger=0.75
 	CoverReach=1200
 	NearMissReach=220
-	FlankEvery=6
+	FlankEvery=10
 	HoundCircle=550
 	RangedTokens=2
 	RangedPer=4
