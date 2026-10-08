@@ -13,6 +13,8 @@ core need is unmet (so a batch can stop and re-roll).
 """
 import json, math, os, sys
 
+import numpy as np
+
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import binder  # noqa
@@ -78,6 +80,88 @@ def l_route(a, b, roads):
     return [list(a), list(c), list(b)]
 
 
+class Net:
+    """Q35 pass 7 (games/research_notes/Believable city simulation s. 7): utilities as trees along the roads.
+    A graph of road vertices (every ~20 m) plus each building tied to its nearest vertex; each pipe/cable is the
+    least-cost path from its provider, where ground this resource already runs along costs REUSE of a new run -
+    so the lines merge into shared trunks (a cheap Steiner tree), instead of one L-shaped line per pair"""
+    REUSE = 0.15
+
+    def __init__(self, L, B):
+        from scipy.sparse import csr_matrix
+        self.pts, self.idx = [], {}
+        edges = []
+        for r in L.get("roads", []):
+            prev = None
+            acc = 0.0
+            for k, p in enumerate(r):
+                if prev is not None:
+                    acc += math.hypot(p[0] - r[k - 1][0], p[1] - r[k - 1][1])
+                if prev is None or acc >= 20 * M or k == len(r) - 1:
+                    n = self.node(p)
+                    if prev is not None and n != prev:
+                        edges.append((prev, n))
+                    prev, acc = n, 0.0
+        self.road_n = len(self.pts)
+        self.bnode = {}
+        for bid, b in B.items():
+            if self.road_n == 0:
+                break
+            p = (b["x"], b["y"])
+            near = min(range(self.road_n), key=lambda k: math.dist(self.pts[k], p))
+            n = self.node(p)
+            self.bnode[bid] = n
+            edges.append((n, near))
+        self.edges = edges
+        self.used = {}                                   # resource -> set of edges (u, v) with u < v
+        self.load = {}                                   # edge -> set of resources
+
+    def node(self, p):
+        k = (round(p[0] / 100), round(p[1] / 100))
+        if k not in self.idx:
+            self.idx[k] = len(self.pts)
+            self.pts.append((float(p[0]), float(p[1])))
+        return self.idx[k]
+
+    def route(self, res, a_bid, b_bid):
+        from scipy.sparse import csr_matrix
+        from scipy.sparse.csgraph import dijkstra
+        if a_bid not in self.bnode or b_bid not in self.bnode:
+            return None
+        used = self.used.setdefault(res, set())
+        rows, cols, w = [], [], []
+        for u, v in self.edges:
+            d = math.dist(self.pts[u], self.pts[v]) + 1.0
+            e = (min(u, v), max(u, v))
+            c = d * (self.REUSE if e in used else 1.0)
+            rows += [u, v]; cols += [v, u]; w += [c, c]
+        n = len(self.pts)
+        G = csr_matrix((w, (rows, cols)), shape=(n, n))
+        src, dst = self.bnode[a_bid], self.bnode[b_bid]
+        dist, pred = dijkstra(G, indices=src, return_predecessors=True)
+        if not np.isfinite(dist[dst]):
+            return None
+        path, k = [], dst
+        while k != src and k >= 0:
+            path.append(k)
+            k = pred[k]
+        path.append(src)
+        path.reverse()
+        new_m = 0.0
+        for u, v in zip(path[:-1], path[1:]):
+            e = (min(u, v), max(u, v))
+            if e not in used:
+                new_m += math.dist(self.pts[u], self.pts[v]) / M
+            used.add(e)
+            self.load.setdefault(e, set()).add(res)
+        return [[round(self.pts[k][0]), round(self.pts[k][1])] for k in path], new_m
+
+    def racks(self):
+        """stretches carrying two or more resources: a pipe rack along the road"""
+        return [[[round(c) for c in self.pts[u]], [round(c) for c in self.pts[v]], sorted(rs)]
+                for (u, v), rs in self.load.items() if len(rs) >= 2]
+
+
 def run(layout_path, out_path=None, report=True):
     L = json.load(open(layout_path))
     B = L["buildings"]
@@ -85,6 +169,9 @@ def run(layout_path, out_path=None, report=True):
     road_pts = [tuple(p) for r in L.get("roads", []) for p in r[::3]]
     specs = {bid: spec_of(bid, sheets[bid]) for bid in B if bid in sheets}
     conns, lines, unmet = [], [], []
+    TREES = L.get("road_class") is not None and len(L.get("roads", [])) > 0     # the Q35 layouts: shared trunks
+    net = Net(L, B) if TREES else None
+    new_m = {}
     for bid, (prov, need) in specs.items():
         for res in sorted(need):
             carrier, reach = RES[res]
@@ -105,6 +192,11 @@ def run(layout_path, out_path=None, report=True):
             a, c = (B[pid]["x"], B[pid]["y"]), (B[bid]["x"], B[bid]["y"])
             # a conveyor runs STRAIGHT (the dominant line of a plant, towers every CONVEYOR_M); pipes and cables follow the roads
             path = l_route(a, c, road_pts) if carrier in ("pipe", "cable") else [list(a), list(c)]
+            if net is not None and carrier in ("pipe", "cable"):
+                rt = net.route(res, pid, bid)
+                if rt is not None:
+                    path, nm = rt
+                    new_m[carrier] = new_m.get(carrier, 0.0) + nm
             if carrier == "conveyor":
                 ok = ok or d <= 900
                 seg = d
@@ -125,6 +217,16 @@ def run(layout_path, out_path=None, report=True):
             lines.append("  %-16s needs %-7s <- %-16s %4.0f m %s" % (bid, res, pid, d, ("via %d pylons" % len(relays)) if relays else ("" if ok else "TOO FAR")))
             conns.append({"from": pid, "to": bid, "resource": res, "carrier": carrier, "ok": ok, "metres": round(d),
                           "path": path, "relays": relays})
+    if net is not None:                                   # one pylon where several power lines share a stretch
+        seen = set()
+        for cn in conns:
+            keep = []
+            for r in cn["relays"]:
+                k = (round(r[0] / (15 * M)), round(r[1] / (15 * M)))
+                if cn["carrier"] == "conveyor" or k not in seen:
+                    keep.append(r)
+                    seen.add(k)
+            cn["relays"] = keep
     core_unmet = [u for u in unmet if u[1] in CORE]
     score = 1 - len(unmet) / max(1, sum(len(n) for _, n in specs.values()))
     L["connections"] = conns
@@ -133,11 +235,17 @@ def run(layout_path, out_path=None, report=True):
                     "cables_m": round(sum(c["metres"] for c in conns if c["carrier"] == "cable")),
                     "conveyors_m": round(sum(c["metres"] for c in conns if c["carrier"] == "conveyor")),
                     "pylons": sum(len(c["relays"]) for c in conns)}
+    if net is not None:                                   # the trees: new run length (shared trunks counted once) + racks
+        L["systems"]["pipes_m"] = round(new_m.get("pipe", 0.0))
+        L["systems"]["cables_m"] = round(new_m.get("cable", 0.0))
+        L["racks"] = net.racks()
+        L["systems"]["racks"] = len(L["racks"])
     json.dump(L, open(out_path or layout_path, "w"), indent=0)
     if report:
-        print("systems: %d needs, %d unmet (%d core), score %.2f; pipes %d m, cables %d m, conveyors %d m, %d pylons"
+        print("systems: %d needs, %d unmet (%d core), score %.2f; pipes %d m, cables %d m, conveyors %d m, %d pylons%s"
               % (L["systems"]["needs"], len(unmet), len(core_unmet), score, L["systems"]["pipes_m"], L["systems"]["cables_m"],
-                 L["systems"]["conveyors_m"], L["systems"]["pylons"]))
+                 L["systems"]["conveyors_m"], L["systems"]["pylons"],
+                 (", %d rack stretches (shared trunks)" % L["systems"]["racks"]) if "racks" in L["systems"] else ""))
         for l in lines:
             print(l)
     return L, core_unmet

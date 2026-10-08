@@ -283,6 +283,20 @@ for bid, b in B.items():
             actor(BARRELS[1], b["x"] + d * math.cos(a), b["y"] + d * math.sin(a), rng.uniform(0, 360), 1.0)
             n_junk += 1
 
+# 2c. pipe racks where utility trunks share a stretch (systems.py's trees, Q35 pass 7): the round-2 PipeRack, its
+#     1000-unit length along the mesh's Y (yaw = direction - 90), one per 20 m
+RACK = o.get("rack", "AvalonSM2.Liandri.PipeRack")
+n_rack = 0
+for (x0, y0), (x1, y1), _res in L.get("racks", []):
+    seg = math.hypot(x1 - x0, y1 - y0)
+    n = max(1, int(round(seg / 1000)))
+    for k in range(n):
+        t = (k + 0.5) / n
+        x, y = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t
+        ux, uy = (x1 - x0) / max(seg, 1), (y1 - y0) / max(seg, 1)
+        actor(RACK, x - uy * 420, y + ux * 420, math.degrees(math.atan2(uy, ux)) - 90, 1.0)   # beside the road, not on it
+        n_rack += 1
+
 # 3. fence runs: the spine layout gives the gaps between plots; otherwise along each core building's front
 n_fence = 0
 for f in L.get("fences", []):
@@ -369,4 +383,4 @@ if WALL and BEFORE and os.path.exists(BEFORE):
                                   % (WALL, x, y, min(Z[j, i], Z[nj, ni]) - 10, int(yawd * 65536 / 360), max(0.6, hgt / 110.0), cull_of(WALL)))
                     n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
-print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_spots} gathering spots, {n_junk} junk, {n_add} lean-tos, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
+print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_spots} gathering spots, {n_junk} junk, {n_add} lean-tos, {n_rack} rack pieces, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
