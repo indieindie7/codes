@@ -52,6 +52,8 @@ struct FlinchState
 	var bool bCorpse;      // on a dead body: not cut short by the death
 	var name Bone2;        // the spring flinch's ripple (None: none)
 	var rotator Turn2;
+	var name Bone3;        // ... and one bone further, weaker and later (the hit travels through the body)
+	var rotator Turn3;
 };
 var array<FlinchState> Flinches;
 var array<name> AnimProbed;
@@ -381,6 +383,13 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional boo
 			F.Bone2 = Bones[3];
 		if (F.Bone2 != '')
 			F.Turn2 = F.Turn * (Best > 5 ? RippleShare * 0.5 : RippleShare);
+		// a third bone up the spine chain, the ripple's share again (hips .. head = Bones 0..5)
+		if (Best < 4)
+			F.Bone3 = Bones[Best + 2];
+		else if (Best > 5)
+			F.Bone3 = Bones[1];
+		if (F.Bone3 != '')
+			F.Turn3 = F.Turn2 * RippleShare;
 	}
 	Flinches[Flinches.Length] = F;
 	if (class'ModSettings'.default.bGoreLog)
@@ -502,11 +511,15 @@ event Tick(float DeltaTime)
 			P.SetBoneRotation(Flinches[i].Bone, rot(0,0,0), 0, 0);
 			if (Flinches[i].Bone2 != '')
 				P.SetBoneRotation(Flinches[i].Bone2, rot(0,0,0), 0, 0);
+			if (Flinches[i].Bone3 != '')
+				P.SetBoneRotation(Flinches[i].Bone3, rot(0,0,0), 0, 0);
 			Flinches.Remove(i, 1);
 			continue;
 		}
 		if (bSpringFlinch)
 		{
+			if (Flinches[i].Bone3 != '')
+				P.SetBoneRotation(Flinches[i].Bone3, Flinches[i].Turn3 * Spring(Flinches[i].T - 2 * RippleDelay), 0, 1);
 			P.SetBoneRotation(Flinches[i].Bone, Flinches[i].Turn * Spring(Flinches[i].T), 0, 1);
 			if (Flinches[i].Bone2 != '')
 				P.SetBoneRotation(Flinches[i].Bone2, Flinches[i].Turn2 * Spring(Flinches[i].T - RippleDelay), 0, 1);

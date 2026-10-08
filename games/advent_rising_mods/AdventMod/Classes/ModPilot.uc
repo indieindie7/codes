@@ -24,7 +24,12 @@ class ModPilot extends Info
 	config(AdventMod);
 
 var config array<string> Steps;
-var bool bDashed;                      // DASH: the dodge was pressed
+var bool bDashed;
+// BONETEST
+var Pawn BoneAI;
+var float BoneMinP, BoneMaxP, BoneMinA, BoneMaxA;
+var int BoneN, BoneDrawnA, BoneLagStep;
+var float BoneHead0, BoneHeadLag[4];                      // DASH: the dodge was pressed
 
 // what ModInput adds each frame (class defaults: ModInput has no reference to us)
 var bool bActive;
@@ -210,6 +215,126 @@ function MindOrder(string S)
 		return;
 	}
 	Note("mindorder: no ModMinds in this level");
+}
+
+function BoneStart()
+{
+	local Controller C;
+	local float Best, D;
+
+	BoneAI = None;
+	Best = 100000000.0;
+	if (PC() == None || PC().Pawn == None)
+		return;
+	for (C = Level.ControllerList; C != None; C = C.nextController)
+		if (PlayerController(C) == None && C.Pawn != None && C.Pawn.Health > 0 && !C.Pawn.IsA('Vehicle'))
+		{
+			D = VSize(C.Pawn.Location - PC().Pawn.Location);
+			if (D < Best)
+			{
+				Best = D;
+				BoneAI = C.Pawn;
+			}
+		}
+	BoneMinP = 100000; BoneMaxP = -100000; BoneMinA = 100000; BoneMaxA = -100000;
+	BoneN = 0;
+	BoneDrawnA = 0;
+	BoneLagStep = -1;
+}
+
+// the foot's place along the pawn's forward axis (a posed run swings it back and forth)
+static function float FootAlong(Pawn P)
+{
+	local vector X, Y, Z;
+
+	GetAxes(P.Rotation, X, Y, Z);
+	return (P.GetBoneCoords('leftFoot').Origin - P.Location) dot X;
+}
+
+static function float HeadSide(Pawn P)
+{
+	local vector X, Y, Z;
+
+	GetAxes(P.Rotation, X, Y, Z);
+	return (P.GetBoneCoords('head').Origin - P.GetBoneCoords('hips').Origin) dot Y;
+}
+
+function BoneTick()
+{
+	local Pawn P;
+	local float F;
+
+	P = PC().Pawn;
+	if (P == None)
+		return;
+	BoneN++;
+	F = FootAlong(P);
+	BoneMinP = FMin(BoneMinP, F);
+	BoneMaxP = FMax(BoneMaxP, F);
+	if (BoneAI != None && !BoneAI.bDeleteMe)
+	{
+		F = FootAlong(BoneAI);
+		BoneMinA = FMin(BoneMinA, F);
+		BoneMaxA = FMax(BoneMaxA, F);
+		if (Level.TimeSeconds - BoneAI.LastRenderTime < 0.1)
+			BoneDrawnA++;
+	}
+	// the lag test, in the step's last half second: roll the spine, read the head
+	if (BoneLagStep < 0 && StepTime > StepLength - 0.6)
+	{
+		BoneHead0 = HeadSide(P);
+		P.SetBoneRotation('spine', rot(0,0,6000), 0, 1);
+		BoneHeadLag[0] = HeadSide(P);
+		BoneLagStep = 1;
+	}
+	else if (BoneLagStep >= 1 && BoneLagStep <= 3)
+	{
+		BoneHeadLag[BoneLagStep] = HeadSide(P);
+		BoneLagStep++;
+		if (BoneLagStep == 4)
+		{
+			P.SetBoneRotation('spine', rot(0,0,0), 0, 0);
+			Note("bonetest: " $ BoneN $ " ticks. Player (drawn): left foot swung " $ int(BoneMaxP - BoneMinP) $ " units along the body"
+				$ Eval2(BoneAI != None, "; nearest AI " $ BoneAI.Name $ " (drawn " $ BoneDrawnA $ "/" $ BoneN $ " ticks): " $ int(BoneMaxA - BoneMinA) $ " units", "; no AI")
+				$ ". Spine rolled 33 deg: the head's sideways offset " $ int(BoneHead0) $ " before, " $ int(BoneHeadLag[0]) $ " the same tick, "
+				$ int(BoneHeadLag[1]) $ " / " $ int(BoneHeadLag[2]) $ " / " $ int(BoneHeadLag[3]) $ " one, two, three ticks on");
+		}
+	}
+}
+
+function bool FaceTo(string Name, float Back)
+{
+	local Actor A, Found;
+	local Pawn P;
+	local vector Spot, Away;
+
+	P = PC().Pawn;
+	if (P == None)
+		return false;
+	foreach AllActors(class'Actor', A)
+		if (string(A.Name) ~= Name)
+		{
+			Found = A;
+			break;
+		}
+	if (Found == None)
+	{
+		Note("faceto: no actor " $ Name);
+		return false;
+	}
+	if (Back > 0)
+	{
+		Away = (P.Location - Found.Location) * vect(1,1,0);
+		if (VSize(Away) < 1)
+			Away = vect(1,0,0);
+		Spot = Found.Location + Normal(Away) * Back;
+		Spot.Z = P.Location.Z;
+		P.SetLocation(Spot);
+	}
+	TargetYaw = ViewDeg(rotator(Found.Location - P.Location).Yaw);
+	TargetPitch = 0;
+	Note("faceto: " $ Found.Name $ " from " $ int(VSize((Found.Location - P.Location) * vect(1,1,0))) $ " away, yaw " $ int(TargetYaw));
+	return true;
 }
 
 function MindList()
@@ -956,6 +1081,16 @@ function StartStep()
 	case "WAITCONTROL":
 		StepLength = ArgF(1, 120);
 		break;
+	case "BONETEST":
+		// BONETEST [SECONDS]: what reading bones from script gives (report "Dynamic body kinematics",
+		// slice K0). The player runs forward while, every tick, the left foot's place relative to the
+		// pawn is sampled for the player (drawn) and the nearest AI (drawn or not): a posed skeleton
+		// swings the foot by tens of units, an unposed one barely moves it. Then a lag test: the spine
+		// is rolled from script and the head's sideways offset read the same tick, one and two ticks on.
+		class'ModPilot'.default.Forward = 1;
+		StepLength = ArgF(1, 3);
+		BoneStart();
+		break;
 	case "DASH":
 		// DASH FORWARD STRAFE SECONDS: move like MOVE, and press dodge 0.25 s into it (a dodge
 		// needs a direction held)
@@ -968,6 +1103,20 @@ function StartStep()
 		class'ModPilot'.default.Forward = FClamp(ArgF(1, 0), -1, 1);
 		class'ModPilot'.default.Strafe = FClamp(ArgF(2, 0), -1, 1);
 		StepLength = ArgF(3, 1);
+		break;
+	case "FACETO":
+		// FACETO ACTORNAME [BACK]: the player is put BACK units from that actor (on the side it
+		// stands, 0 = stays), then turns to face it like FACE (for repeatable run-ups at a prop)
+		if (!FaceTo(Args[1], ArgF(2, 0)))
+			break;
+		Cmd = "FACE";
+		OnTargetTime = 0;
+		StepLength = 6;
+		TurnYaw = 0;
+		TurnPitch = 0;
+		bAimPitch = false;
+		class'ModPilot'.default.TurnAxis = 0;
+		class'ModPilot'.default.LookAxis = 0;
 		break;
 	case "TURN":
 	case "FACE":
@@ -1223,6 +1372,8 @@ event Tick(float DeltaTime)
 		}
 		return;
 	}
+	if (Cmd == "BONETEST")
+		BoneTick();
 	if (Cmd == "DASH" && !bDashed && StepTime >= 0.25)
 	{
 		bDashed = true;

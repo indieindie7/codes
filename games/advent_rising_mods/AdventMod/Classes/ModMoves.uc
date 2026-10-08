@@ -43,6 +43,7 @@ function PostBeginPlay()
 	foreach DynamicActors(class'ModReact', React)
 		break;
 	Spawn(class'ModAction');     // the player's vault, wall slam and barge
+	Spawn(class'ModBody');       // feelings in the body (Seeker arms, hound snarl/cower), hounds on slopes
 	class'ModSettings'.static.Note("moves: lean " $ bLean $ " (gain " $ LeanGain $ ", max " $ MaxLean $ "), slide meter " $ bSlideMeter);
 }
 

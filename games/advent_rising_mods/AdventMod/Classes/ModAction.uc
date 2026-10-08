@@ -24,6 +24,7 @@ var config int BargeDamage;
 var vector LastLoc;
 var float Cool, VaultT;
 var bool bVaulting;
+var vector VaultLand;               // where the vault should come down (logged against where it did)
 var int Vaults, Slams, Barges;
 
 function Log2(string S)
@@ -58,7 +59,7 @@ function Tick(float DeltaTime)
 			bVaulting = false;
 			P.SetAllowInput(true);
 			Jolt(PC, 60, 0.15);
-			Log2("vault landed after " $ VaultT $ " s");
+			Log2("vault landed after " $ VaultT $ " s, " $ int(VSize((P.Location - vect(0,0,1) * P.CollisionHeight - VaultLand) * vect(1,1,0))) $ " from the planned spot");
 		}
 		else if (VaultT > 1.5)
 		{
@@ -100,7 +101,8 @@ function bool Vault(Pawn P, vector Fwd, float Speed)
 {
 	local vector Feet, HitLoc, HitNorm, Top, TopNorm, Far;
 	local Actor A;
-	local float Height, Reach;
+	local float Height, Reach, Rise, G, Vz, Flight;
+	local vector Land;
 
 	Feet = P.Location - vect(0,0,1) * P.CollisionHeight;
 	Reach = P.CollisionRadius + 45;
@@ -128,13 +130,35 @@ function bool Vault(Pawn P, vector Fwd, float Speed)
 	}
 	P.SetAllowInput(false);
 	P.SetPhysics(PHYS_Falling);
-	P.Velocity = Fwd * FMax(Speed, 450) + vect(0,0,1) * (330 + 2.2 * Height);
+	// K3 (warping, by velocity): rise just over the top, come down a body's width past the far face,
+	// whatever the run-up speed was. Time up to clear the top, then the fall to the landing spot.
+	Land = Top + Fwd * (Depth(Top, Fwd, P) + P.CollisionRadius + 30);
+	Rise = Height + 25;                                   // the feet clear the top by 25
+	G = Abs(P.PhysicsVolume.Gravity.Z);
+	if (G < 100)
+		G = 950;
+	Vz = Sqrt(2 * G * Rise);
+	Flight = Vz / G + Sqrt(2 * G * FMax(Rise - (Land.Z - Feet.Z), 1)) / G;
+	P.Velocity = Fwd * FClamp(VSize((Land - Feet) * vect(1,1,0)) / Flight, 300, 900) + vect(0,0,1) * Vz;
 	bVaulting = true;
 	VaultT = 0;
 	Cool = 0.8;
 	Vaults++;
-	Log2("vault over " $ A $ " (top " $ int(Height) $ " up) at speed " $ int(Speed) $ " [" $ Vaults $ "]");
+	Log2("vault over " $ A $ " (top " $ int(Height) $ " up) at speed " $ int(Speed) $ ", landing " $ int(VSize((Land - Feet) * vect(1,1,0))) $ " on in " $ Flight $ " s [" $ Vaults $ "]");
+	VaultLand = Land;
 	return true;
+}
+
+// how deep the cover is along Fwd from a point on its top (to land past its far face)
+function float Depth(vector Top, vector Fwd, Pawn P)
+{
+	local vector HitLoc, HitNorm;
+	local float D;
+
+	for (D = 16; D < 160; D += 16)
+		if (Trace(HitLoc, HitNorm, Top + Fwd * D - vect(0,0,8), Top + Fwd * D + vect(0,0,40), false) == None)
+			return D;               // the top ends here
+	return 160;
 }
 
 // a dodge running into a wall: it stops against it
