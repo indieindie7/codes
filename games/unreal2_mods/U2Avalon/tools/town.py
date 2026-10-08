@@ -50,6 +50,11 @@ def step(title, fn):
 # one island, the layouts keyed by systems + the window frame as before.
 NAV = os.path.join(os.path.dirname(TOOLS), "data", "navpoints_TutA.json")
 CODIRECT = STYLE == "cinema"
+REUSE = o.get("reuse", "0") == "1"           # reuse=1: keep islands/layouts already made in this run folder (a resumed build)
+
+
+def made(path):
+    return REUSE and os.path.exists(path)
 ISLANDS = int(o.get("islands", 4 if CODIRECT else 1))
 if CODIRECT:
     REROLLS = int(o.get("rerolls", 2))
@@ -60,18 +65,20 @@ reviews = []
 for ki in range(ISLANDS):
     iseed = seed if ISLANDS == 1 else seed * 10 + ki
     ib_ = base if ISLANDS == 1 else base + "_i%d" % ki
-    step("island %d (seed %d, %s)" % (ki, iseed, STYLE), lambda: ib.run(["py", os.path.join(TOOLS, "island_form.py"), iseed, ib.TEMPLATE,
+    if not made(ib_ + "_e.bmp"):
+     step("island %d (seed %d, %s)" % (ki, iseed, STYLE), lambda: ib.run(["py", os.path.join(TOOLS, "island_form.py"), iseed, ib.TEMPLATE,
                                                                      ib_ + "_e.bmp", "png=" + ib_ + "_sketch.png", "style=" + STYLE]))
     # the stock island's relief: hills as tall as TutA's own, the plain kept at the tower's foot
-    step("relief", lambda: ib.run(["py", os.path.join(TOOLS, "relief_match.py"), ib_ + "_e.bmp", ib.TEMPLATE]))
-    # the camera: what the player can see from the playable area (the tower's NavigationPoints)
-    step("viewshed", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), ib_ + "_e.bmp", NAV, "-", ib_]))
+     step("relief", lambda: ib.run(["py", os.path.join(TOOLS, "relief_match.py"), ib_ + "_e.bmp", ib.TEMPLATE]))
+     # the camera: what the player can see from the playable area (the tower's NavigationPoints)
+     step("viewshed", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), ib_ + "_e.bmp", NAV, "-", ib_]))
     for k in range(REROLLS):
         lseed = iseed + 100 * k
         cand = ib_ + "_layout_%d.json" % lseed
         tool = "layout_spine.py" if METHOD == "spine" else "layout.py"
-        step("layout %s (seed %d)" % (METHOD, lseed), lambda: ib.run(["py", os.path.join(TOOLS, tool), ib_ + "_e.bmp", cand,
-                                                                      "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png", "vis=" + ib_ + "_vis.npz"]))
+        if not made(cand):
+            step("layout %s (seed %d)" % (METHOD, lseed), lambda: ib.run(["py", os.path.join(TOOLS, tool), ib_ + "_e.bmp", cand,
+                                                                          "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png", "vis=" + ib_ + "_vis.npz"]))
         Lc, core_unmet = systems.run(cand, report=True)
         frame = compose.score(ib_ + "_e.bmp", cand) if COMPOSE else {"total": 0.0}
         if CODIRECT:
@@ -95,7 +102,7 @@ if best[3] != base:                                  # the chosen island becomes
         suf = fsrc[len(best[3]):]
         if not suf.startswith("_layout"):
             shutil.copy(fsrc, base + suf)
-score = subprocess.run([ib.TERRAIN, "score", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02"],
+score = subprocess.run(["py", ib.TERRAIN, "score", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02"],
                        capture_output=True, text=True).stdout
 open(os.path.join(RUN, "terrain_score.txt"), "w").write(score)
 shutil.copy(best[1], layout)

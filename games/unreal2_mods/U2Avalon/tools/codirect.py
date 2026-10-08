@@ -1,4 +1,4 @@
-r"""Co-direction: the town is designed by three collaborators who must agree (the user, 2026-10-08: "I want the town to
+r"""Co-direction: the town is designed by four collaborators who must agree (the user, 2026-10-08: "I want the town to
 be designed by the model we just created and the cinematography rules, like co-direction - writer and artist").
 Each candidate (an island + a town layout on it) goes to three reviewers; each scores it 0..1, writes notes, and may
 veto. The generator keeps the candidate they agree on best (the geometric mean of the three: one weak role sinks it).
@@ -17,6 +17,11 @@ veto. The generator keeps the candidate they agree on best (the geometric mean o
               - the hour: the sun 90-180 deg off the view (side to back light)
               - the reveal: along the walk from the dock the tower is shown, hidden, then revealed (Cullen; Spielberg)
               - the hero reads as a silhouette against the sky (its top above the terrain's skyline in the frame)
+  ENGINEER  civil engineering (games/research_notes/Civil engineering for the generator/report.md, s. 9): the checks
+            that need only the layout and the natural ground - E1 road grades per class (natural ground the cut/fill
+            must fight), E17 slope use (housing <= 14 deg, nothing > 17; the shanty perches to 17 on stilts), E21
+            the buffer order (company housing upwind of the heavy works), E14 water head (the tank 28 m over what it
+            serves), E12 the ore line downhill toward the port at <= 15 deg, E16 fuel tanks >= 100 m from housing
   ARTIST    the drawings and the believability metrics
               - IMP (irregular, lived-in plots) and HIER (street hierarchy, loops, old core near the dock)
               - figure-ground grain: no building lost in the sea, the town compact (its built area within a radius)
@@ -179,6 +184,74 @@ def review(heightmap, layout_path):
     R["director"] = {"score": round(0.4 * fr.get("total", 0) + 0.15 * layers + 0.1 * light + 0.2 * reveal + 0.15 * sil, 3),
                      "notes": notes, "veto": veto}
 
+    # ---------------------------------------------------------------- the ENGINEER
+    notes, checks = [], {}
+    WIND = (0.83, -0.55)
+    cls = L.get("road_class") or (["spine"] + ["branch"] * (len(L.get("roads", [])) - 1))
+    over = tot = 0.0
+    for r, c in zip(L.get("roads", []), cls):
+        if c == "path":
+            continue
+        cap = 0.10 if c in ("spine", "branch") else 0.15
+        for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
+            d = math.hypot(bx - ax, by - ay)
+            if d < 1:
+                continue
+            g = abs(max(_g(Z, bx, by), SEA_Z) - max(_g(Z, ax, ay), SEA_Z)) / d
+            tot += d
+            over += d if g > cap else 0.0
+    checks["E1 road grades"] = 1.0 - (over / tot if tot else 0.0)
+    notes.append("E1: %.0f %% of the road length climbs over its class's grade cap" % (100 * (1 - checks["E1 road grades"])))
+    gy, gx = np.gradient(Z / M, CELL / M)
+    slope = np.degrees(np.arctan(np.hypot(gx, gy)))
+
+    def sl(x, y):
+        i, j = int((x - LOC[0]) / CELL + N / 2), int((y - LOC[1]) / CELL + N / 2)
+        return float(slope[min(max(j, 0), N - 1), min(max(i, 0), N - 1)])
+    bad = []
+    for bid, b in B.items():
+        k = sheets.get(bid, {}).get("kind")
+        if k in (None, "rig", "islet", "wreck", "barge", "dock", "jetty", "tower"):
+            continue
+        lim = 17.0 if (bid.startswith(("shanty", "old_camp")) or k in ("mast", "wellhead")) else (14.0 if k in ("house", "dorm") else 17.0)
+        if sl(b["x"], b["y"]) > lim:
+            bad.append(bid)
+    checks["E17 slope use"] = 1.0 - len(bad) / max(1, len(B))
+    notes.append("E17: %s" % ("all on buildable ground" if not bad else "too steep: " + ", ".join(bad[:5])))
+    heavy = [b for bid, b in B.items() if sheets.get(bid, {}).get("kind") in ("hall", "cooling", "tank", "silo") or bid.startswith("generator")]
+    company = [b for bid, b in B.items() if bid in ("dorm", "dorm_b", "dorm_c", "staff_houses", "directors_house")]
+    pairs = [(h_, s_) for h_ in company for s_ in heavy]
+    upw = sum(1 for h_, s_ in pairs if (h_["x"] - s_["x"]) * WIND[0] + (h_["y"] - s_["y"]) * WIND[1] < 0)
+    checks["E21 buffer order"] = upw / max(1, len(pairs))
+    notes.append("E21: company housing upwind of the works in %.0f %% of pairs" % (100 * checks["E21 buffer order"]))
+    tanks = [b for bid, b in B.items() if bid in ("water_tower", "water_tanks")]
+    if tanks:
+        t_ = max(tanks, key=lambda b: _g(Z, b["x"], b["y"]))
+        tz_ = _g(Z, t_["x"], t_["y"]) + (sheets.get("water_tower", {}).get("size", [0, 0, 0])[2] * M if "water_tower" in B else 0)
+        served = [_g(Z, b["x"], b["y"]) for bid, b in B.items() if sheets.get(bid, {}).get("kind") in ("house", "dorm", "office") and
+                  math.hypot(b["x"] - t_["x"], b["y"] - t_["y"]) < 300 * M]
+        head = (tz_ - max(served)) / M if served else 99
+        checks["E14 water head"] = float(np.clip(head / 28.0, 0, 1))
+        notes.append("E14: the water tank stands %.0f m over the highest house it serves (want 28)" % head)
+    ore = [c for c in L.get("connections", []) if c.get("carrier") == "conveyor"]
+    if ore:
+        ok = 0
+        for c in ore:
+            (ax, ay), (bx, by) = c["path"][0], c["path"][-1]
+            za, zb_ = _g(Z, ax, ay), _g(Z, bx, by)
+            inc = math.degrees(math.atan(abs(za - zb_) / max(1.0, math.hypot(bx - ax, by - ay))))
+            ok += 1 if inc <= 15 else 0
+        checks["E12 conveyor incline"] = ok / len(ore)
+        notes.append("E12: %d of %d ore runs within 15 deg" % (ok, len(ore)))
+    fuel = [b for bid, b in B.items() if bid in ("tank_farm", "fuel_depot")]
+    homes = [b for bid, b in B.items() if sheets.get(bid, {}).get("kind") in ("house", "dorm")]
+    if fuel and homes:
+        dmin = min(math.hypot(f_["x"] - h_["x"], f_["y"] - h_["y"]) for f_ in fuel for h_ in homes) / M
+        checks["E16 fuel set-back"] = float(np.clip(dmin / 100.0, 0, 1))
+        notes.append("E16: fuel tanks %.0f m from the nearest home (want 100)" % dmin)
+    R["engineer"] = {"score": round(float(np.mean(list(checks.values()))) if checks else 0.5, 3), "notes": notes, "veto": None,
+                     "checks": {k: round(v, 2) for k, v in checks.items()}}
+
     # ---------------------------------------------------------------- the ARTIST
     notes = []
     try:
@@ -196,15 +269,15 @@ def review(heightmap, layout_path):
     R["artist"] = {"score": round(0.4 * imp + 0.35 * hier + 0.25 * compact, 3), "notes": notes, "veto": None}
 
     vetoes = [r["veto"] for r in R.values() if r["veto"]]
-    sc = [max(1e-3, R[k]["score"]) for k in ("writer", "director", "artist")]
-    R["total"] = 0.0 if vetoes else round(float(np.prod(sc) ** (1 / 3)), 3)
+    sc = [max(1e-3, R[k]["score"]) for k in ("writer", "director", "engineer", "artist")]
+    R["total"] = 0.0 if vetoes else round(float(np.prod(sc) ** (1 / len(sc))), 3)
     R["vetoes"] = vetoes
     return R
 
 
 def report(R, label=""):
     lines = ["co-direction %s: %.3f%s" % (label, R["total"], ("  VETO: " + "; ".join(R["vetoes"])) if R["vetoes"] else "")]
-    for k in ("writer", "director", "artist"):
+    for k in ("writer", "director", "engineer", "artist"):
         lines.append("  %-8s %.2f  %s" % (k.upper(), R[k]["score"], " | ".join(R[k]["notes"])))
     return "\n".join(lines)
 
