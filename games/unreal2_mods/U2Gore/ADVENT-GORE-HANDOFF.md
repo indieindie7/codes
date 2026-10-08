@@ -1,4 +1,4 @@
-﻿# Advent gore â†’ Unreal II: handoff
+# Advent gore → Unreal II: handoff
 
 From the Advent chat, 2026-10-08, for the Sanctuary (M08A*) gore pass. The full design is in `games/advent_rising_mods/GORE-DESIGN.md`. This note covers only what matters for the port.
 
@@ -62,19 +62,28 @@ From the Advent chat, 2026-10-08, for the Sanctuary (M08A*) gore pass. The full 
 - Advent's live lines are in `games/advent_rising_mods/AdventMod/System/U2Shaders.ini`. Its hashes are Advent textures, so log your own (the `gloss: first draw (hash ...)` lines).
 - Shader files: copy `codes/games/advent_rising_mods/AdventMod/U2Shaders/blood_gloss.hlsl` into `<U2>\System\U2Shaders\`. Streaks, strings, hands and the lens are compiled from source inside the dll.
 
-## 4. âš  The blocker: how script reaches the layer in U2
+## 4. The script-to-layer bridge in U2: GoreLink (fork acfbd43)
 
-- In Advent, script calls `NativeCall("Blood:<cmd>")` â†’ **AdventNative.dll** â†’ the exported `U2BloodCommand(const char*)` in d3d8.dll. **Unreal II has no AdventNative.**
-- Streaks, strings and hands are sent **every tick**, so file channels (U2Live.cmd is toolâ†’game; the U2GM.ini journal) are too slow.
-- **Options:**
-  - **(a)** The layer reads a known script object's string property each frame. It already finds `GObjects` for the live channel, so a `GoreLink` actor with `var string Cmds` the layer drains would work. â† my pick, about half a day of work in the fork.
-  - **(b)** A tiny U2 native package (needs the U2 SDK headers we don't have).
-  - **(c)** Port only what needs no per-tick commands first: gloss, footprints, drops, ceiling drips. Pools and runs need only a few commands per event, so a file channel would survive for those.
-- Tell me which, and I'll add (a) to the fork if you want it.
+- In Advent, script calls `NativeCall("Blood:<cmd>")` → **AdventNative.dll** → the exported `U2BloodCommand(const char*)` in d3d8.dll. Unreal II has no native bridge, so the fork reads the commands from script memory instead.
+- **Turn it on** with `gorelink=1` in U2Shaders.ini. It is off by default.
+- **The script side:**
+  - one actor whose class is named exactly `GoreLink`, per map;
+  - one `var string` with any name, rewritten every tick as `GL1 <seq>;<cmd>;<cmd>;...`.
+- **What the layer does:**
+  - finds the object in `GObjects` and finds the string by its `GL1 ` prefix;
+  - runs each new `<seq>` once, at Present, one frame after the tick;
+  - only reads game memory and never writes it.
+- **Limits:** 16384 characters per batch (cut at the last `;`), 1023 per command, ASCII only.
+- **Commands** are the same lines as in Advent (the header comments of blood/runs/streaks/strings/lens.hpp).
+  - Per-tick state (`streak`, `streaks`, `string`, `hand`, `hands`) goes in every batch.
+  - One-shot events (`pool`, `pour`, `run`, `drip`, `lens`, `lensat`, `stamp`) go in once.
+  - Send `streakclear;stringclear;handclear;lensclear` at a map start.
+- **No return values:** `wet` and lens's 1/0 don't reach script, so mirror the settings in the mod's own config.
+- **Log lines** in U2Shaders.log: `gorelink: found ...`, `gorelink: commands string at +0x..`, `gorelink: the GoreLink object went (...)`.
 
 ## 5. The script side and how it was tested
 
-- **Hits feed in from** `ModGoreRules` (a GameRules `NetDamage`) â†’ `ModGore.Mark` (bone, momentum, damage) â†’ decals plus layer commands. Your GoreRules already plays this role.
+- **Hits feed in from** `ModGoreRules` (a GameRules `NetDamage`) → `ModGore.Mark` (bone, momentum, damage) → decals plus layer commands. Your GoreRules already plays this role.
 - **The streak sources** are wounds, hits on corpses and cuts: at most 8 per tick, each sent as `streak K x y z nx ny kind age str seed`, then `streaks n`.
 - **Tests:**
   - **Hidden ModPilot runs** with `bGoreLog=True`: `spawn`, `hurt`, `gibahead`, `driptest`, `walkblood`, `goolist`/`droplist`/`steplist`, and `shotp` prints.
@@ -83,7 +92,7 @@ From the Advent chat, 2026-10-08, for the Sanctuary (M08A*) gore pass. The full 
     - streaks run straight down whatever the pose and stay on the wounded body;
     - prints alternate left and right;
     - drops are counted thrown equal to landed;
-    - the `perf:` lines show frames > 50 ms at 0â€“1 during a fight.
+    - the `perf:` lines show frames > 50 ms at 0–1 during a fight.
   - **Offline:** the `*_sim.py` tools draw each effect as a strip, so you can tune without the game.
   - **Drying:** `tools/python/visualqa/blood_drying.py`.
 
