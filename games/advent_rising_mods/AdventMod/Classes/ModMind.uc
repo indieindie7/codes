@@ -45,6 +45,9 @@ var vector TaskDest;
 var float NextDecision;             // Level.TimeSeconds before which no new task is picked
 var float NextPin;                  // ... and before which it can't be pinned again (it has to come up some time)
 var float LastHit, LastNearMiss, LastLog;
+var float HoldUntil;                 // fairness: no shooting before this (just spotted the player)
+var float LastSawPlayer;             // when it last had the player in sight
+var int AimHeld;                     // fairness: frames its aim was held back (MINDLIST)
 var float LastFlank;                // when it last went round the side (flankers rest after)
 var int NearMisses, Hits;
 var float CircleAngle;              // T_Circle: where around the prey (radians)

@@ -48,12 +48,14 @@ var config float HoundCircle;       // how far from the prey hounds circle (worl
 var array<ModMind> Minds;
 var ModMindRules Rules;
 var float AdoptWait, FlankWait, TokenWait;
-var int ShotsAtPlayer, ShotsUntokened;              // projectiles fired by creatures fighting the player (MINDLIST)
+var int ShotsAtPlayer, ShotsUntokened, PlayerHits, PlayerDamage;              // projectiles fired by creatures fighting the player (MINDLIST)
 var config int RangedTokens;        // creatures that may shoot at the player at once ...
 var config int RangedPer;           // ... plus one per this many engaged beyond four
 var config int MeleeTokens;         // creatures that may charge, leap or strike at once ...
 var config int MeleePer;            // ... plus one per this many engaged beyond four
 var config float TokenTime;         // seconds between deals
+var config float AcquireGrace;      // seconds a creature waits before its first shot at the player after spotting them
+var config float AimMoveRelief;     // how much a fast-moving player throws off the aim (0..1)
 
 // shots in flight: where each was last tick (for the segment it flew)
 struct Shot
@@ -353,6 +355,11 @@ function Hit(Pawn Injured, Pawn InstigatedBy, int Damage)
 	local ModMind M;
 	local float Share;
 
+	if (PlayerController(Injured.Controller) != None && Damage > 0 && MindOf(InstigatedBy) != None)
+	{
+		PlayerHits++;
+		PlayerDamage += Damage;
+	}
 	M = MindOf(Injured);
 	if (M == None || Damage <= 0)
 		return;
@@ -438,6 +445,52 @@ function Steer(ModMind M)
 	}
 }
 
+// fairness (DOOM: miss more when the player moves; U2FairFights: a beat before the first shot) ----
+// The game's Bot walks its aim in from the player's feet to the body over 0.6 s from when it
+// starts a burst (StartAimingTime; only at more than 500 units), then adds a fixed +-2.7 deg
+// yaw error (its smarter AdjustAimError is never called). So the aim's progress is what we
+// can move: a player who runs, dodges or jumps sets it back, as do the creature's own fear and
+// pressure; and a creature that has just spotted the player waits AcquireGrace before firing.
+function AimFair(ModMind M)
+{
+	local Pawn Player;
+	local float Now, Speed, Move, Cap, Progress;
+	local bool bSight;
+
+	Player = M.B.EnemyInfo.Enemy;
+	if (!M.bTokenGated || Player == None)
+		return;
+	Now = Level.TimeSeconds;
+	bSight = M.B.bEnemyIsVisible;
+	if (bSight)
+	{
+		// spotted again after 3 s out of sight (or for the first time): a beat before shooting
+		if (Now - M.LastSawPlayer > 3)
+		{
+			M.HoldUntil = Now + AcquireGrace;
+			ApplyFire(M);
+		}
+		M.LastSawPlayer = Now;
+	}
+	if (M.bHeldFire && Now >= M.HoldUntil)
+		ApplyFire(M);           // the beat is over
+	if (M.B.StartAimingTime < 0)
+		return;                 // not mid-burst
+	Speed = VSize(Player.Velocity * vect(1,1,0));
+	Move = FClamp((Speed - 250) / 350, 0, 1);
+	if (Player.Physics == PHYS_Falling)
+		Move = 1;
+	Cap = FClamp(1 - AimMoveRelief * Move - 0.4 * M.Fear - 0.3 * M.Pressure, 0.25, 1);
+	if (Cap >= 1)
+		return;
+	Progress = (Now - M.B.StartAimingTime) / 0.6;
+	if (Progress > Cap)
+	{
+		M.B.StartAimingTime = Now - 0.6 * Cap;
+		M.AimHeld++;
+	}
+}
+
 // decisions -----------------------------------------------------------------------
 
 // busy with something the mind mustn't cut into
@@ -479,7 +532,7 @@ function ApplyFire(ModMind M)
 {
 	local bool bBlock;
 
-	bBlock = M.bPinHold || (M.bTokenGated && !M.bRangedToken);
+	bBlock = M.bPinHold || (M.bTokenGated && !M.bRangedToken) || (M.bTokenGated && Level.TimeSeconds < M.HoldUntil);
 	if (bBlock != M.bHeldFire)
 	{
 		M.B.bDisableTimedFire = bBlock;
@@ -1006,6 +1059,7 @@ function Tick(float DeltaTime)
 		}
 		Steer(M);
 		Decide(M, DeltaTime);
+		AimFair(M);
 	}
 	TokenWait -= DeltaTime;
 	if (TokenWait <= 0)
@@ -1022,9 +1076,9 @@ function string List()
 	local int i;
 	local string S;
 
-	S = Minds.Length $ " minds, " $ ShotsAtPlayer $ " shots at the player so far (" $ ShotsUntokened $ " without a token)";
+	S = Minds.Length $ " minds, " $ ShotsAtPlayer $ " shots at the player so far (" $ ShotsUntokened $ " without a token), player hit " $ PlayerHits $ " times for " $ PlayerDamage;
 	for (i = 0; i < Minds.Length; i++)
-		S = S $ " | " $ Minds[i].P.Name $ " " $ Minds[i].Describe() $ " misses " $ Minds[i].NearMisses $ " hits " $ Minds[i].Hits;
+		S = S $ " | " $ Minds[i].P.Name $ " " $ Minds[i].Describe() $ " misses " $ Minds[i].NearMisses $ " hits " $ Minds[i].Hits $ " aimheld " $ Minds[i].AimHeld;
 	return S;
 }
 
@@ -1047,4 +1101,6 @@ defaultproperties
 	MeleeTokens=2
 	MeleePer=6
 	TokenTime=2
+	AcquireGrace=0.6
+	AimMoveRelief=0.5
 }
