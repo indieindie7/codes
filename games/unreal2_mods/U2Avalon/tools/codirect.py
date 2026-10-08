@@ -1,4 +1,4 @@
-r"""Co-direction: the town is designed by four collaborators who must agree (the user, 2026-10-08: "I want the town to
+r"""Co-direction: the town is designed by five collaborators who must agree (the user, 2026-10-08: "I want the town to
 be designed by the model we just created and the cinematography rules, like co-direction - writer and artist").
 Each candidate (an island + a town layout on it) goes to three reviewers; each scores it 0..1, writes notes, and may
 veto. The generator keeps the candidate they agree on best (the geometric mean of the three: one weak role sinks it).
@@ -22,12 +22,26 @@ veto. The generator keeps the candidate they agree on best (the geometric mean o
             must fight), E17 slope use (housing <= 14 deg, nothing > 17; the shanty perches to 17 on stilts), E21
             the buffer order (company housing upwind of the heavy works), E14 water head (the tank 28 m over what it
             serves), E12 the ore line downhill toward the port at <= 15 deg, E16 fuel tanks >= 100 m from housing
+  LEVEL DESIGNER  how the town PLAYS (games/research_notes/Level design practices/report.md; Terrain generation methods
+            for the pipeline/gameplay_terrain.md; the U2 mechanics measured in U2FairFights / U2Seven: GroundSpeed 263 UU/s
+            = 5.3 m/s, NPC hit odds fall off past 1024 UU = 20 m, sight cap 6000 UU = 120 m, walkable floor ~45 deg)
+              - LD1 the critical route (the spine, dock -> tower) walkable: grade <= 30 deg on the ground; < 80 % is a VETO
+              - LD2 pacing (Bungie's 30 s of fun, the L4D build-up/relax): along the spine a beat (a junction, a landmark,
+                the tower shown or lost) at least every 60 s of walking (315 m)
+              - LD3 the weenie: from a station every 50 m of the walk, the tower OR a district landmark is in view
+              - LD4 streets end on a view: each branch/lane's end looks at a building or toward the tower, never at nothing
+              - LD5 arenas at the junctions: >= 2 entries, >= 3 cover pieces 10-40 m out, a high spot (+3 m), and the
+                sightlines broken: 30-80 % of 16 rays blocked within 41 m (2048 UU: open ground past that is where the
+                hitscan mercs win by volume of fire)
+              - LD6 a local landmark per district: its tallest building >= 2x the district's median height
+              - LD7 the Unreal 1 first-Skaarj recipe: somewhere on the walk a quiet stretch (25-60 s, no beat) that ends in
+                a junction good enough to fight in (the space for a staged reveal)
   ARTIST    the drawings and the believability metrics
               - IMP (irregular, lived-in plots) and HIER (street hierarchy, loops, old core near the dock)
               - figure-ground grain: no building lost in the sea, the town compact (its built area within a radius)
 
-    py tools/codirect.py <heightmap.bmp> <layout.json>            -> prints the three reviews
-    (as a library: review(heightmap, layout) -> dict with writer/director/artist {score, notes, veto} + total)
+    py tools/codirect.py <heightmap.bmp> <layout.json>            -> prints the five reviews
+    (as a library: review(heightmap, layout) -> dict with writer/director/engineer/level/artist {score, notes, veto} + total)
 """
 import json, math, os, struct, sys
 
@@ -103,6 +117,182 @@ def serial(Z, L, sheets, step_m=35.0):
             out.append(seen)
         s += step_m * M
     return out
+
+
+WALK_MS = 263.0 / M                       # U2 GroundSpeed in m/s
+BEAT_S = 60.0                              # the longest walk without a beat
+FIGHT_M = 2048.0 / M                       # past this, open ground belongs to the hitscan mercs
+
+
+def _height(bid, b, sheets):
+    s = sheets.get(bid, {})
+    return (s["size"][2] if len(s.get("size", [])) > 2 else 6.0)
+
+
+def _seen(Z, boxes, p, tx, ty, tz, skip=None):
+    e = max(_g(Z, *p), SEA_Z) + 1.6 * M
+    for u in np.linspace(0.03, 0.97, 40):
+        q = (p[0] + (tx - p[0]) * u, p[1] + (ty - p[1]) * u)
+        ray = e + (tz - e) * u
+        if _g(Z, *q) > ray:
+            return False
+        for bx, by, br, bt in boxes:
+            if (bx, by) != skip and math.hypot(q[0] - bx, q[1] - by) < br and bt > ray:
+                return False
+    return True
+
+
+def level_designer(Z, L, sheets, walk):
+    """how the town plays: the critical route, pacing, wayfinding, arenas (see the module notes, LD1-LD7)"""
+    notes, checks, veto = [], {}, None
+    B = L["buildings"]
+    sp = L.get("spine") or []
+    T = B.get("tower")
+    if len(sp) < 2 or not T:
+        return {"score": 0.0, "notes": ["no spine or no tower"], "veto": "no critical route", "checks": {}}
+    boxes = _boxes(L, sheets)
+    # LD1 the critical route: along-path grade on the ground
+    tot = ok = 0.0
+    for a, b in zip(sp[:-1], sp[1:]):
+        d = math.dist(a, b)
+        if d < 1:
+            continue
+        g = math.degrees(math.atan(abs(max(_g(Z, *b), SEA_Z) - max(_g(Z, *a), SEA_Z)) / d))
+        tot += d
+        ok += d if g <= 30 else 0
+    checks["LD1 route walkable"] = ok / tot if tot else 0.0
+    if checks["LD1 route walkable"] < 0.8:
+        veto = "the critical route can't be walked (%.0f %% over 30 deg)" % (100 * (1 - checks["LD1 route walkable"]))
+    notes.append("LD1: %.0f %% of the spine walkable (<= 30 deg)" % (100 * checks["LD1 route walkable"]))
+    # the spine's arc length, and where things project onto it
+    acc = [0.0]
+    for a, b in zip(sp[:-1], sp[1:]):
+        acc.append(acc[-1] + math.dist(a, b))
+    k_t = min(range(len(sp)), key=lambda k: math.dist(sp[k], (T["x"], T["y"])))
+    s_end = acc[k_t]
+
+    def s_of(x, y):
+        k = min(range(k_t + 1), key=lambda k: math.dist(sp[k], (x, y)))
+        return acc[k], math.dist(sp[k], (x, y))
+    # junctions: ends of other roads (not paths) that touch another road
+    roads, cls = L.get("roads", []), L.get("road_class") or ["spine"] + ["branch"] * (len(L.get("roads", [])) - 1)
+    junc = []
+    for i, (r, c) in enumerate(zip(roads, cls)):
+        if c == "path" or c == "spine" or len(r) < 2:
+            continue
+        for end in (r[0], r[-1]):
+            for j, r2 in enumerate(roads):
+                if j != i and cls[j] != "path" and min(math.dist(end, q) for q in r2) < 15 * M:
+                    if all(math.dist(end, (jx, jy)) > 30 * M for jx, jy, _ in junc):
+                        legs = 0
+                        for k, r3 in enumerate(roads):
+                            if cls[k] == "path" or min(math.dist(end, q) for q in r3) >= 15 * M:
+                                continue
+                            legs += 1 if min(math.dist(end, r3[0]), math.dist(end, r3[-1])) < 15 * M else 2
+                        junc.append((end[0], end[1], legs))
+                    break
+    # LD2 pacing: beats along the spine
+    beats = [0.0, s_end]
+    for jx, jy, _ in junc:
+        s_, d_ = s_of(jx, jy)
+        if d_ < 20 * M and s_ <= s_end:
+            beats.append(s_)
+    hts = {bid: _height(bid, b, sheets) for bid, b in B.items()}
+    for bid, b in B.items():
+        if hts[bid] >= 20 and sheets.get(bid, {}).get("kind") not in ("rig", "islet", "mast"):
+            s_, d_ = s_of(b["x"], b["y"])
+            if d_ < 40 * M and s_ <= s_end:
+                beats.append(s_)
+    st = 35.0 * M
+    for k in range(1, len(walk)):
+        if walk[k] != walk[k - 1]:
+            beats.append(k * st)
+    beats = sorted(beats)
+    gaps = [(b2 - b1) / M / WALK_MS for b1, b2 in zip(beats[:-1], beats[1:])]
+    longest = max(gaps) if gaps else 0
+    checks["LD2 pacing"] = float(np.clip(BEAT_S / max(longest, 1e-3), 0, 1))
+    notes.append("LD2: %d beats over %.0f s of walking, longest quiet %.0f s (want <= 60)" % (len(beats) - 2, s_end / M / WALK_MS, longest))
+    # LD3 the weenie: the tower or a district landmark in view every 50 m
+    marks = {}
+    for bid, b in B.items():
+        lay = b.get("layer", "-")
+        if bid != "tower" and sheets.get(bid, {}).get("kind") not in ("rig", "islet", "wreck", "barge", "pad", "dock", "jetty"):
+            if lay not in marks or hts[bid] > hts[marks[lay]]:
+                marks[lay] = bid
+    targets = [(T["x"], T["y"], T.get("z", _g(Z, T["x"], T["y"])) + _height("tower", T, sheets) * M)]
+    targets += [(B[m]["x"], B[m]["y"], _g(Z, B[m]["x"], B[m]["y"]) + hts[m] * M) for m in marks.values()]
+    seen = n = 0
+    s_ = 0.0
+    while s_ <= s_end:
+        k = max(0, min(len(sp) - 2, int(np.searchsorted(acc, s_) - 1)))
+        t = (s_ - acc[k]) / max(1e-6, acc[k + 1] - acc[k])
+        p = (sp[k][0] + (sp[k + 1][0] - sp[k][0]) * t, sp[k][1] + (sp[k + 1][1] - sp[k][1]) * t)
+        n += 1
+        seen += 1 if any(_seen(Z, boxes, p, tx, ty, tz, skip=(tx, ty)) for tx, ty, tz in targets) else 0
+        s_ += 50 * M
+    checks["LD3 weenie"] = seen / max(1, n)
+    notes.append("LD3: tower or a landmark in view at %d of %d stations" % (seen, n))
+    # LD4 streets end on a view: a landmark in a +-20 deg cone within 400 m, or a vista over the sea within 200 m
+    lms = targets + [(b["x"], b["y"], 0) for bid, b in B.items() if b.get("interest", 0) >= 0.8 and bid != "tower"]
+    ends = good = 0
+    done = []
+    for r, c in zip(roads, cls):
+        if c not in ("branch", "lane") or len(r) < 2 or r in done:
+            continue
+        done.append(r)
+        for (ax, ay), (bx, by) in ((r[-2], r[-1]), (r[1], r[0])):
+            d = math.hypot(bx - ax, by - ay)
+            if d < 1:
+                continue
+            ux, uy = (bx - ax) / d, (by - ay) / d
+            ends += 1
+            hd = math.atan2(uy, ux)
+            lm = any(0 < math.hypot(x - bx, y - by) < 400 * M and
+                     abs((math.degrees(math.atan2(y - by, x - bx) - hd) + 180) % 360 - 180) < 20 for x, y, _ in lms)
+            sea = any(_g(Z, bx + ux * r_ * M, by + uy * r_ * M) < SEA_Z for r_ in range(20, 200, 10))
+            good += 1 if lm or sea else 0
+    checks["LD4 street ends"] = good / ends if ends else 0.5
+    notes.append("LD4: %d of %d street ends look at a landmark or the sea" % (good, ends))
+    # LD5 arenas at the junctions
+    ar = []
+    for jx, jy, legs in junc:
+        z0 = max(_g(Z, jx, jy), SEA_Z)
+        cover = sum(1 for x, y, rr, _ in boxes if 10 * M < math.hypot(x - jx, y - jy) < 40 * M)
+        high = max(_g(Z, jx + 40 * M * math.cos(a), jy + 40 * M * math.sin(a)) for a in np.linspace(0, 2 * math.pi, 12)) > z0 + 3 * M
+        blocked = 0
+        for a in np.linspace(0, 2 * math.pi, 16, endpoint=False):
+            e = z0 + 1.6 * M
+            for rr_ in np.arange(4, FIGHT_M, 3):
+                q = (jx + rr_ * M * math.cos(a), jy + rr_ * M * math.sin(a))
+                if _g(Z, *q) > e + 0.4 * M or _g(Z, *q) < SEA_Z or any(math.hypot(q[0] - x, q[1] - y) < r2 for x, y, r2, _ in boxes):
+                    blocked += 1
+                    break
+        fb = blocked / 16
+        sub = [legs >= 2, cover >= 3, high, 0.3 <= fb <= 0.8]
+        ar.append((sum(sub) / 4.0, jx, jy, cover, fb, high))
+    checks["LD5 arenas"] = float(np.mean([a[0] for a in ar])) if ar else 0.0
+    best = max(ar) if ar else None
+    notes.append("LD5: %d junctions, mean arena %.2f%s" % (len(ar), checks["LD5 arenas"],
+                 (" (best: %d cover, %.0f %% rays blocked, high spot %s)" % (best[3], 100 * best[4], "yes" if best[5] else "no")) if best else ""))
+    # LD6 a landmark per district
+    okd = 0
+    for lay, m in marks.items():
+        hs = sorted(hts[bid] for bid, b in B.items() if b.get("layer", "-") == lay)
+        okd += 1 if hts[m] >= 2 * hs[len(hs) // 2] else 0
+    checks["LD6 district landmarks"] = okd / max(1, len(marks))
+    notes.append("LD6: %d of %d districts have a landmark 2x their median (%s)" % (okd, len(marks), ", ".join("%s: %s" % kv for kv in marks.items())))
+    # LD7 the first-encounter space: a quiet stretch ending in a fightable junction
+    quiet = 0.0
+    for b1, b2, g in zip(beats[:-1], beats[1:], gaps):
+        if 25 <= g <= 60:
+            for a in ar:
+                s2, d2 = s_of(a[1], a[2])
+                if a[0] >= 0.75 and abs(s2 - b2) < 20 * M and d2 < 20 * M:
+                    quiet = 1.0
+    checks["LD7 reveal space"] = quiet
+    notes.append("LD7: %s" % ("a quiet stretch ends in a fightable junction (the reveal)" if quiet else "no quiet stretch leads into a good arena"))
+    return {"score": round(float(np.mean(list(checks.values()))), 3), "notes": notes, "veto": veto,
+            "checks": {k: round(v, 2) for k, v in checks.items()}}
 
 
 def review(heightmap, layout_path):
@@ -252,6 +442,9 @@ def review(heightmap, layout_path):
     R["engineer"] = {"score": round(float(np.mean(list(checks.values()))) if checks else 0.5, 3), "notes": notes, "veto": None,
                      "checks": {k: round(v, 2) for k, v in checks.items()}}
 
+    # ---------------------------------------------------------------- the LEVEL DESIGNER
+    R["level"] = level_designer(Z, L, sheets, walk)
+
     # ---------------------------------------------------------------- the ARTIST
     notes = []
     try:
@@ -269,7 +462,7 @@ def review(heightmap, layout_path):
     R["artist"] = {"score": round(0.4 * imp + 0.35 * hier + 0.25 * compact, 3), "notes": notes, "veto": None}
 
     vetoes = [r["veto"] for r in R.values() if r["veto"]]
-    sc = [max(1e-3, R[k]["score"]) for k in ("writer", "director", "engineer", "artist")]
+    sc = [max(1e-3, R[k]["score"]) for k in ("writer", "director", "engineer", "level", "artist")]
     R["total"] = 0.0 if vetoes else round(float(np.prod(sc) ** (1 / len(sc))), 3)
     R["vetoes"] = vetoes
     return R
@@ -277,7 +470,7 @@ def review(heightmap, layout_path):
 
 def report(R, label=""):
     lines = ["co-direction %s: %.3f%s" % (label, R["total"], ("  VETO: " + "; ".join(R["vetoes"])) if R["vetoes"] else "")]
-    for k in ("writer", "director", "engineer", "artist"):
+    for k in ("writer", "director", "engineer", "level", "artist"):
         lines.append("  %-8s %.2f  %s" % (k.upper(), R[k]["score"], " | ".join(R[k]["notes"])))
     return "\n".join(lines)
 

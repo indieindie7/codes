@@ -45,7 +45,7 @@ def step(title, fn):
 
 # 1-3. the island and the town, chosen together. style=cinema (2026-10-08): ONE generator - the island is designed
 # from the command room's window and the parti (island_form.py style=cinema), several islands x several layouts are
-# made, and the three co-directors (codirect.py: WRITER = the parti + the town model, DIRECTOR = the cinematography
+# made, and the five co-directors (codirect.py: WRITER = the parti + the town model, DIRECTOR = the cinematography
 # rules, ARTIST = the drawings + metrics) review every candidate; the one they agree on best is built. Other styles:
 # one island, the layouts keyed by systems + the window frame as before.
 NAV = os.path.join(os.path.dirname(TOOLS), "data", "navpoints_TutA.json")
