@@ -629,7 +629,7 @@ star(dr, hx, hy, 22, (190, 40, 40))
 beats(dr)
 scale_bar(dr)
 runs, cur = [], None
-for s_, p, seen in stations:
+for s_, p, seen in [st for st in stations if math.dist(st[1], TOWER) > 40 * M]:     # at its foot you look up its wall
     if cur is None or cur[0] != seen:
         cur = [seen, 1]
         runs.append(cur)
