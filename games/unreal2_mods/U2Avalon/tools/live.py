@@ -152,6 +152,20 @@ def marks(n=3):
         print(m)
         if i < len(pngs):
             print("   shot:", pngs[i])
+        # a mark sent by the fork's sketch tool (U2GM "Save as mark") ends "sketch:<name>": the
+        # marked-up PNG and its .txt are in System\Sketch; copied here beside the shot
+        sk = re.search(r"sketch:(sketch-[0-9-]+)", m)
+        if sk:
+            for ext in (".png", ".txt"):
+                src = os.path.join(SYS, "Sketch", sk.group(1) + ext)
+                if os.path.exists(src):
+                    dst = os.path.join(out, sk.group(1) + ext)
+                    if not os.path.exists(dst):
+                        import shutil
+                        shutil.copyfile(src, dst)
+                    print("   sketch%s:" % ext, os.path.abspath(dst))
+                else:
+                    print("   sketch%s: missing (%s)" % (ext, src))
     if not found:
         print("no marks yet (in game: avalon mark [note])")
     return found, pngs

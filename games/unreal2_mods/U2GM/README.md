@@ -276,5 +276,130 @@ Notes drawn in the world: an edge for a railing, an area marked "shanty here", a
 4. Type `gm draw add` 41 times: the 41st is refused. Then `gm draw clear`.
 5. `gm commit` with a draw present: the draw is not in the watcher's line count and stays in `Draws[]`.
 
+## Sketch (screenshot markup)
+"Image editing tools when I'm on the console": freeze the frame, mark it up, save it as a PNG, and optionally send it as an `avalon mark`. Drawn by the d3d8 fork with the same Dear ImGui as the panel (`source/u2shaders.hpp`, "sketch"). Built and compiled on 2026-10-08, **never run in the game**.
+
+**Parts:**
+- `staging/d3d8.dll`: the fork with `sketch=1`. The PNG writer is stb_image_write v1.16 (public domain/MIT, vendored as `d3d8to9-gi/source/stb_image_write.h`).
+- `staging/U2GM.u`: GMMaster gains `gm con big|quick 1|0` (sets `con=` in `PanelState`), `gm sketch mark NAME [NOTE]`, and `view=YAW,PITCH` in `PanelState`.
+- `tools/sketch_console_ui.py`: adds four `TriggerEvent` lines to `<game>\UIScripts\Console.ui`, so the console itself says when it opens and closes. Backup `Console.ui.before-sketch`, `--undo`, `--dry-run`, idempotent.
+
+**How the console is detected (and why this way):** U2's console isn't a script object. It's a UI component (`Console.ui`, a MultiStateComponent with states `NULL`/`ConsoleC`, and `QuickConsole` for Tab), so GMMaster has nothing to poll. Its `TriggerEvent=<state>,<delay>,ConsoleCommand,<cmd>` lines (the form `ModMenus.ui` uses for `UIOPENMAP`) run a console command on every state change. The patch makes the UI run `gm con big 1` / `gm con big 0` (`~`) and `gm con quick 1` / `gm con quick 0` (Tab). GMMaster writes `con=N` into `PanelState` at once (only on change), and the fork reads `U2GM.ini` every 10 frames.
+- This is the UI's own state, whatever key opened it, however it was closed (Escape, Enter, `~`), with any binding.
+- Detecting the console's 2D draws instead would need guessed texture hashes and size rules that change with SOverhaul and the resolution. Watching keys would miss every close path that isn't a key.
+- The ~0.2 s delay doesn't matter for the picture (next point).
+
+**The frozen frame:** when the console opens, the fork copies the next frame at its **first 2D draw**. That's the world with post applied, before the HUD and the console are drawn on top, so the console is never in it however late the flag comes. A frame with no 2D draw is copied at Present.
+- `sketchhud=1` copies the whole presented frame instead: HUD and the open console included.
+- The copy is a GPU `StretchRect`, read back once. Nothing is copied on frames where no copy is wanted.
+
+**Use:**
+- While the console is open, a yellow-edged strip **"Sketch this frame (F8)"** shows at the right, 30% down. Click it, or press **F8** at any time.
+  - In the console: sketch mode opens on the frame frozen when the console opened.
+  - Outside the console: a fresh frame is frozen first (one frame later).
+- Sketch mode shows the frozen frame full screen (letterboxed if the window size changed), plus a tool bar. The mouse is held as for the GM panel (`U2InputHoldMouse`). Escape (outside a text field) or F8 closes it. The strokes stay with that frame until a new one is frozen. Opening the console again freezes a new frame, and its sketch starts empty.
+- **Tools** (keys 1–7):
+  - **Pen**
+  - **Highlight**: 4× wide, 40% opaque
+  - **Arrow**, **Rect**, **Ellipse**: drag
+  - **Text**: type the label in the field, then click where it goes. It gets a dark outline.
+  - **Crop**: drag. The last crop wins, the outside is dimmed, and Save writes only that part.
+- **Colours:** 8 swatches: red, orange, yellow, green, cyan, blue, magenta, white.
+- **Size:** 1–24 frame pixels. Text size is 16 + 2.5 × size.
+- **Editing:** **Erase last** (Ctrl+Z) undoes the last stroke, crop or clear. **Redo** (Ctrl+Y). **Clear** (undoable). A right click drops the stroke being drawn.
+- **Saving:**
+  - **Save PNG** (Ctrl+S) and **Save as mark**. Both use the **note** field.
+  - Strokes are kept as vectors in frame pixels. Save draws the frame and the strokes with ImGui's renderer into a target of the frame's size (what you saw, at 1:1), reads it back, cuts the crop, and writes the files on a thread.
+- **Settings** (`System\U2Shaders.ini`, read at start):
+  - `sketch=1`: on. It's off by default and never runs in UnrealEd.
+  - `sketchkey=F8`: the key, F1–F24 or a virtual-key code like `0x77`.
+  - `sketchhud=1`: freeze the presented frame instead.
+
+  F8 is U2's **QuickLoad**. While `sketch=1` the key never reaches the game, so QuickLoad is off. Pick another key with `sketchkey=` if you want it back. Don't use F7 when `gmpanel` is on: the panel takes F7 first.
+
+**Files** (all in `<game>\System\Sketch\`, created on the first save):
+- `sketch-YYYYMMDD-HHMMSS.png`: RGB, the frame size or the crop. A second save in the same second adds `-2`, `-3`.
+- `sketch-YYYYMMDD-HHMMSS.txt` contains:
+  - `sketch`, `time`, `map`;
+  - `eye X Y Z` (`PanelState` `cam=`, up to 1 s old);
+  - `view yaw Y pitch P`;
+  - `frame WxH, <world before HUD/console | presented frame>`;
+  - `crop`;
+  - `strokes N (Pen 3, Arrow 1, ...)`;
+  - `labels "..." | "..."`;
+  - `note <as typed>`;
+  - `mark <what was sent, or why not>`.
+
+  Without U2GM loaded, eye and view say `unknown`.
+
+**Save as mark (for the level team):**
+1. The fork sends `gm sketch mark <name> <note>` through `U2GMPanel.txt`. This needs U2GM loaded, so that `PanelState` is there. The note is cut to ASCII: accented letters become plain ones (`não` → `nao`), and characters outside letters, digits and `._-#:,+!?()/%&` become spaces.
+2. GMMaster logs `GM: SKETCH <name> map M eye X Y Z yaw Y pitch P note ...` to `Unreal2.log`.
+3. If AvalonCards is on the map, GMMaster runs `avalon mark <note> sketch:<name>`. That's a normal mark: AvalonEditor logs `Cards: edit MARK n at ... note <note> sketch:<name>` and takes its own `Shot*.bmp`, so the marks collector's shot pairing stays right.
+4. `py U2Avalon/tools/live.py --marks` now also copies `System\Sketch\<name>.png` and `.txt` into `U2Avalon/marks/` beside the mark's `ShotNNNNN.png`, and prints both paths.
+
+Without AvalonCards, the game says "saved and logged (AvalonCards isn't loaded here: no avalon mark)".
+
+**Guessed (check these first):**
+- **The console trigger.** `TriggerEvent=1,0,ConsoleCommand,...` fires on entering state 1 and `0,0` on entering state 0. This is read from `ModMenus.ui` and Console.ui's commented `EnableDrawWorld` lines.
+- **Reaching `gm`.** The UI's `ConsoleCommand` reaches the player's ExecManagers. `UIOPENMAP` from the same path is an exec function on the player controller.
+- **Startup noise.** The NULL state's trigger may fire once at startup, before U2GM's command exists, and log "Unrecognized command".
+- **Clicking the strip.** The strip is clicked with the game's UI mouse while the console is open. The fork hit-tests the window's `WM_LBUTTONDOWN`, and U2's UI pointer is the OS cursor (U2Input notes). If clicks don't arrive, F8 still works.
+- **The grab point.** The first 2D draw after the world is the same test the post uses. In third person, a z-tested orthographic draw mid-frame could freeze a half-drawn world; `posthud=z0` is honoured.
+- **ImGui to a target.** Rendering ImGui draw data into an offscreen target is new in this fork (own `ImDrawList` + `ImDrawData`, `Textures=nullptr`).
+
+**Install** (other session, game closed):
+1. Back up `System\d3d8.dll`, `System\U2GM.u` and `UIScripts\Console.ui`.
+2. Copy `staging/d3d8.dll` and `staging/U2GM.u` into `System`.
+3. Run `py tools/sketch_console_ui.py`.
+4. Add `sketch=1` to `System\U2Shaders.ini`. Keep `gmpanel=1` / `gmterrain=1` as they are; sketch works with `gmpanel=0` too.
+
+**Test list (sketch):**
+1. Start a map with U2GM (and AvalonCards for step 9).
+   - `U2Shaders.log` says `sketch: on (key 0x77 = F8, frozen frame = the world before the HUD and console), files in ...System\Sketch`.
+   - `U2GM.ini`'s `PanelState` ends with `con=0` and has `view=`.
+2. Press `~`. Within about 0.5 s:
+   - `PanelState` says `con=1`;
+   - the strip "Sketch this frame (F8)" shows at the right;
+   - the log has no `sketch: couldn't` lines.
+
+   Close with Escape: `con=0` and the strip goes. Repeat with Tab (`con=2`), then close it with Enter and again with Escape.
+3. Open `~` and click the strip.
+   - The frozen frame fills the screen with no console and no HUD on it, and post (bloom/grade) is visible.
+   - The tool bar is at the top and the cursor is free.
+   - The mouse doesn't turn the view, and keys don't type into the console.
+   - The log says `sketch: open (WxH, 0 stroke(s))`.
+4. Each tool once, in a different colour each time:
+   - a pen scribble;
+   - a highlight swipe (see-through);
+   - an arrow (the head at the release end);
+   - a rect;
+   - an ellipse;
+   - type `door here` and click with Text (the outlined label appears);
+   - Size 20, then a pen stroke (thick, round ends).
+5. **Erase last** three times, **Redo** twice, then **Clear** and **Erase last** (everything comes back). Then Ctrl+Z and Ctrl+Y.
+6. **Crop** a box: the outside dims. Type the note `test sketch näo`, press **Save PNG**.
+   - The status says `saved System\Sketch\sketch-....png (+ .txt)`.
+   - The PNG is only the cropped part, with the strokes exactly where they were drawn, at full resolution.
+   - The `.txt` has `map`, `eye`, `view`, `crop`, `strokes`, `labels "door here"`, `note`, and `mark not asked`.
+7. Press Escape. Sketch closes, the console is still open, and the mouse is back.
+   - Press F8: the same frame comes back with its strokes.
+   - Close it, close the console, then press F8 in play: a fresh frame (no HUD) opens with no strokes.
+8. **Save as mark** without AvalonCards (any map with U2GM): the console says `[GM] sketch sketch-... saved and logged (...)`, and `Unreal2.log` has `GM: SKETCH sketch-... map ... eye ... note ...`.
+9. On Avalon (AvalonCards loaded): **Save as mark** with the note `rail here`.
+   - `[Claude] mark N taken` appears, plus a new `Shot*.bmp`.
+   - `Unreal2.log` has `Cards: edit MARK N ... note rail here sketch:sketch-...`.
+   - `py U2Avalon/tools/live.py --marks 1` prints the mark, `shot:`, `sketch.png:` and `sketch.txt:`, and copies the PNG into `U2Avalon/marks/`.
+10. With the GM panel open (F7), press F8. The sketch covers the panel. Escape returns to the panel, still usable. F7 while sketching leaves the sketch open.
+11. Alt-Tab out and back while sketching. Change resolution or fullscreen with sketch closed, then open the console and sketch again: no crash, and the frame has the new size.
+12. `sketchhud=1` (restart): the frozen frame includes the HUD (and the console when frozen from the console).
+13. Watch for:
+    - a hitch on Save, over about 100 ms (the PNG is written on a thread; the readback isn't);
+    - a black or garbage frozen frame (format; the log says `couldn't read`);
+    - strokes offset from where they were drawn in the PNG;
+    - text missing in the PNG (font upload ordering);
+    - QuickLoad still firing on F8;
+    - "Unrecognized command: gm con ..." spam with U2GM loaded.
+
 ## Next
 - Week 1 is built: the terrain brush, the panel and commit are all untested in the game. Run the test lists above in order.

@@ -55,6 +55,12 @@
 // journal: nothing replays or bakes it): "@family draw D<n> open|closed x1 y1 z1 ... note TEXT",
 // logs it and takes a screenshot. At most 40 points (an ini line has to stay under ~1000 chars).
 // "gm draw list", "gm draw forget N".
+//
+// Sketch (the fork's sketch=1, screenshot markup): "gm con big|quick 1|0" comes from UIScripts\Console.ui
+// (TriggerEvent lines added by U2GM/tools/sketch_console_ui.py) when the full console or the one-line
+// one opens or closes; it only sets con= in PanelState (1 full, 2 one-line, 3 both), which the fork
+// reads to show its "Sketch" strip. "gm sketch mark NAME [NOTE]" (sent by the fork's Save as mark)
+// logs "GM: SKETCH NAME ..." and, when AvalonCards is loaded, runs "avalon mark NOTE sketch:NAME".
 //=============================================================================
 class GMMaster extends Info
 	config(U2GM);
@@ -68,7 +74,7 @@ var config float PanelPoll;         // seconds between reads of PanelFile while 
 var config string PanelFile;
 var config int PanelSession, PanelSeq;
 var config string PanelState;           // "seq=S:K on=0 poss=0 frz=0 pick=NAME cls=CLASS mesh=PATH loc=X,Y,Z yaw=D scale=S cam=X,Y,Z
-                                        //  wseq=S:K commit=STAMP:STATE:MAP draw=N"
+                                        //  view=YAW,PITCH wseq=S:K commit=STAMP:STATE:MAP draw=N con=N"
 // commit (gm_commit.py --watch)
 var config int CommitStamp;             // commits asked for so far
 var config string CommitRequest;        // "family stamp map lines" while one is wanted, else ""
@@ -103,6 +109,7 @@ var bool bPanelFast;                // the panel is open: read its file every 0.
 var float PanelWait, StateWait;
 var bool bRay;                      // gm ray: the next command aims along RayS -> RayE
 var vector RayS, RayE;
+var bool bConBig, bConQuick;        // the consoles are open (gm con, from Console.ui's triggers)
 
 event PostBeginPlay()
 {
@@ -170,14 +177,76 @@ function SaveState()
 	{
 		E = EyeSpot();
 		S = S$" cam="$E.X$","$E.Y$","$E.Z;
+		S = S$" view="$ViewYaw()$","$ViewPitch();
 	}
 	S = S$" wseq="$WatchSession$":"$WatchSeq;
 	S = S$" commit="$Pick2(CommitStatus == "", "0:none:-", Word(CommitStatus, 0)$":"$Word(CommitStatus, 1)$":"$Pick2(Word(CommitStatus, 2) == "", "-", Word(CommitStatus, 2)));
 	S = S$" draw="$DrawPts.Length;
+	S = S$" con="$ConState();
 	if (S == PanelState)
 		return;
 	PanelState = S;
 	SaveConfig();
+}
+
+// where the player looks, whole degrees (yaw 0..359, pitch -90..90)
+function int ViewYaw()
+{
+	return int((PC.Rotation.Yaw & 65535) * 360.0 / 65536.0);
+}
+function int ViewPitch()
+{
+	return ((((PC.Rotation.Pitch + 32768) & 65535) - 32768) * 360) / 65536;
+}
+
+// 1 the full console, 2 the one-line one, 3 both
+function int ConState()
+{
+	local int N;
+
+	if (bConBig)
+		N += 1;
+	if (bConQuick)
+		N += 2;
+	return N;
+}
+
+// AvalonCards (U2AvalonCards' mutator) is on this map: "avalon mark" will be heard
+function bool AvalonLoaded()
+{
+	local Actor A;
+
+	foreach DynamicActors(class'Actor', A)
+		if (A.IsA('AvalonCards'))
+			return true;
+	return false;
+}
+
+// gm sketch mark NAME [NOTE]: the fork saved System\Sketch\NAME.png (+ NAME.txt); make it a mark
+function SketchCmd(string Args)
+{
+	local string Name, Note;
+	local vector E;
+
+	if (Locs(Word(Args, 1)) != "mark" || Word(Args, 2) == "")
+	{
+		Say("gm sketch mark NAME [NOTE] (sent by the fork's sketch tool: sketch=1, F8)");
+		return;
+	}
+	Name = Word(Args, 2);
+	Note = After(Args, 3);
+	E = EyeSpot();
+	Log("GM: SKETCH "$Name$" map "$MapName()$" eye "$int(E.X)$" "$int(E.Y)$" "$int(E.Z)$" yaw "$ViewYaw()$" pitch "$ViewPitch()$" note "$Note);
+	if (AvalonLoaded())
+	{
+		if (Note != "")
+			PC.ConsoleCommand("avalon mark "$Note$" sketch:"$Name);
+		else
+			PC.ConsoleCommand("avalon mark sketch:"$Name);
+		Say("sketch "$Name$" sent as an avalon mark");
+	}
+	else
+		Say("sketch "$Name$" saved and logged (AvalonCards isn't loaded here: no avalon mark)");
 }
 
 function Say(coerce string S)
@@ -1142,7 +1211,7 @@ function RunOne(string Args)
 		return;
 	}
 	DoCommand(Args);
-	if (Cmd != "ray")
+	if (Cmd != "ray" && Cmd != "con")
 		bRay = false;
 }
 
@@ -1180,6 +1249,16 @@ function DoCommand(string Args)
 		Travel(A1);
 	else if (Cmd == "draw")
 		DrawCmd(Args);
+	else if (Cmd == "con")
+	{
+		// Console.ui's triggers (tools/sketch_console_ui.py): silent, only PanelState's con= changes
+		if (A1 ~= "big")
+			bConBig = Word(Args, 2) == "1";
+		else if (A1 ~= "quick")
+			bConQuick = Word(Args, 2) == "1";
+	}
+	else if (Cmd == "sketch")
+		SketchCmd(Args);
 	else if (Cmd == "on" || Cmd == "off")
 		SetOn(Cmd == "on");
 	else if (Cmd == "help")
@@ -1190,6 +1269,7 @@ function DoCommand(string Args)
 		Say("the d3d8 fork's panel (F7) also sends: gm panel 1|0 | ray SX SY SZ EX EY EZ | preview X Y Z YAW");
 		Say("gm commit [cancel] (bake into <map>_LiveN: gm_commit.py --watch) | travel MAP");
 		Say("gm draw add [X Y Z] | undo | clear | done open|closed [NOTE] | list | forget N");
+		Say("gm sketch mark NAME [NOTE] (the fork's sketch tool) | con big|quick 1|0 (Console.ui's triggers)");
 	}
 	else if (Cmd == "panel")
 	{
