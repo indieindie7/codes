@@ -19,7 +19,10 @@ var config float LeanGain;
 var config float MaxLean;           // degrees
 var config float LeanSpring;        // 1/s
 var config bool bSlideMeter;
-var config int LeanSign;            // +1/-1: which way the bone's roll banks (set from a test)
+var config int LeanSign;
+var config bool bStrideMatch;       // K4: AI clip rate follows the planted foot (no skating)
+var config float StrideGain;
+var int StrideAdjusts;            // +1/-1: which way the bone's roll banks (set from a test)
 
 struct Body
 {
@@ -30,11 +33,19 @@ struct Body
 	var vector LastFoot;
 	var name LastFootBone;
 	var bool bLeaning;
+	var float ContactMin;            // the slowest the planted foot went in this footfall
+	var float ContactSpeed;          // the body's speed then
+	var float SlipSum;               // K4: the planted foot's signed slip along the motion, this footfall
+	var int SlipN;
+	var float Rate;                  // K4: our multiplier on its clip rate (1 = the game's)
+	var float BaseF, BaseB, WroteF, WroteB;   // the game's BaseAnimSpeed_F/B, and what we last wrote
 };
 var array<Body> Bodies;
 var ModReact React;
 var float SlideSum, SpeedSum, MeterTime, LeanMax;
 var int SlideN;
+var float SlideSumP, SpeedSumP;      // the same for the player alone
+var int SlideNP;
 var int LeanRight, LeanWrong;         // lean check: the head tipped toward the inside of the turn, or away
 
 function PostBeginPlay()
@@ -148,9 +159,17 @@ function Tick(float DeltaTime)
 	if (bSlideMeter)
 	{
 		MeterTime += DeltaTime;
+		if (MeterTime > 8 && SlideNP > 0)
+			class'ModSettings'.static.Note("moves: player: " $ SlideNP $ " footfalls, mean speed " $ int(SpeedSumP / SlideNP) $ ", planted foot at its slowest " $ int(SlideSumP / SlideNP) $ " units/s (" $ int(100 * SlideSumP / FMax(SpeedSumP, 1)) $ "%)");
+		if (MeterTime > 8)
+		{
+			SlideSumP = 0;
+			SpeedSumP = 0;
+			SlideNP = 0;
+		}
 		if (MeterTime > 8 && SlideN > 0)
 		{
-			class'ModSettings'.static.Note("moves: " $ SlideN $ " walking samples, mean speed " $ int(SpeedSum / SlideN) $ ", planted foot slides " $ int(SlideSum / SlideN) $ " units/s (" $ int(100 * SlideSum / FMax(SpeedSum, 1)) $ "% of the speed), largest bank " $ int(LeanMax) $ " deg; head toward the inside of the turn " $ LeanRight $ ", away " $ LeanWrong);
+			class'ModSettings'.static.Note("moves: AI: " $ SlideN $ " footfalls, mean speed " $ int(SpeedSum / SlideN) $ ", planted foot at its slowest " $ int(SlideSum / SlideN) $ " units/s (" $ int(100 * SlideSum / FMax(SpeedSum, 1)) $ "% of the speed), " $ StrideAdjusts $ " stride adjustments, largest bank " $ int(LeanMax) $ " deg; head toward the inside of the turn " $ LeanRight $ ", away " $ LeanWrong);
 			MeterTime = 0;
 			SlideSum = 0;
 			SpeedSum = 0;
@@ -160,11 +179,37 @@ function Tick(float DeltaTime)
 	}
 }
 
+// K4 stride matching: the game sets each walk mode's clip speed (EonPawn.BaseAnimSpeed_F/_B, the
+// speed the clip was made for; the engine plays it at speed / that). A planted foot dragged forward
+// over a footfall means the clip runs slow for this speed: raise its rate; dragged back: lower it.
+// Our multiplier rides on whatever the game sets (a new mode's value is taken as the new base).
+function Stride(int i, float Slip, float Speed)
+{
+	local EonPawn E;
+
+	E = EonPawn(Bodies[i].P);
+	if (E == None || Speed < 80)
+		return;
+	if (Bodies[i].Rate <= 0)
+		Bodies[i].Rate = 1;
+	if (E.BaseAnimSpeed_F != Bodies[i].WroteF)
+		Bodies[i].BaseF = E.BaseAnimSpeed_F;
+	if (E.BaseAnimSpeed_B != Bodies[i].WroteB)
+		Bodies[i].BaseB = E.BaseAnimSpeed_B;
+	Bodies[i].Rate = FClamp(Bodies[i].Rate * (1 + StrideGain * FClamp(Slip / Speed, -0.5, 0.5)), 0.6, 1.6);
+	E.BaseAnimSpeed_F = Bodies[i].BaseF / Bodies[i].Rate;
+	E.BaseAnimSpeed_B = Bodies[i].BaseB / Bodies[i].Rate;
+	Bodies[i].WroteF = E.BaseAnimSpeed_F;
+	Bodies[i].WroteB = E.BaseAnimSpeed_B;
+	StrideAdjusts++;
+}
+
 // the lower foot is the planted one: how fast it moves over the ground
 function Meter(int i, float DeltaTime, float Speed)
 {
 	local vector L, R, Foot;
 	local name Bone;
+	local float F;
 
 	if (Speed < 80)
 	{
@@ -175,12 +220,16 @@ function Meter(int i, float DeltaTime, float Speed)
 	R = Bodies[i].P.GetBoneCoords('rightFoot').Origin;
 	if (L == vect(0,0,0) || R == vect(0,0,0))
 		return;                     // no such bones on this skeleton
-	if (Abs(L.Z - R.Z) < 3)
+	if (Abs(L.Z - R.Z) < 3 && Bodies[i].LastFootBone != '')
 	{
-		Bodies[i].LastFootBone = '';  // both down or in the cross-over: unclear
-		return;
+		// feet level (both down, or crossing): the planted one stays the one it was
+		if (Bodies[i].LastFootBone == 'leftFoot')
+			Foot = L;
+		else
+			Foot = R;
+		Bone = Bodies[i].LastFootBone;
 	}
-	if (L.Z < R.Z)
+	else if (L.Z < R.Z)
 	{
 		Bone = 'leftFoot';
 		Foot = L;
@@ -190,11 +239,41 @@ function Meter(int i, float DeltaTime, float Speed)
 		Bone = 'rightFoot';
 		Foot = R;
 	}
+	// one sample per footfall: the slowest the planted (lower) foot moved over the ground while it
+	// was the lower one. A foot that grips the floor stops (about 0); a skating one never does.
 	if (Bone == Bodies[i].LastFootBone)
 	{
-		SlideSum += VSize((Foot - Bodies[i].LastFoot) * vect(1,1,0)) / DeltaTime;
-		SpeedSum += Speed;
-		SlideN++;
+		F = VSize((Foot - Bodies[i].LastFoot) * vect(1,1,0)) / DeltaTime;
+		Bodies[i].SlipSum += ((Foot - Bodies[i].LastFoot) / DeltaTime) dot Normal(Bodies[i].P.Velocity * vect(1,1,0));
+		Bodies[i].SlipN++;
+		if (F < Bodies[i].ContactMin)
+		{
+			Bodies[i].ContactMin = F;
+			Bodies[i].ContactSpeed = Speed;
+		}
+	}
+	else
+	{
+		if (Bodies[i].LastFootBone != '' && Bodies[i].ContactMin < 100000)
+		{
+			if (PlayerController(Bodies[i].P.Controller) != None)
+			{
+				SlideSumP += Bodies[i].ContactMin;
+				SpeedSumP += Bodies[i].ContactSpeed;
+				SlideNP++;
+			}
+			else
+			{
+				SlideSum += Bodies[i].ContactMin;
+				SpeedSum += Bodies[i].ContactSpeed;
+				SlideN++;
+			}
+		}
+		if (bStrideMatch && Bodies[i].SlipN >= 3 && PlayerController(Bodies[i].P.Controller) == None)
+			Stride(i, Bodies[i].SlipSum / Bodies[i].SlipN, Speed);
+		Bodies[i].ContactMin = 1000000;
+		Bodies[i].SlipSum = 0;
+		Bodies[i].SlipN = 0;
 	}
 	Bodies[i].LastFootBone = Bone;
 	Bodies[i].LastFoot = Foot;
@@ -208,4 +287,6 @@ defaultproperties
 	LeanSpring=9
 	bSlideMeter=True
 	LeanSign=1
+	bStrideMatch=True
+	StrideGain=0.35
 }

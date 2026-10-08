@@ -250,6 +250,32 @@ function Release(ModMind M)
 			Claims.Remove(i, 1);
 }
 
+// creatures near the player are animated every tick with a fresh pose (research/native-animation-
+// hooks.md: pawns unseen for 5 s tick every other frame, stasis stops them, and their bones then read
+// wrong), so the body layers and bone reads see what is drawn; far ones go back to the engine's thrift
+function KeepPosed()
+{
+	local PlayerController PC;
+	local int i;
+	local bool bNear;
+	local Pawn P;
+
+	PC = Level.GetLocalPlayerController();
+	if (PC == None || PC.Pawn == None)
+		return;
+	for (i = 0; i < Minds.Length; i++)
+	{
+		P = Minds[i].P;
+		if (P == None || P.bDeleteMe)
+			continue;
+		bNear = VSize(P.Location - PC.Pawn.Location) < 3500;
+		P.bForceVisible = bNear;
+		P.bCanSkipFrames = !bNear;
+		if (bNear)
+			P.bStasis = false;
+	}
+}
+
 // senses ---------------------------------------------------------------------------
 
 // the closest a segment comes to a point
@@ -1299,6 +1325,7 @@ function Tick(float DeltaTime)
 	{
 		AdoptWait = 1.0;
 		Adopt();
+		KeepPosed();
 	}
 	FlankWait -= DeltaTime;
 	if (Minds.Length == 0)
