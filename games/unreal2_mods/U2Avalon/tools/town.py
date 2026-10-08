@@ -87,7 +87,8 @@ try:                                     # believability (Q35, tools/metrics.py)
     import metrics
     MET = metrics.score(layout)
     print("  believability: IMP %.2f HIER %.2f" % (MET["IMP"], MET["HIER"]), flush=True)
-    log.append("believability: IMP %.2f HIER %.2f (%s)" % (MET["IMP"], MET["HIER"], ", ".join("%s %s" % (k, v) for k, v in MET.items() if k not in ("IMP", "HIER"))))
+    open(os.path.join(RUN, "believability.txt"), "w").write(
+        "IMP %.2f HIER %.2f\n%s\n" % (MET["IMP"], MET["HIER"], ", ".join("%s %s" % (k, v) for k, v in MET.items() if k not in ("IMP", "HIER"))))
 except Exception as e:
     print("  metrics failed:", e)
 open(os.path.join(RUN, "systems.txt"), "w").write(
