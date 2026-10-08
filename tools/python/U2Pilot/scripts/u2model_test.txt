@@ -1,0 +1,29 @@
+# u2model_test: the guard post from U2Model shapes - live brushes at x=0, the frozen static mesh at x=2200; the start looks at both
+background
+map U2ModelTest?Mutator=U2TestHub.HubMutator
+waitcontrol 90
+wait 3
+console god
+look 16384 -500
+shot
+look 15000 -900
+shot
+look 18000 -900
+shot
+mark live roof want -580
+console hub tp 0 0 -300
+wait 4
+dump U2PlayerSP Location
+mark frozen roof want -580
+console hub tp 2200 0 -300
+wait 4
+dump U2PlayerSP Location
+mark frozen inside floor want -880
+console hub tp 2200 0 -800
+wait 4
+dump U2PlayerSP Location
+mark live inside floor want -880
+console hub tp 0 0 -800
+wait 4
+dump U2PlayerSP Location
+quit
