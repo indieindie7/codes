@@ -10,7 +10,7 @@ The formed heights (metres, 0 = lowest) get a sea level chosen so about `land` o
 tower cell (92,57) and the plain stay dry, then map to TutA units: Z = -4967 + (h - sea) * 50, sea floor
 at -5500. The cells round the command tower blend into the template's heights (the BSP tower base).
 """
-import math, os, struct, sys
+import json, math, os, struct, sys
 
 import numpy as np
 
@@ -24,6 +24,8 @@ o = dict(a.split("=", 1) for a in sys.argv[4:] if "=" in a)
 PRESET = o.get("preset", "hills")
 STYLE = o.get("style", "ridges")             # ridges | plateau (the Sana concept: volcano cone, cliff-edged plateau with the plant, long coast road)
                                              # | mix (plateau + Socotra spires + a La Fortaleza mesa + Waimea gorge and layered ledges)
+                                             # | cinema (2026-10-08: the island designed from the command room's window and the
+                                             #   approved parti - see the CINEMA block)
 RELIEF = float(o.get("relief", 90))          # metres, highest point over the lowest formed cell
 LAND = float(o.get("land", 0.40))
 PNG = o.get("png")
@@ -90,6 +92,66 @@ if STYLE in ("plateau", "mix"):
     items.append({"type": "road", "points": [pt(px, py), pt((px + tx) / 2 + 0.03, (py + ty) / 2 - 0.03), pt(tx, ty), pt(ex, ey)], "width": 0.012})
     RELIEF = max(RELIEF, 130.0)
 MESA = GORGE = None
+CINEMA = None
+if STYLE == "cinema":
+    # ONE generator for land and town (the user, 2026-10-08: "mix terrain generator and town generators into a single
+    # generator while minding also cinematography research findings"). The island is sketched FROM the camera
+    # (games/reports/Cinematography and concept art for the Avalon town.md) and the parti (binder/parti.json):
+    #  * the window looks along yaw 300 (+-34 deg); the hero must land on a vertical third: u = 1/3 or 2/3 is
+    #    12.7 deg off the axis -> the works plateau (the town's mass, the hero's stage) sits on that bearing,
+    #    20-29 cells (200-300 m) out, LOW (sea + ~12 m): the company's tower keeps the high ground
+    #  * three depth layers with air between them (rule 3): the plateau (midground), a sea inlet beyond it (the gap),
+    #    a cliffed mesa ridge across the view near the map's edge (the background silhouette against the sky)
+    #  * the parti's "the town lives in its smoke": a terraced slope DOWNWIND of the plateau (wind 0.83, -0.55) for
+    #    the shanty, its ledges cut into strata (flat plots)
+    #  * the hour: the low sun at az 136 is behind the town seen from the window (yaw 300): back light (rule 5)
+    #  * behind the tower (out of the frame) the island's volcanic heart, for the silhouette from the sea
+    items = []
+    side_ = 1 if rng.random() < 0.5 else -1                       # the hero on the left or the right third
+    look = math.radians(300.0)
+    hero_b = look + side_ * math.radians(12.7 + rng.uniform(-3, 3))
+    R1 = rng.uniform(21, 28)                                      # cells to the plateau's centre
+    mx_, my_ = tx + R1 / N * math.cos(hero_b), ty + R1 / N * math.sin(hero_b)
+    rp = rng.uniform(0.07, 0.09)                                  # plateau radius (of the map)
+    ang0 = rng.uniform(0, 2 * math.pi)
+    poly = [pt(mx_ + rp * math.cos(a_) * rng.uniform(0.88, 1.12), my_ + rp * 0.85 * math.sin(a_) * rng.uniform(0.88, 1.12))
+            for a_ in np.linspace(ang0, ang0 + 2 * math.pi, 10)[:-1]]
+    items.append({"type": "plateau", "polygon": poly, "strength": 0.18, "edge": 0.025, "resist": 0.7})
+    items.append({"type": "pad", "at": pt(mx_, my_), "radius": 0.05})
+    # the tower's high ground: a ridge from the tower down toward the plateau (the spine climbs it)
+    items.append({"type": "ridge", "points": [pt(tx, ty), pt((tx + mx_) / 2, (ty + my_) / 2)], "width": 0.06, "strength": 0.55})
+    # the shanty's terraced slope, downwind of the works
+    wx_, wy_ = 0.83, -0.55
+    sx_, sy_ = mx_ + wx_ * rng.uniform(0.09, 0.12), my_ + wy_ * rng.uniform(0.09, 0.12)
+    items.append({"type": "ridge", "points": [pt(sx_ - 0.05 * wy_, sy_ + 0.05 * wx_), pt(sx_ + 0.05 * wy_, sy_ - 0.05 * wx_)],
+                  "width": 0.07, "strength": 0.45})
+    # the gap of air: a sea inlet beyond the plateau along the view, across it
+    R2 = R1 + rng.uniform(13, 17)
+    ix_, iy_ = tx + R2 / N * math.cos(look + side_ * 0.10), ty + R2 / N * math.sin(look + side_ * 0.10)
+    nx_, ny_ = -math.sin(look), math.cos(look)                    # across the view
+    w_in = rng.uniform(0.12, 0.17)
+    items.append({"type": "basin", "polygon": [pt(ix_ - nx_ * w_in - 0.03 * math.cos(look), iy_ - ny_ * w_in - 0.03 * math.sin(look)),
+                                                pt(ix_ + nx_ * w_in - 0.03 * math.cos(look), iy_ + ny_ * w_in - 0.03 * math.sin(look)),
+                                                pt(ix_ + nx_ * w_in + 0.04 * math.cos(look), iy_ + ny_ * w_in + 0.04 * math.sin(look)),
+                                                pt(ix_ - nx_ * w_in + 0.04 * math.cos(look), iy_ - ny_ * w_in + 0.04 * math.sin(look))],
+                  "depth": 0.95, "edge": 0.03})
+    # the background: a long cliffed mesa ridge across the view, as far as the map allows (~45-52 cells)
+    R3 = min(rng.uniform(45, 52), 0.95 * min((N - 10 - TOWER[0]) / max(1e-3, math.cos(look)), (TOWER[1] - 10) / max(1e-3, -math.sin(look))))
+    bx_, by_ = tx + R3 / N * math.cos(look), ty + R3 / N * math.sin(look)
+    L3 = rng.uniform(0.16, 0.22)
+    items.append({"type": "ridge", "points": [pt(bx_ - nx_ * L3, by_ - ny_ * L3), pt(bx_ + nx_ * L3 * 0.2, by_ + ny_ * L3 * 0.2 + 0.01),
+                                               pt(bx_ + nx_ * L3, by_ + ny_ * L3)], "width": 0.05, "strength": 1.0})
+    poly = [pt(bx_ + nx_ * L3 * 0.8 * math.cos(a_) + math.cos(look) * 0.035 * math.sin(a_),
+               by_ + ny_ * L3 * 0.8 * math.cos(a_) + math.sin(look) * 0.035 * math.sin(a_)) for a_ in np.linspace(0, 2 * math.pi, 10)[:-1]]
+    items.append({"type": "plateau", "polygon": poly, "strength": 0.55, "edge": 0.012, "resist": 0.9})
+    # the heart behind the tower (out of the window): the island's volcanic cone, for its silhouette from the sea
+    hx_, hy_ = tx - 0.22 * math.cos(look), ty - 0.22 * math.sin(look)
+    items.append({"type": "peak", "at": pt(min(max(hx_, 0.15), 0.85), min(max(hy_, 0.15), 0.85)), "height": 1.0, "radius": 0.08})
+    CINEMA = {"plateau": (mx_ * N, my_ * N, rp * N), "shanty": (sx_ * N, sy_ * N), "inlet": (ix_ * N, iy_ * N), "mesa": (bx_ * N, by_ * N),
+              "side": side_, "R": (R1, R2, R3)}
+    px, py = mx_, my_
+    PLAIN = (int(mx_ * N) - 5, int(mx_ * N) + 5, int(my_ * N) - 6, int(my_ * N) + 6)
+    RELIEF = max(RELIEF, 120.0)
 if STYLE == "mix":
     # the user's pick of the real-place refs (2026-10-07, design-refs/avalon_real_places/desert_islands):
     # Socotra - a cluster of granite spires in the heart instead of one smooth cone
@@ -112,13 +174,18 @@ if STYLE == "mix":
     items.append({"type": "valley", "points": GORGE, "width": 0.022, "depth": 1.0})
 # a big bay or sound on one random side: a basin polygon eating into the island (never over the tower/plain quarter)
 sides = ["north", "south", "east", "west"]
-bay_side = sides[int(rng.integers(0, 2))] if rng.random() < 0.5 else "west"     # x<0.6 half: keeps the plant's shore intact
-bx0, bx1 = (0.0, rng.uniform(0.25, 0.45)) if bay_side == "west" else (rng.uniform(0.1, 0.6), rng.uniform(0.7, 0.9))
-by0, by1 = (0.0, rng.uniform(0.25, 0.45)) if bay_side == "north" else ((rng.uniform(0.55, 0.75), 1.0) if bay_side == "south" else (rng.uniform(0.15, 0.4), rng.uniform(0.6, 0.85)))
-items.append({"type": "basin", "polygon": [pt(bx0, by0), pt(bx1, by0 + rng.uniform(-0.05, 0.05)), pt(bx1 + rng.uniform(-0.08, 0.08), by1), pt(bx0, by1)],
+bay_side = "-"
+if STYLE == "cinema":
+    pass                                                          # the designed island keeps its own water
+else:
+
+  bay_side = sides[int(rng.integers(0, 2))] if rng.random() < 0.5 else "west"     # x<0.6 half: keeps the plant's shore intact
+  bx0, bx1 = (0.0, rng.uniform(0.25, 0.45)) if bay_side == "west" else (rng.uniform(0.1, 0.6), rng.uniform(0.7, 0.9))
+  by0, by1 = (0.0, rng.uniform(0.25, 0.45)) if bay_side == "north" else ((rng.uniform(0.55, 0.75), 1.0) if bay_side == "south" else (rng.uniform(0.15, 0.4), rng.uniform(0.6, 0.85)))
+  items.append({"type": "basin", "polygon": [pt(bx0, by0), pt(bx1, by0 + rng.uniform(-0.05, 0.05)), pt(bx1 + rng.uniform(-0.08, 0.08), by1), pt(bx0, by1)],
               "depth": float(rng.uniform(0.7, 0.95)), "edge": 0.06})
 # two more bites at random corners away from the plant's quarter, so no two coasts look alike
-for _ in range(2):
+for _ in range(0 if STYLE == "cinema" else 2):
     qx, qy = rng.uniform(0.0, 0.55), rng.uniform(0.0, 1.0)
     rr = rng.uniform(0.12, 0.22)
     poly = [pt(qx + rr * math.cos(a) * rng.uniform(0.7, 1.3), qy + rr * math.sin(a) * rng.uniform(0.7, 1.3)) for a in np.linspace(0, 2 * math.pi, 7)[:-1]]
@@ -151,6 +218,18 @@ J, I = np.mgrid[0:N, 0:N]
 sea = float(np.percentile(hm, 100 * (1 - LAND)))
 while sea > 3.0 and main_mass(hm, sea + 3.0).mean() < 0.8 * LAND:
     sea -= 1.5                                                   # lower the sea until the tower's landmass carries the island
+if STYLE == "cinema":
+    # the works' table LOW (sea + 12 m: the company's tower holds the high ground), cliffs round it kept
+    dpl = np.hypot(I - CINEMA["plateau"][0], J - CINEMA["plateau"][1])
+    r_pl = CINEMA["plateau"][2]
+    tcap = np.clip((dpl - r_pl) / (0.06 * N), 0, 1)
+    hm = np.minimum(hm, sea + 12.0 + 140.0 * tcap * tcap * (3 - 2 * tcap))
+    # the shanty's slope in strata: 6 m ledges (plots for shacks) round its centre
+    ds = np.hypot(I - CINEMA["shanty"][0], J - CINEMA["shanty"][1])
+    ws = np.clip((14 - ds) / 6, 0, 1) * (hm > sea + 3)
+    B_ = 6.0
+    base0 = np.floor(hm / B_) * B_
+    hm = hm * (1 - ws) + (base0 + B_ * np.clip(((hm - base0) / B_ - 0.75) / 0.25, 0, 1)) * ws
 if STYLE in ("plateau", "mix"):
     # the plateau's table sits at the tower's own level (TutA's tower base is ~22 m over the sea): cap the
     # formed heights round the plain, the cap rising smoothly away so the cliffs stay where the sketch put them
@@ -217,6 +296,8 @@ Z = Z * E + TZ * (1 - E)
 Hn = np.clip(np.round(32768 + (Z - LOC_Z) * 256 / SCALE_Z), 0, 65535).astype("<u2")
 pix = (Hn if rows_up else Hn[::-1]).tobytes()
 open(dst, "wb").write(raw[:off] + pix + raw[off + len(pix):])
+if CINEMA:
+    json.dump(CINEMA, open(os.path.splitext(dst)[0] + "_cinema.json", "w"), indent=1)
 print(f"seed {seed} [{PRESET} {STYLE}]: {n_ridges} ridge(s), inlet from side {side}, bay {bay_side}, sea at {sea:.1f} m of {hm.max():.0f}, land {(Z > SEA_Z).mean():.0%}, "
       f"peak Z {Z.max():.0f}, plain Z {Z[(PLAIN[2] + PLAIN[3]) // 2, (PLAIN[0] + PLAIN[1]) // 2]:.0f} -> {dst}")
 if PNG:

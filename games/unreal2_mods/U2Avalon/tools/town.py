@@ -43,39 +43,61 @@ def step(title, fn):
     return r
 
 
-# 1. the island
-step("island", lambda: ib.run(["py", os.path.join(TOOLS, "island_form.py"), seed, ib.TEMPLATE, base + "_e.bmp",
-                               "png=" + base + "_sketch.png", "style=" + STYLE]))
-# the stock island's relief: hills as tall as TutA's own, the plain kept at the tower's foot
-step("relief", lambda: ib.run(["py", os.path.join(TOOLS, "relief_match.py"), base + "_e.bmp", ib.TEMPLATE]))
-# the camera: what the player can see from the playable area (the tower's NavigationPoints); the layout
-# puts the story's buildings where it looks, clutter goes only where it looks (film-set rule)
+# 1-3. the island and the town, chosen together. style=cinema (2026-10-08): ONE generator - the island is designed
+# from the command room's window and the parti (island_form.py style=cinema), several islands x several layouts are
+# made, and the three co-directors (codirect.py: WRITER = the parti + the town model, DIRECTOR = the cinematography
+# rules, ARTIST = the drawings + metrics) review every candidate; the one they agree on best is built. Other styles:
+# one island, the layouts keyed by systems + the window frame as before.
 NAV = os.path.join(os.path.dirname(TOOLS), "data", "navpoints_TutA.json")
-step("viewshed", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), base + "_e.bmp", NAV, "-", base]))
-score = subprocess.run(["py", os.path.join(os.path.dirname(os.path.dirname(HERE)), "..", "tools", "python", "terrain", "terrain_tool.py")
-                        if False else ib.TERRAIN, "score", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02"],
-                       capture_output=True, text=True).stdout
-open(os.path.join(RUN, "terrain_score.txt"), "w").write(score)
-
-# 2 + 3. layout and systems, re-rolled until the core needs are met
+CODIRECT = STYLE == "cinema"
+ISLANDS = int(o.get("islands", 4 if CODIRECT else 1))
+if CODIRECT:
+    REROLLS = int(o.get("rerolls", 2))
+    import codirect
 layout = base + "_layout.json"
 best = None
-for k in range(REROLLS):
-    lseed = seed + 100 * k
-    cand = base + "_layout_%d.json" % lseed
-    tool = "layout_spine.py" if METHOD == "spine" else "layout.py"
-    step("layout %s (seed %d)" % (METHOD, lseed), lambda: ib.run(["py", os.path.join(TOOLS, tool), base + "_e.bmp", cand,
-                                                                  "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png", "vis=" + base + "_vis.npz"]))
-    Lc, core_unmet = systems.run(cand, report=True)
-    # the money shot: how the layout reads through the command room's window (compose.py)
-    frame = compose.score(base + "_e.bmp", cand) if COMPOSE else {"total": 0.0}
-    print("  seed %d: systems %.2f, %d core unmet, window frame %.2f (%s buildings, hero %s)" % (
-        lseed, Lc["systems"]["score"], len(core_unmet), frame["total"], frame.get("in_frame", "-"), frame.get("hero")), flush=True)
-    key = (len(core_unmet), -(0.5 * Lc["systems"]["score"] + 0.5 * frame["total"]))
-    if best is None or key < best[0]:
-        best = (key, cand, frame)
-    if not core_unmet and not COMPOSE:
-        break
+reviews = []
+for ki in range(ISLANDS):
+    iseed = seed if ISLANDS == 1 else seed * 10 + ki
+    ib_ = base if ISLANDS == 1 else base + "_i%d" % ki
+    step("island %d (seed %d, %s)" % (ki, iseed, STYLE), lambda: ib.run(["py", os.path.join(TOOLS, "island_form.py"), iseed, ib.TEMPLATE,
+                                                                     ib_ + "_e.bmp", "png=" + ib_ + "_sketch.png", "style=" + STYLE]))
+    # the stock island's relief: hills as tall as TutA's own, the plain kept at the tower's foot
+    step("relief", lambda: ib.run(["py", os.path.join(TOOLS, "relief_match.py"), ib_ + "_e.bmp", ib.TEMPLATE]))
+    # the camera: what the player can see from the playable area (the tower's NavigationPoints)
+    step("viewshed", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), ib_ + "_e.bmp", NAV, "-", ib_]))
+    for k in range(REROLLS):
+        lseed = iseed + 100 * k
+        cand = ib_ + "_layout_%d.json" % lseed
+        tool = "layout_spine.py" if METHOD == "spine" else "layout.py"
+        step("layout %s (seed %d)" % (METHOD, lseed), lambda: ib.run(["py", os.path.join(TOOLS, tool), ib_ + "_e.bmp", cand,
+                                                                      "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png", "vis=" + ib_ + "_vis.npz"]))
+        Lc, core_unmet = systems.run(cand, report=True)
+        frame = compose.score(ib_ + "_e.bmp", cand) if COMPOSE else {"total": 0.0}
+        if CODIRECT:
+            Rv = codirect.review(ib_ + "_e.bmp", cand)
+            reviews.append(codirect.report(Rv, "island %d layout %d" % (ki, lseed)))
+            print(reviews[-1], flush=True)
+            key = (1 if Rv["vetoes"] else 0, -Rv["total"])
+        else:
+            print("  seed %d: systems %.2f, %d core unmet, window frame %.2f (%s buildings, hero %s)" % (
+                lseed, Lc["systems"]["score"], len(core_unmet), frame["total"], frame.get("in_frame", "-"), frame.get("hero")), flush=True)
+            key = (len(core_unmet), -(0.5 * Lc["systems"]["score"] + 0.5 * frame["total"]))
+        if best is None or key < best[0]:
+            best = (key, cand, frame, ib_)
+        if not core_unmet and not COMPOSE and not CODIRECT:
+            break
+if CODIRECT:
+    open(os.path.join(RUN, "codirection.txt"), "w", encoding="utf-8").write("\n\n".join(reviews) + "\n\nCHOSEN: %s\n" % os.path.basename(best[1]))
+if best[3] != base:                                  # the chosen island becomes THE island of this run
+    import glob as _glob
+    for fsrc in _glob.glob(best[3] + "_*"):
+        suf = fsrc[len(best[3]):]
+        if not suf.startswith("_layout"):
+            shutil.copy(fsrc, base + suf)
+score = subprocess.run([ib.TERRAIN, "score", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02"],
+                       capture_output=True, text=True).stdout
+open(os.path.join(RUN, "terrain_score.txt"), "w").write(score)
 shutil.copy(best[1], layout)
 shutil.copy(best[1][:-5] + ".png", base + "_layout.png")
 L = json.load(open(layout))
