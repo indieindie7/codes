@@ -28,7 +28,7 @@ def drip(u, v, amount):
     n = 1 + int(random.random() * min(3.0, 1 + amount * 2))
     for k in range(n):
         off = (random.random() - .5) * r * 1.4
-        drops.append([cx + gx * r * .7 - gy * off, cy + gy * r * .7 + gx * off, 0.0, 0.0, amount * (.5 + .6 * random.random()) / n * 3.2, random.random() * 6.28])
+        drops.append([cx + gx * r * .7 - gy * off, cy + gy * r * .7 + gx * off, 0.0, 0.0, amount * (.5 + .6 * random.random()) / n * 8.0, random.random() * 6.28])
 
 
 def step(dt):
@@ -42,15 +42,18 @@ def step(dt):
         dx = (gx * along - gy * across) * dt
         dy = (gy * along + gx * across) * dt
         dist = math.hypot(dx, dy)
-        leave = min(mass, dist * (0.016 + 0.010 * mass))
+        leave = min(mass, dist * (0.030 + 0.012 * mass))
         steps = 1 + int(dist)
         for s in range(steps):
             px, py = x + dx * (s + .5) / steps, y + dy * (s + .5) / steps
-            w = 0.8 + 1.2 * min(1.0, mass)   # thicker: the trail is as wide as the drop
-            dep(px, py, leave / steps * .4)
-            for sgn in (-1, 1):
-                dep(px + sgn * -gy * w * .5, py + sgn * gx * w * .5, leave / steps * .18)
-                dep(px + sgn * -gy * w, py + sgn * gx * w, leave / steps * .12)
+            w = 1.0 + 1.4 * min(1.0, mass)   # thicker: the trail is as wide as the drop
+            lanes = 1 + int(w / 0.7)          # lanes 0.7 cells apart across the width, heavier in the middle
+            tot = 0.0
+            for k in range(-lanes, lanes + 1):
+                tot += 1.0 - 0.6 * abs(k) / lanes
+            for k in range(-lanes, lanes + 1):
+                o = w * k / lanes
+                dep(px - gy * o, py + gx * o, leave / steps * (1.0 - 0.6 * abs(k) / lanes) / tot)
         x += dx; y += dy; mass -= leave
         if mass > .45 and random.random() < dt * .35 * mass:
             part = mass * .35; mass -= part
