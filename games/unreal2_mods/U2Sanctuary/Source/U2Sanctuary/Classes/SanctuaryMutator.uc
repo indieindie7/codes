@@ -11,6 +11,9 @@ event PostBeginPlay()
 	local SanctuaryDirector D;
 
 	Super.PostBeginPlay();
+	// Sanctuary Open (one open map): the shipped maps' beats, fights and story props (OpenDirector)
+	if (Left(Caps(string(Level.Outer)), 16) == "PRAIRIESANCTUARY")
+		Spawn(class'OpenDirector');
 	foreach DynamicActors(class'SanctuaryDirector', D)
 		return;
 	Spawn(class'SanctuaryDirector');

@@ -201,7 +201,10 @@ def basin_water(H):
     return (verts, uvs, tris), z
 
 
-CANOPY = ["Flora_M.Tree.Tree1_clump1", "Flora_M.Tree.Tree1_clump1", "Mission_05M.Vegetation.Swamp_tree_new_001"]
+# the canopy: the swamp trees the shipped Sanctuary maps use themselves (the user, 2026-10-08: "base on the architecture
+# of the previous level assets and greenery"), the big Swamp_tree_new_001 of the same family for mass
+CANOPY = ["Mission_05M.Vegetation.Swamp_tree_new_002", "Mission_05M.Vegetation.swamp_tree_001",
+          "Mission_05M.Vegetation.Swamp_tree_new_001"]
 MID = ["JungleM.Tree.Bumbershoot_stack1", "Mission_05M.Vegetation.highpoly_fern_02", "Mission_05M.Vegetation.highpoly_fern_03c"]
 UNDER = ["JungleM.Plant.Plant_2_Elephantine", "JungleM.Plant.Plant_1", "Mission_08M.M08B_Outside.TestFern1",
          "Mission_05M.Vegetation.m08_grass_001", "Mission_05M.Vegetation.SwampPlantA01"]
@@ -225,7 +228,110 @@ LANDMARK = {
 }
 
 
+# --- Sanctuary's own architecture (the shipped maps' BSP textures by use, and their Mission_08M trims) ---
+WALL = ["Mission_06T.Surface_Wall.ConcWall_U06B434", "Mission_08T.NewWall.ConcWall_U08G361", "Mission_06T.Surface_Wall.ConcWall_U06B461"]
+METAL = "Mission_06T.Surface_Wall.MetlWall_U06A500"
+BASE = "Mission_06T.Surface_Wall.MetlBase_U06B459b"
+FLOOR = "Mission_06T.Surface_Floor.MetlFloor_U06B500"
+DOOR = "Mission_08M.Bunker.YourMamaDoor1a"
+ROOFSHEET = "Mission_08M.bunker4.roofsheet1a08a"
+WALLPIPES = "Mission_08M.wires.WallSet_Pipes1_Final"
+CABLES = "Mission_08M.Bunker1.CableHolding_overhang_08A"
+ANTENNA = "Mission_08M.electronics.M08A_small_antenna1"
+BIGANTENNA = "Mission_08M.Bunker3.jungletenna_ahh"
+PADLIGHTS = "Mission_08M.Bunker.M08A_padLights1"
+PADCABLES = "Mission_08M.Bunker.M08A_PadCables1"
+ROOTVINE = "JungleM.Vine.JungleRootVine1"
+DROPSHIP = "CinemaM.Vehicles.DropshipBIGLoRes"
+BRUSHES = []
+
+
+def box_polys(w, d, h, yaw, tex_side, tex_top, tex_bottom):
+    """an axis box w x d x h (local x, y, z from 0 up), turned by yaw (deg), as T3D polygons (outward normals:
+    (v1-v0) x (v2-v0), the editor's own winding)"""
+    c, s_ = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+    def P(x, y, z):
+        return (x * c - y * s_, x * s_ + y * c, z)
+    x0, x1, y0, y1 = -w / 2, w / 2, -d / 2, d / 2
+    faces = [  # (vertices, texture)
+        ([P(x0, y1, 0), P(x0, y1, h), P(x1, y1, h), P(x1, y1, 0)], tex_side),     # +y
+        ([P(x1, y0, 0), P(x1, y0, h), P(x0, y0, h), P(x0, y0, 0)], tex_side),     # -y
+        ([P(x1, y1, 0), P(x1, y1, h), P(x1, y0, h), P(x1, y0, 0)], tex_side),     # +x
+        ([P(x0, y0, 0), P(x0, y0, h), P(x0, y1, h), P(x0, y1, 0)], tex_side),     # -x
+        ([P(x0, y1, h), P(x0, y0, h), P(x1, y0, h), P(x1, y1, h)], tex_top),      # top
+        ([P(x0, y0, 0), P(x0, y1, 0), P(x1, y1, 0), P(x1, y0, 0)], tex_bottom),   # bottom
+    ]
+    out = []
+    for k, (vs, tex) in enumerate(faces):
+        a, b, cc = (np.array(v) for v in vs[:3])
+        n = np.cross(b - a, cc - a)
+        n = n / (np.linalg.norm(n) or 1)
+        u = (b - a) / (np.linalg.norm(b - a) or 1) if abs(n[2]) < 0.5 else np.array([1.0, 0, 0])
+        vv = np.cross(n, u)
+        out.append("          Begin Polygon Texture=%s Link=%d\n             Origin   %+.6f,%+.6f,%+.6f\n"
+                   "             Normal   %+.6f,%+.6f,%+.6f\n             TextureU %+.6f,%+.6f,%+.6f\n"
+                   "             TextureV %+.6f,%+.6f,%+.6f\n" % ((tex, k) + tuple(a) + tuple(n) + tuple(u) + tuple(vv)) +
+                   "".join("             Vertex   %+.6f,%+.6f,%+.6f\n" % tuple(v) for v in vs) + "          End Polygon\n")
+    return "".join(out)
+
+
+def brush(x, y, z, w, d, h, yaw, side, top=None, bottom=None):
+    k = len(BRUSHES)
+    BRUSHES.append("Begin Actor Class=Brush Name=OpenBrush%d\n    CsgOper=CSG_Add\n    Group=\"OpenArch\"\n"
+                   "    Location=(X=%.3f,Y=%.3f,Z=%.3f)\n    Begin Brush Name=OpenModel%d\n       Begin PolyList\n%s"
+                   "       End PolyList\n    End Brush\n    Brush=Model'MyLevel.OpenModel%d'\nEnd Actor\n" % (
+                       k, x, y, z, k, box_polys(w, d, h, yaw, side, top or METAL, bottom or FLOOR), k))
+
+
+def arch(o, pid, prop):
+    """one of the place's pieces in Sanctuary's own architecture"""
+    x, y, w, d, h, th = o["x"], o["y"], o["w"], o["d"], o["h"], o["yaw"]
+    z = FLOOR_Z + sample(HH[0], x, y)
+    rnd = random.Random(int(x * 7 + y * 13))
+    rad = math.radians(th)
+    fx, fy = math.sin(rad), -math.cos(rad)                 # the front (local -y) in the world
+    rx, ry = math.cos(rad), math.sin(rad)
+    yaw = int(th * 65536 / 360) & 65535
+    if o["id"] == "dropship":
+        prop(DROPSHIP, x, y, 0.9, sink=-40, rot=(0, yaw, 0))
+        return
+    if o["id"] == "cargo_pad":
+        brush(x, y, z - 40, w * 0.7, d * 0.7, 60, th, BASE, FLOOR)
+        for k in range(8):
+            a = k * math.pi / 4
+            prop(PADLIGHTS, x + math.cos(a) * w * 0.33, y + math.sin(a) * d * 0.33, 1.0, sink=-20)
+        prop(PADCABLES, x + rx * w * 0.38, y + ry * w * 0.38, 1.0, sink=0)
+        return
+    tall = h > 1000 or o["kind"] == "high"
+    if tall:                                               # silos, masts, stacks, the rig: a concrete tower, an antenna on top
+        tw = max(250.0, min(w, d) * 0.6)
+        brush(x, y, z - 60, tw, tw, h, th, METAL if rnd.random() < 0.5 else WALL[1], METAL)
+        prop(BIGANTENNA if o["kind"] == "high" else ANTENNA, x, y, 1.0, sink=-(h - 10))
+        prop(ROOTVINE, x + fx * tw * 0.5, y + fy * tw * 0.5, 1.0, sink=0, collide=False)
+        return
+    # a building: plinth, concrete walls, a metal roof slab overhanging, a door on the front, roof sheets, wall pipes,
+    # a cable holder, an antenna, and the jungle's roots climbing the base
+    side = rnd.choice(WALL)
+    brush(x, y, z - 80, w + 60, d + 60, 140, th, BASE, FLOOR)
+    brush(x, y, z + 40, w, d, h - 40, th, side, METAL)
+    brush(x, y, z + h, w + 80, d + 80, 30, th, METAL, METAL)
+    prop(DOOR, x + fx * (d / 2 + 6), y + fy * (d / 2 + 6), 1.0, sink=-40, rot=(0, (yaw + 16384) & 65535, 0))
+    for k in range(max(1, int(w / 700))):
+        t = (k + 0.5) / max(1, int(w / 700)) - 0.5
+        prop(ROOFSHEET, x + rx * t * w, y + ry * t * w, 1.0, sink=-(h + 30), rot=(0, yaw, 0))
+    prop(WALLPIPES, x - fx * (d / 2 + 10), y - fy * (d / 2 + 10), 1.0, sink=-h * 0.35, rot=(0, (yaw + 32768) & 65535, 0))
+    prop(CABLES, x + rx * (w / 2 + 10), y + ry * (w / 2 + 10), 1.0, sink=-h * 0.75, rot=(0, (yaw + 16384) & 65535, 0))
+    prop(ANTENNA, x + rx * w * 0.3, y + ry * w * 0.3, 1.0, sink=-(h + 30))
+    for k in range(2):
+        a = rnd.uniform(0, 2 * math.pi)
+        prop(ROOTVINE, x + math.cos(a) * w * 0.5, y + math.sin(a) * d * 0.5, rnd.uniform(0.8, 1.2), sink=0, collide=False)
+
+
+HH = [None]
+
+
 def write_actors(H, dist_road, water_z, path):
+    HH[0] = H
     out = ["Begin Map\n"]
     k = [0]
     for ti in range(TILES):
@@ -303,10 +409,14 @@ def write_actors(H, dist_road, water_z, path):
     # spawn sheds, cover clusters and the high spot, the Manta's lanes kept clear
     PL = playable.layout_all()
     json.dump(PL, open(os.path.join(OUT, "playable.json"), "w"), indent=1)
+    BRUSHES.clear()
     for pid, area in PL.items():
         for o in area["props"]:
             yaw = int(o["yaw"] * 65536 / 360) & 65535
-            prop(o["mesh"], o["x"], o["y"], o.get("scale", 1.0), sink=8, rot=(0, yaw, 0))
+            if o["kind"] == "cover":
+                prop(o["mesh"], o["x"], o["y"], o.get("scale", 1.0), sink=8, rot=(0, yaw, 0))
+                continue
+            arch(o, pid, prop)
     # sky, sun (low, behind the plant from the LZ: dusk, the key art's light), start at the LZ facing the plant
     out.append(actor("SkyZoneInfo", "SkyZoneInfo0", (0, 0, SKY_Z)))
     out.append(actor("StaticMeshActor", "SkyBox", (0, 0, SKY_Z),
@@ -322,6 +432,7 @@ def write_actors(H, dist_road, water_z, path):
     sx, sy = lz["x"] + 1600 * math.cos(a), lz["y"] + 1600 * math.sin(a)
     out.append(actor("PlayerStart", "PlayerStart0", (sx, sy, FLOOR_Z + sample(H, sx, sy) + 150), "", (0, yaw, 0)))
     out.append("End Map\n")
+    out.insert(1, "".join(BRUSHES))
     open(path, "w").write("".join(out))
     return n_tree, n_plant, k[0]
 
@@ -338,6 +449,7 @@ if __name__ == "__main__":
     write_ase(os.path.join(OUT, "Models", "ase", "Basin.ase"), "Basin", wv, wu, wt)
     nt, npl, nprops = write_actors(H, dist_road, wz, os.path.join(OUT, "open_actors.t3d"))
     np.save(os.path.join(OUT, "heights.npy"), H)
+    json.dump(S.PLACES, open(os.path.join(OUT, "places.json"), "w"), indent=1)     # as built (the basin moves to the real hollow)
     print("heights %.0f..%.0f; %d trees, %d plants, %d props" % (H.min(), H.max(), nt, npl, nprops))
     for q in S.PLACES:
         print("  %-8s z %.0f" % (q["id"], sample(H, q["x"], q["y"])))

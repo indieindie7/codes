@@ -32,8 +32,8 @@ ASSETS = [
 ]
 
 LOADS = ["SanctuaryOpenSM", "HoverTestSM", "AvalonSM", "AvalonSM2", "Mission_05M", "Terran_DecoM", "Mission_08M", "JungleM", "Flora_M",
-         "MM_WaterfrontM", "Mission_SulferonM", "Mission_10M"]
-TEX = ["ScottT", "Mission_10T", "JungleT", "VertexT", "TerranT"]
+         "MM_WaterfrontM", "Mission_SulferonM", "Mission_10M", "CinemaM"]
+TEX = ["ScottT", "Mission_10T", "JungleT", "VertexT", "TerranT", "Mission_06T", "Mission_08T"]
 
 MAP = [r'OBJ LOAD FILE="{SM}\%s.usx"' % p for p in LOADS] + [r'OBJ LOAD FILE="{GAME}\Textures\%s.utx"' % t for t in TEX] + [
     r'BRUSH LOAD FILE="{P}\brushes\bigroom.u3d"',

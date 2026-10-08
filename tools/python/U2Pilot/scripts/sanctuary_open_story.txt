@@ -1,0 +1,33 @@
+# sanctuary_open_story: OpenDirector on Sanctuary Open - beats fire, the original lines play, waves come out
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator,U2Gore.GoreMutator,U2Sanctuary.SanctuaryMutator,U2FairFights.FairFights
+waitcontrol 120
+wait 12
+console god
+dump OpenDirector Killed
+mark beat gate
+console hub tp -845 366 -1281
+wait 9
+shot
+dump OpenDirector Killed
+mark beat yard
+console hub tp 1500 -2500 -1237
+wait 9
+shot
+dump OpenDirector Killed
+mark beat basin
+console hub tp 512 -7936 -2525
+wait 9
+shot
+dump OpenDirector Killed
+mark beat field
+console hub tp -8500 -8500 -876
+wait 9
+shot
+dump OpenDirector Killed
+mark beat power
+console hub tp -17500 -15000 -920
+wait 9
+shot
+dump OpenDirector Killed
+quit
