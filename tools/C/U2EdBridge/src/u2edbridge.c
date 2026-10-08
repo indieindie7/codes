@@ -43,8 +43,15 @@
 #include <stdarg.h>
 #include <string.h>
 
+#ifdef U2ED_OPS   /* ops build (bin/U2EdBridge_ops.dll): own pipe, message and log, so it can sit beside the main bridge */
+#define PIPE_NAME L"\\\\.\\pipe\\U2EdBridgeOps-%lu"
+#define WM_U2ED_EXEC (WM_APP + 0x56)
+#define LOG_NAME "U2EdBridge_ops.log"
+#else
 #define PIPE_NAME L"\\\\.\\pipe\\U2EdBridge-%lu"   /* %lu = the editor's process id */
 #define WM_U2ED_EXEC (WM_APP + 0x55)
+#define LOG_NAME "U2EdBridge.log"
+#endif
 #define TC __attribute__((thiscall))
 
 typedef int (TC *ExecFn)(void *self, const wchar_t *cmd, void *ar);
@@ -561,10 +568,18 @@ static int DoScreenshot(const wchar_t *path)
 	return ok;
 }
 
+/* --- per-actor editor operations (ops build only, src/editor_ops.c) --- */
+#ifdef U2ED_OPS
+#include "editor_ops.c"
+#endif
+
 /* --- running a request on the main thread --- */
 
 static int RunBang(const wchar_t *cmd)
 {
+#ifdef U2ED_OPS
+	{ int r = OpsBang(cmd); if (r >= 0) return r; }
+#endif
 	if (!_wcsicmp(cmd, L"!ping")) { CapLine(L"pong"); return 1; }
 	if (!_wcsnicmp(cmd, L"!answer ", 8))
 	{
@@ -821,6 +836,9 @@ static DWORD WINAPI Main(LPVOID unused)
 	if (!g_fexec) { BLog("FExec subobject not found"); return 1; }
 	BLog("GEditor %p, FExec at +0x%x", (void *)*pEditor, (unsigned)((char *)g_fexec - (char *)*pEditor));
 	PatchZoneInfoSet();
+#ifdef U2ED_OPS
+	g_ed = *pEditor;
+#endif
 
 	pLog = (void **)GetProcAddress(core, "?GLog@@3PAVFOutputDevice@@A");
 	pWarn = (void **)GetProcAddress(core, "?GWarn@@3PAVFFeedbackContext@@A");
@@ -860,7 +878,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
 		DisableThreadLibraryCalls(inst);
 		GetModuleFileNameA(inst, g_logPath, MAX_PATH);
 		slash = strrchr(g_logPath, '\\');
-		lstrcpyA(slash ? slash + 1 : g_logPath, "U2EdBridge.log");
+		lstrcpyA(slash ? slash + 1 : g_logPath, LOG_NAME);
 		/* as early as possible: the editor's own (pre-existing) main thread keeps
 		   running while this DllMain executes on the freshly injected thread, so
 		   every millisecond before this hook is armed is a chance to miss the

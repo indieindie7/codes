@@ -267,8 +267,10 @@ class Ed(Editor):
         return self.ok("MAP REBUILD", allow=("Can't", "Couldn't bring window"))
 
     def light(self, selected=False):
-        """LIGHT APPLY; selected=True lights only the selected actors (Exec_Light parses SELECTED= and
-        CHANGED=), so a shipped map keeps the BSP lighting its developers baked"""
+        """LIGHT APPLY. WARNING (decompile, 2026-10-07): Exec_Light parses SELECTED= but
+        shadowIlluminateBsp never reads it, so SELECTED=1 is a FULL relight (BSP lightmaps reallocated
+        and every static mesh relit). CHANGED=1 is the real incremental mode; for static meshes only use
+        Ops.light(). See EDITOR_OPS.md / LIGHTING.md."""
         # "Couldn't bring window to foreground" is logged when another app has focus; harmless
         return self.ok("LIGHT APPLY" + (" SELECTED=1" if selected else ""), allow=("Couldn't bring window", "Can't find"))
 
@@ -398,6 +400,89 @@ class Ed(Editor):
             elif rects:
                 crop = rects.get("Viewport") or max(rects.values(), key=lambda r: (r[2] - r[0]) * (r[3] - r[1]))
         return capture_window(h, path, crop)
+
+
+# --- per-actor ops (bin\U2EdBridge_ops.dll, src/editor_ops.c; EDITOR_OPS.md) ------------------------------
+OPS_PIPE = r"\\.\pipe\U2EdBridgeOps-%d"
+OPS_DLL = os.path.join(u2ed.BIN, "U2EdBridge_ops.dll")
+
+
+class Ops(Editor):
+    """Client of the ops build, injected BESIDE the normal bridge (own pipe and window message):
+        ops = Ops.attach_to(ed.pid)        # injects bin\\U2EdBridge_ops.dll once, then talks to it
+        ops.select("StaticMeshActor12", "Tower*")
+        ops.move("StaticMeshActor12", 100, 200, None, yaw=16384)    # None keeps a value
+        ops.light("selected")              # static-mesh vertex lighting only; BSP lightmaps untouched
+        print(ops.lights("StaticMeshActor12"))   # why is it dark: zone ambient + the lights it can get
+    Its ! commands also run plain editor commands (same Exec), but use Ed for those."""
+
+    @classmethod
+    def attach_to(cls, pid, timeout=20):
+        o = cls(pid)
+        if not os.path.exists(OPS_PIPE % pid):
+            exe = os.path.join(u2ed.BIN, "u2edinject.exe")
+            import subprocess
+            r = subprocess.run([exe, str(pid), OPS_DLL], capture_output=True, text=True)
+            if r.returncode:
+                raise BridgeError("ops injection failed: " + (r.stderr or r.stdout).strip())
+        o.wait_ready(timeout)     # the DLL waits ~3 s after load before it listens
+        return o
+
+    def exec_rc(self, command):
+        if self.pipe is None:
+            self.pipe = open(OPS_PIPE % self.pid, "r+b", buffering=0)
+        return super().exec_rc(command)
+
+    def stop(self):               # never quits the editor: it belongs to the Ed session
+        self.close()
+
+    def _ok(self, command):
+        rc, out = self.exec_rc(command)
+        if not rc or FAIL_RE.search(out) or out.startswith("ops:"):
+            raise CommandFailed(command, out)
+        return out
+
+    def select(self, *names, add=False):
+        return self._ok("!select %s%s" % ("+ " if add else "", " ".join(names)))
+
+    def deselect(self, *names):
+        return self._ok("!deselect " + (" ".join(names) or "all"))
+
+    def list(self, pattern="*", cls=None):
+        """[(name, class, (x,y,z), (pitch,yaw,roll), selected)]"""
+        out = self.exec("!list %s%s" % (pattern, " class=" + cls if cls else ""))
+        rows = []
+        for line in out.splitlines():
+            m = re.match(r"(\S+) (\S+) \((.*?)\) \((.*?)\)( selected)?$", line)
+            if m:
+                loc = dict((k, float(v)) for k, v in _VEC.findall(m.group(3)))
+                rot = dict((k, int(float(v))) for k, v in _VEC.findall(m.group(4)))
+                rows.append((m.group(1), m.group(2), (loc.get("X", 0.0), loc.get("Y", 0.0), loc.get("Z", 0.0)),
+                             (rot.get("Pitch", 0), rot.get("Yaw", 0), rot.get("Roll", 0)), bool(m.group(5))))
+        return rows
+
+    @staticmethod
+    def _args(vals):
+        return " ".join("-" if v is None else ("%g" % v) for v in vals)
+
+    def move(self, name, x=None, y=None, z=None, pitch=None, yaw=None, roll=None):
+        """absolute; name must match one actor (or 'selected' with one selected)"""
+        rot = (pitch, yaw, roll)
+        tail = (" " + self._args(rot)) if any(v is not None for v in rot) else ""
+        return self._ok("!move %s %s%s" % (name, self._args((x, y, z)), tail))
+
+    def move_by(self, pattern, dx=0, dy=0, dz=0, dpitch=0, dyaw=0, droll=0):
+        tail = (" %d %d %d" % (dpitch, dyaw, droll)) if (dpitch or dyaw or droll) else ""
+        return self._ok("!moveby %s %g %g %g%s" % (pattern, dx, dy, dz, tail))
+
+    def light(self, *names):
+        return self._ok("!light " + " ".join(names or ("selected",)))
+
+    def lights(self, name):
+        return self.exec("!lights " + name)
+
+    def lights_at(self, x, y, z):
+        return self.exec("!lightsat %g %g %g" % (x, y, z))
 
 
 def park_windows(pid, x=-3000, y=0):
