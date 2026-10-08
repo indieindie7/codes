@@ -39,6 +39,21 @@
 // (u2shaders.hpp, gmterrain=1) watches this ini and applies them natively.
 // The journal is shared by all maps: each line starts "@<map family>"
 // (TutA_Live3 -> tuta), as in AvalonEditor.
+//
+// Commit (days 6-7): "gm commit" asks for the journal to be baked into a real map. It saves the
+// journal and writes CommitRequest="family stamp map lines" for the watcher (U2GM/tools/gm_commit.py
+// --watch), which bakes it with UnrealEd into <Map>_LiveN beside the game; edits are held until it
+// answers ("gm commit cancel" lets go). The watcher answers through U2GMPanel.txt, in its own q-line
+// session (2^30 and up, kept apart from the panel's): "gm baked STAMP K TEXT" for every line it baked
+// (the slot is emptied when it still says TEXT, so the baked map never gets it twice), then "gm
+// committed STAMP MAP N" and "gm travel MAP" (ClientTravel, the GM mode and the player's place kept),
+// or "gm commitfail STAMP WHY".
+//
+// Draw (level team, Q27): "gm draw add [X Y Z]" (no point: the hit under the crosshair or the panel's
+// ray), "gm draw undo|clear", "gm draw done open|closed [NOTE]" keeps one line in Draws[] (not the
+// journal: nothing replays or bakes it): "@family draw D<n> open|closed x1 y1 z1 ... note TEXT",
+// logs it and takes a screenshot. At most 40 points (an ini line has to stay under ~1000 chars).
+// "gm draw list", "gm draw forget N".
 //=============================================================================
 class GMMaster extends Info
 	config(U2GM);
@@ -51,7 +66,23 @@ var config int YawStep;             // spawn and turn snap in degrees
 var config float PanelPoll;         // seconds between reads of PanelFile while the panel is closed (0 = off)
 var config string PanelFile;
 var config int PanelSession, PanelSeq;
-var config string PanelState;           // "seq=S:K on=0 poss=0 frz=0 pick=NAME cls=CLASS mesh=PATH loc=X,Y,Z yaw=D scale=S cam=X,Y,Z"
+var config string PanelState;           // "seq=S:K on=0 poss=0 frz=0 pick=NAME cls=CLASS mesh=PATH loc=X,Y,Z yaw=D scale=S cam=X,Y,Z
+                                        //  wseq=S:K commit=STAMP:STATE:MAP draw=N"
+// commit (gm_commit.py --watch)
+var config int CommitStamp;             // commits asked for so far
+var config string CommitRequest;        // "family stamp map lines" while one is wanted, else ""
+var config string CommitStatus;         // "stamp pending|done|failed|cancelled [MAP or why]"
+var config int WatchSession, WatchSeq;  // the watcher's q-lines (sessions from 2^30 up)
+var config bool bResume, bResumeGM;     // after gm travel: put the player back, GM mode as it was
+var config vector ResumeLoc;
+var config rotator ResumeRot;
+// draw (the level team's notes: edges, areas, routes)
+var config string Draws[64];            // "@family draw D<n> open|closed x y z ... note TEXT"
+var config int DrawCount;
+var config string DrawState;            // the draw in progress, for the panel: "x,y,z x,y,z ..."
+var array<vector> DrawPts;
+const MaxDrawPts = 40;
+const WatchBase = 1073741824;
 
 var PlayerController PC;
 var bool bOn;
@@ -83,6 +114,17 @@ event Timer()
 {
 	if (PC == None)
 		return;
+	// back where the player was before "gm travel" (a committed map), GM mode as it was
+	if (bResume && PC.Pawn != None)
+	{
+		bResume = false;
+		if (bResumeGM)
+			SetOn(true);
+		PC.Pawn.SetLocation(ResumeLoc);
+		PC.SetRotation(ResumeRot);
+		SaveConfig();
+		Say("on "$MapName()$", back where you were");
+	}
 	if (PanelPoll > 0 && PanelFile != "")
 	{
 		PanelWait -= 0.25;
@@ -128,6 +170,9 @@ function SaveState()
 		E = EyeSpot();
 		S = S$" cam="$E.X$","$E.Y$","$E.Z;
 	}
+	S = S$" wseq="$WatchSession$":"$WatchSeq;
+	S = S$" commit="$Pick2(CommitStatus == "", "0:none:-", Word(CommitStatus, 0)$":"$Word(CommitStatus, 1)$":"$Pick2(Word(CommitStatus, 2) == "", "-", Word(CommitStatus, 2)));
+	S = S$" draw="$DrawPts.Length;
 	if (S == PanelState)
 		return;
 	PanelState = S;
@@ -172,6 +217,17 @@ function string Family()
 		M = Left(M, InStr(M, "."));
 	if (InStr(M, "_live") >= 0)
 		M = Left(M, InStr(M, "_live"));
+	return M;
+}
+
+// the map's own name as it is on disk (TutA_Live3)
+function string MapName()
+{
+	local string M;
+
+	M = string(Level);
+	if (InStr(M, ".") >= 0)
+		M = Left(M, InStr(M, "."));
 	return M;
 }
 
@@ -752,6 +808,252 @@ function TerrainBrush(string Kind, float R, float H)
 	Say(L$" (line "$k$"; the d3d8 fork applies it if gmterrain=1)");
 }
 
+// ---------------------------------------------------------------- commit (days 6-7)
+
+function bool CommitPending()
+{
+	return Word(CommitStatus, 1) == "pending";
+}
+
+// "gm commit": the journal saved, a request for the watcher; "gm commit cancel" drops it
+function Commit(string A1)
+{
+	if (A1 ~= "cancel")
+	{
+		if (!CommitPending())
+		{
+			Say("no commit running");
+			return;
+		}
+		CommitStatus = Word(CommitStatus, 0)$" cancelled";
+		CommitRequest = "";
+		SaveConfig();
+		Say("commit cancelled: edits are open again (a bake already running still saves its map, nobody travels to it)");
+		return;
+	}
+	if (CommitPending())
+	{
+		Say("commit "$Word(CommitStatus, 0)$" is still running ('gm commit cancel' drops it)");
+		return;
+	}
+	if (CountOps() == 0)
+	{
+		Say("nothing to commit: no journal lines on "$Family());
+		return;
+	}
+	if (Taken != None)
+		Release();
+	CommitStamp++;
+	CommitRequest = Family()$" "$CommitStamp$" "$MapName()$" "$CountOps();
+	CommitStatus = CommitStamp$" pending";
+	SaveConfig();
+	Log("GM: commit request "$CommitRequest);
+	Say("commit "$CommitStamp$": "$CountOps()$" journal lines on "$MapName()$" go to UnrealEd (gm_commit.py --watch); edits wait until it's done");
+}
+
+// the watcher baked journal slot K (it said TEXT): emptied, so the baked map doesn't get it twice
+function Baked(int Stamp, int K, string Text)
+{
+	if (Stamp != CommitStamp || K < 0 || K >= ArrayCount(Ops))
+	{
+		Log("GM: baked "$Stamp$" "$K$" ignored (commit "$CommitStamp$")");
+		return;
+	}
+	if (GetOp(K) ~= Text)
+	{
+		Ops[K] = "";
+		Log("GM: baked line "$K$": "$Text);
+	}
+	else
+		Log("GM: baked line "$K$" kept: it now says '"$GetOp(K)$"', the bake had '"$Text$"'");
+}
+
+function Committed(int Stamp, string M, int N)
+{
+	if (Stamp != CommitStamp)
+		return;
+	CommitStatus = Stamp$" done "$M;
+	CommitRequest = "";
+	// the commit is a checkpoint: undo can't reach into the baked map
+	UndoAt.Length = 0;
+	UndoWas.Length = 0;
+	RedoAt.Length = 0;
+	RedoWas.Length = 0;
+	SaveConfig();
+	Say("commit "$Stamp$": "$N$" lines baked into "$M);
+}
+
+function CommitFailed(int Stamp, string Why)
+{
+	if (Stamp != CommitStamp)
+		return;
+	CommitStatus = Stamp$" failed "$Why;
+	CommitRequest = "";
+	SaveConfig();
+	Say("commit "$Stamp$" failed: "$Why$" (the journal is unchanged, edits are open again)");
+}
+
+// "gm travel MAP": ClientTravel ("open" from an exec'd file is dropped), same URL options, and the
+// player put back where they stood with GM mode as it was
+function Travel(string M)
+{
+	local string Opts;
+
+	if (M == "")
+	{
+		Say("gm travel MAP");
+		return;
+	}
+	if (Taken != None)
+		Release();
+	if (PC.Pawn != None)
+	{
+		ResumeLoc = PC.Pawn.Location;
+		ResumeRot = PC.Rotation;
+		bResume = true;
+		bResumeGM = bOn;
+	}
+	SaveConfig();
+	Opts = Level.GetLocalURL();
+	if (InStr(Opts, "?") >= 0)
+		Opts = Mid(Opts, InStr(Opts, "?"));
+	else
+		Opts = "";
+	Log("GM: travel to "$M$Opts);
+	PC.ClientTravel(M$Opts, TRAVEL_Absolute, false);
+}
+
+// ---------------------------------------------------------------- draw (Q27)
+
+function UpdateDrawState()
+{
+	local int k;
+	local string S;
+
+	for (k = 0; k < DrawPts.Length; k++)
+	{
+		if (k > 0)
+			S = S$" ";
+		S = S$int(DrawPts[k].X)$","$int(DrawPts[k].Y)$","$int(DrawPts[k].Z);
+	}
+	if (S != DrawState)
+	{
+		DrawState = S;
+		SaveConfig();
+	}
+}
+
+function DrawCmd(string Args)
+{
+	local string Sub, Kind, Note, L;
+	local vector V, HitL, HitN;
+	local Actor A;
+	local int k, n;
+
+	Sub = Locs(Word(Args, 1));
+	if (Sub == "add")
+	{
+		if (DrawPts.Length >= MaxDrawPts)
+		{
+			Say("a draw holds at most "$MaxDrawPts$" points: gm draw done open|closed");
+			return;
+		}
+		if (Word(Args, 2) != "")
+		{
+			V.X = float(Word(Args, 2)); V.Y = float(Word(Args, 3)); V.Z = float(Word(Args, 4));
+		}
+		else
+		{
+			A = UnderCrosshair(HitL, HitN);
+			if (A == None && HitL == vect(0,0,0))
+			{
+				Say("draw: nothing under the crosshair");
+				return;
+			}
+			V = HitL;
+		}
+		DrawPts[DrawPts.Length] = V;
+		UpdateDrawState();
+		Say("draw point "$DrawPts.Length$" at "$int(V.X)$" "$int(V.Y)$" "$int(V.Z));
+	}
+	else if (Sub == "undo")
+	{
+		if (DrawPts.Length > 0)
+			DrawPts.Length = DrawPts.Length - 1;
+		UpdateDrawState();
+		Say("draw: "$DrawPts.Length$" points");
+	}
+	else if (Sub == "clear")
+	{
+		DrawPts.Length = 0;
+		UpdateDrawState();
+		Say("draw cleared");
+	}
+	else if (Sub == "done")
+	{
+		Kind = Locs(Word(Args, 2));
+		if (Kind != "open" && Kind != "closed")
+		{
+			Say("gm draw done open|closed [note]");
+			return;
+		}
+		if (DrawPts.Length < 2 || (Kind == "closed" && DrawPts.Length < 3))
+		{
+			Say("draw: "$DrawPts.Length$" points is too few for "$Kind);
+			return;
+		}
+		for (k = 0; k < ArrayCount(Draws); k++)
+			if (Draws[k] == "")
+				break;
+		if (k >= ArrayCount(Draws))
+		{
+			Say("draw slots full ("$ArrayCount(Draws)$"): gm draw forget N");
+			return;
+		}
+		DrawCount++;
+		L = "draw D"$DrawCount$" "$Kind;
+		for (n = 0; n < DrawPts.Length; n++)
+			L = L$" "$int(DrawPts[n].X)$" "$int(DrawPts[n].Y)$" "$int(DrawPts[n].Z);
+		Note = After(Args, 3);
+		if (Note != "")
+		{
+			// an ini line stays under ~1000 characters
+			if (Len(L) + 6 + Len(Note) + Len(Family()) + 2 > 1000)
+				Note = Left(Note, Max(0, 1000 - Len(L) - Len(Family()) - 8));
+			L = L$" note "$Note;
+		}
+		Draws[k] = "@"$Family()$" "$L;
+		DrawPts.Length = 0;
+		UpdateDrawState();
+		SaveConfig();
+		Log("GM: "$L$" (map "$MapName()$", slot "$k$")");
+		if (PC != None)
+			PC.ConsoleCommand("shot");
+		Say("draw D"$DrawCount$" kept ("$Kind$"), screenshot taken");
+	}
+	else if (Sub == "list")
+	{
+		for (k = 0; k < ArrayCount(Draws); k++)
+			if (Word(Draws[k], 0) == ("@"$Family()))
+				Say(Left(Mid(Draws[k], InStr(Draws[k], " ") + 1), 200));
+		Say(DrawPts.Length$" points in the draw being made");
+	}
+	else if (Sub == "forget")
+	{
+		for (k = 0; k < ArrayCount(Draws); k++)
+			if (Word(Draws[k], 0) == ("@"$Family()) && Word(Draws[k], 2) ~= ("D"$Word(Args, 2)))
+			{
+				Draws[k] = "";
+				SaveConfig();
+				Say("draw D"$Word(Args, 2)$" forgotten");
+				return;
+			}
+		Say("no draw D"$Word(Args, 2)$" on "$Family());
+	}
+	else
+		Say("gm draw add [X Y Z] | undo | clear | done open|closed [note] | list | forget N");
+}
+
 // ---------------------------------------------------------------- the command
 
 // the rest of S after its first N words
@@ -789,10 +1091,21 @@ function RunOne(string Args)
 		// a line of the panel's file: runs once
 		S = int(Word(Args, 1));
 		K = int(Word(Args, 2));
-		if (S == PanelSession && K <= PanelSeq)
-			return;
-		PanelSession = S;
-		PanelSeq = K;
+		if (S >= WatchBase)
+		{
+			// the commit watcher's lines (gm_commit.py): their own session and count
+			if (S == WatchSession && K <= WatchSeq)
+				return;
+			WatchSession = S;
+			WatchSeq = K;
+		}
+		else
+		{
+			if (S == PanelSession && K <= PanelSeq)
+				return;
+			PanelSession = S;
+			PanelSeq = K;
+		}
 		Rest = After(Args, 3);
 		if (Locs(Word(Rest, 0)) != "q")
 			RunOne(Rest);
@@ -815,8 +1128,28 @@ function DoCommand(string Args)
 		return;
 	Cmd = Locs(Word(Args, 0));
 	A1 = Word(Args, 1);
+	// while a commit bakes the journal, the journal must stay what the watcher read
+	if (CommitPending() && (Cmd == "move" || Cmd == "moveto" || Cmd == "turn" || Cmd == "scale" || Cmd == "hide"
+		|| Cmd == "spawn" || Cmd == "raise" || Cmd == "lower" || Cmd == "flatten" || Cmd == "smooth"
+		|| Cmd == "undo" || Cmd == "redo" || Cmd == "preview"))
+	{
+		Say("commit "$Word(CommitStatus, 0)$" is baking the journal: edits wait until it's done ('gm commit cancel' to edit now)");
+		return;
+	}
 	if (Cmd == "")
 		SetOn(!bOn);
+	else if (Cmd == "commit")
+		Commit(A1);
+	else if (Cmd == "baked")
+		Baked(int(A1), int(Word(Args, 2)), After(Args, 3));
+	else if (Cmd == "committed")
+		Committed(int(A1), Word(Args, 2), int(Word(Args, 3)));
+	else if (Cmd == "commitfail")
+		CommitFailed(int(A1), After(Args, 2));
+	else if (Cmd == "travel")
+		Travel(A1);
+	else if (Cmd == "draw")
+		DrawCmd(Args);
 	else if (Cmd == "on" || Cmd == "off")
 		SetOn(Cmd == "on");
 	else if (Cmd == "help")
@@ -825,6 +1158,8 @@ function DoCommand(string Args)
 		Say("gm spawn N|PATH | palette [add PATH|clear] | snap SIZE | yawstep DEG | possess | release | freeze | undo | redo | journal");
 		Say("gm raise R H | lower R H | flatten R | smooth R  (terrain at the crosshair, radius R, height H)");
 		Say("the d3d8 fork's panel (F7) also sends: gm panel 1|0 | ray SX SY SZ EX EY EZ | preview X Y Z YAW");
+		Say("gm commit [cancel] (bake into <map>_LiveN: gm_commit.py --watch) | travel MAP");
+		Say("gm draw add [X Y Z] | undo | clear | done open|closed [NOTE] | list | forget N");
 	}
 	else if (Cmd == "panel")
 	{

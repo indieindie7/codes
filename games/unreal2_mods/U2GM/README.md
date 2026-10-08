@@ -1,6 +1,6 @@
 # U2GM: game master mode for Unreal II
 
-Change the level while it is played. This is week 1, days 1–5 of the plan in `games/research_notes/In-game game master editing/report.md`. The script is here; the terrain brush and the panel are in the d3d8 fork (`d3d8to9-gi`).
+Change the level while it is played. This is week 1, days 1–7 of the plan in `games/research_notes/In-game game master editing/report.md`. The script is here; the terrain brush and the panel are in the d3d8 fork (`d3d8to9-gi`).
 
 ## Install
 Copy `Classes` to `<game>\U2GM\Classes`. Add `EditPackages=U2GM` to the `Unreal2.ini` you compile with, and run `ucc make`. Copy `U2GM.u` into `<game>\System` while the game is closed. Load it with `?Mutator=U2GM.GMMutator`, or add it to `User.ini`'s `Mutator=` line.
@@ -29,7 +29,7 @@ Copy `Classes` to `<game>\U2GM\Classes`. Add `EditPackages=U2GM` to the `Unreal2
 ## The journal
 Every edit is one line in `System\U2GM.ini` (`[U2GM.GMMaster] Ops[...]`). Only the game writes it; edit it only while the game is closed, because the game rewrites its ini from memory.
 - Each line is tagged with its map family: `@tuta place StaticMeshActor112 X Y Z YAW SCALE`, `@tuta hide NAME`, `@tuta mesh Pkg.Group.Mesh X Y Z YAW SCALE`.
-- This is AvalonEditor's format, so `U2Avalon/tools/live_bake.py` can bake a session into the map.
+- This is AvalonEditor's format; `tools/gm_commit.py` bakes it into a map (`--ini U2AvalonCards.ini --section U2AvalonCards.AvalonEditor` for AvalonEditor's journal; the `live_bake.py` named here before was never written).
 - The world is always the map plus its journal. Undo and redo change the journal and replay it.
 - A map's static meshes can't move at run time, so the first edit swaps one for a movable copy (`GMMesh`, `AmbientGlow=70`) and hides the original.
 - Terrain lines: `@tuta terrain raise|lower|flatten|smooth X Y R H` (world units: centre, radius, height; for flatten H is the target Z, for smooth the strength 0..1). Script can't reach the heightmap, so the d3d8 fork applies these (below). A terrain line goes in the slot after the last used one, so terrain lines stay in time order (they don't commute).
@@ -148,7 +148,133 @@ An on-screen GM panel and a move/rotate gizmo, drawn by the d3d8 fork with Dear 
    - the cursor staying hidden (try `gmpanel=2`)
    - hitches when the panel opens
 
-## Next (week 1, days 3–7)
-- **Day 3:** a native terrain brush in the d3d8 fork: built (above), not yet run in the game.
-- **Days 4–5:** the ImGui panel and gizmo: built (above), not yet run in the game.
-- **Days 6–7:** `gm commit`, which replays the journal into `<Map>_Live1` through UnrealEd and relights.
+## Commit (days 6–7)
+`gm commit` bakes the session's journal into a real map with UnrealEd, saves it as the next `<Map>_LiveN`, and sends the running game there. Built and tested offline on 2026-10-08. **It has never been run against the editor or the game.**
+
+**Parts:**
+- `tools/gm_commit.py`:
+  - reads `U2GM.ini` (UTF-16 or 8-bit, quoted or bare values; read only);
+  - takes the map family's `Ops[]` lines in slot order;
+  - drives UnrealEd through uedlib.
+- `GMMaster`: new commands `gm commit [cancel]`, `gm travel MAP`, plus `baked`/`committed`/`commitfail`, which the watcher sends.
+- The fork's panel: a **Commit** section.
+
+**Flow:**
+1. `gm commit` (or the panel's Commit button):
+   - `SaveConfig`;
+   - writes `CommitRequest="family stamp map lines"` and `CommitStatus="stamp pending"` to `U2GM.ini`;
+   - refuses edits (move/turn/scale/hide/spawn/terrain/undo/redo/preview) until the commit is answered. `gm commit cancel` releases them.
+2. `py tools/gm_commit.py --watch` polls `U2GM.ini` every second. For a pending request it bakes `<map>` (the exact map the game is on) into the next free `<Parent>_LiveN`, with UnrealEd beside the game (`U2ED_WITH_GAME=1`, as `carve.py` does). It writes progress into `System\U2GMCommit.status`, and the panel shows that line.
+3. The watcher answers through `System\U2GMPanel.txt` in q-line format, in its own session (2^30 and up): `gm baked STAMP K TEXT` for every baked slot, then `gm committed STAMP MAP N`, then `gm travel MAP`. On failure it sends `gm commitfail STAMP WHY`.
+4. `gm travel` uses `ClientTravel` with the same URL options. After the load the player is put back where they stood, in GM mode if it was on.
+
+Without the watcher: `py tools/gm_commit.py` runs one commit for the pending request, or for `--family tuta [--map TutA_Live2]`.
+
+**Double apply (the scheme):** the baked map already contains the lines, so they must leave the journal before the new map loads.
+- GMMaster empties slot K on `gm baked STAMP K TEXT`, but only if that slot still says TEXT and STAMP is the current commit.
+- Edits are refused while a commit is pending, so the journal can't change under the bake. The text check is a second guard.
+- The baked lines arrive in the same exec batch as, and before, `gm travel`. When `Replay()` and the fork's terrain watcher see the new map, the lines are gone.
+- Lines the bake couldn't apply (actor not found, unknown line) are not reported, so they stay and keep replaying.
+- Undo/redo history is cleared at `committed`: the commit is a checkpoint.
+- The watcher's lines have their own sequence (`WatchSession`/`WatchSeq`, shown as `wseq=` in `PanelState`). The fork's lines and the watcher's can't hide or replay each other's.
+- The rebuilt fork keeps the other session's lines when it rewrites the file. The watcher re-merges its lines if they disappear, and removes them once `wseq` shows the game ran them.
+- Known blip: when the baked lines leave the journal, the fork briefly puts the old map's terrain back, about one second before the travel.
+- The edits now live in `<Map>_LiveN`. Opening the original map again shows it without them.
+
+**How each line is baked (on a copy):**
+- **terrain:** **Route: heightmap export/import (carve.py's tested route), not a new ops-DLL SetHeightmap command.** It needs no new native code, and the brush math is the same either way.
+  - Every TerrainInfo's `TerrainMap` is exported (`OBJ EXPORT`, a G16 BMP).
+  - The brush lines are run over it in numpy, as a port of the fork's `GmRun` (float32, original plus every line in slot order, cosine falloff, clamp, +0.5 rounding).
+  - It is imported back (`TEXTURE IMPORT ... MIPS=0`), then the TerrainInfos are re-pasted (`replace_actors`).
+  - The cost: every TerrainInfo is re-pasted, and the sea's too, so they may get new names. Static meshes are not re-seated, which matches what the game showed.
+- **place:**
+  - `!select` + `EDIT COPY` reads the actor, then `!move NAME X Y Z - YAW -` keeps pitch and roll.
+  - If the DrawScale changed, or with `--no-ops`, it goes the T3D way instead: copy, `ACTOR DELETE`, the edited block re-imported. `--no-ops` selects with stock `SELECTNAME`.
+- **hide:** select + `ACTOR DELETE` (removed, not hidden).
+- **mesh:** `OBJ LOAD` of `StaticMeshes\<Pkg>.usx`, then one `MAP IMPORTADD` of `StaticMeshActor` blocks (`Name=GMMesh<stamp>_<slot>`, `Group="U2GM"`).
+- **Light:** `!light selected` on the imported blocks, `!light` on the moved actors, then `LIGHT APPLY CHANGED=1`. `--full-light` does a full relight instead.
+- **Options:**
+  - `--bake`: `!meshverts` → `U2Bake/bake.py --mode add` → `!bakeload` (all untested).
+  - `--paths`: `PATHS BUILD` (slow on big maps).
+- **Save:** `MAP SAVE` as `<Map>_LiveN`. The work folder is `%TEMP%\gm_commit\<Map>_LiveN`, holding the BMPs, `<map>_<terrain>.png` + `_diff.png`, `gm_import.t3d` and `commit.json`.
+- Draw lines are never baked.
+
+**Offline tests (pass):**
+- `py -m unittest test_gm_commit -v` in `tools/`:
+  - journal parsing: UTF-16 with and without BOM, quotes, case, other families and sections, slot order;
+  - op parsing, yaw rounding, maps and LiveN numbering;
+  - the terrain math against a cell-by-cell float32 port of the fork's loop: identical on a 128×128 map with 5 brushes;
+  - BMP round trip;
+  - the planned editor commands with and without ops;
+  - the panel-file merge.
+- Dry run: `py tools/gm_commit.py --dry-run --ini <sample U2GM.ini> --heightmap <G16 BMP> --out <dir>` prints every editor command, the T3D, the game lines, and writes the terrain PNGs. Without `--heightmap` it uses a flat 128×128 map at carve.py's TutA terrain constants.
+
+**Guessed (check these first):**
+- Heightmap ↔ world is `Location + ((x−W/2)·SX, (y−H/2)·SY, (raw−32768)·SZ/256)`, the relation carve.py measured on TutA. The fork asks the engine instead (`HeightmapToWorld`). If a baked mound sits off the game's by a cell or two, this is why.
+- `SELECTNAME` + `EDIT COPY` copies just that actor (`--no-ops`).
+- A re-imported actor keeps its name. Not needed for correctness.
+- `LIGHT APPLY CHANGED=1` lights re-pasted TerrainInfos and imported meshes. Fallback: `--full-light`.
+- The baked-line text survives the exec file unchanged (the comparison ignores case).
+- `Level.GetLocalURL()` carries the mutator option. U2AvalonCards' reload uses it.
+- `!setprop` is not used. `--bake` is wholly untested.
+
+**Test list** (other session; game running with the new `U2GM.u` and fork `d3d8.dll` from `staging/`, `gmpanel=1 gmterrain=1`; keep `Unreal2.log`, `U2Shaders.log` and the watcher's console open):
+1. On a copy-safe map with terrain (TutA), start `py tools/gm_commit.py --watch`. The panel's Commit section says `watcher: watcher up, waiting for gm commit`.
+2. Make one edit of each kind:
+   - move a static mesh with the gizmo;
+   - `gm hide` another;
+   - `gm spawn 0`;
+   - `gm raise 1024 256`, then `gm smooth 800`.
+
+   `gm journal` lists 5 lines.
+3. Click **Commit** (or type `gm commit`).
+   - The console says `commit N: 5 journal lines ...`. The panel shows `commit N pending` and the watcher's progress.
+   - Try `gm move 0 0 32`: it is refused with the "baking" message.
+4. The watcher prints the editor run, then `sent ... the game took them`. Within about 2 s:
+   - the console shows 5 `baked line` log lines (in `Unreal2.log`), then `commit N: 5 lines baked into TutA_LiveM`;
+   - the game travels to `TutA_LiveM`;
+   - you're back where you stood, GM mode as before.
+5. On `TutA_LiveM`:
+   - the edits are there once only: the mound isn't doubled, there's one crate, not two;
+   - `gm journal` shows 0 lines;
+   - `U2Shaders.log` says `gm terrain: 0 terrain line(s)` or nothing for the new map.
+
+   Compare the mound's place with a screenshot from before the commit: it should not be shifted.
+6. Lighting: the moved mesh, the crate and the mound look lit, not black. If not, rerun with `--full-light` and note it.
+7. `gm commit` with an empty journal says "nothing to commit". `gm commit` then `gm commit cancel` releases edits. A commit with the watcher stopped shows "no watcher answered".
+8. Failure path: stop UnrealEd mid-commit (or rename the source map). The game hears `commit N failed: ...`, and the journal is unchanged.
+9. `--no-ops` once: same result, and the moved actor may get a new name.
+10. Watch for:
+    - lines left in `U2GMPanel.txt` after the ack;
+    - the panel's own buttons still working during and after a commit (both sessions);
+    - `Invalid name` noise (harmless);
+    - the editor taking focus while you play.
+
+## Draw (Q27, for the level team)
+Notes drawn in the world: an edge for a railing, an area marked "shanty here", a route for a road. Not world edits. Built 2026-10-08, untested in the game.
+- **Commands:**
+  - `gm draw add [X Y Z]` adds a point: the given one, or the hit under the crosshair (or under the panel's mouse ray) on ground or walls.
+  - `gm draw undo` removes the last point. `gm draw clear` removes all of them.
+  - `gm draw list` and `gm draw forget N` show and drop this map family's draws.
+- **`gm draw done open|closed [NOTE]`** keeps one line in `U2GM.ini` `Draws[]` (64 slots), not in `Ops[]`, so replay and commit never treat it as an edit: `@family draw D<n> open|closed x1 y1 z1 x2 y2 z2 ... note TEXT`.
+  - It logs `GM: draw D<n> ... (map M, slot K)` to `Unreal2.log` and runs `shot`, as AvalonEditor's mark does.
+  - Open needs 2 or more points, closed 3 or more. A draw holds at most **40 points**, and the note is trimmed so the ini line stays under 1000 characters (Unreal's config strings).
+- **Panel:**
+  - Click in world = **draw (add a point)**: each click adds a point where the mouse ray hits.
+  - The points and the polyline between them are drawn live in magenta, with the closing edge faint. The script keeps `DrawState="x,y,z ..."` in `U2GM.ini` for this.
+  - Buttons: Point at crosshair, Undo point, Clear, a note field, Done (open) and Done (closed).
+  - The note may use letters, digits, spaces and `._-#:,+!?()/%&`. Other characters, quotes and semicolons among them, become spaces.
+
+**Test list (draw):**
+1. Panel open, click mode **draw**. Click 4 spots on the ground and one on a wall. Five numbered magenta points appear, joined by lines that stay put as you turn the view.
+2. **Undo point** removes the wall point.
+3. Type the note `shanty here (3 huts)` and press **Done (closed)**.
+   - The console says `draw D1 kept (closed), screenshot taken`.
+   - A new `ShotNNNNN` appears.
+   - `Unreal2.log` has `GM: draw D1 closed x y z ... note shanty here (3 huts)`.
+   - `U2GM.ini` has a `Draws[0]="@tuta draw D1 ..."` line.
+4. Type `gm draw add` 41 times: the 41st is refused. Then `gm draw clear`.
+5. `gm commit` with a draw present: the draw is not in the watcher's line count and stays in `Draws[]`.
+
+## Next
+- Week 1 is built: the terrain brush, the panel and commit are all untested in the game. Run the test lists above in order.
