@@ -8,6 +8,8 @@
 //                                        unreachable one
 //   AUDIT TRIGGER <trigger> <x y z> <why>  the same for triggers
 //   AUDIT ORPHANEVENT <actor> <event>      fires an Event no actor carries as its Tag
+//   AUDIT NODE <i> <node> <x y z> <class> <fwd> <back>   every navigation point (for the heatmaps)
+//   AUDIT EDGE <i> <j> ...           its links as node indices, a line per node with links
 //   AUDIT SUMMARY nodes N links L reachable R ...
 //
 // Reachability is a breadth-first search over each NavigationPoint's PathList
@@ -144,6 +146,7 @@ event Tick(float DeltaTime)
 	local NavigationPoint N;
 	local Actor A;
 	local bool bTagged;
+	local string EdgeLine;
 
 	switch (Phase)
 	{
@@ -269,9 +272,32 @@ event Tick(float DeltaTime)
 			}
 		}
 		if (Cursor >= Firers.Length)
+		{
 			Phase = 5;
+			Cursor = 0;
+		}
 		return;
-	case 5:
+	case 5:     // the network itself, for U2Pilot's heatmap.py (a slice of nodes per frame: the log is slow)
+		Budget = 0;
+		while (Cursor < Nodes.Length && Budget < 200)
+		{
+			i = Cursor++;
+			Budget++;
+			if (Nodes[i] == None)
+				continue;
+			Log("AutoPlay: AUDIT NODE "$i$" "$Nodes[i].Name$" "$At(Nodes[i])$" "$Nodes[i].Class.Name$" "$Fwd[i]$" "$Back[i]);
+			if (AdjCount[i] > 0)
+			{
+				EdgeLine = "";
+				for (k = 0; k < AdjCount[i]; k++)
+					EdgeLine = EdgeLine$" "$Adj[AdjFirst[i] + k];
+				Log("AutoPlay: AUDIT EDGE "$i$EdgeLine);
+			}
+		}
+		if (Cursor >= Nodes.Length)
+			Phase = 6;
+		return;
+	case 6:
 		Say("SUMMARY nodes "$Nodes.Length$" links "$Links$" reachable "$Reach$" oneway "$OneWay$" items "$Items$" triggers "$Trig$" orphan-events "$Orphans$" from "$Nodes[Start].Name$" (doors/lifts closed)");
 		if (PC != None)
 			PC.ClientMessage("[autoplay] audit: "$Reach$"/"$Nodes.Length$" nodes reachable, "$OneWay$" one-way, "$Items$" items, "$Trig$" triggers, "$Orphans$" orphan events (see the log)");

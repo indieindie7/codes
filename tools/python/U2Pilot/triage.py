@@ -68,7 +68,7 @@ def triage(text):
                 event_lines.append(" ".join(w))
         elif "AutoPlay: AUDIT " in line:
             w = line.split("AutoPlay: AUDIT ", 1)[1].split()
-            if w:
+            if w and w[0] not in ("NODE", "EDGE", "started:"):     # the network dump is heatmap.py's
                 audit[w[0]] += 1
                 audit_lines.append(" ".join(w))
     return {"buckets": buckets, "engine": dict(engine), "engine_sample": engine_sample,

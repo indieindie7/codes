@@ -127,6 +127,15 @@ def run_triage(run_dir, log=print):
     except Exception as e:                      # never lose a run over its report
         log(f"triage failed: {e}")
 
+def run_heatmap(run_dir, log=print):
+    """heatmap.py: the bot's track, events and the audit's network over a top-down plot -> heatmap.png/.md"""
+    try:
+        import heatmap
+        heatmap.run_heatmap(run_dir, log)
+    except Exception as e:
+        log(f"heatmap failed: {e}")
+
+
 def send(*inputs):
     arr = (INPUT * len(inputs))(*inputs)
     user32.SendInput(len(inputs), arr, ctypes.sizeof(INPUT))
@@ -654,6 +663,7 @@ def run_background(steps, run_dir, log, keep_open, sound=False):
     if game.poll() is not None and os.path.exists(GAME_LOG):
         shutil.copy(GAME_LOG, os.path.join(run_dir, "Unreal2.log"))
         run_triage(run_dir, log)
+        run_heatmap(run_dir, log)
     log(f"results in {run_dir}")
 
 
@@ -837,6 +847,7 @@ def main():
         if game.poll() is not None and os.path.exists(GAME_LOG):
             shutil.copy(GAME_LOG, os.path.join(run_dir, "Unreal2.log"))
             run_triage(run_dir, log)
+            run_heatmap(run_dir, log)
         log(f"results in {run_dir}")
         pilot_log.close()
 

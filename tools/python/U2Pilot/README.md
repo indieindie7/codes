@@ -77,6 +77,21 @@ Press **F12** to abort. Prefer background mode, because foreground mode takes
 over the PC. Its Alt tap, used to grab focus, has also been seen to freeze
 Unreal's game loop.
 
+## Reports after each run
+Every run ends with two reports in its run folder:
+- `triage.md` (`triage.py`): script error buckets against a baseline, engine
+  errors, autoplay events and audit findings.
+- `heatmap.png` / `heatmap.md` (`heatmap.py`): written when U2AutoPlay ran.
+  It is a top-down picture showing:
+  - the path network from `autoplay audit` (walked links in green;
+    unreachable and one-way nodes);
+  - where the bot spent its time;
+  - its track and its STUCK/FELL/DIED/NOPROGRESS events;
+  - items and triggers that are far from the network or cut off from it.
+
+  It also gives coverage: 5 m cells, nodes and links walked. Run it on an old
+  log with `py -3.13 heatmap.py runs/<run>`.
+
 ## Probes
 `unrealscript/U2Stealth` holds two development mutators for measuring the
 game's real values:
