@@ -83,6 +83,13 @@ FRAME = best[2]
 if COMPOSE:
     compose.score(base + "_e.bmp", layout, png=base + "_frame.png")
 print("  using", os.path.basename(best[1]), "score %.2f, %d core unmet, window frame %.2f" % (L["systems"]["score"], best[0][0], FRAME["total"]), flush=True)
+try:                                     # believability (Q35, tools/metrics.py): imperfection + hierarchy/time
+    import metrics
+    MET = metrics.score(layout)
+    print("  believability: IMP %.2f HIER %.2f" % (MET["IMP"], MET["HIER"]), flush=True)
+    log.append("believability: IMP %.2f HIER %.2f (%s)" % (MET["IMP"], MET["HIER"], ", ".join("%s %s" % (k, v) for k, v in MET.items() if k not in ("IMP", "HIER"))))
+except Exception as e:
+    print("  metrics failed:", e)
 open(os.path.join(RUN, "systems.txt"), "w").write(
     "needs %d unmet %d score %.2f\n" % (L["systems"]["needs"], len(L["systems"]["unmet"]), L["systems"]["score"])
     + "".join("  %s needs %s: %s\n" % tuple(u) for u in L["systems"]["unmet"]))

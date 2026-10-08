@@ -29,6 +29,10 @@ PNG = o.get("png")
 CAMERA_K = float(o.get("camera", 2.0))     # how strongly the camera term counts against systems/ring pulls
 WINDOW_K = float(o.get("window", 4.0))   # how strongly the hero and the story want the command-room window
 HERO = o.get("hero", "cooling_towers")
+# Q35 (2026-10-08, games/research_notes/Believable city simulation): pass 1 value fields + bid-rent, pass 2 imperfect
+# plots. passes=0 gives the old constant plots (for before/after metrics: tools/metrics.py)
+PASSES = int(o.get("passes", 2))
+WIND = (0.83, -0.55)                  # the prevailing wind (AvalonCards' Wind 60,-40): smoke and soot go this way
 DBG = []
 VIS = None                            # vis=<viewshed npz>: how much the player sees each cell (viewshed.py)
 if o.get("vis"):
@@ -309,9 +313,91 @@ def branches_to_room(max_branches=2):
 
 
 N_BRANCH = branches_to_room()
+
+
+# --- pass 1: value fields (research s. 3): access by walking time along the spine, view (domination), slope; the
+# nuisance plume is summed per candidate from the emitters placed so far (the works go first) ----------------------
+WALK = 80.0 * M                        # units per minute on foot
+def _access_fields():
+    sp = np.array(SPINE.pts)
+    ss = np.array(SPINE.s)
+    d_off = np.full((N, N), np.inf)
+    s_near = np.zeros((N, N))
+    for k in range(0, len(sp), 2):
+        d = np.hypot(WX - sp[k, 0], WY - sp[k, 1])
+        m = d < d_off
+        d_off = np.where(m, d, d_off)
+        s_near = np.where(m, ss[k], s_near)
+    s_works = 0.5 * S_TOWER                                         # the works stretch's middle
+    t_dock = (s_near + 2.0 * d_off) / WALK                          # off-road ground walks at half speed
+    t_works = (np.abs(s_near - s_works) + 2.0 * d_off) / WALK
+    return t_dock, t_works
+
+
+def _view_field():
+    from scipy.ndimage import gaussian_filter
+    dom = Zm - gaussian_filter(Zm, 10)                             # standing above the neighbourhood (Emilien 2012)
+    return np.clip(dom / max(1.0, np.percentile(np.abs(dom), 95)), -1, 1)
+
+
+T_DOCK = T_WORKS = VIEW = None
+EMITTERS = {"cooling": 0.35, "hall": 0.2, "tank": 0.15, "silo": 0.12, "pump": 0.05}   # tuned so the plume, not every chimney, matters
+
+
+def nuisance(x, y, skip=None):
+    """Gaussian plume (research 3b) from every placed emitter: strongest downwind, widening with distance"""
+    c = 0.0
+    for pid, p in placed.items():
+        q = EMITTERS.get(p["kind"]) if pid != skip else None
+        if not q:
+            continue
+        dx, dy = (x - p["x"]) / M, (y - p["y"]) / M
+        down = dx * WIND[0] + dy * WIND[1]
+        cross = -dx * WIND[1] + dy * WIND[0]
+        if down > 0:
+            sig = 0.08 * down + 20.0
+            c += q * math.exp(-cross * cross / (2 * sig * sig)) * 20.0 / sig
+        c += 0.5 * q * math.exp(-math.hypot(dx, dy) / 50.0)
+    return min(c, 2.0)
+
+
+def access(x, y):
+    return math.exp(-at(T_DOCK, x, y, 99) / 5.0) + math.exp(-at(T_WORKS, x, y, 99) / 3.0)
+
+
+def value(x, y, skip=None):
+    """V (research 3d): access and view up, nuisance and slope down; ~0..1"""
+    v = 0.45 * access(x, y) + 0.25 * at(VIEW, x, y) - 0.3 * nuisance(x, y, skip) - 0.2 * min(at(SLOPE, x, y, 30) / 25.0, 1.0)
+    return min(max(v + 0.2, 0.0), 1.0)
+
+
+def is_poor(bid, b):
+    return bid.startswith(("shanty", "old_camp")) or (b["kind"] == "house" and b.get("layer") == "decline")
+
+
+def bid_rent(bid, b, x, y):
+    """who outbids whom for this spot: company core on access + view, dorms on the works, the director on view
+    away from the smoke, the poor on what is left - cheap land still within walking distance of the works"""
+    kind, fn = b["kind"], b.get("function")
+    nu = nuisance(x, y)
+    if is_poor(bid, b):
+        # ... but never under the company's nose: security keeps squatters 150 m off the tower and the pad
+        guard = sum(max(0.0, 1.0 - math.hypot(placed[k]["x"] - x, placed[k]["y"] - y) / M / 150.0) for k in ANCHORS if k in placed)
+        return 1.2 * (1.0 - value(x, y)) + 0.8 * math.exp(-at(T_WORKS, x, y, 99) / 6.0) - 2.5 * guard
+    if kind == "office" or fn in ("social", "clinic", "store"):
+        return 1.0 * access(x, y) + 0.5 * at(VIEW, x, y) - 0.6 * nu
+    if kind == "dorm":
+        return 0.9 * math.exp(-at(T_WORKS, x, y, 99) / 3.0) - 0.3 * nu
+    if kind == "house":
+        return 0.8 * at(VIEW, x, y) - 1.0 * nu + 0.3 * access(x, y)
+    return 0.0
+
 S_DOCK = 0.0
 S_TOWER = SPINE.s[int(np.argmin([math.hypot(x - tx, y - ty) for x, y in SPINE.pts]))]     # where the road passes the tower
 S_MINE = SPINE.length
+if PASSES >= 1:                                # pass 1's fields (after the spine and S_TOWER exist)
+    T_DOCK, T_WORKS = _access_fields()
+    VIEW = _view_field()
 # where along the spine is the works stretch: the flattest, roomiest 40 % between dock and tower
 placed = {}
 PLOTS = []
@@ -431,21 +517,47 @@ def sea_side(road, s):
     return +1 if at(D_WATER, *left) < at(D_WATER, *right) else -1      # +1 = left is the sea side
 
 
-def plot_ok(road, s0, s1, side, depth_u, max_slope=20.0):
+def plot_ok(road, s0, s1, side, depth_u, max_slope=20.0, setback_m=SETBACK_M):
     """every corner and the centre on the main landmass, dry, and not too steep"""
     for s in np.linspace(s0, s1, 4):
         x, y, ux, uy = road.point(s)
         nx, ny = (-uy, ux) if side > 0 else (uy, -ux)
-        for d in (ROAD_HALF_M * M + SETBACK_M * M, ROAD_HALF_M * M + SETBACK_M * M + depth_u):
+        for d in (ROAD_HALF_M * M + setback_m * M, ROAD_HALF_M * M + setback_m * M + depth_u):
             px, py = x + nx * d, y + ny * d
             if at(WATER, px, py, 1) or not at(MAIN, px, py, 0) or at(SLOPE, px, py, 90) > max_slope:
                 return False
     return True
 
 
+# --- pass 2: imperfect plots (research s. 10): gap, setback, yaw and depth are distributions, not constants ------
+ROW_WOBBLE = {}                          # (road, side) -> random phases: a coherent wobble along a row
+
+
+def wobble(road, side, s, amp):
+    ph = ROW_WOBBLE.setdefault((road.name, side), (rng.uniform(0, 6.28), rng.uniform(0, 6.28), rng.uniform(180, 380), rng.uniform(90, 160)))
+    sm = s / M
+    return amp * (0.7 * math.sin(sm / ph[2] * 6.28 + ph[0]) + 0.3 * math.sin(sm / ph[3] * 6.28 + ph[1]))
+
+
+def plot_draw(bid, b):
+    """this plot's gap (m, after it), setback (m), back yard (m) and wobble amplitude (deg)"""
+    if PASSES < 2:
+        return GAP_M, SETBACK_M, 0.0, 0.0
+    kind = b["kind"]
+    works = kind in ("hall", "tank", "silo", "cooling", "pump", "pad")
+    dense = is_poor(bid, b) or b.get("layer") == "core"
+    p_party = 0.05 if works else (0.35 if dense else 0.15)
+    gap = 0.0 if rng.random() < p_party else float(np.clip(rng.lognormal(math.log(6.0), 0.7), 1.0, 30.0))
+    setback = float(rng.uniform(1.0, 6.0)) if not works else float(rng.uniform(3.0, 6.0))
+    yard = 0.0 if works else float(rng.uniform(0.0, 15.0))
+    amp = 3.0 if works else (10.0 if is_poor(bid, b) else 6.0)       # peak deg; the row std comes out ~half
+    return gap, setback, yard, amp
+
+
 def try_place(bid, b):
     wdt_m, dpt_m = footprint_m(b)
-    front = wdt_m + GAP_M
+    GAP, SETB, YARD, AMP = plot_draw(bid, b)
+    front = wdt_m + GAP
     kind = b["kind"]
     lo, hi = STRETCH.get(kind, (0.0, 1.4))
     if VIS is not None and (bid == HERO or camera_weight(bid, buildings[bid]) > 1.5):
@@ -457,17 +569,20 @@ def try_place(bid, b):
     best = None
     for road in ROADS:
         smax = road.length
-        for s0 in np.arange(0, smax - front * M, 5 * M):
+        cands = np.arange(0, smax - front * M, 5 * M)
+        if PASSES >= 2:                   # party walls: also try standing right against a neighbour's end
+            cands = np.concatenate([cands, [b1 for sd in (1, -1) for _, b1 in road.taken[sd] if b1 < smax - front * M]])
+        for s0 in cands:
             s1 = s0 + front * M
             frac = s0 / max(1.0, S_TOWER) if road is SPINE else 0.5
             if road is SPINE and not (lo <= frac <= hi):
                 continue
             for side in (+1, -1):
-                if not road.free(side, s0, s1) or not plot_ok(road, s0, s1, side, dpt_m * M, max_slope):
+                if not road.free(side, s0, s1) or not plot_ok(road, s0, s1, side, (dpt_m + YARD) * M, max_slope, SETB):
                     continue
-                x, y, ux, uy = road.point((s0 + s1) / 2)
+                x, y, ux, uy = road.point((s0 + s1 - GAP * M) / 2)       # the building's frontage (the gap follows it)
                 nx, ny = (-uy, ux) if side > 0 else (uy, -ux)
-                d = ROAD_HALF_M * M + SETBACK_M * M + dpt_m * M / 2
+                d = ROAD_HALF_M * M + SETB * M + dpt_m * M / 2
                 cx, cy = x + nx * d, y + ny * d
                 score = 1.0
                 # the sea side for the works, the hill side for people
@@ -482,7 +597,9 @@ def try_place(bid, b):
                         dm = min(math.hypot(px - cx, py - cy) for px, py in pts) / M
                         score += (1.0 if res in systems.CORE else 0.5) * (1.2 - min(dm / reach, 1.5))
                 # avoid: dorms and houses away from cooling/tanks; everything away from the dock's own stretch
-                if kind in ("dorm", "house"):
+                if PASSES >= 1:
+                    score += 1.2 * bid_rent(bid, b, cx, cy)
+                elif kind in ("dorm", "house"):
                     for pid in ("cooling_towers", "tank_farm", "fuel_depot"):
                         if pid in placed:
                             dm = math.hypot(placed[pid]["x"] - cx, placed[pid]["y"] - cy) / M
@@ -497,18 +614,33 @@ def try_place(bid, b):
                         if o.get("debug") and bid == HERO:
                             DBG.append((round(score, 2), road.name, int(s0 / M)))
                         score += WINDOW_K * (1.5 if bid == HERO else (0.6 if camera_weight(bid, buildings[bid]) > 1.5 else 0.0))
+                if PASSES >= 2 and GAP == 0.0 and any(abs(s0 - b1) < 1.0 for _, b1 in road.taken[side]):
+                    score += 0.35                 # dense rows build wall to wall
                 score += rng.uniform(0, 0.15)
                 if best is None or score > best[0]:
                     best = (score, road, s0, s1, side, cx, cy, ux, uy, nx, ny)
     if best is None:
         return False
     score, road, s0, s1, side, cx, cy, ux, uy, nx, ny = best
-    road.taken[side].append((s0, s1))
+    s1b = s1 - GAP * M                                                     # the building's own frontage
+    road.taken[side].append((s0, s1b if PASSES >= 2 else s1))
     yaw = math.degrees(math.atan2(-ny, -nx))                                   # the front faces the road
+    if PASSES >= 2:                                                            # ... give or take the row's wobble
+        yaw += wobble(road, side, (s0 + s1b) / 2, AMP) + rng.normal(0, AMP * 0.08)
     place(bid, cx, cy, yaw, plot=dict(road=road.name, s0=s0, s1=s1, side=side))
-    PLOTS.append(dict(id=bid, road=road.name, s0=round(s0), s1=round(s1), side=side,
-                      corners=[[round(v) for v in (road.point(s0)[0] + nx * (ROAD_HALF_M + SETBACK_M) * M, road.point(s0)[1] + ny * (ROAD_HALF_M + SETBACK_M) * M)],
-                               [round(v) for v in (road.point(s1)[0] + nx * (ROAD_HALF_M + SETBACK_M) * M, road.point(s1)[1] + ny * (ROAD_HALF_M + SETBACK_M) * M)]]))
+    d0 = ROAD_HALF_M + SETB
+    PLOTS.append(dict(id=bid, road=road.name, s0=round(s0), s1=round(s1b if PASSES >= 2 else s1), side=side,
+                      setback=round(SETB, 2), depth=round(dpt_m + YARD, 1), yard=round(YARD, 1),
+                      corners=[[round(v) for v in (road.point(s0)[0] + nx * d0 * M, road.point(s0)[1] + ny * d0 * M)],
+                               [round(v) for v in (road.point(s1b)[0] + nx * d0 * M, road.point(s1b)[1] + ny * d0 * M)]]))
+    if PASSES >= 2 and YARD > 3.0:                                           # the back side: the yard's fence
+        x0, y0, _, _ = road.point(s0)
+        x1, y1, _, _ = road.point(s1b)
+        db = (d0 + dpt_m + YARD) * M
+        back = [[round(x0 + nx * db), round(y0 + ny * db)], [round(x1 + nx * db), round(y1 + ny * db)]]
+        FENCES.append(back)
+        FENCES.append([[round(x0 + nx * d0 * M), round(y0 + ny * d0 * M)], back[0]])
+        FENCES.append([[round(x1 + nx * d0 * M), round(y1 + ny * d0 * M)], back[1]])
     return True
 
 
@@ -567,7 +699,11 @@ for road in ROADS:
 roads_out = [[[round(x, 1), round(y, 1)] for x, y in r.pts] for r in ROADS]
 out = {"seed": SEED, "shift": -5300, "heightmap": os.path.abspath(src), "method": "spine",
        "buildings": {bid: {"x": round(p["x"], 1), "y": round(p["y"], 1), "yaw": round(p["yaw"], 1), "z": round(p["z"], 1),
-                           "interest": 1.0, "cells": [list(c) for c in p["cells"]]} for bid, p in placed.items()},
+                           "interest": 1.0, "cells": [list(c) for c in p["cells"]],
+                           "layer": buildings[bid].get("layer", "boom"), "age": LAYERS.get(buildings[bid].get("layer", "boom"), 1),
+                           **({"value": round(value(p["x"], p["y"], bid), 3), "nuisance": round(nuisance(p["x"], p["y"], bid), 3)} if PASSES >= 1 else {})}
+                     for bid, p in placed.items()},
+       "passes": PASSES, "wind": list(WIND),
        "roads": roads_out, "spine": roads_out[0], "plots": PLOTS, "fences": FENCES,
        "sites": {"dock": [round(v) for v in DOCK], "mine": [round(v) for v in MINE], "tower": list(TOWER_WORLD)}}
 json.dump(out, open(dst, "w"), indent=0)
