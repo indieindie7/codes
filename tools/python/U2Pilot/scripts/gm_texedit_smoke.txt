@@ -1,0 +1,19 @@
+# smoke: the texedit/cine/sketch d3d8 + U2GM build loads; Avalon storm sky still works
+background
+map TutA_Live11?Mutator=U2AvalonCards.AvalonCards,U2TestHub.HubMutator,U2GM.GMMutator
+waitcontrol 180
+wait 3
+console god
+console gm cine status
+console gm tex
+console avalon weather storm
+wait 15
+console hub tp -20876 3652 -137 hold
+wait 2
+look 100 8
+wait 2
+shot
+look 279 8
+wait 2
+shot
+quit

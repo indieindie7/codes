@@ -32,7 +32,7 @@ var int NSheets;
 var CardMesh Dome;              // the storm sky in the sky zone (None: AvalonSky.usx missing - the sprite deck only)
 var float DomeR;                // its radius (world units)
 var float DomeOn;               // the storm strength over which it shows
-var int DomeYaw;                // turns the panorama: the bright slot toward the sky box's own sun (render_sky.py sun=250; 5462 put the warm side toward the world's sun glow, about yaw 100: 38230 showed it opposite, so the sky zone turns it; 5462 not yet seen in game)
+var int DomeYaw;                // turns the panorama: the bright slot toward the sky box's own sun (render_sky.py sun=250; 5462 put the warm side toward the world's sun glow, about yaw 100: 38230 showed it opposite, so the sky zone turns it; 5462 seen right in game 2026-10-08)
 var float GustT;
 var float StormGust;       // the rain's wind speed (units/s), set by AvalonCards before Setup           // the gusts: the rain's wind swells and drops on two slow waves
 var array<AvalonPuff> Clouds;   // the overcast: giant dark puffs round and over the player, greyed by the fog
