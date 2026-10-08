@@ -52,6 +52,9 @@ defaultproperties
 	BlockTex(2)=Texture'Block2'
 	BlockTex(3)=Texture'Block3'
 	DrawType=DT_StaticMesh
+	// meshes spawned at run time get almost none of the map's (baked) light and read black; the user
+	// approved this glow live on 2026-10-07 ("shacks look good")
+	AmbientGlow=70
 	bStatic=False
 	bNoDelete=False
 	bCollideActors=False
