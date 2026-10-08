@@ -16,6 +16,7 @@ var ModShadowManager Shadows;
 var ModTargeting Targeting;
 var ModGore Gore;
 var ModPlayerBlood PlayerBlood;
+var ModMinds Minds;
 
 // ticks while the game is paused too (bAlwaysTick), so the FOV slider in the pause menu
 // shows its effect at once
@@ -95,6 +96,8 @@ function Every()
 		Gore = Spawn(class'ModGore');
 	if (!class'ModSettings'.default.bGraphicsOnly && PlayerBlood == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		PlayerBlood = Spawn(class'ModPlayerBlood');   // blood on the player's hands/weapon, lens drops
+	if (!class'ModSettings'.default.bGraphicsOnly && Minds == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
+		Minds = Spawn(class'ModMinds');   // the creatures' psychology: suppression, cover, morale, flanking, packs
 	if (Live == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Live = Spawn(class'ModLive');      // live sessions: "mutate live reload" and the place it puts the player back
 	if (class'ModSettings'.default.bD3DTrace)

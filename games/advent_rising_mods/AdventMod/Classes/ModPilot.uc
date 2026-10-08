@@ -52,6 +52,18 @@ var float PrintT, PrintSettle;
 var array<NavigationPoint> PrintNavs;
 var name HurtBone;    // HURT's bone (a string can only become a name through SetPropertyText)
 
+function MindList()
+{
+	local ModMinds M;
+
+	foreach DynamicActors(class'ModMinds', M)
+	{
+		Note("mindlist: " $ M.List());
+		return;
+	}
+	Note("mindlist: no ModMinds in this level");
+}
+
 function Note(string S)
 {
 	class'ModSettings'.static.Note("pilot: " $ S);
@@ -908,6 +920,10 @@ function StartStep()
 		break;
 	case "GIBLIST":
 		GibList();
+		break;
+	case "MINDLIST":
+		// the creatures' minds (ModMinds): feelings, task, shots past and hits
+		MindList();
 		break;
 	case "GOOLIST":
 		// the live goo strings (ModGore): ends, length against rest, age, snapped
