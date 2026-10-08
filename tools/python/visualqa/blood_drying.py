@@ -84,6 +84,8 @@ def main():
     a = p.parse_args()
     out = a.out or a.prints
     files = [f for f in frames_in(a.prints) if not os.path.basename(f).startswith("drying")]
+    shots = [f for f in files if os.path.basename(f).startswith("ShotP")]
+    files = shots or files                      # the game's prints only, when the folder holds other images too
     imgs = [load(f) for f in files]
     mask = blood_mask(imgs[0])
     if (mask > 0).mean() < 0.0005:

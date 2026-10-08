@@ -736,7 +736,11 @@ function int SpawnGibs(int Set, int Kind, vector Feet, int Yaw, float K, vector 
 	{
 		V = Normal(VRand() + Dir * 0.6 + vect(0,0,-0.4));
 		if (Trace(HitL, HitN, Mid + V * SprayReach * 1.4, Mid, false) != None)
+		{
 			Mark(KindSpray(Kind), HitL, HitN, V, DecalScale * (0.7 + 0.5 * FRand()));
+			if (Abs(HitN.Z) < 0.5)
+				WallRun(HitL, HitN, int(Kind == 2), 1.2);
+		}
 	}
 	if (Trace(HitL, HitN, Mid - vect(0,0,400), Mid, false) != None)
 		Mark(KindSplat(Kind), HitL, HitN, vect(0,0,0), DecalScale * 1.1);
