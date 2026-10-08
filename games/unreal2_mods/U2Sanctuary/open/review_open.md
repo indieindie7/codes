@@ -1,18 +1,19 @@
 # Creative team review: Sanctuary Open
 
-**Total 0.99** (geometric mean of the five)
+**Total 0.96** (geometric mean of the five)
 
 | role | score | checks |
 |---|---|---|
-| writer | 1.00 | beats in order 1.00, key places exist 1.00, story props 1.00, Miller's voice 1.00 |
+| writer | 0.86 | beats in order 1.00, key places exist 1.00, story props 1.00, dialogue R15 talk then fight, no stall 0.92, dialogue R16 repetition 0.56, dialogue R22 pointing words checked 0.71, dialogue R23 named things exist 0.94, dialogue R26 talk fits travel 0.75 |
 | director | 1.00 | weenie from the LZ 1.00, weenie on the climb 1.00, key frames 1.00, back light 1.00 |
 | engineer | 0.99 | road grades 0.97, road widths 1.00, pads flat 1.00, frame rate 1.00 |
 | level | 0.98 | drive pacing 1.00, quiet travel <= 40 s 1.00, vehicle arenas 0.97, arena scores 0.93, foot/vehicle mix 1.00, loops 1.00 |
 | artist | 0.98 | no single mesh dominates 1.00, jungle density 0.93, one kit family 0.99, dusk palette 1.00 |
 
 ## WRITER
-- 17 story props (bodies, the hauler wreck, blood) on the map
-- 11 of Miller's camera conversations wired to places (OpenDirector beats)
+- 25 story props (bodies, the hauler wreck, blood) on the map
+- 8 of Miller's camera conversations wired to places (OpenDirector beats)
+- dialogue checks: R15 talk then fight, no stall 0.92, R16 repetition 0.56, R22 pointing words checked 0.71, R23 named things exist 0.94, R26 talk fits travel 0.75 (voice/delivery: a human listening pass, not scored)
 
 ## DIRECTOR
 - the weenie stands 52 % into the fog (the game showed 80 % reads as barely there; want <= 60)
@@ -23,7 +24,7 @@
 ## ENGINEER
 - 3 % of the road length over a 25 % grade
 - narrower than 3 bikes: none
-- frame rate 102 fps avg, 95 1% low (pilot, the LZ)
+- frame rate 73 fps avg, 79 1% low (pilot, the LZ)
 
 ## LEVEL
 - spine drives: haul_w 24 s, haul_e 21 s, pad_road 9 s
@@ -38,3 +39,6 @@
 
 ## What the team asks for next
 
+- WRITER: 1 R15 flags in open/dialogue_check.md (quote-backed edits: open/writer_pass.md)
+- WRITER: 15 R22 flags in open/dialogue_check.md (quote-backed edits: open/writer_pass.md)
+- WRITER: 1 R23 flags in open/dialogue_check.md (quote-backed edits: open/writer_pass.md)

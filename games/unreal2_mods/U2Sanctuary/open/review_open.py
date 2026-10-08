@@ -82,10 +82,20 @@ def main():
     if story_props < 6:
         todo.append("WRITER: the silent road needs its signs - the wrecked ore hauler, bodies by the plant gate, blood trails (the U2Sanctuary director's gore scenes for this map)")
     miller = len(set(re.findall(r"Sanctuary_\d+G_\d+", od)))
-    ch["Miller's voice"] = min(1.0, miller / 6)
     notes.append("%d of Miller's camera conversations wired to places (OpenDirector beats)" % miller)
-    if miller < 6:
-        todo.append("WRITER: wire Miller's camera lines (Dialog\\M08A Sanctuary_15G..25G) to the places")
+    # the dialogue itself, by the checkable rules (games/research_notes/Dialogue heuristics; open/dialogue_check.py):
+    # counting wired lines said nothing about whether they work where they now play
+    import subprocess
+    subprocess.run([sys.executable, os.path.join(HERE, "playlist.py")], check=True, capture_output=True)
+    subprocess.run([sys.executable, os.path.join(HERE, "dialogue_check.py")], check=True, capture_output=True)
+    dc = json.load(open(os.path.join(HERE, "dialogue_check.json")))
+    for k, v in dc["scores"].items():
+        ch["dialogue " + k] = v
+    for rule in ("R15", "R22", "R23"):
+        n = sum(1 for f_ in dc["flags"] if f_[0] == rule)
+        if n:
+            todo.append("WRITER: %d %s flags in open/dialogue_check.md (quote-backed edits: open/writer_pass.md)" % (n, rule))
+    notes.append("dialogue checks: " + ", ".join("%s %.2f" % kv for kv in dc["scores"].items()) + " (voice/delivery: a human listening pass, not scored)")
     R["writer"] = (ch, notes)
 
     # ------------------------------------------------ DIRECTOR

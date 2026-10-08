@@ -94,17 +94,22 @@ def main():
         ("arrival", (lz["x"], lz["y"]), 2500, "Sanctuary_06_001", "Investigate the installation on Sanctuary to discover the cause of the distress call", "", ""),
         ("road", rmid, 2600, "", "", "road", "arrival"),       # a roadblock by the hauler wreck: the drive gets its contact (pacing research rule 1)
         ("gate", gate, 2600, "Sanctuary_15G_002", "Rescue Miller", "gate", "arrival"),
-        ("yard", (plant["x"], plant["y"]), 1900, "Sanctuary_16G_002,Sanctuary_18G_002", "", "yard", "gate"),
+        ("yard", (plant["x"], plant["y"]), 1900, "Sanctuary_18G_002,Sanctuary_16G_002", "", "yard", "gate"),   # writer: the warning before the camera line
         ("basin", (bx, by), 1700, "Sanctuary_10_002,Sanctuary_17G_002", "", "", "yard"),
         ("drainage", (bx, by), 2600, "Sanctuary_20G_002", "", "drainage", "basin"),
-        ("dark", (bx, by), 3200, "Sanctuary_22G_002,Sanctuary_23G_002", "", "", "drainage!"),
+        ("dark", (bx, by), 3200, "Sanctuary_19G_002", "", "", "drainage!"),   # writer: 22G (no security door) + its orphan 23G cut; 19G ("easy ride") moved here, inside the plant
         ("exit", pexit, 2200, "Sanctuary_98_002", "Get to the generator building", "", "dark"),
-        ("field", (field["x"], field["y"]), 3600, "Sanctuary_19G_002,Sanctuary_13_002", "", "field", "exit"),
-        ("pit", (P("pit")["x"], P("pit")["y"]), 3800, "", "", "pit", ""),
-        ("power", (power["x"], power["y"]), 3000, "Sanctuary_99_002,Sanctuary_15_001,Sanctuary_16_002", "Find the generator control room", "power", "field"),
-        ("shaft", (shaft["x"], shaft["y"]), 1600, "Sanctuary_18_002,Sanctuary_17_003", "Reactivate the generator, retrieve the artifact", "shaft", "power!"),
+        ("field", (field["x"], field["y"]), 3600, "", "", "field", "exit"),   # writer: silent arrival, the Skaarj leap is the reveal
+        ("field2", (field["x"], field["y"]), 3600, "Sanctuary_13_002", "", "", "field!"),   # Dalton's quip after the fight
+        # the optional pocket (pacing research): off the spine, nests in the dig, the best cache on the map
+        ("pit", (P("pit")["x"], P("pit")["y"]), 3800, "", "Optional: clear the dig site where the relic came out - the dig crew left a cache", "pit", ""),
+        # writer: Miller's arrival, his death and the generator's shutdown on arrival (talk, then the Skaarj); the argument
+        # with Aida and her warning after the fight; 17_003 ("Main terminal online") cut
+        ("power", (power["x"], power["y"]), 3000, "Sanctuary_99_002,Sanctuary_15_001,Sanctuary_15_011", "", "power", "field"),
+        ("power2", (power["x"], power["y"]), 3000, "Sanctuary_16_002,Sanctuary_18_002", "Find the generator control room", "", "power!"),
+        ("shaft", (shaft["x"], shaft["y"]), 1600, "", "Reactivate the generator, retrieve the artifact", "shaft", "power2"),
         ("artifact", (shaft["x"], shaft["y"]), 2400, "Sanctuary_19_002", "Get to the pad and hold until the Marines land", "pad", "shaft!"),
-        ("marines", (pad["x"], pad["y"]), 3000, "Sanctuary_XX_001", "", "", "artifact!"),
+        ("marines", (pad["x"], pad["y"]), 3000, "Sanctuary_XX_001", "", "", "hold"),   # after the timed hold
     ]
     # "X!" = after encounter X's last wave is cleared (not just after its beat fired)
     waves = [
@@ -122,11 +127,14 @@ def main():
         ("power", "U2Izarian:2,U2SkaarjLight:1", doors("power"), "cleared", 4.0),
         ("shaft", "U2SkaarjHeavy:1", doors("shaft", 1), "enter", 2.0),               # the end boss, alone first
         ("shaft", "U2Izarian:2", doors("power"), "lasthalf", 2.0),
-        ("pad", "U2Izarian:3", doors("pad"), "enter", 8.0),                          # the hold-out
-        ("pad", "U2SkaarjLight:2,U2Izarian:2", doors("pad", 3), "cleared", 6.0),
-        ("pad", "U2SkaarjMedium:1,U2Izarian:2", doors("pad", 3), "cleared", 6.0),
+        # the hold-out: timed waves, N seconds of the player on the pad, whatever is left alive
+        ("pad", "U2Izarian:3", doors("pad"), "t+5", 0.0),
+        ("pad", "U2SkaarjLight:2", doors("pad", 3), "t+35", 0.0),
+        ("pad", "U2Izarian:4", doors("pad", 3), "t+65", 0.0),
+        ("pad", "U2SkaarjMedium:1,U2Izarian:2", doors("pad", 3), "t+95", 0.0),
+        ("pad", "U2SkaarjLight:1,U2Izarian:3", doors("pad", 3), "t+120", 0.0),
     ]
-    barks = "Sanctuary_16bG_002,Sanctuary_21G_002,Sanctuary_24G_002,Sanctuary_25G_002,Sanctuary_17bG_002"
+    barks = "Sanctuary_16bG_002,Sanctuary_21G_002,Sanctuary_25G_002,Sanctuary_17bG_002"   # writer: 24G_002 = 16bG's "Behind you!" again
     rng = np.random.default_rng(3)
     bodies = []
 
@@ -141,11 +149,66 @@ def main():
     scatter(field["x"], field["y"], 2, 2500, "U2ColonistHumanMaleA")
     scatter(power["x"], power["y"], 2, 900)
     props = [("Mission_05M.debris_sheet_003.Crashed_Transport", rmid[0], rmid[1], 9000, 1.0)]
+    # writer: the "control room" 16_008 sends Dalton to - a breaker box and a screen at the top of the shaft
+    cx_, cy_ = mid((shaft["x"], shaft["y"]), (power["x"], power["y"]), 0.35)
+    yaw_ = int(math.atan2(power["y"] - shaft["y"], power["x"] - shaft["x"]) * 32768 / math.pi) % 65536
+    props += [("Mission_08M.M08_BControlRoomStuff.BreakerBox1", cx_, cy_, yaw_, 1.0),
+              ("Mission_08M.M08_BControlRoomStuff.ScreenSkaarj1", cx_ + 120, cy_, yaw_, 1.0)]
     things = []
     for o in PL["plant"]["props"]:
         if o["kind"] == "cover" and rng.random() < 0.35:
             things.append(("U2Decorations.ExplosiveCannister", o["x"] + 140, o["y"]))   # "a lot of that stuff is unstable"
-    L = ["[U2Sanctuary.OpenDirector]", "bEnabled=True", "bLog=True", "DialogDirs=PA_Sanctuary,M08A,M08B", "Barks=" + barks]
+    # writer: make 18G's warning true where the yard fight is - canisters by the Izarian doors
+    for s_ in PL["plant"].get("spawns", []):
+        for k_ in range(3):
+            a_ = rng.uniform(0, 2 * math.pi)
+            things.append(("U2Decorations.ExplosiveCannister", s_["door_to"][0] + 300 * math.cos(a_), s_["door_to"][1] + 300 * math.sin(a_)))
+    # supplies: cleared places become safe rooms (pacing research); the optional pit pays best
+    HP, AM, SH, GL = "U2.HealthPickup", "U2.U2FullAmmoPickup", "U2.PowerSuitMediumPickup", "U2Weapons.weaponGrenadeLauncher"
+    pit = P("pit")
+    supplies = [
+        ((lz["x"] + 900, lz["y"] + 500), "", "%s:1,%s:1" % (HP, AM), ""),
+        ((plant["x"], plant["y"]), "drainage!", "%s:2,%s:2,%s:1" % (HP, AM, SH), "The plant is quiet. Supplies in the yard."),
+        ((power["x"], power["y"]), "power!", "%s:2,%s:2" % (HP, AM), "Supplies at the generator building."),
+        ((pit["x"], pit["y"]), "pit!", "%s:1,%s:2,%s:1,%s:1" % (GL, AM, SH, HP), "The dig crew's cache - a grenade launcher."),
+        ((pad["x"] - 900, pad["y"]), "artifact", "%s:2,%s:2,%s:1" % (HP, AM, SH), "Supplies on the pad. Dig in."),
+    ]
+    # no bike in the boss arena and the drainage room while it's full of Izarians
+    nobike = [((shaft["x"], shaft["y"]), max(1400, shaft["r"] * 0.9), ""), ((bx, by), 1800, "drainage")]
+    L = ["[U2Sanctuary.OpenDirector]", "bEnabled=True", "bLog=True", "DialogDirs=PA_Sanctuary,M08A,M08B", "Barks=" + barks,
+         "HiveMesh=mission_06M.Acheron.acheron_AlienPod_01", "DropMesh=Terran_DecoM.Vehicles.Terran_DropShipPod_01",
+         "ShipMesh=CinemaM.Vehicles.DropshipBIGLoRes", "MaxAlive=12", "HoldBeat=artifact", "HoldSeconds=150", "HoldRadius=2400",
+         "HoldAt=" + v(pad["x"], pad["y"], 0), "BarkEncounters=gate,yard,drainage"]   # writer: Miller sees only the plant
+    # Miller's cameras (the writer's R23: his lines name a camera the open map didn't have): the shipped maps' own
+    # CameraArm1a on the wall of the building nearest each beat he talks at, facing the beat; his voice plays from it
+    import playlist
+    nodes = playlist.load_nodes(["PA_Sanctuary", "M08A", "M08B"])
+    L.append("CamMesh=Mission_08M.M08_BControlRoomStuff.CameraArm1a")
+    for b in beats:
+        ls = [l for t in b[3].split(",") if t for l in playlist.chain(nodes, t)]
+        if not any(l["sound_actor"].startswith("LookTarget") for l in ls):
+            continue
+        bx_, by_ = b[1]
+        walls = [o for pid in PL for o in PL[pid].get("props", []) if o["kind"] not in ("cover", "spawn") and o["h"] >= 250
+                 and math.hypot(o["x"] - bx_, o["y"] - by_) < 3000]
+        if not walls:
+            # a mast by the beat, toward the plant, looking at the beat
+            ax_, ay_ = plant["x"] - bx_, plant["y"] - by_
+            d_ = math.hypot(ax_, ay_) or 1
+            px_, py_ = bx_ + ax_ / d_ * 700, by_ + ay_ / d_ * 700
+            yaw = int(math.atan2(-ay_, -ax_) * 32768 / math.pi) % 65536
+            L.append('Cams=(Beat="%s",At=(X=%.0f,Y=%.0f,Z=%.0f),Yaw=%d,Post="Mission_08M.electronics.M08A_small_antenna1")' % (
+                b[0], px_, py_, gz(px_, py_) + 380, yaw))
+            continue
+        o = min(walls, key=lambda o: math.hypot(o["x"] - bx_, o["y"] - by_))
+        faces = [(o["x"] + o["w"] / 2 + 25, o["y"], 0), (o["x"] - o["w"] / 2 - 25, o["y"], 32768),
+                 (o["x"], o["y"] + o["d"] / 2 + 25, 16384), (o["x"], o["y"] - o["d"] / 2 - 25, 49152)]
+        fx, fy, yaw = min(faces, key=lambda f_: math.hypot(f_[0] - bx_, f_[1] - by_))
+        L.append('Cams=(Beat="%s",At=(X=%.0f,Y=%.0f,Z=%.0f),Yaw=%d)' % (b[0], fx, fy, gz(o["x"], o["y"]) + o["h"] - 90, yaw))
+    for (x, y), after, items, msg in supplies:
+        L.append('Supplies=(At=%s,After="%s",Items="%s",Message="%s")' % (v(x, y, 40), after, items, msg))
+    for (x, y), r, enc in nobike:
+        L.append('NoBike=(At=%s,Radius=%.0f,Encounter="%s")' % (v(x, y), r, enc))
     bj = os.path.join(OUT, "beacon.json")
     if os.path.exists(bj):
         b = json.load(open(bj))
@@ -156,11 +219,11 @@ def main():
     for w in waves:
         L.append('Waves=(Encounter="%s",Pawns="%s",Doors="%s",When="%s",Delay=%.1f)' % w)
     for c, x, y, yaw in bodies:
-        L.append('Bodies=(Class="U2Pawns.%s",At=%s,Yaw=%d)' % (c, v(x, y, 90), yaw))
+        L.append('Bodies=(Kind="U2Pawns.%s",At=%s,Yaw=%d)' % (c, v(x, y, 90), yaw))
     for m, x, y, yaw, s in props:
         L.append('Props=(Mesh="%s",At=%s,Yaw=%d,Scale=%.2f)' % (m, v(x, y, 0), yaw, s))
     for c, x, y in things:
-        L.append('Things=(Class="%s",At=%s)' % (c, v(x, y, 40)))
+        L.append('Things=(Kind="%s",At=%s)' % (c, v(x, y, 40)))
     # merge into the ini, replacing only this section
     txt = open(INI, encoding="utf-8").read() if os.path.exists(INI) else ""
     txt = re.sub(r"\[U2Sanctuary\.OpenDirector\].*?(?=\n\[|\Z)", "", txt, flags=re.S).rstrip() + "\n\n"

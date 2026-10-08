@@ -1,16 +1,21 @@
 {
- "total": 0.9899595947227965,
+ "total": 0.9605437697613679,
  "writer": {
-  "score": 1.0,
+  "score": 0.86,
   "checks": {
    "beats in order": 1.0,
    "key places exist": 1.0,
    "story props": 1.0,
-   "Miller's voice": 1.0
+   "dialogue R15 talk then fight, no stall": 0.92,
+   "dialogue R16 repetition": 0.56,
+   "dialogue R22 pointing words checked": 0.71,
+   "dialogue R23 named things exist": 0.94,
+   "dialogue R26 talk fits travel": 0.75
   },
   "notes": [
-   "17 story props (bodies, the hauler wreck, blood) on the map",
-   "11 of Miller's camera conversations wired to places (OpenDirector beats)"
+   "25 story props (bodies, the hauler wreck, blood) on the map",
+   "8 of Miller's camera conversations wired to places (OpenDirector beats)",
+   "dialogue checks: R15 talk then fight, no stall 0.92, R16 repetition 0.56, R22 pointing words checked 0.71, R23 named things exist 0.94, R26 talk fits travel 0.75 (voice/delivery: a human listening pass, not scored)"
   ]
  },
  "director": {
@@ -39,7 +44,7 @@
   "notes": [
    "3 % of the road length over a 25 % grade",
    "narrower than 3 bikes: none",
-   "frame rate 102 fps avg, 95 1% low (pilot, the LZ)"
+   "frame rate 73 fps avg, 79 1% low (pilot, the LZ)"
   ]
  },
  "level": {

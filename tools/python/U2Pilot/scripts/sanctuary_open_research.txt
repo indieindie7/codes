@@ -1,0 +1,74 @@
+# sanctuary_open_research: hive pods, drop pods, supplies, the timed hold + dropship (test ini: ungated, 45 s hold)
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator,U2Gore.GoreMutator,U2Sanctuary.SanctuaryMutator,U2FairFights.FairFights
+waitcontrol 120
+wait 10
+console god
+console togglehud
+mark hive
+console hub tp -845 366 -1131
+wait 7
+console hub tp 1217 -3528 -667 hold
+wait 1
+look 54231 -5151
+shot
+console hub kill 9000
+mark drop
+console hub tp -8500 -8500 -726
+wait 1
+console hub tp -8327 -8439 -507 hold
+look 36290 2500
+wait 3
+shot
+wait 2
+shot
+wait 3
+look 36290 -2330
+shot
+console hub kill 9000
+wait 8
+console hub kill 9000
+mark pit
+console hub tp 13500 -6500 -2387
+wait 6
+console hub kill 9000
+wait 4
+console hub kill 9000
+wait 3
+look 0 -6000
+shot
+look 0 0
+mark artifact
+console hub tp -15500 -16500 -800
+wait 4
+console hub kill 9000
+wait 4
+console hub kill 9000
+mark hold
+console hub tp -22200 -23700 -990
+wait 6
+shot
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+console hub tp -24616 -25229 -690 hold
+look 3098 3000
+wait 3
+shot
+wait 4
+shot
+look 3098 -1480
+wait 4
+shot
+wait 4
+shot
+quit

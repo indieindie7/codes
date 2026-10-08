@@ -1,0 +1,92 @@
+# sanctuary_open_writer: talk-then-fight at the gate, Miller's cameras/ears, hive + drop pods framed, power talk, the dropship
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator,U2Gore.GoreMutator,U2Sanctuary.SanctuaryMutator,U2FairFights.FairFights
+waitcontrol 120
+wait 8
+console god
+console togglehud
+mark gate
+console hub tp -845 366 -1231
+wait 6
+console hub tpto SanctuaryCover0 600
+look 32768 1200
+shot
+wait 62
+console hub tpto OpenSpawner0 800
+look 32768 -1500
+wait 1
+shot
+console hub kill 9000
+mark field
+console hub tp -8500 -8500 -826
+wait 4
+console hub tpto OpenSpawner2 2500
+look 32768 1500
+shot
+wait 5
+console hub tpto OpenSpawner2 900
+look 32768 -1200
+wait 1
+shot
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+mark power
+console hub tp -17500 -15000 -870
+wait 42
+console hub kill 9000
+wait 7
+console hub kill 9000
+wait 7
+console hub kill 9000
+wait 7
+console hub kill 9000
+wait 7
+console hub kill 9000
+wait 7
+shot
+wait 20
+mark shaft
+console hub tp -15500 -16500 -900
+wait 3
+console hub kill 9000
+wait 4
+console hub kill 9000
+wait 4
+console hub kill 9000
+wait 4
+console hub kill 9000
+wait 4
+mark pad
+console hub tp -22200 -23700 -1140
+wait 4
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+wait 8
+console hub kill 9000
+console hub tp -24200 -25800 -890 hold
+look 4836 2500
+wait 2
+shot
+wait 4
+shot
+look 4836 -900
+wait 4
+shot
+wait 4
+shot
+quit

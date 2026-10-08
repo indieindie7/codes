@@ -1,0 +1,116 @@
+{
+ "scores": {
+  "R15 talk then fight, no stall": 0.9166666666666666,
+  "R16 repetition": 0.8,
+  "R22 pointing words checked": 0.7115384615384616,
+  "R23 named things exist": 1.0,
+  "R26 talk fits travel": 0.75
+ },
+ "flags": [
+  [
+   "R15",
+   "gate",
+   "the fight waits for 59 s of talk (talk-then-fight): a stall - trim or split the conversation"
+  ],
+  [
+   "R16",
+   "barks",
+   "4 barks over ~140 s of fighting: each heard ~1.1 times, drawn at random (repeats back to back possible); 0 of them are story lines, not generic barks: "
+  ],
+  [
+   "R16",
+   "barks",
+   "shuffle bag: no bark again until all 4 have played, >= 30 s apart: the same bark >= ~120 s apart"
+  ],
+  [
+   "R22",
+   "arrival/Sanctuary_06_004",
+   "points (\"down there\") - check from the open map's trigger at lz: \"Look, I'm not kidding.  I don't want to have to come down there and save your sorry ass.\""
+  ],
+  [
+   "R22",
+   "gate/Sanctuary_15G_002",
+   "points (\"up here\") - check from the open map's trigger at plant: \"...get this thing working.  Hey wait, I'm broadcasting.  Sir!  Up here!  The camera!  I'm watching you on the security network.\""
+  ],
+  [
+   "R22",
+   "gate/Sanctuary_15G_006b",
+   "points (\"here\", \"there\") - check from the open map's trigger at plant: \"I'm Danny Miller, level one technician.  I hope you're here to rescue me, 'cause there's no way I'm getting out on my own.  Everyone I see o\""
+  ],
+  [
+   "R22",
+   "gate/Sanctuary_15G_006c",
+   "points (\"here\") - check from the open map's trigger at plant: \"I'm barricaded in a security office over in the generator building.  You'll have to go through the collection plant to get here, though.  Hm\""
+  ],
+  [
+   "R22",
+   "gate/Sanctuary_15G_008",
+   "points (\"there\") - check from the open map's trigger at plant: \"It's a short swim.  There's a camera on the other side, so I'll see you when you come up.\""
+  ],
+  [
+   "R22",
+   "basin/Sanctuary_17G_002",
+   "points (\"here\") - check from the open map's trigger at plant: \"Miller here.  You're a mess.  And blue is definitely not your color.\""
+  ],
+  [
+   "R22",
+   "basin/Sanctuary_17G_002b",
+   "points (\"here\", \"right\") - check from the open map's trigger at plant: \"These creatures showed up right after we pulled this alien...thing up from the mine.  It's really old, like a relic or something.  Broke a d\""
+  ],
+  [
+   "R22",
+   "drainage/Sanctuary_20G_002",
+   "points (\"there\") - check from the open map's trigger at plant: \"Whew!  I thought I'd lost you.  Next up is the drainage room.  It's chock-full of those creatures, but there's no other way.  Good luck.\""
+  ],
+  [
+   "R22",
+   "dark/Sanctuary_19G_002",
+   "points (\"here\") - check from the open map's trigger at plant: \"Good news, sir!  I don't see any of those creatures around.  I think you've got an easy ride from here on in.\""
+  ],
+  [
+   "R22",
+   "exit/Sanctuary_98_002",
+   "points (\"ahead\") - check from the open map's trigger at plant: \"The exit is up ahead.  I can't track you outside, but I'll pick you up again when you get close to the generator building.  See you soon, si\""
+  ],
+  [
+   "R22",
+   "power/Sanctuary_99_002",
+   "points (\"right\") - check from the open map's trigger at power: \"You made it!  Woohoo!  I'm right around the corner.  Be right out!\""
+  ],
+  [
+   "R22",
+   "power2/Sanctuary_16_005",
+   "points (\"down there\") - check from the open map's trigger at power: \"That kid just died to keep the artifact from the Skaarj.  You think I'm gonna just walk away?  Get me down there!\""
+  ],
+  [
+   "R22",
+   "power2/Sanctuary_18_002",
+   "points (\"down there\") - check from the open map's trigger at power: \"If you're going down there, be careful.  I decrypted a Skaarj intercept that says they want that thing pretty bad.\""
+  ],
+  [
+   "R22",
+   "artifact/Sanctuary_19_003",
+   "points (\"there\") - check from the open map's trigger at shaft: \"I called HQ and they went ape.  A speedship of Marines is on the way to collect it.  Get to the surface and hunker down until they get there\""
+  ],
+  [
+   "R22",
+   "marines/Sanctuary_XX_005",
+   "points (\"here\") - check from the open map's trigger at pad: \"Okay, we'll take it from here.  Take care flying out; the area's still plenty hot.\""
+  ],
+  [
+   "R26",
+   "arrival",
+   "14 s of talk but the next beat (road) is ~10 s away by bike: it queues behind"
+  ],
+  [
+   "R26",
+   "power2",
+   "34 s of talk but the next beat (shaft) is ~2 s away by bike: it queues behind"
+  ],
+  [
+   "R26",
+   "artifact",
+   "14 s of talk but the next beat (marines) is ~9 s away by bike: it queues behind"
+  ]
+ ]
+}

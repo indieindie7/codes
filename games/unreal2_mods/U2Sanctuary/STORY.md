@@ -31,7 +31,7 @@ The miners pulled an alien relic up from the mine: "really old, like a relic", a
 
 ## The mission, beat by beat
 
-1. **Briefing:** a distress call from the Elara system. Aida's version of the mission: get in, save whoever you can, get out. Dalton's last word to the crew is "search and rescue. No rough stuff."
+1. **Briefing:** a distress call from the Elara system. Aida's version of the mission: get in, save whoever you can, get out. Aida's last word to Dalton is "search and rescue. No rough stuff.", and he answers "Yes, mother."
 2. **M08A1, the landing:**
    - The intro cutscene shows the colonists dying: an Izarian stabbing, a "blood bath", an Izarian looking up at the arriving dropship.
    - Inside, a scientist cries for help; another shouts "Go back!"
@@ -44,7 +44,6 @@ The miners pulled an alien relic up from the mine: "really old, like a relic", a
    - Then the first Skaarj ("TheSkaarjEncounter").
    - Miller warns that a lot of the stuff in the plant is unstable: explosive barrels and canisters.
 4. **M08B, the generator:**
-   - Miller has the artifact with him. He calls HQ, and the Marines are coming for it.
    - He sees Dalton on camera and runs out to meet him, against orders: "No! It's not safe."
    - He is caught. A Skaarj takes him into the generator (an emergency shutdown, "obstruction detected"), and he dies. In Dalton's words: "That kid just died to keep the artifact from the Skaarj."
    - Aida tells him to pull out, since fighting Skaarj isn't in the mission profile. Dalton refuses and goes down anyway.
@@ -53,6 +52,7 @@ The miners pulled an alien relic up from the mine: "really old, like a relic", a
      - reactivate the generator (the terminal reports an "alien lifeform detected in generator");
      - retrieve the artifact from the bottom of the generator;
      - get out.
+   - Dalton brings the artifact up from the generator ("I got the artifact...whatever it is"). Aida calls HQ, and a speedship of Marines is coming for it (19_003 is Aida, not Miller).
 5. **The end:**
    - The Marines take the artifact: "Doesn't look like much." "Must be important to someone, though."
    - The marine's parting line, "You shoulda been a Marine", hits Dalton's sore point: Hawkins has just refused his reinstatement again.
