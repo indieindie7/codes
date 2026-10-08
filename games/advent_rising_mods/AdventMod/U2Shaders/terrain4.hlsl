@@ -40,6 +40,8 @@ float4 Fog     : register(c5);   // fog colour, density
 float4 Fog2    : register(c6);   // fog base height, most fog
 float4 Fx2     : register(c7);   // terrainfx2= relief strength, relief scale, slope rock, strata
 float4 Tone    : register(c8);   // terraintone= ground lift (x brightness, 0 = off), desaturate 0..1, rock brightness
+float4 Det     : register(c9);   // terraindetailfx= strength, near repeat, far repeat (world units), fade distance
+sampler2D Detail : register(s6); // terraindetail= (make_terrain_detail.py): R fine, G coarse, 0.5 = no change
 
 struct In
 {
@@ -233,6 +235,18 @@ float4 main(In I) : COLOR
 			rock = lerp(rock, c.rgb * 1.08, foot * 0.5);
 			c.rgb = lerp(c.rgb, rock, steep);
 		}
+	}
+
+	// 6: close-up detail (terraindetail=): grit and pebbles near the camera, stones and cracks a
+	//    little further, both in world space (two repeats that don't line up), fading out with
+	//    distance and on steep ground (the rock there has its own look)
+	if (Det.x > 0)
+	{
+		float fade = saturate(1 - length(I.Cam) / Det.w);
+		float3 nd = normalize(cross(ddx(world), ddy(world)));
+		fade *= fade * saturate((abs(nd.z) - 0.55) / 0.25);
+		float d = tex2D(Detail, world.xy / Det.y).r + tex2D(Detail, world.xy / Det.z + 0.37).g - 1;
+		c.rgb *= 1 + d * 2 * Det.x * fade;
 	}
 
 	c *= I.Light * 2;   // the game's lighting, as before
