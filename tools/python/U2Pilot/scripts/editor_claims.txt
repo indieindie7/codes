@@ -1,0 +1,51 @@
+# editor_claims: where does the player come to rest above each test shape (tools/C/U2EdBridge/tests/claims.py)
+background
+map ClaimTest?Mutator=U2TestHub.HubMutator
+waitcontrol 90
+wait 4
+console god
+mark floor want -1024
+console hub tp 0 -1500 -124
+wait 4
+dump U2PlayerSP Location
+mark L_SPLIT arm want -640
+console hub tp -1700 -2372 -124
+wait 4
+dump U2PlayerSP Location
+mark L_SPLIT arm2 want -640
+console hub tp -2372 -1700 -124
+wait 4
+dump U2PlayerSP Location
+mark L_SPLIT notch want -1024
+console hub tp -1800 -1800 -124
+wait 4
+dump U2PlayerSP Location
+mark L_CONCAVE arm want -640
+console hub tp -1700 1128 -124
+wait 4
+dump U2PlayerSP Location
+mark L_CONCAVE arm2 want -640
+console hub tp -2372 1800 -124
+wait 4
+dump U2PlayerSP Location
+mark L_CONCAVE notch want -1024
+console hub tp -1800 1700 -124
+wait 4
+dump U2PlayerSP Location
+mark N20 top want -640
+console hub tp 1500 -2000 -124
+wait 4
+dump U2PlayerSP Location
+mark N16 top want -640
+console hub tp 1500 0 -124
+wait 4
+dump U2PlayerSP Location
+mark HULL box defaults (hull 512 / per-poly 64) want -512
+console hub tp 1500 2000 -124
+wait 4
+dump U2PlayerSP Location
+mark HULL box simple flags on (hull 512 / per-poly 64) want -512
+console hub tp 1500 3000 -124
+wait 4
+dump U2PlayerSP Location
+quit
