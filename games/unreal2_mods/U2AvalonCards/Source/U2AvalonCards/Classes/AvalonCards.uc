@@ -39,6 +39,10 @@ var config int TreeLook[8];        // which tree picture (0-2)
 // straight below (land, or TutA's sea surface) by its lowest point, then lifted
 // by Lift. CX CY MinZ = the mesh's bounds centre and bottom, in its own units
 // (tools\mesh_bounds.py; tools\make_props.py writes these lines).
+// recessed floor-level wall lights (AvalonLamp), one group per line: "X Y Z N [Radius] [Hue] [Spacing]" - from
+// X Y Z (a point in a room, about eye height) N rays go out to the walls; each wall gets a lamp 20 units over the
+// floor, set 12 units into the room (2026-10-08)
+var config string Lamps[32];
 var config string Props[256];      // 256 since 2026-10-08 (shanty ring + factory districts with roads and pipes)
 
 // rough blocking: plain boxes, one per line: "X Y Yaw SizeX SizeY SizeZ Lift Colour" (world units, Yaw in
@@ -224,6 +228,7 @@ function FromSet()
 	local int i;
 
 	for (i = 0; i < ArrayCount(Props); i++) Props[i] = Set.Props[i];
+	for (i = 0; i < ArrayCount(Lamps); i++) Lamps[i] = Set.Lamps[i];
 	for (i = 0; i < ArrayCount(Blocks); i++) Blocks[i] = Set.Blocks[i];
 	for (i = 0; i < ArrayCount(Cards); i++) Cards[i] = Set.Cards[i];
 	for (i = 0; i < ArrayCount(Extras); i++) Extras[i] = Set.Extras[i];
@@ -241,6 +246,7 @@ function ToSet()
 	local int i;
 
 	for (i = 0; i < ArrayCount(Props); i++) Set.Props[i] = Props[i];
+	for (i = 0; i < ArrayCount(Lamps); i++) Set.Lamps[i] = Lamps[i];
 	for (i = 0; i < ArrayCount(Blocks); i++) Set.Blocks[i] = Blocks[i];
 	for (i = 0; i < ArrayCount(Cards); i++) Set.Cards[i] = Cards[i];
 	for (i = 0; i < ArrayCount(Extras); i++) Set.Extras[i] = Extras[i];
@@ -485,6 +491,10 @@ function Live(string S, PlayerController PC)
 		if (i >= 0 && i < ArrayCount(Cards))
 			Cards[i] = Rest(Arg);
 		break;
+	case "LAMPS":
+		if (i >= 0 && i < ArrayCount(Lamps))
+			Lamps[i] = Rest(Arg);
+		break;
 	case "PROP":
 		if (i >= 0 && i < ArrayCount(Props))
 			Props[i] = Rest(Arg);
@@ -588,6 +598,50 @@ function Backwater()
 		}
 	}
 	Log("Cards: backwater radio "$R$" brownout "$B$" lamp "$F);
+}
+
+function PlaceLamps()
+{
+	local int i, k, N;
+	local vector P, Dir, HitL, HitN, W, FloorL, FloorN;
+	local AvalonLamp L;
+	local Texture GlowTex;
+	local float R;
+
+	GlowTex = Texture(DynamicLoadObject(SteamTexture, class'Texture', true));
+	for (i = 0; i < ArrayCount(Lamps); i++)
+	{
+		if (Lamps[i] == "")
+			continue;
+		P.X = float(Word(Lamps[i], 0));
+		P.Y = float(Word(Lamps[i], 1));
+		P.Z = float(Word(Lamps[i], 2));
+		N = Max(int(Word(Lamps[i], 3)), 1);
+		R = 9;
+		if (Word(Lamps[i], 4) != "")
+			R = float(Word(Lamps[i], 4));
+		for (k = 0; k < N; k++)
+		{
+			Dir.X = Cos(6.2832 * k / N);
+			Dir.Y = Sin(6.2832 * k / N);
+			Dir.Z = 0;
+			if (Trace(HitL, HitN, P + Dir * 3000, P, false) == None)
+				continue;
+			W = HitL + HitN * 12;                         // set into the room from the wall
+			if (Trace(FloorL, FloorN, W - vect(0,0,1) * 1000, W, false) == None)
+				continue;
+			W.Z = FloorL.Z + 20;
+			L = Spawn(class'AvalonLamp',,, W);
+			if (L == None)
+				continue;
+			if (Word(Lamps[i], 5) != "")
+				L.Setup(R, byte(int(Word(Lamps[i], 5))), 110, 150, GlowTex);
+			else
+				L.Setup(R, 28, 110, 150, GlowTex);
+			Made[Made.Length] = L;
+		}
+		Log("Cards: lamps "$Lamps[i]);
+	}
 }
 
 function Clouds()
@@ -824,6 +878,7 @@ function Build()
 	Motion();
 	Storm();
 	Clouds();
+	PlaceLamps();
 	Speakers();
 	Backwater();
 

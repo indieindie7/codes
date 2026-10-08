@@ -1,0 +1,14 @@
+# U2AutoPlay round the tower: random hops to navigation points within 70 m of the tower every 20 s,
+# exploring and using toggles in between; a picture every 10 s (the user, 2026-10-08)
+background
+map TutA_Live11?Mutator=U2AvalonCards.AvalonCards,U2AutoPlay.AutoPlayMutator
+waitcontrol 180
+wait 2
+console god
+console autoplay on
+console autoplay hop 20 -349 1388 3500
+shots 10
+wait 300
+console autoplay status
+wait 1
+quit

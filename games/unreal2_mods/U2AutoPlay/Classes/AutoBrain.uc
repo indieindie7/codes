@@ -43,6 +43,18 @@ var float ThinkWait, StuckWait, ReportWait;
 var vector LastSpot;
 var int Stuck, Reached, Fights, GiveUps;
 var float StartTime;
+// toggles in the world (the user, 2026-10-08: "fix it so it can interact with toggles in the world"): anything
+// IsUsable for the pawn (use-triggers, buttons, lift and door movers, script/speaker triggers, power stations)
+var array<Actor> UsedThings;
+var array<float> UsedAt;
+var Actor UseGoal, UseNow;
+var float UseScan, UseDelay;
+var int Uses;
+// "autoplay hop SECS X Y R" (the user, 2026-10-08): every SECS seconds jump to a random navigation point within R
+// of X Y (the tower), then explore and use toggles from there; "autoplay hop 0" stops
+var float HopEvery, HopWait, HopR;
+var vector HopCentre;
+var int Hops;
 
 function Command(string Args)
 {
@@ -72,6 +84,17 @@ function Command(string Args)
 	else if (W == "AUDIT")
 	{
 		Spawn(class'AutoAudit').Run(PC);
+	}
+	else if (Left(W, 3) == "HOP")
+	{
+		HopEvery = float(Word(Args, 1));
+		HopCentre.X = float(Word(Args, 2));
+		HopCentre.Y = float(Word(Args, 3));
+		HopR = float(Word(Args, 4));
+		if (HopR <= 0)
+			HopR = 4000;
+		HopWait = 0.5;
+		Say("hopping every "$int(HopEvery)$" s round "$int(HopCentre.X)$" "$int(HopCentre.Y)$" within "$int(HopR));
 	}
 	else if (Left(W, 4) == "GOTO")
 	{
@@ -182,7 +205,7 @@ function Report()
 		Where = int(PC.Pawn.Location.X)$" "$int(PC.Pawn.Location.Y)$" "$int(PC.Pawn.Location.Z)$" health "$PC.Pawn.Health;
 	else
 		Where = "no pawn";
-	Say("status: "$Where$", goal "$Goal$", visited "$Visited.Length$", cells "$Cells.Length$", reached "$Reached$", stuck "$Stuck
+	Say("status: "$Where$", goal "$Goal$", visited "$Visited.Length$", cells "$Cells.Length$", reached "$Reached$", uses "$Uses$", hops "$Hops$", stuck "$Stuck
 		$", gave up "$GiveUps$", fights "$Fights$", "$int(Level.TimeSeconds - StartTime)$" s");
 }
 
@@ -270,6 +293,81 @@ function PickGoal()
 	}
 }
 
+function bool RecentlyUsed(Actor A)
+{
+	local int i;
+
+	for (i = 0; i < UsedThings.Length; i++)
+		if (UsedThings[i] == A && Level.TimeSeconds - UsedAt[i] < 30)
+			return true;
+	return false;
+}
+
+// the nearest usable thing within R that wasn't used in the last 30 s
+function Actor FindUsable(float R)
+{
+	local Actor A, Best;
+	local float D, BestD;
+
+	BestD = R;
+	foreach RadiusActors(class'Actor', A, R, PC.Pawn.Location)
+	{
+		if (A == PC.Pawn || Pawn(A) != None || A.Owner == PC.Pawn)
+			continue;
+		if (!A.IsUsable(PC.Pawn) || RecentlyUsed(A))
+			continue;
+		D = VSize(A.Location - PC.Pawn.Location);
+		if (D < BestD)
+		{
+			BestD = D;
+			Best = A;
+		}
+	}
+	return Best;
+}
+
+// face it, then press Use (U2's use acts on what the player looks at)
+function UseIt(Actor A)
+{
+	UsedThings[UsedThings.Length] = A;
+	UsedAt[UsedAt.Length] = Level.TimeSeconds;
+	Uses++;
+	Evt("USE", A.Class.Name$" "$A.Name$" at "$int(A.Location.X)$" "$int(A.Location.Y)$" "$int(A.Location.Z));
+	PC.Use();
+	bWantUse = true;
+	UseTime = 0.4;
+}
+
+// a random navigation point within HopR of HopCentre (horizontally); the pawn lands on it standing
+function Hop()
+{
+	local NavigationPoint N, Pick;
+	local int Count;
+	local vector D;
+
+	for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+	{
+		D = N.Location - HopCentre;
+		D.Z = 0;
+		if (VSize(D) > HopR || PathNode(N) == None && PlayerStart(N) == None)
+			continue;
+		Count++;
+		if (Rand(Count) == 0)                     // reservoir pick: uniform over the candidates
+			Pick = N;
+	}
+	if (Pick == None || PC.Pawn == None)
+		return;
+	if (PC.Pawn.SetLocation(Pick.Location + vect(0,0,1) * (PC.Pawn.CollisionHeight - Pick.CollisionHeight + 4)))
+	{
+		Hops++;
+		Goal = None;
+		bGoPoint = false;
+		UseGoal = None;
+		LastSpot = PC.Pawn.Location;
+		Evt("HOP", Pick.Name$" ("$Count$" candidates)");
+	}
+}
+
 // the next waypoint toward the goal
 function FindNext()
 {
@@ -344,6 +442,15 @@ event Tick(float DeltaTime)
 			bWantUse = false;
 		}
 	}
+	if (HopEvery > 0)
+	{
+		HopWait -= DeltaTime;
+		if (HopWait <= 0)
+		{
+			HopWait = HopEvery;
+			Hop();
+		}
+	}
 	ThinkWait -= DeltaTime;
 	if (ThinkWait > 0)
 		return;
@@ -370,6 +477,42 @@ event Tick(float DeltaTime)
 		return;
 	}
 	bWantFire = false;
+
+	// a toggle being used: keep facing it a moment, then press Use
+	if (UseNow != None)
+	{
+		Want = rotator(UseNow.Location - (PC.Pawn.Location + vect(0,0,1) * PC.Pawn.EyeHeight));
+		Fwd = 0;
+		Strafe = 0;
+		UseDelay -= 0.2;
+		if (UseDelay <= 0)
+		{
+			UseIt(UseNow);
+			UseNow = None;
+			UseGoal = None;
+			bGoPoint = false;
+		}
+		return;
+	}
+	UseScan -= 0.2;
+	if (UseScan <= 0)
+	{
+		UseScan = 1.0;
+		if (UseGoal == None || RecentlyUsed(UseGoal))
+			UseGoal = FindUsable(2000);     // the TutA lift button is a floor below the deck (~1260 away)
+		if (UseGoal != None)
+		{
+			if (VSize(UseGoal.Location - PC.Pawn.Location) < 200)
+			{
+				UseNow = UseGoal;
+				UseDelay = 0.6;
+				return;
+			}
+			// walk to it (the point-goal path finder)
+			GoalPoint = UseGoal.Location;
+			bGoPoint = true;
+		}
+	}
 
 	// the goal: reached? a new one?
 	if (bGoPoint)

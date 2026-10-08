@@ -1,0 +1,20 @@
+background
+map TutA_Live11?Mutator=U2AvalonCards.AvalonCards,U2TestHub.HubMutator
+waitcontrol 120
+wait 2
+console hub tp 3418 573 -3700 hold
+wait 2
+look 7 -25
+wait 3
+shot
+wait 5
+shot
+wait 5
+shot
+wait 5
+shot
+wait 5
+shot
+wait 5
+shot
+quit

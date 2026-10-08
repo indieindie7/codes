@@ -1,0 +1,14 @@
+# U2AutoPlay with toggles (Use on usable things): 6 minutes on TutA_Live11, a picture every 20 s
+background
+map TutA_Live11?Mutator=U2AvalonCards.AvalonCards,U2AutoPlay.AutoPlayMutator
+waitcontrol 180
+wait 2
+console god
+console autoplay audit
+wait 3
+console autoplay on
+shots 20
+wait 360
+console autoplay status
+wait 1
+quit
