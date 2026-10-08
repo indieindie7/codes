@@ -27,6 +27,7 @@ VFLIP = o.get("vflip", "0") == "1"
 # material, so the importer binds it by name), stripes= 16 for up to 16 colours (4 px columns)
 PAL = o.get("pal", "Pal")
 STRIPES = int(o.get("stripes", 8))
+ZERO = set(o.get("zero", "CraneTower").split(","))   # meshes whose pivot stays at the model's z=0 (CraneTower: its plinth, Q33)
 MATERIAL = o.get("material", "0") == "1"            # 1 = write 1-V (if the ASE importer does not flip V itself)
 palette = []          # list of (r,g,b)
 
@@ -69,6 +70,8 @@ for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
     P = np.concatenate([[tuple(mm.matrix_world @ v.co) for v in mm.data.vertices] for mm in meshes])
     lo, hi = P.min(0), P.max(0)
     cx, cy, z0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2]
+    if name in ZERO:
+        z0 = 0.0                                    # pivot at the model's z=0, not its bottom: a plinth below it sinks into the ground
     verts, uvs, tris = [], [], []
     for mm in meshes:
         me = mm.data

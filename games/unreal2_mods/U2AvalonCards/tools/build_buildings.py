@@ -228,6 +228,12 @@ def frustum(x, y, z, w0, d0, w1, d1, h, m):
 def crane_tower():
     # the Liandri temple-tower on the mountain: a stepped, battered base (the Aztec read the user loves), a
     # tall setback tower, red domes, and a lattice crane leaning off one side with red buoys on cables
+    # a battered stone plinth under the steps (Q33, 2026-10-08: on the slope the flat underside of the base hung
+    # over the valley and read as a brown slab in the sky); it reaches PLINTH m down into the hill, and the prop's
+    # Lift takes the same depth back off so the tower stands where it did
+    PLINTH = 30
+    frustum(0, 0, -PLINTH, 58, 48, 45, 36, PLINTH - 1.5, "sand")
+    frustum(0, 0, -1.5, 45, 36, 44, 35.2, 1.5, "dark")          # a dark course where the plinth meets the steps
     z = 0
     for k, (w, h) in enumerate(((44, 6), (36, 6), (29, 6))):
         frustum(0, 0, z, w, w * 0.8, w - 4, (w - 4) * 0.8, h, "beige" if k % 2 == 0 else "sand")

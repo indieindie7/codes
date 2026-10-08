@@ -1,0 +1,30 @@
+# Q33: what is the slab over the south-east? pick it from below
+background
+map TutA_Live11?Mutator=U2AvalonCards.AvalonCards,U2TestHub.HubMutator
+waitcontrol 180
+wait 3
+console god
+console hub tp 5567 -14816 -1396 hold
+wait 2
+look 231 -4
+wait 2
+shot
+look 231 70
+wait 1
+console avalon pick
+wait 1
+shot
+console hub tp 9929 -17749 -3759 hold
+wait 2
+look 118 -4
+wait 2
+shot
+look 118 70
+wait 1
+console avalon pick
+look 90 89
+wait 1
+console avalon pick
+wait 1
+shot
+quit

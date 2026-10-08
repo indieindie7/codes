@@ -20,7 +20,7 @@ function Setup(int N, float Height, float InSpread, vector Wind, Texture Top, Te
 {
 	local int b, k, n2;
 	local vector C, O;
-	local AvalonPuff P;
+	local AvalonPuff P, H;
 	local float R, S;
 
 	Spread = InSpread;
@@ -32,8 +32,8 @@ function Setup(int N, float Height, float InSpread, vector Wind, Texture Top, Te
 		C.Y = Location.Y + (FRand() * 2 - 1) * Spread;
 		C.Z = Height + FRand() * 2500;
 		Bank[b] = C;
-		R = 2200 + FRand() * 2600;                  // the bank's half width
-		n2 = 10 + Rand(7);
+		R = 4000 + FRand() * 4000;                  // the bank's half width
+		n2 = 14 + Rand(8);
 		for (k = 0; k < n2; k++)
 		{
 			// a dome: wide flat base, puffs heaping up toward the middle
@@ -44,16 +44,36 @@ function Setup(int N, float Height, float InSpread, vector Wind, Texture Top, Te
 			P = Spawn(class'AvalonPuff',,, C + O);
 			if (P == None)
 				continue;
-			if (O.Z < R * 0.12 && Base != None)
+			// Q34 (2026-10-08, the research: "light each bank as one volume"): every puff is the same soft alpha
+			// shape, shaded by its height in the bank - a dark flat base rising to a pale top (MSFS 2004 / Crysis 1
+			// gradient shading) - instead of each puff carrying its own dark base and bright top; a few additive
+			// highlights sit only on the upper heap
+			if (Base != None)
 			{
-				P.Texture = Base;                       // the shaded underside
+				P.Texture = Base;
 				P.Style = STY_Alpha;
-				S *= 1.15;
+				P.ScaleGlow = 0.55 + 1.5 * FClamp(O.Z / (R * 0.55), 0, 1);
+				if (O.Z < R * 0.12)
+					S *= 1.15;
 			}
 			else
 			{
-				P.Texture = Top;                        // the sunlit heap
+				P.Texture = Top;
 				P.Style = STY_Translucent;
+			}
+			if (Top != None && Base != None && O.Z > R * 0.3 && FRand() < 0.3)
+			{
+				H = Spawn(class'AvalonPuff',,, C + O + vect(0,0,1) * R * 0.08);
+				if (H != None)
+				{
+					H.Texture = Top;
+					H.Style = STY_Translucent;
+					H.ScaleGlow = 0.18;
+					H.SetDrawScale(S * 0.7);
+					Puffs[Puffs.Length] = H;
+					Offset[Offset.Length] = O + vect(0,0,1) * R * 0.08;
+					BankOf[BankOf.Length] = b;
+				}
 			}
 			P.SetDrawScale(S);
 			Puffs[Puffs.Length] = P;

@@ -13,8 +13,28 @@
 class AvalonStorm extends Actor;
 
 #exec TEXTURE IMPORT NAME=RainStreak FILE=Textures\RainStreak.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
+// Q34 (2026-10-08, games/research_notes/Realistic clouds and rain): dim blue-grey tapered streaks with the wind's slant
+// baked in three ways (sprites can't rotate), and rain sheets for the mid and far layers - tools\make_rain.py
+// the baked storm sky (Q34, research action 1): tools\render_sky.py's panorama on tools\make_sky_dome.py's dome
+// (StaticMeshes\AvalonSky.usx), set in the sky zone while the storm is on - one lit storm deck at dusk instead
+// of grey sprite blobs
+#exec TEXTURE IMPORT NAME=StormSky FILE=Textures\StormSky.tga MIPS=On VCLAMPMODE=CLAMP
+#exec TEXTURE IMPORT NAME=RainDropL FILE=Textures\RainDropL.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
+#exec TEXTURE IMPORT NAME=RainDropC FILE=Textures\RainDropC.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
+#exec TEXTURE IMPORT NAME=RainDropR FILE=Textures\RainDropR.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
+#exec TEXTURE IMPORT NAME=RainSheetL FILE=Textures\RainSheetL.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
+#exec TEXTURE IMPORT NAME=RainSheetC FILE=Textures\RainSheetC.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
+#exec TEXTURE IMPORT NAME=RainSheetR FILE=Textures\RainSheetR.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
 
-var array<AvalonPuff> Drops;
+var array<AvalonPuff> Drops;    // near drops, then the mid and far rain sheets (each puff's Glow = its layer 0/1/2)
+var int Slant;                  // the baked slant in use: 0 left, 1 straight, 2 right (from the wind across the view)
+var int NSheets;
+var CardMesh Dome;              // the storm sky in the sky zone (None: AvalonSky.usx missing - the sprite deck only)
+var float DomeR;                // its radius (world units)
+var float DomeOn;               // the storm strength over which it shows
+var int DomeYaw;                // turns the panorama: the bright slot toward the sky box's own sun (render_sky.py sun=250; 5462 put the warm side toward the world's sun glow, about yaw 100: 38230 showed it opposite, so the sky zone turns it; 5462 not yet seen in game)
+var float GustT;
+var float StormGust;       // the rain's wind speed (units/s), set by AvalonCards before Setup           // the gusts: the rain's wind swells and drops on two slow waves
 var array<AvalonPuff> Clouds;   // the overcast: giant dark puffs round and over the player, greyed by the fog
 var array<vector> CloudAt;
 var array<float> CloudScale;   // each puff's full size: it grows in and shrinks away with the storm
@@ -52,6 +72,8 @@ function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float
 	Radius = R;
 	Fall = FallSpeed;
 	Wind = Wd;
+	if (VSize(Wd) > 0 && StormGust > 0)
+		Wind = Normal(Wd) * StormGust;      // a storm wind for the rain (the plumes' drift is far too slow to slant it)
 	Top = 1400;
 	FogColour = Fog;
 	StormStart = FogStart;
@@ -72,15 +94,42 @@ function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float
 			else
 				ClearOn[ClearOn.Length] = 0;
 		}
+	MakeDome();
 	for (i = 0; i < N; i++)
 	{
 		P = Spawn(class'AvalonPuff',,, Location);
 		if (P == None)
 			continue;
-		P.Texture = Texture'RainStreak';
+		P.Texture = Texture'RainDropC';
 		P.Style = STY_Translucent;
-		P.ScaleGlow = 0.7;
-		P.SetDrawScale(2.4);
+		P.Glow = 0;
+		P.ScaleGlow = 0.45 + FRand() * 0.55;      // mixed: not a field of equal dashes
+		P.SetDrawScale(1.5 + FRand() * 1.3);
+		Drops[Drops.Length] = P;
+		Drop(P, true);
+	}
+	// the mid layer (a few metres to 30 m out) and the far veil (30-60 m): sheets of faint streaks that give the
+	// rain depth; far ones bigger and dimmer, so the storm thickens with distance instead of stopping at the near drops
+	NSheets = N / 6;
+	for (i = 0; i < NSheets; i++)
+	{
+		P = Spawn(class'AvalonPuff',,, Location);
+		if (P == None)
+			continue;
+		P.Texture = Texture'RainSheetC';
+		P.Style = STY_Translucent;
+		if (i % 3 == 2)
+		{
+			P.Glow = 2;
+			P.ScaleGlow = 0.35 + FRand() * 0.2;
+			P.SetDrawScale(9 + FRand() * 4);
+		}
+		else
+		{
+			P.Glow = 1;
+			P.ScaleGlow = 0.5 + FRand() * 0.3;
+			P.SetDrawScale(3.5 + FRand() * 2.5);
+		}
 		Drops[Drops.Length] = P;
 		Drop(P, true);
 	}
@@ -201,7 +250,12 @@ function Drop(AvalonPuff P, bool bAnyHeight)
 
 	E = Eye();
 	A = FRand() * 6.2832;
-	D = Radius * Sqrt(FRand());
+	if (P.Glow == 2)
+		D = Radius * (1.6 + FRand() * 1.8);
+	else if (P.Glow == 1)
+		D = Radius * (0.35 + FRand() * 1.25);
+	else
+		D = Radius * Sqrt(FRand());
 	S = E;
 	S.X += D * Cos(A);
 	S.Y += D * Sin(A);
@@ -243,19 +297,21 @@ event Tick(float DeltaTime)
 			// the user (2026-10-07): clouds vanished too abruptly - each puff now grows in and shrinks
 			// away over a quarter of the storm's rise (about 40 s with a 3 min ramp) instead of popping
 			F = FClamp((Intensity * 1.15 - (i + 0.5) / Clouds.Length) * 4.0, 0, 1);
-			Clouds[i].bHidden = F <= 0.02;
+			Clouds[i].bHidden = F <= 0.02 || (Dome != None && !Dome.bHidden);   // the dome's deck replaces them
 			if (!Clouds[i].bHidden)
 				Clouds[i].SetDrawScale(CloudScale[i] * (0.3 + 0.7 * F));
 		}
-	M = Wind;
+	GustT += DeltaTime;
+	M = Wind * (0.75 + 0.3 * Sin(GustT * 0.7) + 0.2 * Sin(GustT * 1.9));
 	M.Z = -Fall;
+	UpdateSlant(M);
 	for (i = 0; i < Drops.Length; i++)
 	{
 		P = Drops[i];
 		if (P == None)
 			continue;
 		P.SetLocation(P.Location + M * DeltaTime);
-		if (P.Location.Z < E.Z - Top * 0.8 || VSize((P.Location - E) * vect(1,1,0)) > Radius * 1.2)
+		if (P.Location.Z < E.Z - Top * 0.8 || VSize((P.Location - E) * vect(1,1,0)) > Radius * (1.2 + 2.3 * FMin(P.Glow, 1) + 0.5 * FMax(P.Glow - 1, 0)))
 			Drop(P, false);
 	}
 	// lightning, only in the thick of it: a flash now, the thunder later
@@ -280,6 +336,92 @@ event Tick(float DeltaTime)
 		if (NThunder > 0)
 			PlaySound(Thunder[Rand(NThunder)], SLOT_None, 2.0, false, 60000);
 	}
+}
+
+// the dome: in the sky zone at its view point, as big as fits inside the sky box (traces out to its walls)
+function MakeDome()
+{
+	local SkyZoneInfo Sky;
+	local vector HitL, HitN, Dir;
+	local float D, Best;
+	local int k;
+	local rotator R;
+
+	foreach AllActors(class'SkyZoneInfo', Sky)
+		break;
+	if (Sky == None)
+		return;
+	Best = 4000;
+	for (k = 0; k < 6; k++)
+	{
+		Dir = vect(0,0,0);
+		if (k < 2) Dir.X = 1 - 2 * k;
+		else if (k < 4) Dir.Y = 1 - 2 * (k - 2);
+		else Dir.Z = 1 - 2 * (k - 4);
+		if (Trace(HitL, HitN, Sky.Location + Dir * 8000, Sky.Location, false) != None)
+		{
+			D = VSize(HitL - Sky.Location);
+			if (D < Best)
+				Best = D;
+		}
+	}
+	DomeR = FMax(Best * 0.8, 40);
+	Dome = Spawn(class'CardMesh',,, Sky.Location);
+	if (Dome == None || !Dome.Show("AvalonSky.Liandri.SkyDome", DomeR / 100.0))
+	{
+		Dome = None;
+		Log("Cards: storm sky dome not available (StaticMeshes\\AvalonSky.usx)");
+		return;
+	}
+	Dome.Skins[0] = Texture'StormSky';
+	Dome.bUnlit = true;
+	Dome.bShadowCast = false;
+	Dome.SetCollision(false, false, false);
+	R.Yaw = DomeYaw;
+	Dome.SetRotation(R);
+	Dome.bHidden = true;
+	if (DomeOn <= 0)
+		DomeOn = 0.45;
+	Log("Cards: storm sky dome r "$int(DomeR)$" in "$Sky.Name);
+}
+
+// the rain's slant on screen: the wind across the view (camera right) against the fall picks the baked texture
+function UpdateSlant(vector M)
+{
+	local PlayerController PC;
+	local vector X, Y, Z;
+	local float Side;
+	local int k, i;
+
+	PC = Level.PlayerControllerList;
+	if (PC == None)
+		return;
+	GetAxes(PC.Rotation, X, Y, Z);
+	Side = (M dot Y) / FMax(Fall, 1);
+	k = 1;
+	if (Side > 0.18)
+		k = 2;
+	else if (Side < -0.18)
+		k = 0;
+	if (k == Slant)
+		return;
+	Slant = k;
+	for (i = 0; i < Drops.Length; i++)
+		if (Drops[i] != None)
+			Drops[i].Texture = SlantTex(k, Drops[i].Glow > 0);
+}
+
+function Texture SlantTex(int k, bool bSheet)
+{
+	if (bSheet)
+	{
+		if (k == 0) return Texture'RainSheetL';
+		if (k == 2) return Texture'RainSheetR';
+		return Texture'RainSheetC';
+	}
+	if (k == 0) return Texture'RainDropL';
+	if (k == 2) return Texture'RainDropR';
+	return Texture'RainDropC';
 }
 
 // indoors = world geometry within 40 m straight up; drops hide while indoors
@@ -369,6 +511,16 @@ function SetFog(float Flsh)
 			Zones[i].bDistanceFog = W > 0.05 || ClearOn[i] == 1;
 			Zones[i].DistanceFogStart = ClearStart[i] * (1 - W);
 			Zones[i].DistanceFogEnd = Lerp(W, FMax(ClearEnd[i], SkyEnd * 20), SkyEnd);
+			if (Dome != None)
+			{
+				Dome.bHidden = W < DomeOn;
+				if (!Dome.bHidden)
+				{
+					// the dome is the sky: only a light haze over it (and the flash)
+					Zones[i].DistanceFogStart = 0;
+					Zones[i].DistanceFogEnd = DomeR * 7;
+				}
+			}
 		}
 		else
 		{
@@ -408,6 +560,8 @@ event Destroyed()
 	for (i = 0; i < Drops.Length; i++)
 		if (Drops[i] != None)
 			Drops[i].Destroy();
+	if (Dome != None)
+		Dome.Destroy();
 	for (i = 0; i < Clouds.Length; i++)
 		if (Clouds[i] != None)
 			Clouds[i].Destroy();
@@ -417,6 +571,7 @@ event Destroyed()
 
 defaultproperties
 {
+	DomeYaw=5462
 	DrawType=DT_None
 	bHidden=False
 	bStatic=False

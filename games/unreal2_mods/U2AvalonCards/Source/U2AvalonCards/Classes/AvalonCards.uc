@@ -100,6 +100,7 @@ var bool bRevealed;
 // StormThunder[] a distance-delay later.
 var config string StormMaps;
 var config int StormDrops;
+var config float StormGust;        // the rain's wind (units/s) along Wind's direction; 0 = Wind itself
 var config float StormRadius, StormFall, StormFogStart, StormFogEnd, StormSkyFogEnd;   // StormSkyFogEnd: the sky box's fog (0 = leave the sky)
 var config color StormFogColour;
 var config string StormRain, StormWind, StormThunder[5];
@@ -671,6 +672,7 @@ function Storm()
 	St = Spawn(class'AvalonStorm');
 	if (St == None)
 		return;
+	St.StormGust = StormGust;
 	St.Setup(StormDrops, StormRadius, StormFall, Wind, StormFogStart, StormFogEnd, StormFogColour,
 		Sound(DynamicLoadObject(StormRain, class'Sound', true)), Sound(DynamicLoadObject(StormWind, class'Sound', true)), StormSkyFogEnd);
 	St.Overcast(Texture(DynamicLoadObject(SmokeTexture, class'Texture', true)), StormClouds, StormCloudSize);
@@ -1177,9 +1179,10 @@ defaultproperties
 	PARadius=16000.000000
 	PAVolume=2.000000
 	StormDrops=320
+	StormGust=900.000000
 	StormClouds=30
-	CloudBanks=14
-	CloudHeight=11000.000000
+	CloudBanks=10
+	CloudHeight=20000.000000
 	CloudSpread=60000.000000
 	StormCloudSize=16000.000000
 	StormGloom=0.400000
