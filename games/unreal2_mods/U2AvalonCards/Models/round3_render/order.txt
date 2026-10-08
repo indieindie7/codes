@@ -1,0 +1,12 @@
+0 aframe_hut
+1 chimney_stack
+2 crane_tower
+3 dorm_pod
+4 factory_block
+5 factory_hall
+6 pipe_rack
+7 road_segment
+8 silo_cluster
+9 tin_shack
+10 twin_towers
+11 water_tower

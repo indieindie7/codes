@@ -1,0 +1,45 @@
+# U2GM console test (days 1-3, README "Console" + "Terrain brush"), on the relit TutA_Live10, plus the
+# terrain hex-tiling check (U2Shaders.log "layer <hash>") and a tower-interior lighting shot
+background
+map TutA_Live10?Mutator=U2AvalonCards.AvalonCards,U2GM.GMMutator
+waitcontrol 240
+wait 3
+console god
+shot
+console gm on
+wait 1
+console gm info
+console gm pick
+wait 1
+console gm info
+console gm move 0 0 64
+wait 1
+shot
+console gm undo
+wait 1
+console gm redo
+wait 1
+console gm undo
+wait 1
+console gm palette
+console gm spawn 0
+wait 2
+shot
+console gm freeze
+wait 2
+console gm freeze
+console gm raise 512 256
+wait 4
+shot
+console gm undo
+wait 3
+shot
+console gm flatten 400
+wait 3
+console gm undo
+wait 2
+console gm journal
+console gm off
+wait 2
+shot
+quit

@@ -47,6 +47,7 @@ Background steps:
 | `wait SECONDS` | wait, counted in game seconds |
 | `move FWD STRAFE SECS` | hold movement (-1..1) |
 | `turn YAW PITCH SECS` | turn the view (degrees) |
+| `look YAW PITCH` | set the view direction (absolute degrees; pitch negative = down) |
 | `fire SECS` / `altfire SECS` / `jump` | press buttons |
 | `crouch 1\|0` / `run 1\|0` | set the stance toggles (`run 0` = hold the Walking key) |
 | `walk 1\|0` | hold / release the Walking key (Shift) |

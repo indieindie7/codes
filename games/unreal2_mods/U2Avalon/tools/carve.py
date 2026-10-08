@@ -29,10 +29,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, r"C:\Users\john\Documents\github\codes\tools\C\U2EdBridge")
 import numpy as np
-from uedlib import session  # noqa
+from uedlib import session, Ops  # noqa
 import live  # noqa
 
 GAME = live.GAME
+USE_OPS = "ops=0" not in sys.argv          # the ops bridge for drops and terrain re-seats (ops=0: the old re-import)
 os.environ.setdefault("U2ED_WITH_GAME", "1")      # carving happens while the user plays
 MAPS = os.path.join(GAME, "Maps")
 LOC, CELL, N, SEA_Z = (-14487.546875, 4835.837891, -131.845703), 512.0, 128, -4967.0
@@ -118,6 +119,23 @@ def ground_at(H, x, y):
     ti, tj = fi - i0, fj - j0
     v = H[j0, i0] * (1 - ti) * (1 - tj) + H[j0, i0 + 1] * ti * (1 - tj) + H[j0 + 1, i0] * (1 - ti) * tj + H[j0 + 1, i0 + 1] * ti * tj
     return LOC[2] + (v - 32768) * 0.5
+
+
+def reseat_moves(t3d, before, after):
+    """(actor name, new Z) for every static mesh standing on ground the carve changed (make_reseat's rule)"""
+    Hs, Hn = heights_world(before), heights_world(after)
+    out = []
+    for m in re.finditer(r"Begin Actor.*?End Actor", t3d, re.S):
+        blk = m.group(0)
+        nm = re.search(r"\bName=(\S+)", blk)
+        loc = re.search(r"Location=\(X=([-\d.]+),Y=([-\d.]+),Z=([-\d.]+)\)", blk)
+        if not (nm and loc):
+            continue
+        x, y, z = (float(v) for v in loc.groups())
+        gs, gn = ground_at(Hs, x, y), ground_at(Hn, x, y)
+        if gs is not None and gn is not None and -400 <= z - gs <= 600 and abs(gn - gs) > 10:
+            out.append((nm.group(1), z + gn - gs))
+    return out
 
 
 def make_reseat(before, after):
@@ -311,6 +329,18 @@ def main():
             ed.ok("ACTOR SELECT OFCLASS CLASS=StaticMeshActor")
             ed.light(selected=True)
             ed.deselect()
+        elif kind == "drop" and USE_OPS:
+            # the ops bridge (EDITOR_OPS.md, tested 2026-10-08): select, move and relight that ONE actor;
+            # nothing else is re-imported or relit
+            before = os.path.join(tmp, "before.bmp")
+            ed.ok('OBJ EXPORT TYPE=Texture NAME="MyLevel.terrain_maps.island1" FILE="%s"' % before)
+            ops = Ops.attach_to(ed.pid)
+            ops.select(a[1])
+            new = make_drop(a[1], heights_world(before), nums[0], o.get("how", "max"))(ed.copy_selected())
+            z = float(re.search(r"Location=\(X=[-\d.]+,Y=[-\d.]+,Z=([-\d.]+)\)", new).group(1))
+            print(ops.move(a[1], None, None, z))
+            print(ops.light(a[1]))
+            ed.deselect()
         elif kind == "drop":
             before = os.path.join(tmp, "before.bmp")
             ed.ok('OBJ EXPORT TYPE=Texture NAME="MyLevel.terrain_maps.island1" FILE="%s"' % before)
@@ -335,6 +365,22 @@ def main():
             print("terrain: %d of %d heights changed" % (changed, H.size))
             ed.import_texture(after, "island1", "MyLevel", "terrain_maps", MIPS=0)
             ed.replace_actors("TerrainInfo", None)
+            if USE_OPS:
+                # only the meshes standing on the changed ground move (ops), only they get relit; the terrain
+                # gets LIGHT APPLY CHANGED=1 (the real incremental mode: BSP lightmaps keep their layout)
+                ops = Ops.attach_to(ed.pid)
+                ed.select_class("StaticMeshActor")
+                moves = reseat_moves(ed.copy_selected(), before, after)
+                ed.deselect()
+                for name, z in moves:
+                    ops.move(name, None, None, z)
+                if moves:
+                    print(ops.light(*[n for n, _ in moves]))
+                print("re-seated %d meshes with ops moves" % len(moves))
+                ed.ok("LIGHT APPLY CHANGED=1")
+                ed.save(out)
+                print("saved", ed.map_path(out))
+                return
             # the map's own meshes on the changed ground move with it (terrain_apply's re-seat)
             ed.replace_actors("StaticMeshActor", make_reseat(before, after))
             ed.deselect()

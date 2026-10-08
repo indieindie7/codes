@@ -148,6 +148,7 @@ function bool InControl()
 function StartStep()
 {
 	local Inventory Inv;
+	local rotator LookR;
 	StepIndex++;
 	StepTime = 0;
 	StepLength = 0;
@@ -184,6 +185,14 @@ function StartStep()
 		PI.Forward = ArgF(1, 0);
 		PI.Strafe = ArgF(2, 0);
 		StepLength = ArgF(3, 1);
+		break;
+	case "LOOK":       // look YAW PITCH: an absolute view direction in degrees (repeatable screenshots)
+		LookR.Yaw = int(ArgF(1, 0) * 65536.0 / 360.0);
+		LookR.Pitch = int(ArgF(2, 0) * 65536.0 / 360.0) & 65535;
+		PC.SetRotation(LookR);
+		if (PC.Pawn != None)
+			PC.Pawn.SetRotation(LookR);
+		StepLength = 0.2;
 		break;
 	case "TURN":
 		StepLength = FMax(ArgF(3, 0.5), 0.01);

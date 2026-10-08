@@ -357,7 +357,83 @@ def water_tower():
     sphere(1.2, -2.6, 24, 0.5, "domered")
 
 
-BUILDERS = {"crane_tower": crane_tower, "aframe_hut": aframe_hut, "dorm_pod": dorm_pod, "tin_shack": tin_shack,
+# --- factories, pipes, roads (the user's mark, 2026-10-08: "add some procedural roads and pipes please and make
+# some more normal look factories and some factory districts in the plateau")
+EXTRA.update({"brick": (0.230, 0.075, 0.045), "asphalt": (0.050, 0.050, 0.055), "paint": (0.700, 0.650, 0.300)})
+
+
+def factory_hall():
+    # a long brick hall with a sawtooth roof (north lights), two chimneys and a loading bay
+    L, W, H = 40.0, 22.0, 9.0
+    box(0, 0, H / 2, L, W, H, "brick")
+    box(0, -W / 2 - 0.05, 1.2, L, 0.1, 2.4, "steel")            # dirty plinth
+    n = 6
+    for k in range(n):                                          # the sawtooth: a steep glazed face + a slope
+        x = -L / 2 + (k + 0.5) * L / n
+        box(x - L / n * 0.3, 0, H + 1.6, 0.4, W, 3.2, "glow" if k % 2 else "dark")
+        box(x + L / n * 0.1, 0, H + 1.6, L / n * 0.85, W, 0.5, "steel", (0, math.radians(-21), 0))
+    for cx, h in ((L / 2 - 4, 26), (L / 2 - 10, 20)):
+        cyl(cx, W / 2 - 4, h / 2, 1.3, h, "brick", 12, r2=1.0)    # chimneys
+        cyl(cx, W / 2 - 4, h + 0.3, 1.2, 0.6, "dark", 12)
+    doors(-L / 2 + 6, -W / 2, 0, 5, 5)                          # loading doors
+    doors(-L / 2 + 14, -W / 2, 0, 5, 5)
+    for k in range(5):
+        box(-L / 2 + 8 * k + 4, -W / 2 - 0.05, 6.2, 5, 0.1, 1.4, "glow" if k % 3 else "dark")   # window band
+
+
+def factory_block():
+    # a four-storey industrial block: concrete frame, window bands, a water tank and a stair tower on the roof
+    W, D, S = 18.0, 12.0, 3.6
+    box(0, 0, 2 * S, W, D, 4 * S, "steel")
+    for k in range(4):
+        box(0, -D / 2 - 0.05, S * k + 2.0, W - 1.0, 0.1, 1.2, "glow" if (k + 1) % 2 else "dark")
+        box(0, D / 2 + 0.05, S * k + 2.0, W - 1.0, 0.1, 1.2, "dark")
+    box(0, 0, 4 * S + 0.3, W + 0.4, D + 0.4, 0.6, "grey")
+    box(W / 2 - 3, D / 2 - 3, 4 * S + 2.0, 4, 4, 3.4, "steel")   # stair tower
+    cyl(-W / 2 + 3, 0, 4 * S + 2.5, 1.8, 3.0, "rustred", 16)    # roof tank
+    doors(0, -D / 2, 0, 2.2, 3.0)
+
+
+def chimney_stack():
+    # a tall industrial stack with red/white bands and a service ring
+    cyl(0, 0, 3, 4.5, 6, "steel", 20)
+    cyl(0, 0, 26, 2.6, 44, "brick", 20, r2=1.8)
+    for z in (40, 44):
+        cyl(0, 0, z, 2.05, 1.6, "domered" if z == 44 else "paint", 20)
+    cyl(0, 0, 35, 2.9, 0.4, "dark", 20)                         # service ring
+
+
+def silo_cluster():
+    # four grain/ore silos with a gallery on top and a conveyor housing
+    for sx in (-4, 4):
+        for sy in (-4, 4):
+            cyl(sx, sy, 11, 3.6, 22, "grey", 20)
+            cyl(sx, sy, 22.6, 3.6, 1.2, "steel", 20, r2=2.8)
+    box(0, 0, 24.5, 16, 4, 3, "steel")                          # top gallery
+    box(12, 0, 14, 14, 2.4, 2.4, "steel", (0, math.radians(40), 0))   # conveyor housing up to it
+
+
+def pipe_rack():
+    # a 20 m pipe rack segment along +X (tiles end to end): two big pipes, one small, T-supports every 10 m
+    for x in (-5, 5):
+        box(x, 0, 2.5, 0.5, 0.5, 5, "steel")
+        box(x, 0, 5.1, 0.5, 3.6, 0.4, "steel")
+    for y, r, m in ((-1.0, 0.55, "grey"), (0.4, 0.45, "rustred"), (1.4, 0.25, "paint")):
+        cyl(0, y, 5.3 + r, r, 20.0, m, 12, rot=(0, math.radians(90), 0))
+
+
+def road_segment():
+    # a 20 m x 8 m asphalt road slab (tiles end to end along +X): kerbs and a dashed centre line
+    box(0, 0, 0.15, 20, 8, 0.3, "asphalt")
+    for y in (-4.1, 4.1):
+        box(0, y, 0.2, 20, 0.3, 0.4, "grey")
+    for x in (-7.5, -2.5, 2.5, 7.5):
+        box(x, 0, 0.31, 3, 0.18, 0.02, "paint")
+
+
+BUILDERS = {"factory_hall": factory_hall, "factory_block": factory_block, "chimney_stack": chimney_stack,
+            "silo_cluster": silo_cluster, "pipe_rack": pipe_rack, "road_segment": road_segment,
+            "crane_tower": crane_tower, "aframe_hut": aframe_hut, "dorm_pod": dorm_pod, "tin_shack": tin_shack,
             "twin_towers": twin_towers, "water_tower": water_tower,
             "cooling_tower": cooling_tower, "processing_hall": processing_hall, "storage_tank": storage_tank,
             "ore_tank": ore_tank, "dock_crane": dock_crane, "drilling_rig": drilling_rig, "dead_rig": dead_rig,

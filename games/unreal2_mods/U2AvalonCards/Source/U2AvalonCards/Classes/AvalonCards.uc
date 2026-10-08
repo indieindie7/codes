@@ -39,7 +39,7 @@ var config int TreeLook[8];        // which tree picture (0-2)
 // straight below (land, or TutA's sea surface) by its lowest point, then lifted
 // by Lift. CX CY MinZ = the mesh's bounds centre and bottom, in its own units
 // (tools\mesh_bounds.py; tools\make_props.py writes these lines).
-var config string Props[128];      // 128 since 2026-10-07 (the shanty ring used 49)
+var config string Props[256];      // 256 since 2026-10-08 (shanty ring + factory districts with roads and pipes)
 
 // rough blocking: plain boxes, one per line: "X Y Yaw SizeX SizeY SizeZ Lift Colour" (world units, Yaw in
 // degrees, Colour 0 grey / 1 rust / 2 pale / 3 dark). Each box stands on whatever is under its centre,
@@ -145,6 +145,7 @@ var AvalonStorm LiveStorm;
 var bool bRebuild;
 var bool bAvalon;          // this map is one of the Avalon maps (Maps): the town and its life are built
 var AvalonSet Set;         // this map family's own dressing ([<family> AvalonSet] in the ini)
+var AvalonChat Chat;       // the chat hook: the player's chat lines become marks
 var array<Actor> Made;
 var Texture TreeTex[3];
 var Texture RigTex[8];
@@ -372,6 +373,17 @@ function LiveTick()
 		L.PC = PC;
 		PC.ExecManagers[PC.ExecManagers.Length] = L;
 		Log("Cards: live editing on, reading "$LiveFile$" every "$LivePoll$" s");
+		// the chat: every line the player says becomes a mark (AvalonChat)
+		if (Level.Game != None && AvalonChat(Level.Game.BroadcastHandler) == None)
+		{
+			Chat = Spawn(class'AvalonChat');
+			if (Chat != None)
+			{
+				Chat.Cards = Self;
+				Level.Game.BroadcastHandler = Chat;
+				Log("Cards: chat lines are marks now");
+			}
+		}
 	}
 	LiveWait -= 0.5;
 	if (LiveWait > 0)
@@ -461,8 +473,9 @@ function Live(string S, PlayerController PC)
 			PC.ConsoleCommand(Arg);
 		break;
 	case "SAY":
+		// as a chat line (the HUD's message area), not only the console (the user talks through the chat)
 		if (PC != None)
-			PC.ClientMessage("[Claude] "$Arg);
+			PC.TeamMessage(None, "[Claude] "$Arg, 'Say');
 		break;
 	case "EXTRA":
 		if (i >= 0 && i < ArrayCount(Extras))
