@@ -31,7 +31,7 @@ WINDOW_K = float(o.get("window", 4.0))   # how strongly the hero and the story w
 HERO = o.get("hero", "cooling_towers")
 # Q35 (2026-10-08, games/research_notes/Believable city simulation): pass 1 value fields + bid-rent, pass 2 imperfect
 # plots. passes=0 gives the old constant plots (for before/after metrics: tools/metrics.py)
-PASSES = int(o.get("passes", 2))
+PASSES = int(o.get("passes", 4))      # 4: + back lanes and connectors (pass 4, the light version)
 WIND = (0.83, -0.55)                  # the prevailing wind (AvalonCards' Wind 60,-40): smoke and soot go this way
 DBG = []
 VIS = None                            # vis=<viewshed npz>: how much the player sees each cell (viewshed.py)
@@ -263,6 +263,7 @@ class Road:
             self.s.append(self.s[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
         self.length = self.s[-1]
         self.taken = {+1: [], -1: []}          # (s0, s1) intervals per side
+        self.cls = "spine" if name == "spine" else ("lane" if name.startswith("lane") else "branch")
 
     def point(self, s):
         s = min(max(s, 0), self.length)
@@ -677,6 +678,92 @@ for bid in ordered:
     if not ok:
         print("  no plot for", bid, file=sys.stderr)
 
+# --- pass 4 (light): back lanes behind rows of yarded plots, connectors that close loops (research s. 2a, 1a) ----
+LANE_W_CELLS = 0.6
+
+
+def ground_ok(x, y, max_slope=25.0):
+    return not at(WATER, x, y, 1) and at(MAIN, x, y, 0) and at(SLOPE, x, y, 90) <= max_slope
+
+
+def clear_of_buildings(pts, pad_m=4.0):
+    for x, y in pts:
+        for p in placed.values():
+            if math.hypot(p["x"] - x, p["y"] - y) < p["r"] + pad_m * M:
+                return False
+    return True
+
+
+def back_lanes():
+    made = 0
+    for road in list(ROADS):
+        for side in (+1, -1):
+            row = sorted([p for p in PLOTS if p["road"] == road.name and p["side"] == side], key=lambda p: p["s0"])
+            run = []
+            for p in row + [None]:
+                ok = p is not None                 # any row: yards behind houses, service lanes behind the works
+                if ok and (not run or p["s0"] - run[-1]["s1"] < 60 * M):
+                    run.append(p)
+                    continue
+                if len(run) >= 2 and run[-1]["s1"] - run[0]["s0"] > 40 * M:
+                    sa, sb = run[0]["s0"] - 4 * M, run[-1]["s1"] + 4 * M
+                    off = (ROAD_HALF_M + max(q["setback"] for q in run) + max(q["depth"] for q in run) + 3.0) * M
+                    pts = []
+                    for sv in np.arange(sa, sb + 1, 10 * M):
+                        x, y, ux, uy = road.point(sv)
+                        nx, ny = (-uy, ux) if side > 0 else (uy, -ux)
+                        pts.append((x + nx * off, y + ny * off))
+                    good = [ground_ok(x, y) for x, y in pts]
+                    if sum(good) >= 0.85 * len(good) and clear_of_buildings(pts):
+                        a = road.point(sa)[:2]
+                        b = road.point(sb)[:2]
+                        lane = Road([a] + pts + [b], "lane%d" % len(ROADS))
+                        ROADS.append(lane)
+                        made += 1
+                run = [p] if ok else []
+    return made
+
+
+def connectors(max_m=160.0, ratio=1.4):
+    """Lechner's connector: a road end that is near another road but far from it by road gets a lane"""
+    import metrics
+    made = 0
+    for r in list(ROADS):
+        if r.cls == "spine":
+            continue
+        end = r.pts[-1]
+        best = None
+        for q in ROADS:
+            if q is r:
+                continue
+            for k, p in enumerate(q.pts):
+                d = math.hypot(p[0] - end[0], p[1] - end[1]) / M
+                if 15 < d < max_m and (best is None or d < best[0]):
+                    best = (d, q, p)
+        if best is None:
+            continue
+        d, q, p = best
+        G = {"roads": [x.pts for x in ROADS]}
+        pos, edges, adj = metrics.road_graph(G)
+        def nid(pt):
+            return min(range(len(pos)), key=lambda n: math.hypot(pos[n][0] - pt[0], pos[n][1] - pt[1]))
+        dist = metrics.dijkstra(adj, nid(end))
+        net = dist.get(nid(p), float("inf")) / M
+        if net < ratio * d:
+            continue
+        pts = [(end[0] + (p[0] - end[0]) * t, end[1] + (p[1] - end[1]) * t) for t in np.linspace(0, 1, max(3, int(d / 10)))]
+        if all(ground_ok(x, y) for x, y in pts) and clear_of_buildings(pts[1:-1]):
+            ROADS.append(Road(pts, "lane%d" % len(ROADS)))
+            made += 1
+    return made
+
+
+N_LANES = N_CONN = 0
+if PASSES >= 4:
+    N_LANES = back_lanes()
+    N_CONN = connectors()
+
+
 # --- 5. fences in the gaps between neighbouring plots on the same side of a road ---------------------------------
 for road in ROADS:
     for side in (+1, -1):
@@ -705,9 +792,10 @@ out = {"seed": SEED, "shift": -5300, "heightmap": os.path.abspath(src), "method"
                      for bid, p in placed.items()},
        "passes": PASSES, "wind": list(WIND),
        "roads": roads_out, "spine": roads_out[0], "plots": PLOTS, "fences": FENCES,
+       "road_class": [r.cls for r in ROADS], "road_w": [{"spine": 1.3, "branch": 1.1, "lane": LANE_W_CELLS}[r.cls] for r in ROADS],
        "sites": {"dock": [round(v) for v in DOCK], "mine": [round(v) for v in MINE], "tower": list(TOWER_WORLD)}}
 json.dump(out, open(dst, "w"), indent=0)
-print(f"spine {SPINE.length / M:.0f} m, {len(ROADS) - 1} branches, {len(PLOTS)} plots, {len(placed)} buildings placed, {len(FENCES)} fence runs -> {dst}")
+print(f"spine {SPINE.length / M:.0f} m, {sum(r.cls == 'branch' for r in ROADS)} branches, {N_LANES} back lanes, {N_CONN} connectors, {len(PLOTS)} plots, {len(placed)} buildings placed, {len(FENCES)} fence runs -> {dst}")
 
 if PNG:
     from PIL import Image, ImageDraw

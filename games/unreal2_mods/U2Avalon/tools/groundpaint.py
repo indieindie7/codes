@@ -53,10 +53,14 @@ def seg_dist(ax, ay, bx, by):
 L = json.load(open(layout))
 # roads
 droad = np.full((N, N), np.inf)
-for r in L.get("roads", []):
+road = np.zeros((N, N))
+_RW = L.get("road_w") or []                      # per-road widths in cells (lanes narrower; Q35 pass 4)
+for _ri, r in enumerate(L.get("roads", [])):
+    d1 = np.full((N, N), np.inf)
     for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
-        droad = np.minimum(droad, seg_dist(ax, ay, bx, by))
-road = np.clip(1 - (droad - ROAD_W / 2) / 0.8, 0, 1)
+        d1 = np.minimum(d1, seg_dist(ax, ay, bx, by))
+    droad = np.minimum(droad, d1)
+    road = np.maximum(road, np.clip(1 - (d1 - (_RW[_ri] if _ri < len(_RW) else ROAD_W) / 2) / 0.8, 0, 1))
 # pipes / conveyors: a faint worn strip
 dline = np.full((N, N), np.inf)
 for c in L.get("connections", []):

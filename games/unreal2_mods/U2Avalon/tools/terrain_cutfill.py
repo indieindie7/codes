@@ -169,7 +169,9 @@ if LAYOUT:
     import json as _j
     _L = _j.load(open(o["layout"]))
     road_cut = 0.0
-    for r in _L.get("roads", []):
+    _RW = _L.get("road_w") or []                # per-road widths in cells (lanes narrower; Q35 pass 4)
+    for _ri, r in enumerate(_L.get("roads", [])):
+        rw = _RW[_ri] if _ri < len(_RW) else ROAD_W
         pts = []
         for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
             n = max(1, int(math.hypot(bx - ax, by - ay) / (SCALE[0] * 0.5)))
@@ -199,7 +201,7 @@ if LAYOUT:
             better = d < D
             D[better] = d[better]
             T[better] = hv
-        wgt = np.clip(1 - (D - ROAD_W / 2) / 1.0, 0, 1)
+        wgt = np.clip(1 - (D - rw / 2) / 1.0, 0, 1)
         wgt = wgt * wgt * (3 - 2 * wgt)
         newH = H * (1 - wgt) + T * wgt
         road_cut += float(np.abs(newH - H).sum()) * SCALE[2] / 256 * SCALE[0] * SCALE[1]
