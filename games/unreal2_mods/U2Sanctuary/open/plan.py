@@ -41,7 +41,7 @@ PLACES = [
      "what": "the generator building: Miller's barricaded security office (s_miller), his run out and death"},
     {"id": "shaft", "name": "Generator shaft", "x": -15500, "y": -16500, "r": 1500, "z": -2600, "key": "k_generator.png",
      "what": "down the shaft (s_generator): the control room restart, the Heavy Skaarj, the artifact at the bottom"},
-    {"id": "pad", "name": "Marines' pickup pad", "x": -22500, "y": -24000, "r": 2000, "z": 400, "key": None,
+    {"id": "pad", "name": "Marines' pickup pad", "x": -22500, "y": -24000, "r": 2700, "z": 400, "key": None,
      "what": "hold out with the bike until the speedship lands; 'You shoulda been a Marine'"},
 ]
 
@@ -50,9 +50,9 @@ ROADS = [
     {"id": "haul_w", "pts": ["lz", (-10500, 14000), (-6500, 8500), (-3000, 3000), "plant"], "w": 1100, "kind": "haul"},
     {"id": "haul_e", "pts": ["plant", (-2500, -6000), "field", (-13000, -12000), "power"], "w": 1300, "kind": "haul"},
     {"id": "pit_ramp", "pts": ["plant", (6500, -4500), (10500, -6000), "pit"], "w": 1000, "kind": "ramp"},
-    {"id": "pit_back", "pts": ["pit", (12000, -16000), (2000, -21000), (-9000, -20000), "power"], "w": 900, "kind": "track"},
+    {"id": "pit_back", "pts": ["pit", (12000, -16000), (2000, -21000), (-9000, -20000), "power"], "w": 1050, "kind": "track"},
     {"id": "pad_road", "pts": ["power", (-20500, -20000), "pad"], "w": 1100, "kind": "haul"},
-    {"id": "jungle_loop", "pts": ["lz", (-22000, 12000), (-26000, 0), (-23000, -9000), "power"], "w": 700, "kind": "track"},
+    {"id": "jungle_loop", "pts": ["lz", (-22000, 12000), (-26000, 0), (-23000, -9000), "power"], "w": 1000, "kind": "track"},
 ]
 
 # the beat spine (the three shipped maps' beats, in order, now places on one map) and how you get between them

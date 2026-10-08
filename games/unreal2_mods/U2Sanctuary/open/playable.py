@@ -50,7 +50,8 @@ PROGRAM = {
               "spawn": ["shed_a", "shed_b"], "high": "pylon"},
     "field": {"main": [], "support": ["piperack", "piperack", "tank_farm"], "gate": None, "spawn": ["shed_b"], "high": "silocluster"},
     "pit": {"main": ["new_rig"], "support": ["piperack"], "gate": None, "spawn": ["shed_a"], "high": None},
-    "pad": {"main": ["cargo_pad"], "support": ["floodmast", "floodmast"], "gate": None, "spawn": ["shed_a"], "high": "floodmast"},
+    "pad": {"main": ["cargo_pad"], "support": ["floodmast", "floodmast"], "gate": None, "spawn": ["shed_a"], "high": "floodmast",
+            "cover_ring": (1300, 1800)},          # a hold-out on the deck: the cover rings its edge, the deck stays clear
     "lz": {"main": ["dropship"], "support": [], "gate": None, "spawn": [], "high": None},
 }
 
@@ -133,7 +134,8 @@ def layout(q, seed):
     for pid in prog["main"]:
         if q["id"] in ("pad", "lz") and pid in ("cargo_pad", "dropship"):
             put(pid, c, "main")                    # the pad is the place itself; the lane runs onto it
-            placed[-1]["rad"] = 0
+            # nothing else on the deck (the review: the bike circles on it), so its footprint keeps the others off
+            placed[-1]["rad"] = 0 if pid == "dropship" else 0.5 * min(placed[-1]["w"], placed[-1]["d"])
             continue
         try_put(pid, "main", (0.3, 0.75))
     first = ent[0] if ent else (c + np.array([R, 0]), np.array([-1.0, 0]), "")
@@ -153,7 +155,7 @@ def layout(q, seed):
     for k in range(60):
         if len([o for o in placed if o["kind"] == "cover"]) >= 4 and 0.3 <= blocked(c, placed) <= 0.8:
             break
-        a, r = rng.uniform(0, 2 * math.pi), rng.uniform(256, 1024)
+        a, r = rng.uniform(0, 2 * math.pi), rng.uniform(*prog.get("cover_ring", (256, 1024)))
         p0 = c + r * np.array([math.cos(a), math.sin(a)])
         full = rng.random() < 0.4
         mesh, s, rad = rng.choice(FULL if full else HALF)
@@ -184,7 +186,8 @@ def blocked(c, placed, reach=2048):
 
 def score(q, placed, ent):
     c = np.array([q["x"], q["y"]])
-    cover = [o for o in placed if o["kind"] == "cover" and 256 < np.linalg.norm(np.array([o["x"], o["y"]]) - c) < 1024]
+    lo, hi = PROGRAM.get(q["id"], {}).get("cover_ring", (256, 1024))
+    cover = [o for o in placed if o["kind"] == "cover" and lo < np.linalg.norm(np.array([o["x"], o["y"]]) - c) < hi]
     fb = blocked(c, placed)
     ch = {"cover": min(1.0, len(cover) / 4), "entries": min(1.0, len(ent) / 2),
           "sightlines": 1.0 if 0.3 <= fb <= 0.8 else max(0.0, 1 - abs(fb - 0.55) / 0.55),

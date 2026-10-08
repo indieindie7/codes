@@ -328,6 +328,68 @@ def arch(o, pid, prop):
 
 
 HH = [None]
+FOG_END = 20000
+EYE = 160
+
+
+def los(H, a, b, za, zb):
+    for t in np.linspace(0.02, 0.98, 100):
+        x, y = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+        if FLOOR_Z + sample(H, x, y) > za + (zb - za) * t:
+            return False
+    return True
+
+
+def find_beacon(H, lz, plant, tall=2600):
+    """the weenie the review asked for: a Liandri relay mast with a beacon on the escarpment, inside the fog's far
+    clip from the LZ, its top seen over the land from the LZ - the plant's own mast is past the clip and behind the
+    escarpment. Best: high ground, in the direction of the plant, nearest the haul road's line."""
+    za = FLOOR_Z + sample(H, lz["x"], lz["y"]) + EYE
+    bearing = math.atan2(plant["y"] - lz["y"], plant["x"] - lz["x"])
+    best = None
+    for d in range(7000, int(FOG_END * 0.85), 600):
+        for off in np.linspace(-0.45, 0.45, 13):
+            a = bearing + off
+            x, y = lz["x"] + d * math.cos(a), lz["y"] + d * math.sin(a)
+            if abs(x) > WORLD - 4000 or abs(y) > WORLD - 4000:
+                continue
+            zb = FLOOR_Z + sample(H, x, y) + tall
+            if not los(H, (lz["x"], lz["y"]), (x, y), za, zb):
+                continue
+            score = sample(H, x, y) - 300 * abs(off) - 0.02 * d
+            if best is None or score > best[0]:
+                best = (score, x, y)
+    return best
+
+
+def path_nodes(H, dist_road, PL):
+    """AI path points (the open map had none: PATHS DEFINE links them): along every road every 700 UU, and on a 550 grid
+    through each place, clear of its buildings"""
+    pts = []
+    for r in S.ROADS:
+        P = [S.where(p) for p in r["pts"]]
+        for a, b in zip(P[:-1], P[1:]):
+            n = max(1, int(math.dist(a, b) / 700))
+            for k in range(n):
+                pts.append((a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n))
+    for q in S.PLACES:
+        if q["id"] not in PL:
+            continue
+        solid = [(o["x"], o["y"], 0.5 * math.hypot(o["w"], o["d"]) + 150) for o in PL[q["id"]]["props"]]
+        R = q["r"] * 0.75
+        for gx in np.arange(-R, R + 1, 550):
+            for gy in np.arange(-R, R + 1, 550):
+                x, y = q["x"] + gx, q["y"] + gy
+                if math.hypot(gx, gy) <= R and all(math.hypot(x - sx, y - sy) > sr for sx, sy, sr in solid):
+                    pts.append((x, y))
+    out, seen = [], set()
+    for x, y in pts:
+        key = (int(x // 300), int(y // 300))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((x, y))
+    return out
 
 
 def write_actors(H, dist_road, water_z, path):
@@ -417,6 +479,21 @@ def write_actors(H, dist_road, water_z, path):
                 prop(o["mesh"], o["x"], o["y"], o.get("scale", 1.0), sink=8, rot=(0, yaw, 0))
                 continue
             arch(o, pid, prop)
+    # the beacon mast (the review's weenie): a relay mast on the escarpment the LZ sees, a red light on top
+    lzq, plq = next(q for q in S.PLACES if q["id"] == "lz"), next(q for q in S.PLACES if q["id"] == "plant")
+    bc = find_beacon(H, lzq, plq)
+    if bc:
+        _, bxx, byy = bc
+        bz = FLOOR_Z + sample(H, bxx, byy)
+        brush(bxx, byy, bz - 80, 420, 420, 2600, 0, METAL, METAL)
+        brush(bxx, byy, bz - 80, 900, 900, 160, 0, BASE, FLOOR)
+        prop(BIGANTENNA, bxx, byy, 1.6, sink=-(2600 - 20))
+        out.append(actor("Light", "BeaconLight", (bxx, byy, bz + 2750),
+                         "    LightBrightness=255\n    LightHue=0\n    LightSaturation=40\n    LightRadius=48\n    LightEffect=LE_None\n"))
+        json.dump({"x": bxx, "y": byy, "h": 2600}, open(os.path.join(OUT, "beacon.json"), "w"))
+    # AI path points for the enemies (PATHS DEFINE in build_open.py links them)
+    for k_, (x, y) in enumerate(path_nodes(H, dist_road, PL)):
+        out.append(actor("PathNode", "OpenPath%d" % k_, (x, y, FLOOR_Z + sample(H, x, y) + 60)))
     # sky, sun (low, behind the plant from the LZ: dusk, the key art's light), start at the LZ facing the plant
     out.append(actor("SkyZoneInfo", "SkyZoneInfo0", (0, 0, SKY_Z)))
     out.append(actor("StaticMeshActor", "SkyBox", (0, 0, SKY_Z),

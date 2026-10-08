@@ -47,7 +47,7 @@ def sample(H, x, y):
 def los(H, a, b, za, zb):
     for t in np.linspace(0.02, 0.98, 120):
         x, y = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
-        if sample(H, x, y) > za + (zb - za) * t:
+        if FLOOR_Z + sample(H, x, y) > za + (zb - za) * t:       # (heights.npy is above FLOOR_Z; za/zb are world Z)
             return False
     return True
 
@@ -72,13 +72,19 @@ def main():
     keys = [q for q in S.PLACES if q.get("key")]
     have = [q for q in keys if q["id"] in PL or q["id"] in ("basin", "shaft", "road_w")]
     ch["key places exist"] = len(have) / len(keys)
-    story_props = sum(n for m, n in meshes.items() if re.search(r"wreck|body|corpse|Crashed|debris_sheet", m, re.I))
+    ini = open(os.path.join(GAME, "System", "U2Sanctuary.ini"), encoding="latin1").read()
+    od = ini[ini.find("[U2Sanctuary.OpenDirector]"):] if "[U2Sanctuary.OpenDirector]" in ini else ""
+    story_props = sum(n for m, n in meshes.items() if re.search(r"wreck|body|corpse|Crashed|debris_sheet", m, re.I)) + \
+        od.count("Bodies=(") + od.count("Props=(") + od.count("Things=(")
     ch["story props"] = min(1.0, story_props / 6)
     notes.append("%d story props (bodies, the hauler wreck, blood) on the map" % story_props)
     if story_props < 6:
         todo.append("WRITER: the silent road needs its signs - the wrecked ore hauler, bodies by the plant gate, blood trails (the U2Sanctuary director's gore scenes for this map)")
-    ch["Miller's voice"] = 0.0
-    todo.append("WRITER: Miller's camera lines (Dialog\\M08A Sanctuary_15G..25G) need triggers at the plant gate, the basin, the drainage room, the generator building")
+    miller = len(set(re.findall(r"Sanctuary_\d+G_\d+", od)))
+    ch["Miller's voice"] = min(1.0, miller / 6)
+    notes.append("%d of Miller's camera conversations wired to places (OpenDirector beats)" % miller)
+    if miller < 6:
+        todo.append("WRITER: wire Miller's camera lines (Dialog\\M08A Sanctuary_15G..25G) to the places")
     R["writer"] = (ch, notes)
 
     # ------------------------------------------------ DIRECTOR
@@ -86,6 +92,10 @@ def main():
     lz, pl = place("lz"), place("plant")
     high = [o for o in PL["plant"]["props"] if o["kind"] == "high"] or [max(PL["plant"]["props"], key=lambda o: o["h"])]
     w = high[0]
+    bj = os.path.join(OUT, "beacon.json")
+    if os.path.exists(bj):
+        b = json.load(open(bj))
+        w = {"id": "beacon mast", "x": b["x"], "y": b["y"], "h": b["h"]}
     d = math.hypot(w["x"] - lz["x"], w["y"] - lz["y"])
     za = FLOOR_Z + sample(H, lz["x"], lz["y"]) + EYE
     zb = FLOOR_Z + sample(H, w["x"], w["y"]) + w["h"]
@@ -154,6 +164,23 @@ def main():
     short = [k for k in spine if drives[k] < 8]
     ch["drive pacing"] = 1.0 - 0.3 * len(long_) - 0.15 * len(short)
     notes.append("spine drives: " + ", ".join("%s %.0f s" % (k, drives[k]) for k in spine))
+    # the open-map pacing research (rule 1): no stretch of the spine longer than ~40 s without a contact (a beat or a fight)
+    contacts = [(float(m.group(1)), float(m.group(2))) for m in re.finditer(r'Beats=\(Id="\w+",At=\(X=([-\d.]+),Y=([-\d.]+)', od)]
+    gaps = []
+    for k in spine:
+        pts = [S.where(p) for p in next(r for r in S.ROADS if r["id"] == k)["pts"]]
+        dense = []
+        for a, b in zip(pts[:-1], pts[1:]):
+            n = max(2, int(math.dist(a, b) / 200))
+            dense += [(a[0] + (b[0] - a[0]) * t / n, a[1] + (b[1] - a[1]) * t / n) for t in range(n)]
+        dense.append(pts[-1])
+        quiet = 0.0
+        for p, q in zip(dense[:-1], dense[1:]):
+            quiet = 0.0 if any(math.dist(q, c) < 2600 for c in contacts) else quiet + math.dist(p, q)
+            gaps.append(quiet / SPEED)
+    worst = max(gaps) if gaps else 0
+    ch["quiet travel <= 40 s"] = 1.0 if worst <= 40 else max(0.0, 1 - (worst - 40) / 50)
+    notes.append("longest quiet stretch on the spine: %.0f s (the research's cap: 40 s)" % worst)
     # vehicle arenas: clear radius round the field / pad centres (no building or cover)
     clear = {}
     for pid in ("field", "pad"):                            # (the LZ is a foot place: the dropship stands in it)
@@ -179,12 +206,14 @@ def main():
     top, n = meshes.most_common(1)[0]
     ch["no single mesh dominates"] = float(np.clip(1 - (n / total - 0.25) / 0.25, 0, 1))
     notes.append("most used: %s, %.0f %% of %d" % (top.split(".")[-1], 100 * n / total, total))
-    canopy = sum(n for m, n in meshes.items() if "Tree1_clump1" in m or "Swamp_tree_new" in m)
+    canopy = sum(n for m, n in meshes.items() if re.search(r"Tree1_clump1|Swamp_tree_new|swamp_tree_00", m))
     ch["jungle density"] = min(1.0, canopy / 1200)
     notes.append("%d canopy trees" % canopy)
-    kit = sum(n for m, n in meshes.items() if m.startswith("AvalonSM"))
-    other_ind = sum(n for m, n in meshes.items() if re.search(r"SuperStructure|Lofttower|firebreather|Pipes\.|PipeSet|Tower|gas_tank|tank_00", m)
-                    and not m.startswith("AvalonSM"))
+    # one family = Sanctuary's own (the user, 2026-10-08: "base on the architecture of the previous level assets"):
+    # the BSP shells in the maps' textures and Mission_08M's pieces, against foreign architecture kits
+    kit = t3d.count("Class=Brush ") + sum(n for m, n in meshes.items() if m.startswith("Mission_08M"))
+    other_ind = sum(n for m, n in meshes.items() if m.startswith(("AvalonSM", "MM_WaterfrontM", "Mission_SulferonM")) or
+                    re.search(r"Towers\.|gas_tank", m))
     ch["one kit family"] = kit / max(1, kit + other_ind)
     ch["dusk palette"] = 1.0
     R["artist"] = (ch, notes)

@@ -1,0 +1,42 @@
+# sanctuary_open_verify: the beacon from the LZ, every place from its entry (teleports placed from the heights),
+# do the enemies move off their sheds (dump twice, 10 s apart), and the frame rate
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator,U2Gore.GoreMutator,U2Sanctuary.SanctuaryMutator,U2FairFights.FairFights
+waitcontrol 120
+wait 2
+console god
+console togglehud
+look -28 4
+wait 1
+shot
+wait 28
+mark plant
+console hub tp -845 366 -1390
+wait 1.5
+look -50 -5
+wait 1
+shot
+wait 4
+dump U2Izarian Location Health
+wait 10
+dump U2Izarian Location Health
+shot
+mark field
+console hub tp -3977 -6615 -1186
+wait 1.5
+look -157 -5
+wait 1
+shot
+mark power
+console hub tp -14583 -13056 -1055
+wait 1.5
+look -146 -5
+wait 1
+shot
+mark pad
+console hub tp -21455 -21909 -1297
+wait 1.5
+look -116 -5
+wait 1
+shot
+quit

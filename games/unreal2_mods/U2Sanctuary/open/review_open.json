@@ -1,72 +1,75 @@
 {
- "total": 0.7239664500147225,
+ "total": 0.9899595947227965,
  "writer": {
-  "score": 0.5,
+  "score": 1.0,
   "checks": {
    "beats in order": 1.0,
    "key places exist": 1.0,
-   "story props": 0.0,
-   "Miller's voice": 0.0
+   "story props": 1.0,
+   "Miller's voice": 1.0
   },
   "notes": [
-   "0 story props (bodies, the hauler wreck, blood) on the map"
+   "17 story props (bodies, the hauler wreck, blood) on the map",
+   "11 of Miller's camera conversations wired to places (OpenDirector beats)"
   ]
  },
  "director": {
-  "score": 0.5,
+  "score": 1.0,
   "checks": {
-   "weenie from the LZ": 0.0,
-   "weenie on the climb": 0.0,
+   "weenie from the LZ": 1.0,
+   "weenie on the climb": 1.0,
    "key frames": 1.0,
    "back light": 1.0
   },
   "notes": [
-   "the plant's company_mast is 27653 UU from the LZ (fog clips at 20000): HIDDEN by the land, BEYOND the clip - it isn't drawn",
-   "on the haul road the weenie first shows never",
+   "the plant's beacon mast is 16600 UU from the LZ (fog clips at 20000): over the land, inside the clip",
+   "on the haul road the weenie first shows after 0 s of the 24 s climb",
    "the sun is 180 deg off the LZ->plant view (back light toward the plant at dusk)"
   ]
  },
  "engineer": {
-  "score": 0.91,
+  "score": 0.99,
   "checks": {
    "road grades": 0.97,
-   "road widths": 0.67,
+   "road widths": 1.0,
    "pads flat": 1.0,
    "frame rate": 1.0
   },
   "notes": [
    "3 % of the road length over a 25 % grade",
-   "narrower than 3 bikes: pit_back, jungle_loop",
-   "frame rate 73 fps avg, 79 1% low (pilot, the LZ)"
+   "narrower than 3 bikes: none",
+   "frame rate 101 fps avg, 83 1% low (pilot, the LZ)"
   ]
  },
  "level": {
-  "score": 0.94,
+  "score": 0.98,
   "checks": {
    "drive pacing": 1.0,
-   "vehicle arenas": 0.77,
+   "quiet travel <= 40 s": 1.0,
+   "vehicle arenas": 0.97,
    "arena scores": 0.93,
    "foot/vehicle mix": 1.0,
    "loops": 1.0
   },
   "notes": [
    "spine drives: haul_w 24 s, haul_e 21 s, pad_road 9 s",
-   "clear radius for the bike: field 1695, pad 814",
+   "longest quiet stretch on the spine: 7 s (the research's cap: 40 s)",
+   "clear radius for the bike: field 1695, pad 1411",
    "playable areas: lz 0.83, plant 0.94, field 1.00, pit 1.00, power 0.88, pad 0.92",
    "5 vehicle beats, 6 on foot"
   ]
  },
  "artist": {
-  "score": 0.93,
+  "score": 0.98,
   "checks": {
    "no single mesh dominates": 1.0,
    "jungle density": 0.93,
-   "one kit family": 0.8,
+   "one kit family": 0.99,
    "dusk palette": 1.0
   },
   "notes": [
-   "most used: Tree1_clump1, 16 % of 4859",
-   "1115 canopy trees"
+   "most used: m08_grass_001, 11 % of 4955",
+   "1111 canopy trees"
   ]
  }
 }
