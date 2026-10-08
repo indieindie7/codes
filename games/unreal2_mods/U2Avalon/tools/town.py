@@ -83,14 +83,6 @@ FRAME = best[2]
 if COMPOSE:
     compose.score(base + "_e.bmp", layout, png=base + "_frame.png")
 print("  using", os.path.basename(best[1]), "score %.2f, %d core unmet, window frame %.2f" % (L["systems"]["score"], best[0][0], FRAME["total"]), flush=True)
-try:                                     # believability (Q35, tools/metrics.py): imperfection + hierarchy/time
-    import metrics
-    MET = metrics.score(layout)
-    print("  believability: IMP %.2f HIER %.2f" % (MET["IMP"], MET["HIER"]), flush=True)
-    open(os.path.join(RUN, "believability.txt"), "w").write(
-        "IMP %.2f HIER %.2f\n%s\n" % (MET["IMP"], MET["HIER"], ", ".join("%s %s" % (k, v) for k, v in MET.items() if k not in ("IMP", "HIER"))))
-except Exception as e:
-    print("  metrics failed:", e)
 open(os.path.join(RUN, "systems.txt"), "w").write(
     "needs %d unmet %d score %.2f\n" % (L["systems"]["needs"], len(L["systems"]["unmet"]), L["systems"]["score"])
     + "".join("  %s needs %s: %s\n" % tuple(u) for u in L["systems"]["unmet"]))
@@ -101,6 +93,14 @@ ib.island_png(base + "_ec.bmp", base + "_map.png")
 step("viewshed (final ground)", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), base + "_ec.bmp", NAV, layout, base]))
 # the citizens' routines walked on the graded ground: desire lines, door wants, travel-time checks
 step("walks", lambda: ib.run(["py", os.path.join(TOOLS, "walks.py"), base + "_ec.bmp", layout, "png=" + base + "_walks.png"]))
+try:                                     # believability (Q35, tools/metrics.py), after the walks' paths join the network
+    import metrics
+    MET = metrics.score(layout)
+    print("  believability: IMP %.2f HIER %.2f" % (MET["IMP"], MET["HIER"]), flush=True)
+    open(os.path.join(RUN, "believability.txt"), "w").write(
+        "IMP %.2f HIER %.2f\n%s\n" % (MET["IMP"], MET["HIER"], ", ".join("%s %s" % (k, v) for k, v in MET.items() if k not in ("IMP", "HIER"))))
+except Exception as e:
+    print("  metrics failed:", e)
 L = json.load(open(layout))
 # the ground paint: rock base, sand on roads / yards / beach, plant life on gentle ground (TutA's three layers)
 ALPHA_TPL = os.path.join(r"C:\Users\john\Documents\U2_research\terrain", "alphas")
