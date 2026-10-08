@@ -23,6 +23,7 @@ src, dst = sys.argv[2], sys.argv[3]
 o = dict(a.split("=", 1) for a in sys.argv[4:] if "=" in a)
 PRESET = o.get("preset", "hills")
 STYLE = o.get("style", "ridges")             # ridges | plateau (the Sana concept: volcano cone, cliff-edged plateau with the plant, long coast road)
+                                             # | mix (plateau + Socotra spires + a La Fortaleza mesa + Waimea gorge and layered ledges)
 RELIEF = float(o.get("relief", 90))          # metres, highest point over the lowest formed cell
 LAND = float(o.get("land", 0.40))
 PNG = o.get("png")
@@ -72,7 +73,7 @@ items.append({"type": "valley", "points": [pt(bx, by), pt((bx + cx) / 2 + rng.un
 # the plant's plain: flat after erosion, and low uplift so it stays a coastal plain
 items.append({"type": "basin", "polygon": [pt(px - 0.07, py - 0.07), pt(px + 0.07, py - 0.07), pt(px + 0.07, py + 0.07), pt(px - 0.07, py + 0.07)], "depth": 0.7, "edge": 0.04})
 items.append({"type": "pad", "at": pt(px, py), "radius": 0.045})
-if STYLE == "plateau":
+if STYLE in ("plateau", "mix"):
     # the concept island: one volcanic cone in the heart, a flat-topped plateau on the plant's side ending in
     # cliffs, and a long road from the plant along the shore past the tower and on round the coast
     items = []
@@ -88,6 +89,27 @@ if STYLE == "plateau":
     ex, ey = min(max(ex, 0.08), 0.92), min(max(ey, 0.08), 0.92)
     items.append({"type": "road", "points": [pt(px, py), pt((px + tx) / 2 + 0.03, (py + ty) / 2 - 0.03), pt(tx, ty), pt(ex, ey)], "width": 0.012})
     RELIEF = max(RELIEF, 130.0)
+MESA = GORGE = None
+if STYLE == "mix":
+    # the user's pick of the real-place refs (2026-10-07, design-refs/avalon_real_places/desert_islands):
+    # Socotra - a cluster of granite spires in the heart instead of one smooth cone
+    for k in range(5):
+        a = rng.uniform(0, 2 * math.pi)
+        r = rng.uniform(0.015, 0.05)
+        items.append({"type": "peak", "at": pt(cx + r * math.cos(a), cy + r * math.sin(a)), "height": float(rng.uniform(0.75, 1.05)),
+                      "radius": float(rng.uniform(0.012, 0.022))})
+    # La Fortaleza - a cliff-capped mesa standing apart, across the heart from the plant (seen from the tower)
+    mx, my = cx + (cx - px) * 0.85, cy + (cy - py) * 0.85
+    mx, my = min(max(mx, 0.18), 0.82), min(max(my, 0.18), 0.82)
+    MESA = (mx, my, 0.065)
+    poly = [pt(mx + 0.065 * math.cos(a) * rng.uniform(0.85, 1.15), my + 0.055 * math.sin(a) * rng.uniform(0.85, 1.15))
+            for a in np.linspace(0, 2 * math.pi, 10)[:-1]]
+    items.append({"type": "plateau", "polygon": poly, "strength": 0.6, "edge": 0.012, "resist": 0.9})
+    # Waimea - a deep narrow gorge from the heart down to the sea, on the side away from the plant
+    gx, gy = cx + (cx - px) * 2.0 + rng.uniform(-0.15, 0.15), cy - (cy - py) * 0.5 + rng.uniform(-0.15, 0.15)
+    gx, gy = min(max(gx, 0.0), 1.0), min(max(gy, 0.0), 1.0)
+    GORGE = [pt(cx, cy), pt((cx + gx) / 2 + rng.uniform(-0.04, 0.04), (cy + gy) / 2 + rng.uniform(-0.04, 0.04)), pt(gx, gy)]
+    items.append({"type": "valley", "points": GORGE, "width": 0.022, "depth": 1.0})
 # a big bay or sound on one random side: a basin polygon eating into the island (never over the tower/plain quarter)
 sides = ["north", "south", "east", "west"]
 bay_side = sides[int(rng.integers(0, 2))] if rng.random() < 0.5 else "west"     # x<0.6 half: keeps the plant's shore intact
@@ -129,7 +151,7 @@ J, I = np.mgrid[0:N, 0:N]
 sea = float(np.percentile(hm, 100 * (1 - LAND)))
 while sea > 3.0 and main_mass(hm, sea + 3.0).mean() < 0.8 * LAND:
     sea -= 1.5                                                   # lower the sea until the tower's landmass carries the island
-if STYLE == "plateau":
+if STYLE in ("plateau", "mix"):
     # the plateau's table sits at the tower's own level (TutA's tower base is ~22 m over the sea): cap the
     # formed heights round the plain, the cap rising smoothly away so the cliffs stay where the sketch put them
     PLAT_H = 26.0
@@ -138,6 +160,41 @@ if STYLE == "plateau":
     tcap = np.clip((dpl - r_pl) / (0.08 * N), 0, 1)
     cap = sea + PLAT_H + 120.0 * tcap * tcap * (3 - 2 * tcap)
     hm = np.minimum(hm, cap)
+if STYLE == "mix":
+    J, I = np.mgrid[0:N, 0:N]
+
+    def value_noise(cells, amp):
+        g = rng.random((cells + 2, cells + 2))
+        u = I * cells / N
+        v = J * cells / N
+        i0, j0 = u.astype(int), v.astype(int)
+        fu, fv = u - i0, v - j0
+        fu, fv = fu * fu * (3 - 2 * fu), fv * fv * (3 - 2 * fv)
+        return amp * (g[j0, i0] * (1 - fu) * (1 - fv) + g[j0, i0 + 1] * fu * (1 - fv) + g[j0 + 1, i0] * (1 - fu) * fv + g[j0 + 1, i0 + 1] * fu * fv)
+    keep = np.clip((np.hypot(I - TOWER[0], J - TOWER[1]) - 10) / 6, 0, 1) * \
+        np.clip((np.hypot(I - (PLAIN[0] + PLAIN[1]) / 2, J - (PLAIN[2] + PLAIN[3]) / 2) - 0.17 * N) / 8, 0, 1)
+    up = np.clip((hm - sea - 25) / 40, 0, 1)
+    # Socotra: jagged high ground (ridged noise: sharp crests, 10 m cells)
+    rid = 1 - np.abs(2 * value_noise(24, 1.0) - 1)
+    hm = hm + keep * up * (rid ** 3) * 14.0
+    # La Fortaleza: the mesa's top cut flat (a table with cliffs all round)
+    if MESA:
+        mi, mj, mr = MESA[0] * N, MESA[1] * N, MESA[2] * N
+        inside = np.hypot(I - mi, J - mj) < mr * 0.8
+        top = float(np.percentile(hm[inside], 55)) if inside.any() else hm.max()
+        dm = np.hypot(I - mi, J - mj)
+        wm = np.clip((mr * 1.05 - dm) / (mr * 0.25), 0, 1)
+        hm = np.where(wm > 0, np.minimum(hm, top + (1 - wm) * 200.0), hm)
+    # Waimea: steep ground stepped into strata - flat ledges (grass, by the ground paint's slope rule) and
+    # short risers, bands of 9 m; the town's plateau and the tower's surroundings are left alone
+    gy_, gx_ = np.gradient(hm, 10.24)
+    slope = np.hypot(gx_, gy_)
+    B = 9.0
+    base_ = np.floor(hm / B) * B
+    fr = (hm - base_) / B
+    stepped = base_ + B * np.clip((fr - 0.7) / 0.3, 0, 1) ** 1.5
+    w_ = keep * np.clip((slope - 0.25) / 0.35, 0, 1) * (hm > sea + 4)
+    hm = hm * (1 - w_) + stepped * w_
 # the plain and the tower must be dry: lift them with smooth bumps rather than lowering the sea
 J, I = np.mgrid[0:N, 0:N]
 for (ci, cj, need, rad) in ((TOWER[0], TOWER[1], 7.0, 10.0), ((PLAIN[0] + PLAIN[1]) // 2, (PLAIN[2] + PLAIN[3]) // 2, 3.5, 9.0)):
