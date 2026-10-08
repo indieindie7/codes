@@ -1,0 +1,30 @@
+# DXVK A/B (2026-10-08): the same views with and without DXVK's d3d9.dll behind the d3d8 fork
+# (game -> d3d8.dll fork -> d3d9.dll DXVK -> Vulkan). Run once as installed, once with DXVK's d3d9.dll
+# copied into System; compare sheet.png, the fps shown by "stat fps", and U2Shaders.log (gi/ssao/pcss/post).
+background
+map TutA_Live11
+waitcontrol 300
+wait 6
+console stat fps
+wait 2
+shot
+look 0 -5
+wait 2
+shot
+look 90 -5
+wait 2
+shot
+look 180 -10
+wait 2
+shot
+look 270 -30
+wait 2
+shot
+move 1 0 4
+wait 2
+shot
+look 45 -60
+wait 2
+shot
+wait 1
+quit
