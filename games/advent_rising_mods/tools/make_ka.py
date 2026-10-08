@@ -91,7 +91,12 @@ HINGES = {
     },
 }
 UC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "AdventMod", "Classes", "ModRagdollBones.uc")
-TOTAL_MASS = 1.0
+# after Epic's own ragdolls (UT2004 KarmaData Human.ka; research_notes/Karma physics fixes):
+# total mass about 0.2 (ours was 1.0, so the same impulse moved our bodies 5x less), and twist
+# limits of 1.57 everywhere (a tight twist can put an animated start pose outside its limit).
+# MAKEKA_OLD=1 writes the old values (1.0 and the per-body twists) for comparison runs.
+TOTAL_MASS = 1.0 if os.environ.get("MAKEKA_OLD") else 0.2
+TWIST_MIN = 0.0 if os.environ.get("MAKEKA_OLD") else 1.57
 
 
 UC_TEMPLATE = """//=============================================================================
@@ -186,7 +191,7 @@ def build(asset, psk, bodies, hinges=None):
         seg = sub(e, o)
         if b == "hips":
             seg = sub(bones[bodies["hips"][0]][2], o)
-        info[b] = dict(origin=o, seg=seg, radius=radius, cone=cone, twist=twist, weight=weight, parent=part_parent(b))
+        info[b] = dict(origin=o, seg=seg, radius=radius, cone=cone, twist=max(twist, TWIST_MIN), weight=weight, parent=part_parent(b))
     wsum = sum(i["weight"] for i in info.values())
 
     out = ['\t<ASSET id="%s" graphic="%s.psk" scale="%g" mass_scale="1" length_scale="1">' % (asset, os.path.basename(psk)[:-4], SCALE)]
