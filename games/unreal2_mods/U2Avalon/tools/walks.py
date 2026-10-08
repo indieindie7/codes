@@ -80,8 +80,9 @@ def instances(bid):
     gap = max(W, D) * 1.5
     spec = b.get("count", "1").split()
     pts = [(0, 0)]
-    if spec[0].lower() == "2x2":
-        pts = [(-gap / 2, -gap / 2), (gap / 2, -gap / 2), (-gap / 2, gap / 2), (gap / 2, gap / 2)]
+    if "x" in spec[0].lower():                  # "3x4": a block (2x2 as before)
+        na_, nc_ = (int(v) for v in spec[0].lower().split("x"))
+        pts = [((ka_ - (na_ - 1) / 2) * gap, (kc_ - (nc_ - 1) / 2) * gap) for kc_ in range(nc_) for ka_ in range(na_)]
     elif len(spec) == 2:
         n = int(spec[0])
         pts = [((k - (n - 1) / 2) * gap, 0) if spec[1] == "along" else (0, (k - (n - 1) / 2) * gap) for k in range(n)]

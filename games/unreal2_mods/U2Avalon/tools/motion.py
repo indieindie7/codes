@@ -127,19 +127,16 @@ if o.get("extras", "1") != "0":
 spots = ["%.0f %.0f 700" % (L["buildings"][b]["x"], L["buildings"][b]["y"])
          for b in ("plant_office", "dorm", "tin_bar", "dock") if b in L["buildings"]]
 
-txt = open(INI, newline="").read().replace("\r\n", "\n")
-txt = re.sub(r"(?m)^(Plumes|Trucks|Paths|PASpots|Extras)\[\d+\]=.*\n", "", txt)
-txt = re.sub(r"(?m)^(Wind|Reveal\w+)=.*\n", "", txt)
-head = "[U2AvalonCards.AvalonCards]\n"
-i = txt.index(head) + len(head)
-add = "".join("Plumes[%d]=%s\n" % (k, p) for k, p in enumerate(plumes[:16]))
-add += "".join("Paths[%d]=%s\n" % (k, p) for k, p in enumerate(paths[:4]))
-add += "".join("Trucks[%d]=%s\n" % (k, t) for k, t in enumerate(trucks[:8]))
-add += "".join("PASpots[%d]=%s\n" % (k, p) for k, p in enumerate(spots[:6]))
-add += "".join("Extras[%d]=%s\n" % (k, e) for k, e in enumerate(extras[:48]))
-add += "Wind=(X=60,Y=-40,Z=0)\n" + "".join("%s=%s\n" % kv for kv in reveal.items())
-txt = txt[:i] + add + txt[i:]
-open(INI, "w", newline="").write(txt.replace("\n", "\r\n"))
+# the layout's own things go to the family's section (family=, from town.py); wind and the reveal stay global
+import avalon_ini  # noqa
+avalon_ini.edit(INI, o.get("family"), ("Plumes", "Trucks", "Paths", "PASpots", "Extras"),
+                ["Plumes[%d]=%s" % (k, p) for k, p in enumerate(plumes[:16])]
+                + ["Paths[%d]=%s" % (k, p) for k, p in enumerate(paths[:4])]
+                + ["Trucks[%d]=%s" % (k, t) for k, t in enumerate(trucks[:8])]
+                + ["PASpots[%d]=%s" % (k, p) for k, p in enumerate(spots[:6])]
+                + ["Extras[%d]=%s" % (k, e) for k, e in enumerate(extras[:48])])
+avalon_ini.edit(INI, None, ("Wind",) + tuple(reveal.keys()) if reveal else ("Wind",),
+                ["Wind=(X=60,Y=-40,Z=0)"] + ["%s=%s" % kv for kv in reveal.items()])
 print("%d plumes, %d trucks on a %d-point road, reveal %s -> %s" % (len(plumes), len(trucks), len(path), "on" if reveal else "off", INI))
 for p in plumes:
     print("  plume", p)

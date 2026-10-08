@@ -164,6 +164,8 @@ class Editor:
         try:
             pid = launch_suspended(os.path.join(SYSTEM, "UnrealEd.exe"),
                                     os.path.join(BIN, "U2EdBridge.dll"), SYSTEM)
+            # U2ED_PARK=0 keeps the editor where it opens (for watching it work)
+            bg = Background(pid) if os.environ.get("U2ED_PARK", "1") != "0" else None
             deadline = time.time() + timeout
             while not _has_window(pid):
                 if not _alive(pid):
@@ -172,6 +174,7 @@ class Editor:
                     raise BridgeError("UnrealEd showed no window in %ds" % timeout)
                 time.sleep(0.5)
             ed = cls(pid)
+            ed.bg = bg
             ed.wait_ready(max(10, deadline - time.time()))
             return ed
         except BaseException:
@@ -205,6 +208,8 @@ class Editor:
 
     def stop(self):
         """Close the editor without saving and restore dgVoodoo."""
+        if getattr(self, "bg", None):
+            self.bg.stop()
         try:
             self.exec("!quit")
         except OSError:
@@ -296,6 +301,64 @@ def inject(pid):
     r = subprocess.run([exe, str(pid), dll], capture_output=True, text=True)
     if r.returncode:
         raise BridgeError("injection failed: " + (r.stderr or r.stdout).strip())
+
+
+class Background:
+    """Keep a background editor out of the user's way (the user plays while carve.py edits, 2026-10-07):
+    from the moment it launches, every window it shows is moved off-screen without activation and made
+    WS_EX_NOACTIVATE, and if it still takes the foreground the window that had it (the game) gets it back.
+    Off-screen also matters for stability: a mouse over the viewport during a terrain rebuild crashes it."""
+
+    def __init__(self, pid, x=-3000, y=0):
+        import threading
+        self.pid, self.x, self.y = pid, x, y
+        self.prev = user32.GetForegroundWindow()
+        self.seen = set()
+        self.running = True
+        self.t = threading.Thread(target=self.loop, daemon=True)
+        self.t.start()
+
+    def windows(self):
+        found = []
+        proto = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+
+        def cb(h, _):
+            p = wt.DWORD()
+            user32.GetWindowThreadProcessId(h, ctypes.byref(p))
+            if p.value == self.pid and user32.IsWindowVisible(h):
+                found.append(h)
+            return True
+        user32.EnumWindows(proto(cb), 0)
+        return found
+
+    def loop(self):
+        GWL_EXSTYLE, WS_EX_NOACTIVATE = -20, 0x08000000
+        while self.running:
+            try:
+                for h in self.windows():
+                    if h not in self.seen:
+                        self.seen.add(h)
+                        user32.SetWindowLongW(h, GWL_EXSTYLE, user32.GetWindowLongW(h, GWL_EXSTYLE) | WS_EX_NOACTIVATE)
+                    r = wt.RECT()
+                    user32.GetWindowRect(h, ctypes.byref(r))
+                    if r.left > self.x + 500:
+                        user32.SetWindowPos(h, 0, self.x, self.y, 0, 0, 0x0001 | 0x0004 | 0x0010)  # NOSIZE|NOZORDER|NOACTIVATE
+                fg = user32.GetForegroundWindow()
+                if self.prev and fg and fg != self.prev:
+                    p = wt.DWORD()
+                    t_fg = user32.GetWindowThreadProcessId(fg, ctypes.byref(p))
+                    if p.value == self.pid:
+                        # hand the foreground back: attach to the editor's input thread for the call
+                        me = ctypes.windll.kernel32.GetCurrentThreadId()
+                        user32.AttachThreadInput(me, t_fg, True)
+                        user32.SetForegroundWindow(self.prev)
+                        user32.AttachThreadInput(me, t_fg, False)
+            except Exception:
+                pass
+            time.sleep(0.05)
+
+    def stop(self):
+        self.running = False
 
 
 def launch_suspended(exe_path, dll, cwd, timeout=30):

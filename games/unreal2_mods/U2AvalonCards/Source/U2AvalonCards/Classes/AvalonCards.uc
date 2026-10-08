@@ -142,6 +142,7 @@ var AvalonStorm LiveStorm;
 
 var bool bRebuild;
 var bool bAvalon;          // this map is one of the Avalon maps (Maps): the town and its life are built
+var AvalonSet Set;         // this map family's own dressing ([<family> AvalonSet] in the ini)
 var array<Actor> Made;
 var Texture TreeTex[3];
 var Texture RigTex[8];
@@ -153,6 +154,8 @@ event PostBeginPlay()
 	// weather, motion and loudspeakers only on the Avalon maps (Maps)
 	bAvalon = InList(Maps, MapName());
 	Log("Cards: live on "$MapName()$", avalon "$bAvalon);
+	if (bAvalon)
+		OpenSet();
 	if (bAvalon && bSurvey)
 		Survey();
 	Build();
@@ -182,6 +185,80 @@ function bool InList(string List, string M)
 			return true;
 	}
 	return false;
+}
+
+// the map family: the map's name, lower case, without a carved copy's "_liveN" (TutA_Ridge5_Live2 ->
+// tuta_ridge5, TutA_Live3 -> tuta)
+function string Family()
+{
+	local string M;
+
+	M = Locs(MapName());
+	if (InStr(M, "_live") >= 0)
+		M = Left(M, InStr(M, "_live"));
+	return M;
+}
+
+// this family's dressing: read it if the family has a section, else start the section from the global values
+function OpenSet()
+{
+	Set = new(None, Family()) class'AvalonSet';     // the object's name (a string in U2) = the ini section's
+	if (Set == None)
+		return;
+	if (Set.bUsed)
+		FromSet();
+	else
+	{
+		ToSet();
+		Set.bUsed = true;
+		Set.SaveConfig();
+	}
+	Log("Cards: dressing from ["$Family()$" AvalonSet], "$Set.Name);
+}
+
+function FromSet()
+{
+	local int i;
+
+	for (i = 0; i < ArrayCount(Props); i++) Props[i] = Set.Props[i];
+	for (i = 0; i < ArrayCount(Blocks); i++) Blocks[i] = Set.Blocks[i];
+	for (i = 0; i < ArrayCount(Cards); i++) Cards[i] = Set.Cards[i];
+	for (i = 0; i < ArrayCount(Extras); i++) Extras[i] = Set.Extras[i];
+	for (i = 0; i < ArrayCount(Plumes); i++) Plumes[i] = Set.Plumes[i];
+	for (i = 0; i < ArrayCount(Trucks); i++) Trucks[i] = Set.Trucks[i];
+	for (i = 0; i < ArrayCount(Paths); i++) Paths[i] = Set.Paths[i];
+	for (i = 0; i < ArrayCount(PASpots); i++) PASpots[i] = Set.PASpots[i];
+	RadioSpot = Set.RadioSpot;
+	TowerSpot = Set.TowerSpot;
+	DecayLamp = Set.DecayLamp;
+}
+
+function ToSet()
+{
+	local int i;
+
+	for (i = 0; i < ArrayCount(Props); i++) Set.Props[i] = Props[i];
+	for (i = 0; i < ArrayCount(Blocks); i++) Set.Blocks[i] = Blocks[i];
+	for (i = 0; i < ArrayCount(Cards); i++) Set.Cards[i] = Cards[i];
+	for (i = 0; i < ArrayCount(Extras); i++) Set.Extras[i] = Extras[i];
+	for (i = 0; i < ArrayCount(Plumes); i++) Set.Plumes[i] = Plumes[i];
+	for (i = 0; i < ArrayCount(Trucks); i++) Set.Trucks[i] = Trucks[i];
+	for (i = 0; i < ArrayCount(Paths); i++) Set.Paths[i] = Paths[i];
+	for (i = 0; i < ArrayCount(PASpots); i++) Set.PASpots[i] = PASpots[i];
+	Set.RadioSpot = RadioSpot;
+	Set.TowerSpot = TowerSpot;
+	Set.DecayLamp = DecayLamp;
+}
+
+// the global config, and this family's set with it
+function SaveAll()
+{
+	if (Set != None)
+	{
+		ToSet();
+		Set.SaveConfig();
+	}
+	SaveConfig();
 }
 
 function string MapName()
@@ -280,7 +357,7 @@ function LiveTick()
 		PC.SetRotation(ReturnRot);
 		PC.ClientMessage("[Claude] the carved map, back where you were");
 		Log("Cards: live returned the player to "$V);
-		SaveConfig();
+		SaveAll();
 	}
 	bHas = false;
 	for (i = 0; i < PC.ExecManagers.Length; i++)
@@ -303,7 +380,7 @@ function LiveTick()
 	PC.ConsoleCommand("exec "$LiveFile);      // runs the file's lines right here, synchronously
 	bInFile = false;
 	if (bLiveRun)
-		SaveConfig();                          // the session's edits (journal, cards) survive any reload
+		SaveAll();                          // the session's edits (journal, cards) survive any reload
 }
 
 // the rest of S after its first word
@@ -341,14 +418,14 @@ function Live(string S, PlayerController PC)
 	{
 		Log("Cards: live "$LiveSeq$" "$S);
 		if (!bInFile)
-			SaveConfig();
+			SaveAll();
 		return;
 	}
 	switch (Cmd)
 	{
 	case "PENDING":
 		PendingMap = Arg;
-		SaveConfig();
+		SaveAll();
 		if (PC != None)
 			PC.ClientMessage("[Claude] the carved map is ready: type  avalon reload  when it suits you");
 		break;
@@ -364,7 +441,7 @@ function Live(string S, PlayerController PC)
 		bReturn = true;
 		Arg = PendingMap;
 		PendingMap = "";
-		SaveConfig();                 // keeps the session's journal and cards too
+		SaveAll();                 // keeps the session's journal and cards too
 		// the same options as now (the mutators: the user's, or a test run's)
 		Opts = Level.GetLocalURL();
 		if (InStr(Opts, "?") >= 0)
@@ -427,7 +504,7 @@ function Live(string S, PlayerController PC)
 		Build();
 		break;
 	case "SAVE":
-		SaveConfig();
+		SaveAll();
 		break;
 	case "WHERE":
 		if (PC != None && PC.Pawn != None)
@@ -442,7 +519,7 @@ function Live(string S, PlayerController PC)
 	}
 	Log("Cards: live "$LiveSeq$" "$S);
 	if (!bInFile)
-		SaveConfig();
+		SaveAll();
 }
 
 function Backwater()

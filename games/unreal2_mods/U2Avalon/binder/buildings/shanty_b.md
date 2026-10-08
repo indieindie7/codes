@@ -5,9 +5,9 @@ layer: decline
 kind: house
 at: 9000 -2600 70
 size: 7 5 3.5
-count: 4 along
+count: 3x4
 users: tin_row_families
-beds: 32
+beds: 96
 doors: front:personnel back:personnel right:personnel
 roof: pitched
 wear: 0.8

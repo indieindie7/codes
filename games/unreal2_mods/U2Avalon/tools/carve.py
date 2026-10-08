@@ -43,11 +43,14 @@ def current_map():
     return m[-1] if m else "TutA"
 
 
-def next_name():
+def next_name(base="TutA"):
+    """the next free <parent>_LiveN: a carved copy keeps its parent's name so the game files it under the same
+    map family (AvalonSet: TutA_Ridge5_Live2 -> tuta_ridge5); a copy of a copy numbers on from the parent"""
+    parent = base[:base.lower().index("_live")] if "_live" in base.lower() else base
     n = 1
-    while os.path.exists(os.path.join(MAPS, "TutA_Live%d.un2" % n)):
+    while os.path.exists(os.path.join(MAPS, "%s_Live%d.un2" % (parent, n))):
         n += 1
-    return "TutA_Live%d" % n
+    return "%s_Live%d" % (parent, n)
 
 
 def mark_point():
@@ -249,7 +252,7 @@ def main():
     else:
         nums = [float(v) for v in a[1:] if v != "add"]
     base = o.get("base") or current_map()
-    out = next_name()
+    out = next_name(base)
     tmp = tempfile.mkdtemp(prefix="carve_")
     print("carve %s %s on %s -> %s" % (kind, nums, base, out))
 

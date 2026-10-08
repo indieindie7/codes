@@ -50,8 +50,9 @@ def instances(b):
     gap = max(w, d) * 1.5
     spec = b.get("count", "1").split()
     pts = [(0, 0)]
-    if spec[0].lower() == "2x2":
-        pts = [(-gap / 2, -gap / 2), (gap / 2, -gap / 2), (-gap / 2, gap / 2), (gap / 2, gap / 2)]
+    if "x" in spec[0].lower():                      # "3x4": a block, 3 along by 4 across (2x2 as before)
+        na, nc = (int(v) for v in spec[0].lower().split("x"))
+        pts = [((ka - (na - 1) / 2) * gap, (kc - (nc - 1) / 2) * gap) for kc in range(nc) for ka in range(na)]
     elif len(spec) == 2:
         n = int(spec[0])
         pts = [((k - (n - 1) / 2) * gap, 0) if spec[1] == "along" else (0, (k - (n - 1) / 2) * gap) for k in range(n)]
@@ -117,13 +118,11 @@ for bid, b in buildings.items():
         props.append("AvalonSM.Liandri.%s %.0f %.0f %.0f 1.0 %.0f 0 0 0" % (mesh, x, y, deg, lift))
         actor("AvalonSM.Liandri.%s" % mesh, x, y, deg, 1.0, lift)
 
-txt = open(INI, newline="").read().replace("\r\n", "\n")
-txt = re.sub(r"(?m)^(Props|Blocks|Cards)\[\d+\]=.*\n", "", txt)
-head = "[U2AvalonCards.AvalonCards]\n"
-i = txt.index(head) + len(head)
-txt = (txt[:i] + "".join("Props[%d]=%s\n" % (k, p) for k, p in enumerate(props[:64] if WRITE_PROPS else []))
-       + "".join("Cards[%d]=%s\n" % (k, c) for k, c in enumerate(cards[:64])) + txt[i:])
-open(INI, "w", newline="").write(txt.replace("\n", "\r\n"))
+# family=<map family> (town.py: the map name): the family's own [<family> AvalonSet] section, not the global one
+import avalon_ini  # noqa
+avalon_ini.edit(INI, o.get("family"), ("Props", "Blocks", "Cards"),
+                ["Props[%d]=%s" % (k, p) for k, p in enumerate(props[:64] if WRITE_PROPS else [])]
+                + ["Cards[%d]=%s" % (k, c) for k, c in enumerate(cards[:64])])
 print(len(props) if WRITE_PROPS else 0, "props,", len(cards), "cards ->", INI, "(shift %.0f)" % SHIFT)
 if LAYOUT:
     _L = _json.load(open(o["layout"]))

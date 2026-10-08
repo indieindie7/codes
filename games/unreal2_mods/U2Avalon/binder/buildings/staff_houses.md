@@ -5,9 +5,9 @@ layer: boom
 kind: house
 at: 11200 -4600 30
 size: 6 5 3.5
-count: 2x2
+count: 3x3
 users: plant_staff
-beds: 24
+beds: 54
 doors: front:personnel right:personnel
 roof: flat
 wear: 0.1

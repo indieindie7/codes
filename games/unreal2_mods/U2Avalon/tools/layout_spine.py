@@ -333,8 +333,9 @@ def footprint_m(b):
     wdt, dpt = b["size"][0], b["size"][1]
     spec = b.get("count", "1").split()
     gap = max(wdt, dpt) * 1.5
-    if spec[0].lower() == "2x2":
-        return wdt + gap, dpt + gap
+    if "x" in spec[0].lower():                      # "3x4": a block, 3 along by 4 across
+        na, nc = (int(v) for v in spec[0].lower().split("x"))
+        return wdt + (na - 1) * gap, dpt + (nc - 1) * gap
     if len(spec) == 2:
         n = int(spec[0])
         return (wdt + (n - 1) * gap, dpt) if spec[1] == "along" else (wdt, dpt + (n - 1) * gap)

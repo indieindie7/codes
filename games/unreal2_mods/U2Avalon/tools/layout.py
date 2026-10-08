@@ -283,8 +283,9 @@ def group_offsets(b):
     wdt, dpt = b["size"][0] * M, b["size"][1] * M
     gap = max(wdt, dpt) * 1.5
     spec = b.get("count", "1").split()
-    if spec[0].lower() == "2x2":
-        return [(-gap / 2, -gap / 2), (gap / 2, -gap / 2), (-gap / 2, gap / 2), (gap / 2, gap / 2)], gap
+    if "x" in spec[0].lower():                      # "3x4": a block (2x2 as before)
+        na, nc = (int(v) for v in spec[0].lower().split("x"))
+        return [((ka - (na - 1) / 2) * gap, (kc - (nc - 1) / 2) * gap) for kc in range(nc) for ka in range(na)], gap
     if len(spec) == 2:
         n = int(spec[0])
         return [((k - (n - 1) / 2) * gap, 0) if spec[1] == "along" else (0, (k - (n - 1) / 2) * gap) for k in range(n)], gap

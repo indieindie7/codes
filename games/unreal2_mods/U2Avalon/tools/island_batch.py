@@ -257,8 +257,9 @@ def closeup_script(name, layout_json, ids=("hall_a", "hall_b", "silos", "dorm", 
             spec = sheets[o_].get("count", "1").split()
             gap = max(W, D) * 1.5
             pts = [(0, 0)]
-            if spec[0].lower() == "2x2":
-                pts = [(-gap / 2, -gap / 2), (gap / 2, -gap / 2), (-gap / 2, gap / 2), (gap / 2, gap / 2)]
+            if "x" in spec[0].lower():                  # "3x4": a block (2x2 as before)
+                na_, nc_ = (int(v) for v in spec[0].lower().split("x"))
+                pts = [((ka_ - (na_ - 1) / 2) * gap, (kc_ - (nc_ - 1) / 2) * gap) for kc_ in range(nc_) for ka_ in range(na_)]
             elif len(spec) == 2:
                 n_ = int(spec[0])
                 pts = [((k_ - (n_ - 1) / 2) * gap, 0) if spec[1] == "along" else (0, (k_ - (n_ - 1) / 2) * gap) for k_ in range(n_)]
@@ -290,7 +291,7 @@ def closeup_script(name, layout_json, ids=("hall_a", "hall_b", "silos", "dorm", 
         b = B[bid]
         size = sheets[bid]["size"]
         spec = sheets[bid].get("count", "1").split()
-        n = 2 if spec[0].lower() == "2x2" else (int(spec[0]) if len(spec) == 2 else 1)
+        n = int(spec[0].lower().split("x")[0]) if "x" in spec[0].lower() else (int(spec[0]) if len(spec) == 2 else 1)
         longest = max(size[0], size[1]) * (1 + 1.5 * (n - 1)) * 50
         d = longest * 1.6 + 8 * 50
         tz = max(b.get("z", -4800), -4967) + size[2] * 25
