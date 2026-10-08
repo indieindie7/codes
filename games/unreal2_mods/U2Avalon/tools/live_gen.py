@@ -9,7 +9,8 @@ goes to the running game through live.py as "avalon cardat" lines (one undoable 
     py tools/live_gen.py row     CARDS X1 Y1 X2 Y2 N SIZE          along a line, facing the window
 
 CARDS: one card name or several "A,B,C" (picked at random); see tools/asset_catalog.py card.
-X Y may be "mark": the point the user's last "avalon mark" looked at.
+X Y may be "mark": the point the user's last "avalon mark" looked at. Works on any map; the sea and
+slope checks only on the Avalon maps (elsewhere cards face where the user stood for the mark).
 Options: seed=N, slope=25 (max degrees), dry=1 (print the commands, send nothing), face=X,Y.
 """
 import json, math, os, random, re, sys
@@ -40,6 +41,8 @@ def slope(Z, x, y, d=300.0):
 
 
 def ok(Z, x, y, placed, spacing, max_slope):
+    if Z is None:
+        return all(math.hypot(x - px, y - py) >= spacing for px, py in placed)
     if ground(Z, x, y) <= compose.SEA_Z + 60:
         return False
     if slope(Z, x, y) > max_slope:
@@ -52,12 +55,21 @@ def yaw_to(x, y, tx, ty):
 
 
 def last_mark():
+    """(looking-at x, y), (player x, y) of the user's last mark"""
     text = open(live.LOG, "rb").read().decode("latin1", "replace") if os.path.exists(live.LOG) else ""
     m = [l for l in text.splitlines() if "Cards: edit MARK" in l]
     if not m:
         sys.exit("no mark in the game log yet (in game: avalon mark)")
     w = re.search(r"looking-at (-?\d+) (-?\d+) (-?\d+)", m[-1])
-    return float(w.group(1)), float(w.group(2))
+    p = re.search(r"MARK \d+ at (-?\d+) (-?\d+) (-?\d+)", m[-1])
+    return (float(w.group(1)), float(w.group(2))), (float(p.group(1)), float(p.group(2)))
+
+
+def on_avalon():
+    """the map the game is on is one of the Avalon maps ("Cards: live on MAP, avalon True")"""
+    text = open(live.LOG, "rb").read().decode("latin1", "replace") if os.path.exists(live.LOG) else ""
+    m = re.findall(r"Cards: live on (\S+), avalon (\w+)", text)
+    return (m[-1][1] == "True") if m else True
 
 
 def main():
@@ -65,15 +77,23 @@ def main():
     o = dict(x.split("=", 1) for x in sys.argv[1:] if "=" in x)
     rnd = random.Random(int(o.get("seed", 1)))
     max_slope = float(o.get("slope", 25))
-    face = tuple(float(v) for v in o["face"].split(",")) if "face" in o else WINDOW
+    avalon = on_avalon()
+    face = WINDOW if avalon else None       # elsewhere: cards face where the user stood for the mark
     kind, cards = a[0], a[1].split(",")
     if a[2] == "mark":
-        x0, y0 = last_mark()
+        (x0, y0), stood = last_mark()
+        if face is None:
+            face = stood
         rest = a[3:]
     else:
         x0, y0 = float(a[2]), float(a[3])
         rest = a[4:]
-    Z = heights()
+    if "face" in o:
+        face = tuple(float(v) for v in o["face"].split(","))
+    if face is None:
+        face = (x0 - 1000.0, y0)
+    # the terrain checks (sea, slope) use the Avalon town's heightmap: only on the Avalon maps
+    Z = heights() if avalon else None
     out = []                                  # (card, x, y, yaw, size)
 
     def add(x, y, yaw, size, placed, spacing):

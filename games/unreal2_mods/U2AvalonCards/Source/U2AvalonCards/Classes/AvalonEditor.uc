@@ -92,12 +92,49 @@ function string Describe(Actor A)
 
 // ---------------------------------------------------------------- the journal
 
+// the journal is shared by every map: each line starts "@<map family>" (TutA_Live3 -> tuta, so a
+// carved copy keeps the session's edits), and a map sees only its own lines. Untagged lines (from before
+// marks worked on every map) belong to the Avalon maps.
+function string Family()
+{
+	local string M;
+
+	M = Locs(Cards.MapName());
+	if (InStr(M, "_live") >= 0)
+		M = Left(M, InStr(M, "_live"));
+	return M;
+}
+
+function string GetOp(int i)
+{
+	local string L;
+
+	L = Cards.Ops[i];
+	if (Left(L, 1) == "@")
+	{
+		if (Cards.Word(L, 0) == ("@"$Family()))
+			return Mid(L, InStr(L, " ") + 1);
+		return "";
+	}
+	if (Cards.bAvalon)
+		return L;
+	return "";
+}
+
+function SetOp(int i, string L)
+{
+	if (L == "")
+		Cards.Ops[i] = "";
+	else
+		Cards.Ops[i] = "@"$Family()$" "$L;
+}
+
 function int FindOp(string Kind, string N)
 {
 	local int i;
 
 	for (i = 0; i < ArrayCount(Cards.Ops); i++)
-		if (Cards.Word(Cards.Ops[i], 0) == Kind && Cards.Word(Cards.Ops[i], 1) ~= N)
+		if (Cards.Word(GetOp(i), 0) == Kind && Cards.Word(GetOp(i), 1) ~= N)
 			return i;
 	return -1;
 }
@@ -107,7 +144,7 @@ function int FreeOp()
 	local int i;
 
 	for (i = 0; i < ArrayCount(Cards.Ops); i++)
-		if (Cards.Ops[i] == "")
+		if (Cards.Ops[i] == "")       // a free slot, whichever map
 			return i;
 	return -1;
 }
@@ -125,7 +162,7 @@ function Record(string Kind, string N, string Rest)
 		return;
 	}
 	Push(i);
-	Cards.Ops[i] = Kind$" "$N$" "$Rest;
+	SetOp(i, Kind$" "$N$" "$Rest);
 }
 
 // where cards should face: words From, From+1 of Arg, or the command room's window (the tower)
@@ -157,7 +194,7 @@ function int FaceYaw(vector P, vector F)
 function Push(int i)
 {
 	Undo[Undo.Length] = i;
-	UndoWas[UndoWas.Length] = Cards.Ops[i];
+	UndoWas[UndoWas.Length] = GetOp(i);
 }
 
 // the ground (terrain, level geometry) under X Y, ignoring meshes (roofs)
@@ -201,7 +238,7 @@ function Actor NewMesh(string Path, vector P, int YawDeg, float Scale)
 		A.SetDrawScale(Scale);
 	MadeName[MadeName.Length - 1] = "mesh#"$n;
 	Push(n);
-	Cards.Ops[n] = "mesh "$A.StaticMesh$" "$Transform(A);
+	SetOp(n, "mesh "$A.StaticMesh$" "$Transform(A));
 	return A;
 }
 
@@ -219,7 +256,7 @@ function Actor NewCard(string Line)
 	Made[Made.Length] = Cards.Made[Cards.Made.Length - 1];
 	MadeName[MadeName.Length] = "card#"$n;
 	Push(n);
-	Cards.Ops[n] = "card "$Line;
+	SetOp(n, "card "$Line);
 	return Made[Made.Length - 1];
 }
 
@@ -235,8 +272,8 @@ function TakeBack(PlayerController PC)
 		return;
 	}
 	i = Undo[Undo.Length - 1];
-	Op = Cards.Word(Cards.Ops[i], 0);
-	N = Cards.Word(Cards.Ops[i], 1);
+	Op = Cards.Word(GetOp(i), 0);
+	N = Cards.Word(GetOp(i), 1);
 	if (Op == "mesh" || Op == "card")
 	{
 		k = MadeIndex(Op$"#"$i);
@@ -255,9 +292,9 @@ function TakeBack(PlayerController PC)
 			A.SetCollision(True, True, True);
 		}
 	}
-	Cards.Ops[i] = UndoWas[UndoWas.Length - 1];
-	if (Cards.Ops[i] != "")
-		Say(PC, "undo: back to "$Cards.Ops[i]$" (applies on the next rebuild)");
+	SetOp(i, UndoWas[UndoWas.Length - 1]);
+	if (GetOp(i) != "")
+		Say(PC, "undo: back to "$GetOp(i)$" (applies on the next rebuild)");
 	else
 		Say(PC, "undo: "$Op$" "$N);
 	Undo.Length = Undo.Length - 1;
@@ -279,7 +316,7 @@ function Remember()
 	if (Left(PickedName, 5) == "mesh#")
 	{
 		i = int(Mid(PickedName, 5));
-		Cards.Ops[i] = "mesh "$Picked.StaticMesh$" "$Transform(Picked);
+		SetOp(i, "mesh "$Picked.StaticMesh$" "$Transform(Picked));
 	}
 	else
 		Record("place", PickedName, Transform(Picked));
@@ -308,10 +345,10 @@ function Replay()
 	Clear();
 	for (i = 0; i < ArrayCount(Cards.Ops); i++)
 	{
-		Op = Cards.Word(Cards.Ops[i], 0);
+		Op = Cards.Word(GetOp(i), 0);
 		if (Op == "")
 			continue;
-		N = Cards.Word(Cards.Ops[i], 1);
+		N = Cards.Word(GetOp(i), 1);
 		if (Op == "hide")
 		{
 			A = Find(N);
@@ -325,11 +362,11 @@ function Replay()
 				continue;
 			C = CopyOf(A);
 			if (C != None)
-				Apply(C, Cards.Ops[i], 2);
+				Apply(C, GetOp(i), 2);
 		}
 		else if (Op == "card")
 		{
-			Cards.PlaceCard(Mid(Cards.Ops[i], 5)$" 8");
+			Cards.PlaceCard(Mid(GetOp(i), 5)$" 8");
 			if (Cards.Made.Length > 0)
 			{
 				Made[Made.Length] = Cards.Made[Cards.Made.Length - 1];
@@ -342,7 +379,7 @@ function Replay()
 			if (C != None)
 			{
 				MadeName[MadeName.Length - 1] = "mesh#"$i;
-				Apply(C, Cards.Ops[i], 2);
+				Apply(C, GetOp(i), 2);
 			}
 		}
 	}
@@ -564,12 +601,12 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 		if (Picked == None)
 			return true;
 		if (Left(PickedName, 5) == "mesh#")
-			Cards.Ops[int(Mid(PickedName, 5))] = "";
+			SetOp(int(Mid(PickedName, 5)), "");
 		else
 		{
 			i = FindOp("place", PickedName);
 			if (i >= 0)
-				Cards.Ops[i] = "";
+				SetOp(i, "");
 			Record("hide", PickedName, "");
 			A = Find(PickedName);
 			if (A != None)
@@ -587,7 +624,7 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 			return true;
 		i = FindOp("hide", PickedName);
 		if (i >= 0)
-			Cards.Ops[i] = "";
+			SetOp(i, "");
 		A = Find(PickedName);
 		if (A != None)
 		{
@@ -624,7 +661,7 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 		MadeName[MadeName.Length - 1] = "mesh#"$n;
 		SetPicked(A);
 		Push(n);
-		Cards.Ops[n] = "mesh "$A.StaticMesh$" "$Transform(A);
+		SetOp(n, "mesh "$A.StaticMesh$" "$Transform(A));
 		Say(PC, "spawned "$Describe(A));
 		return true;
 	case "MARK":
@@ -704,13 +741,13 @@ function bool Command(string Cmd, string Arg, PlayerController PC)
 		return true;
 	case "JOURNAL":
 		for (i = 0; i < ArrayCount(Cards.Ops); i++)
-			if (Cards.Ops[i] != "")
-				Log("Cards: edit journal "$i$" "$Cards.Ops[i]);
+			if (GetOp(i) != "")
+				Log("Cards: edit journal "$i$" "$GetOp(i));
 		return true;
 	case "FORGET":
 		i = int(Arg);
 		if (i >= 0 && i < ArrayCount(Cards.Ops))
-			Cards.Ops[i] = "";
+			SetOp(i, "");
 		return true;
 	}
 	return false;

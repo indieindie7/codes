@@ -141,6 +141,7 @@ var float LiveWait;
 var AvalonStorm LiveStorm;
 
 var bool bRebuild;
+var bool bAvalon;          // this map is one of the Avalon maps (Maps): the town and its life are built
 var array<Actor> Made;
 var Texture TreeTex[3];
 var Texture RigTex[8];
@@ -148,9 +149,11 @@ var Texture RigTex[8];
 event PostBeginPlay()
 {
 	Super.PostBeginPlay();
-	if (!InList(Maps, MapName()))
-		return;
-	if (bSurvey)
+	// live editing (marks, cards, procedural layouts, undo, carve + reload) works on every map; the town,
+	// weather, motion and loudspeakers only on the Avalon maps (Maps)
+	bAvalon = InList(Maps, MapName());
+	Log("Cards: live on "$MapName()$", avalon "$bAvalon);
+	if (bAvalon && bSurvey)
 		Survey();
 	Build();
 	SetTimer(0.5, true);
@@ -197,7 +200,7 @@ event Timer()
 		bRebuild = false;
 		Build();
 	}
-	if (!bRevealed && RevealBelowZ != 0)
+	if (bAvalon && !bRevealed && RevealBelowZ != 0)
 		CheckReveal();
 }
 
@@ -689,6 +692,18 @@ function Build()
 	local CardSprite S;
 	local rotator R;
 
+	if (!bAvalon)
+	{
+		// any other map: just the live edits recorded for it
+		if (Editor == None)
+			Editor = Spawn(class'AvalonEditor');
+		if (Editor != None)
+		{
+			Editor.Cards = Self;
+			Editor.Replay();
+		}
+		return;
+	}
 	for (i = 0; i < Made.Length; i++)
 		if (Made[i] != None)
 			Made[i].Destroy();
