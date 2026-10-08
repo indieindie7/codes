@@ -1,0 +1,41 @@
+# sanctuary_open_drive: Sanctuary Open (Maps\PrairieSanctuary) phase-1 blockout: the view from the LZ toward the
+# plant (the weenie), board the Manta, drive along the haul road toward the plant, then aerial views
+background
+map PrairieSanctuary?Mutator=U2Hover.HoverMutator,U2TestHub.HubMutator
+waitcontrol 120
+wait 2
+console god
+console togglehud
+shot
+turn 0 8 0.3
+shot
+console hub tpto HoverBike 120
+wait 0.5
+move 1 0 1.0
+wait 0.5
+dump HoverBike DriverPawn MaxSpeed Location
+move 1 0 8
+dump HoverBike Location Velocity
+shot
+move 1 0 8
+dump HoverBike Location Velocity
+shot
+move 1 0 8
+dump HoverBike Location Velocity
+shot
+console hub tp -14000 19000 2500 hold
+wait 1.5
+look -60 -12
+wait 1
+shot
+console hub tp 4000 12000 3200 hold
+wait 1.5
+look -125 -14
+wait 1
+shot
+console hub tp 9000 -2000 2600 hold
+wait 1.5
+look 175 -10
+wait 1
+shot
+quit
