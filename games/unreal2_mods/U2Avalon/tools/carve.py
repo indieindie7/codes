@@ -352,11 +352,8 @@ def main():
         if o.get("auto", "1") == "0":
             live.send(["pending " + out, "say carved: %s (type avalon reload)" % kind], 20)
         else:
-            # the user's call (2026-10-07): reload the level by itself after a change, with a short warning
-            live.send(["pending " + out, "say carved: %s - reloading in 5 s, you come back where you stand" % kind], 20)
-            import time
-            time.sleep(5)
-            live.send(["reload"], 30)
+            # the user's call (2026-10-07/08): reload the level by itself right after a change, no warning
+            live.send(["pending " + out, "reload"], 0)
 
 
 if __name__ == "__main__":
