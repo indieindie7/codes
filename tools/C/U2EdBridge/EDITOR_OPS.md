@@ -150,3 +150,13 @@ Values are printed with the engine's own `UProperty::ExportText` (vtable 0xa8).
 Guessed, not verified: that `FarMoveActor`'s attached-actor move and `SetBase(NULL)` are harmless for
 StaticMeshActors (they have no base), and that injecting a second bridge beside the first causes no
 trouble (separate pipe and message; both subclass the main window and chain to the previous proc).
+
+
+## !readmesh PKG.NAME FILE (2026-10-08)
+
+Reads a static mesh's source triangles (`UStaticMesh::RawTriangles`) straight from memory and writes them to a binary "U2RM" file. Python decodes it with `tools/python/U2Model/readmesh.py`.
+
+- **Finding the mesh:** `StaticFindObject` in memory first (a mesh made this session has no file yet), then the bare object name, then `StaticLoadObject`.
+- **Lazy loading:** a mesh from a package keeps its triangles on disk. The lazy array's own `Load()` (FLazyLoader at +0x12c, vtbl[0]) brings them in. The TArray is at +0x138, `FStaticMeshTriangle` is 0x104 bytes, and Materials are at +0xf8.
+- **Layout check:** every triangle must have NumUVs 1..8 and a material index within range, or the command refuses.
+- **Verified:** on a fresh mesh and on one loaded from `U2KitSM`. `wall_door`: 28 triangles, both materials, the right bounding box.

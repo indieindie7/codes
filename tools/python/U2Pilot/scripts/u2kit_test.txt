@@ -1,0 +1,24 @@
+# u2kit_test: the courtyard building placed from frozen kit pieces (static meshes); probes first (no flying)
+background
+map U2KitTest?Mutator=U2TestHub.HubMutator
+waitcontrol 90
+wait 3
+console god
+shot
+mark roof want -548
+console hub tp -512 -512 -100
+wait 4
+dump U2PlayerSP Location
+mark courtyard want -964
+console hub tp 0 0 -100
+wait 4
+dump U2PlayerSP Location
+mark inside room want -964
+console hub tp -512 0 -824
+wait 4
+dump U2PlayerSP Location
+mark through the door (outside south, then walk in by tp to the doorway) want -964
+console hub tp 0 -560 -900
+wait 4
+dump U2PlayerSP Location
+quit

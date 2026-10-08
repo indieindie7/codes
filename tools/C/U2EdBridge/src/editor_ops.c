@@ -22,6 +22,7 @@
  *   !bakeclear PAT ...|all       back to the engine's own vertex light
  *   !bakeinfo [derive on|off]    hook state
  *   !setprop NAME PROP VALUE     one property of one actor (e.g. a ZoneInfo's AmbientBrightness)
+ *   !readmesh PKG.GRP.NAME FILE  a static mesh's source triangles straight from memory (format "U2RM")
  * PAT "selected" means the current selection.
  *
  * Everything here was read from the Ghidra decompile of Unreal II's Editor.dll / Engine.dll / Core.dll
@@ -1155,12 +1156,111 @@ static int OpInfo(void)
 	return 1;
 }
 
+/* ---- !readmesh ---- */
+/*
+ * The static mesh's own source triangles (UStaticMesh::RawTriangles, what Build() made the render data from),
+ * read from memory: positions, the UV channels, vertex colours, material index, smoothing mask, poly flags.
+ * Layout from the decompile (U2_research/ghidra/MODELLING_HOOKS.md 2.1): RawTriangles' TArray at +0x138,
+ * FStaticMeshTriangle 0x104 bytes, Materials TArray<FStaticMeshMaterial> (0xc, UMaterial* first) at +0xf8.
+ * U2RM v1, little endian, str = int32 count + UTF-16:
+ *   "U2RM" int version=1  str meshname  float[6] bounding box (min, max: +0x28)
+ *   int nmaterials, per material: str path ("" if none)
+ *   int ntriangles, then ntriangles x 0x104 bytes exactly as in memory (tools/python/U2Model/readmesh.py decodes)
+ */
+#define MESH_MATERIALS  0xf8
+#define MESH_BOX        0x28
+#define MESH_RAWTRIS    0x138
+#define RAWTRI_SIZE     0x104
+typedef void *(__cdecl *StaticLoadObjectFn)(void *cls, void *outer, const wchar_t *name, const wchar_t *file, unsigned flags, void *sandbox);
+typedef const wchar_t *(TC *GetPathNameFn)(void *self, void *stopOuter, wchar_t *str);
+typedef void *(__cdecl *StaticFindObjectFn)(void *cls, void *outer, const wchar_t *name, int exact);
+typedef void (TC *LazyLoadFn)(void *self);
+#define MESH_LAZYLOADER 0x12c   /* FLazyLoader {vtbl, SavedAr, SavedPos}; vtbl[0] = Load(); the TArray follows at +0x138 */
+
+static int OpReadMesh(wchar_t **tok, int n)
+{
+	HMODULE core = GetModuleHandleW(L"Core.dll"), eng = GetModuleHandleW(L"Engine.dll");
+	StaticLoadObjectFn load;
+	StaticFindObjectFn find;
+	GetPathNameFn pathName;
+	StaticClassFn sc;
+	void *cls, *m;
+	wchar_t path[1024], mat[1024];
+	BW *w;
+	int nt, nm, i, bad = 0;
+	char *tris, *mats;
+	if (n < 2) { CapLine(L"usage: !readmesh PKG.GRP.NAME FILE"); return 0; }
+	load = core ? (StaticLoadObjectFn)GetProcAddress(core, "?StaticLoadObject@UObject@@SAPAV1@PAVUClass@@PAV1@PBG2KPAVUPackageMap@@@Z") : NULL;
+	find = core ? (StaticFindObjectFn)GetProcAddress(core, "?StaticFindObject@UObject@@SAPAV1@PAVUClass@@PAV1@PBGH@Z") : NULL;
+	pathName = core ? (GetPathNameFn)GetProcAddress(core, "?GetPathName@UObject@@QBEPBGPAV1@PAG@Z") : NULL;
+	sc = eng ? (StaticClassFn)GetProcAddress(eng, "?StaticClass@UStaticMesh@@SAPAVUClass@@XZ") : NULL;
+	if (!load || !find || !pathName || !sc) { CapLine(L"readmesh: Core/Engine exports missing"); return 0; }
+	cls = sc();
+	/* in memory first (a mesh made this session has no file yet), then from its package */
+	m = find(cls, (void *)-1, tok[0], 0);
+	if (!m) m = find(cls, NULL, tok[0], 0);
+	if (!m && wcsrchr(tok[0], L'.')) m = find(cls, (void *)-1, wcsrchr(tok[0], L'.') + 1, 0);   /* the bare object name */
+	if (!m) m = load(cls, NULL, tok[0], NULL, 0, NULL);
+	if (!m || !O.IsA(m, cls)) { Out(L"readmesh: no static mesh %s", tok[0]); return 0; }
+	JoinRest(tok, 1, n, path, 1024);
+	nt = AT(m, MESH_RAWTRIS + 4, int);
+	if (nt == 0 && AT(m, MESH_LAZYLOADER, void *) && AT(m, MESH_LAZYLOADER + 4, void *))
+	{   /* loaded from a package: the source triangles are still on disk - the lazy array's own Load() */
+		((LazyLoadFn)VSLOT((char *)m + MESH_LAZYLOADER, 0))((char *)m + MESH_LAZYLOADER);
+		nt = AT(m, MESH_RAWTRIS + 4, int);
+		Out(L"readmesh: lazy-loaded %d raw triangles", nt);
+	}
+	nm = AT(m, MESH_MATERIALS + 4, int);
+	tris = AT(m, MESH_RAWTRIS, char *);
+	mats = AT(m, MESH_MATERIALS, char *);
+	if (nt <= 0 || !tris)
+	{
+		int *q = (int *)((char *)m + 0x118);
+		Out(L"readmesh: %s has no raw triangles at +138 (lazy array not loaded?) - the bytes around it:", tok[0]);
+		for (i = 0; i < 16; i += 4)
+			Out(L"  +%x: %08x %08x %08x %08x", 0x118 + i * 4, q[i], q[i + 1], q[i + 2], q[i + 3]);
+		return 0;
+	}
+	if (nt > 1000000 || nm < 0 || nm > 1000) { Out(L"readmesh: %s reads %d triangles / %d materials - layout mismatch, refused", tok[0], nt, nm); return 0; }
+	for (i = 0; i < nt; i++)        /* the layout check: NumUVs 1..8, material index in range */
+	{
+		int uvs = AT(tris + i * RAWTRI_SIZE, 0xf8, int), mi = AT(tris + i * RAWTRI_SIZE, 0xf0, int);
+		if (uvs < 1 || uvs > 8 || mi < 0 || (nm > 0 && mi >= nm)) bad++;
+	}
+	if (bad) { Out(L"readmesh: %d of %d triangles fail the layout check (NumUVs / MaterialIndex) - refused", bad, nt); return 0; }
+	w = (BW *)HeapAlloc(GetProcessHeap(), 0, sizeof(BW));
+	if (!w) { CapLine(L"out of memory"); return 0; }
+	w->len = 0; w->err = 0;
+	w->f = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+	if (w->f == INVALID_HANDLE_VALUE) { Out(L"Can't write %s", path); BkFree(w); return 0; }
+	BwPut(w, "U2RM", 4); BwInt(w, 1);
+	BwStr(w, tok[0]);
+	BwPut(w, (char *)m + MESH_BOX, 24);
+	BwInt(w, nm);
+	for (i = 0; i < nm; i++)
+	{
+		void *mt = AT(mats + i * 0xc, 0, void *);
+		mat[0] = 0;
+		if (mt) lstrcpynW(mat, pathName(mt, NULL, NULL), 1024);
+		BwStr(w, mat);
+	}
+	BwInt(w, nt);
+	BwPut(w, tris, nt * RAWTRI_SIZE);
+	BwFlush(w);
+	i = w->err;
+	CloseHandle(w->f);
+	BkFree(w);
+	if (i) { Out(L"write error on %s", path); return 0; }
+	Out(L"readmesh: %s: %d triangles, %d materials -> %s", tok[0], nt, nm, path);
+	return 1;
+}
+
 /* returns -1 if cmd is not an ops command */
 static int OpsBang(const wchar_t *cmd)
 {
 	static const wchar_t *names[] = { L"!select", L"!deselect", L"!list", L"!move", L"!moveby", L"!light",
 	                                  L"!lights", L"!lightsat", L"!opsinfo", L"!meshverts", L"!bakeload",
-	                                  L"!bakeclear", L"!bakeinfo", L"!setprop" };
+	                                  L"!bakeclear", L"!bakeinfo", L"!setprop", L"!readmesh" };
 	wchar_t buf[4096], *tok[64];
 	int i, len, n;
 	for (i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++)
@@ -1188,6 +1288,7 @@ static int OpsBang(const wchar_t *cmd)
 	case 11: return OpBakeClear(tok, n);
 	case 12: return OpBakeInfo(tok, n);
 	case 13: return OpSetProp(tok, n);
+	case 14: return OpReadMesh(tok, n);
 	default: return OpInfo();
 	}
 }

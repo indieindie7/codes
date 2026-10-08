@@ -21,6 +21,7 @@ import math, os
 import numpy as np
 
 TEX = "Engine.DefaultTexture"
+GAME = r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening"
 MAXV = 32
 
 
@@ -28,19 +29,27 @@ MAXV = 32
 class Mesh:
     """a closed polyhedron: verts (N,3) and faces (lists of vertex indices, outward winding)"""
 
-    def __init__(self, verts, faces, name="shape"):
+    def __init__(self, verts, faces, name="shape", tex=TEX, texscale=1.0):
         self.v = np.asarray(verts, dtype=float).reshape(-1, 3)
         self.f = [list(f) for f in faces]
         self.name = name
+        self.tex = tex                 # a texture's full name, e.g. "Mission_06T.Surface_Wall.MetlWall_U06A500"
+        self.texscale = texscale       # world units per texel (2.0 = the texture twice as big)
+
+    def _like(self, v, f=None):
+        return Mesh(v, self.f if f is None else f, self.name, self.tex, self.texscale)
+
+    def textured(self, tex, scale=1.0):
+        return Mesh(self.v, self.f, self.name, tex, scale)
 
     # --- transforms (all return new meshes)
     def move(self, x=0, y=0, z=0):
-        return Mesh(self.v + [x, y, z], self.f, self.name)
+        return self._like(self.v + [x, y, z])
 
     def scale(self, sx=1, sy=None, sz=None):
         sy = sx if sy is None else sy
         sz = sx if sz is None else sz
-        m = Mesh(self.v * [sx, sy, sz], self.f, self.name)
+        m = self._like(self.v * [sx, sy, sz])
         return m.flipped() if sx * sy * sz < 0 else m
 
     def rotate(self, yaw=0, pitch=0, roll=0):
@@ -49,17 +58,17 @@ class Mesh:
         Rz = np.array([[math.cos(a), -math.sin(a), 0], [math.sin(a), math.cos(a), 0], [0, 0, 1]])
         Ry = np.array([[math.cos(b), 0, math.sin(b)], [0, 1, 0], [-math.sin(b), 0, math.cos(b)]])
         Rx = np.array([[1, 0, 0], [0, math.cos(c), -math.sin(c)], [0, math.sin(c), math.cos(c)]])
-        return Mesh(self.v @ (Rz @ Ry @ Rx).T, self.f, self.name)
+        return self._like(self.v @ (Rz @ Ry @ Rx).T)
 
     def mirror(self, axis="x"):
         s = {"x": (-1, 1, 1), "y": (1, -1, 1), "z": (1, 1, -1)}[axis]
         return self.scale(*s)
 
     def flipped(self):
-        return Mesh(self.v, [list(reversed(f)) for f in self.f], self.name)
+        return self._like(self.v, [list(reversed(f)) for f in self.f])
 
     def named(self, name):
-        return Mesh(self.v, self.f, name)
+        return Mesh(self.v, self.f, name, self.tex, self.texscale)
 
     # --- combining: a Model is an ordered list of CSG steps
     def __add__(self, other):
@@ -344,6 +353,13 @@ class Model:
     def mirror(self, axis="x"):
         return Model([(op, m.mirror(axis)) for op, m in self.steps])
 
+    def textured(self, tex, scale=1.0, only_default=True):
+        """one texture for the parts that have none yet (only_default) or for all"""
+        return Model([(op, m.textured(tex, scale) if (m.tex == TEX or not only_default) else m) for op, m in self.steps])
+
+    def packages(self):
+        return sorted({m.tex.split(".")[0] for _, m in self.steps if "." in m.tex and not m.tex.startswith("Engine.")})
+
     def bounds(self):
         b = [m.bounds() for op, m in self.steps if op == "add"] or [m.bounds() for _, m in self.steps]
         return np.min([x[0] for x in b], axis=0), np.max([x[1] for x in b], axis=0)
@@ -357,7 +373,7 @@ class Model:
         out = []
         for k, (op, m) in enumerate(self.steps):
             path = os.path.join(workdir, "%s_%02d_%s.t3d" % (tag, k, m.name))
-            open(path, "w").write(polylist(m.polys()))
+            open(path, "w").write(polylist(m.polys(), m.tex, m.texscale))
             out.append((path, op))
         return out
 
@@ -366,6 +382,11 @@ class Model:
         short = short or (lambda p: p)
         x, y, z = (int(round(c)) for c in origin)
         cmds = []
+        for p in self.packages():          # the textures must be loaded before the brushes name them
+            for ext, sub in ((".utx", "Textures"), (".usx", "StaticMeshes")):
+                f = os.path.join(GAME, sub, p + ext)
+                if os.path.exists(f):
+                    cmds.append('OBJ LOAD FILE="%s"' % short(f))
         for path, op in self.write_brushes(workdir, tag):
             cmds += ['BRUSH IMPORT FILE="%s"' % short(path), "BRUSH MOVETO X=%d Y=%d Z=%d" % (x, y, z),
                      "BRUSH ADD" if op == "add" else "BRUSH SUBTRACT"]
@@ -428,14 +449,15 @@ def fan(P):
 
 
 # ------------------------------------------------------------------------------------------------ file writers
-def polylist(polys, texture=TEX):
-    """a T3D PolyList (what BRUSH IMPORT reads)"""
+def polylist(polys, texture=TEX, texscale=1.0):
+    """a T3D PolyList (what BRUSH IMPORT reads); TextureU/V are texels per world unit, so 1/texscale long"""
     s = "Begin PolyList\n"
     for k, P in enumerate(polys):
         n = newell(P)
         n = n / (np.linalg.norm(n) or 1)
         tu = np.array([1.0, 0, 0]) if abs(n[2]) > 0.5 else np.array([-n[1], n[0], 0]) / (math.hypot(n[0], n[1]) or 1)
         tv = np.cross(n, tu)
+        tu, tv = tu / texscale, tv / texscale
         s += "   Begin Polygon Texture=%s Link=%d\n" % (texture, k)
         s += "      Origin   %+.6f,%+.6f,%+.6f\n" % tuple(P[0])
         s += "      Normal   %+.6f,%+.6f,%+.6f\n" % tuple(n)
@@ -477,3 +499,49 @@ def read_polylist(text):
                 polys.append(np.array(cur))
             cur = None
     return polys
+
+
+def read_polylist_full(text):
+    """MAP SAVEPOLYS / brush files with each polygon's texture and texture vectors: [(verts, tex, origin, u, v)]"""
+    polys, cur = [], None
+    for line in text.splitlines():
+        t = line.strip()
+        if t.startswith("Begin Polygon"):
+            tex = TEX
+            for part in t.split()[2:]:
+                if part.startswith("Texture="):
+                    tex = part.split("=", 1)[1]
+            cur = {"v": [], "tex": tex, "o": None, "u": None, "w": None}
+        elif cur is not None and t.split(None, 1)[0] in ("Vertex", "Origin", "TextureU", "TextureV"):
+            key, val = t.split(None, 1)
+            vec = [float(x) for x in val.split(",")]
+            if key == "Vertex":
+                cur["v"].append(vec)
+            else:
+                cur[{"Origin": "o", "TextureU": "u", "TextureV": "w"}[key]] = vec
+        elif t.startswith("End Polygon") and cur is not None:
+            if len(cur["v"]) >= 3:
+                polys.append((np.array(cur["v"]), cur["tex"], cur["o"], cur["u"], cur["w"]))
+            cur = None
+    return polys
+
+
+def polylist_full(polys, shift=(0, 0, 0)):
+    """write back polygons from read_polylist_full, moved by SHIFT (textures and their mapping kept)"""
+    sh = np.array(shift, float)
+    s = "Begin PolyList\n"
+    for k, (P, tex, o, u, w) in enumerate(polys):
+        P = P + sh
+        n = newell(P)
+        n = n / (np.linalg.norm(n) or 1)
+        o = (np.array(o) + sh) if o is not None else P[0]
+        u = u if u is not None else [1, 0, 0]
+        w = w if w is not None else [0, 1, 0]
+        s += "   Begin Polygon Texture=%s Link=%d\n" % (tex, k)
+        s += "      Origin   %+.6f,%+.6f,%+.6f\n" % tuple(o)
+        s += "      Normal   %+.6f,%+.6f,%+.6f\n" % tuple(n)
+        s += "      TextureU %+.6f,%+.6f,%+.6f\n" % tuple(u)
+        s += "      TextureV %+.6f,%+.6f,%+.6f\n" % tuple(w)
+        s += "".join("      Vertex   %+.6f,%+.6f,%+.6f\n" % tuple(v) for v in P)
+        s += "   End Polygon\n"
+    return s + "End PolyList\n"

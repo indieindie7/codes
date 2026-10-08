@@ -2,7 +2,7 @@ r"""Build a U2Model model in UnrealEd (live brushes), freeze the CSG result into
 both side by side.
 
     py build_editor.py demo_post GuardPost        (module with model(), static mesh name)
-      -> <game>\Maps\U2ModelTest.un2, <game>\StaticMeshes\U2ModelSM.usx (U2ModelSM.Shapes.<Name>)
+      -> <game>\Maps\U2ModelTest.un2, <game>\StaticMeshes\U2ModelSM.usx (U2ModelSM.<Name>; the editor ignores GROUP=)
 
 The freeze: the model is built inside a big subtracted room, MAP REBUILD runs the editor's own CSG, MAP SAVEPOLYS
 writes the result's polygons; the ones inside the model's bounds are its surfaces (facing out into the air) and go
@@ -67,12 +67,13 @@ def main(modname, name):
         print("CSG result: %d polygons, %d of them the model's" % (len(P), len(keep)))
         frozen = os.path.join(WORK, name + "_frozen.t3d")
         open(frozen, "w").write(U.polylist(keep))
-        run('NEW StaticMeshFactory PACKAGE="U2ModelSM" GROUP="Shapes" NAME="%s" FILE="%s"' % (name, sp(frozen)))
-        run('OBJ SAVEPACKAGE PACKAGE="U2ModelSM" FILE="%s\\StaticMeshes\\U2ModelSM.usx"' % G)
+        run('NEW StaticMeshFactory PACKAGE="U2ModelSM" NAME="%s" FILE="%s"' % (name, sp(frozen)))
+        # the editor holds a loaded package's file open: save beside it, swap after the editor has closed
+        run('OBJ SAVEPACKAGE PACKAGE="U2ModelSM" FILE="%s"' % sp(os.path.join(WORK, "U2ModelSM_new.usx")))
         actors = os.path.join(WORK, name + "_actors.t3d")
         open(actors, "w").write(
             "Begin Map\n"
-            "Begin Actor Class=StaticMeshActor Name=%sFrozen\n    StaticMesh=StaticMesh'U2ModelSM.Shapes.%s'\n"
+            "Begin Actor Class=StaticMeshActor Name=%sFrozen\n    StaticMesh=StaticMesh'U2ModelSM.%s'\n"
             "    Location=(X=%d,Y=%d,Z=%d)\nEnd Actor\n" % (name, name, FROZEN_AT[0], FROZEN_AT[1], FLOOR) +
             "Begin Actor Class=ZoneInfo Name=ModelZone\n    Location=(X=0,Y=0,Z=%d)\n    AmbientBrightness=48\nEnd Actor\n" % (FLOOR + 600) +
             "Begin Actor Class=PlayerStart Name=ModelStart\n    Location=(X=1100,Y=-2500,Z=%d)\n    Rotation=(Pitch=0,Yaw=16384,Roll=0)\nEnd Actor\n" % (FLOOR + 100) +
@@ -86,6 +87,14 @@ def main(modname, name):
         run('MAP SAVE FILE="%s\\Maps\\U2ModelTest.un2"' % G)
     finally:
         ed.stop()
+    swap_package()
+
+
+def swap_package():
+    new = os.path.join(WORK, "U2ModelSM_new.usx")
+    if os.path.exists(new) and os.path.getsize(new) > 0:
+        os.replace(new, os.path.join(GAME, "StaticMeshes", "U2ModelSM.usx"))
+        print("U2ModelSM.usx updated")
 
 
 if __name__ == "__main__":

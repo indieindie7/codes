@@ -27,7 +27,7 @@ Each shape sits on its base at the origin, in Unreal units. Every shape can `.mo
 1. Each step goes in through the builder brush: `BRUSH IMPORT` of a PolyList file, `MOVETO`, then `ADD` or `SUBTRACT`. Brush actors in a `MAP IMPORTADD` are not built by the editor, so this is the only route.
 2. `MAP REBUILD` runs the editor's own CSG.
 3. `MAP SAVEPOLYS` reads the result back. The polygons inside the model's bounds are its surfaces.
-4. Those polygons go back in through `StaticMeshFactory` as a PolyList, giving one static mesh (`U2ModelSM.Shapes.<Name>`) with its own collision.
+4. Those polygons go back in through `StaticMeshFactory` as a PolyList, giving one static mesh (`U2ModelSM.<Name>`) with its own collision.
 5. The test map `U2ModelTest` holds both versions side by side.
 
 **Verified in game** (pilot `u2model_test.txt`): the player rests on the roof and on the hollow interior floor of both the brush version and the frozen mesh, matching within 3 units.
@@ -36,7 +36,29 @@ Each shape sits on its base at the origin, in Unreal units. Every shape can `.mo
 
 **Faces:** non-convex faces are triangulated. The editor accepts polygons up to 32 vertices, and concave brushes are fine.
 
+**Textures:** `shape.textured("Mission_06T.Surface_Wall.MetlWall_U06A500", scale)` and `model.textured(...)`.
+- The editor commands load the texture packages first.
+- A cut's faces take the cut brush's texture, so texture the cuts too.
+- The freeze keeps every polygon's texture and mapping (`read_polylist_full` / `polylist_full`).
+
+**Kit** (`kit.py`, `build_kit.py`): 9 pieces on fixed metrics.
+- Metrics: 512-unit cells, 384-unit storeys, 32-unit walls, 160×256 doors.
+- Pieces: floor, ceiling, wall, wall_door, wall_window, pillar, stairs_up, ramp, railing.
+- `building(["###", "#.#", "###"], doors={(1, 2, "s")}, windows=...)` gives placements: walls on the outside edges, posts at the outside corners, any number of storeys.
+- `build_kit.py` freezes the pieces into `U2KitSM.<piece>` and places a courtyard from them as StaticMeshActors (`U2KitTest`).
+- Verified in game: roof, courtyard, room floor and doorway all hold the player at the right heights.
+
+**Reading a mesh from memory:** `!readmesh PKG.NAME FILE` in the ops bridge (`tools/C/U2EdBridge`), decoded by `readmesh.py`.
+- It reads the mesh's source triangles (positions, UVs, vertex colours, material, smoothing) straight out of UnrealEd.
+- It checks the memory layout first and refuses if it looks wrong.
+- It lazy-loads meshes that come from a package.
+- `readmesh.to_t3d` writes them back in the editor's own mesh text format.
+
+**Package gotchas:**
+- The editor ignores `GROUP=` in `NEW StaticMeshFactory`, so meshes are `PKG.Name`.
+- Saving a package after `OBJ LOAD`ing it keeps only this session's new objects, and the file is held open. So each builder writes its WHOLE package to a side file and swaps it in after the editor closes.
+
 **Next:**
-- `!readmesh` in the bridge DLL: read a built mesh's triangles straight from memory instead of the export round-trip.
-- Trim-sheet UVs and an AO bake into vertex colours for the frozen meshes.
-- A kit of pieces on a grid for the level generators.
+- An AO bake into vertex colours for the frozen meshes.
+- Trim-sheet UVs.
+- The level generators placing kit buildings.
