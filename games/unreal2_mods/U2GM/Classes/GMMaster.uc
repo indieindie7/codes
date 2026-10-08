@@ -15,11 +15,20 @@
 //   gm freeze             stop everything but the players (again: go on)
 //   gm undo / gm redo     the journal's last change, applied to the world at once
 //   gm journal            this map's journal lines
+//   gm raise R H          terrain under the crosshair up by H within radius R (smooth falloff)
+//   gm lower R H          ... down by H
+//   gm flatten R          ... to the height under the crosshair
+//   gm smooth R           ... smoothed
+//                         (terrain lines are applied by the d3d8 fork, gmterrain=1 in U2Shaders.ini)
 //
 // The world is always the map plus its journal: every edit writes a journal
 // line and the world follows; undo and redo change the journal and replay it.
 // A map's static actors can't move (bStatic): the first move swaps one for a
 // movable copy (GMMesh) and hides the original ("place NAME ...").
+// Terrain lines ("terrain raise|lower|flatten|smooth X Y R H", world units:
+// centre, radius, height; flatten: H is the target Z; smooth: H is the strength)
+// are not replayed here: script can't reach the heightmap. The d3d8 fork
+// (u2shaders.hpp, gmterrain=1) watches this ini and applies them natively.
 // The journal is shared by all maps: each line starts "@<map family>"
 // (TutA_Live3 -> tuta), as in AvalonEditor.
 //=============================================================================
@@ -130,6 +139,19 @@ function int FreeOp()
 		if (Ops[k] == "")
 			return k;
 	return -1;
+}
+
+// a slot after every used one (terrain lines are order dependent: keep them in time order)
+function int LastFreeOp()
+{
+	local int k;
+
+	for (k = ArrayCount(Ops) - 1; k >= 0; k--)
+		if (Ops[k] != "")
+			break;
+	if (k + 1 < ArrayCount(Ops))
+		return k + 1;
+	return FreeOp();
 }
 
 // one journal change: remembered for undo, the redo list dropped, saved
@@ -607,6 +629,45 @@ function SpawnFromPalette(string What)
 	Say("placed "$Describe(A));
 }
 
+// a terrain brush stroke at the crosshair: one journal line, applied by the d3d8 fork
+function TerrainBrush(string Kind, float R, float H)
+{
+	local vector HitL, HitN;
+	local Actor A;
+	local int k;
+	local string L;
+
+	if (R <= 0)
+	{
+		Say("gm "$Kind$" needs a radius (world units), e.g. gm "$Kind$" 512"$Pick2(Kind == "raise" || Kind == "lower", " 256", ""));
+		return;
+	}
+	A = UnderCrosshair(HitL, HitN);
+	if (A == None || !A.IsA('TerrainInfo'))
+	{
+		Say("aim at terrain (under the crosshair: "$Pick2(A == None, "nothing", string(A.Name))$")");
+		return;
+	}
+	if (Kind == "flatten")
+		H = HitL.Z;
+	else if (Kind == "smooth")
+		H = 1;
+	else if (H <= 0)
+	{
+		Say("gm "$Kind$" R H: H is how far (world units, > 0)");
+		return;
+	}
+	k = LastFreeOp();
+	if (k < 0)
+	{
+		Say("journal full");
+		return;
+	}
+	L = "terrain "$Kind$" "$int(HitL.X)$" "$int(HitL.Y)$" "$int(R)$" "$int(H);
+	Change(k, L);
+	Say(L$" (line "$k$"; the d3d8 fork applies it if gmterrain=1)");
+}
+
 // ---------------------------------------------------------------- the command
 
 function Command(string Args)
@@ -629,6 +690,7 @@ function Command(string Args)
 	{
 		Say("gm [on|off] | pick [NAME] | info | move DX DY DZ | moveto X Y Z|here | turn DEG | scale S | hide");
 		Say("gm spawn N|PATH | palette [add PATH|clear] | snap SIZE | yawstep DEG | possess | release | freeze | undo | redo | journal");
+		Say("gm raise R H | lower R H | flatten R | smooth R  (terrain at the crosshair, radius R, height H)");
 	}
 	else if (Cmd == "pick")
 	{
@@ -711,6 +773,8 @@ function Command(string Args)
 	}
 	else if (Cmd == "spawn")
 		SpawnFromPalette(A1);
+	else if (Cmd == "raise" || Cmd == "lower" || Cmd == "flatten" || Cmd == "smooth")
+		TerrainBrush(Cmd, float(A1), float(Word(Args, 2)));
 	else if (Cmd == "palette")
 	{
 		if (A1 ~= "add")
