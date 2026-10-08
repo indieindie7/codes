@@ -67,6 +67,32 @@ one stage with the texture as its own mask: a combiner inside a combiner, or a s
 texture, drew the whole Seeker as a flat colour. A blood coat comes off an exposed body. The
 Seekers' left and right limbs share texels, so a broken arm shows flesh on both arms.
 
+**Blood streaks down the bodies (2026-10-08, untested in game).** Blood from a wound runs
+straight down the body under gravity, whatever the pose, in thin rivulets with a bead at each
+front, then dries dark (brown-black, plum for Seekers). The skins can't carry it (UV "down" isn't
+the body's down, and a projector on a skinned mesh draws one flat colour, see `ModBloodCoat`), so
+the U2Shaders `d3d8.dll` draws it per pixel in world space (`streaks.hpp` in the fork):
+
+- `ModGore` keeps the bleeding points: every wound (its `ModStump`), every cut (`ModSever`'s
+  cap) and every bleeding hit, living or corpse (the nearest bone and an offset in its axes).
+  Up to 4 a body; they go with the body (removed, gibbed, brought back) or after `StreakLife`
+  (60 s, fading over the last 5). Each tick the 8 nearest the view are sent through
+  AdventNative (`Blood:streak K x y z nx ny kind age strength seed`, then `Blood:streaks n`),
+  with the body's outward direction there (from the hips' vertical line).
+- The layer draws every character draw (lit, solid, textured, an FVF with normals: the same
+  test as the shot mask, plus no alpha test) a second time with the game's vertex processing and
+  a streak pixel shader, two bleeding points a pass, only those within 220 units of the draw's
+  world origin. The shader gets the world position from the camera-space position (texgen) and
+  the inverse view; only surface close below a point (25 units across, 9 out of / 14 into the
+  body) takes blood. It is multiplied by the lit colour, gets a small wet highlight while fresh,
+  and is fogged like the game (the pass blends premultiplied "over").
+- `U2Shaders.ini`: `streaks=1` (off when missing), `streakparams=` width length speed
+  drysecs (2.5 40 6 50: a rivulet's width and longest run in world units, its starting speed,
+  seconds until dry), `streakfx=` highlight, opacity, colour gain over the lit colour, reach
+  across (1 0.92 2 25). `[AdventMod.ModGore]`: `bBodyStreaks`, `StreakLife`, `StreaksPerBody`.
+- `py tools/streaks_sim.py [out.png] [width length speed drysecs]` renders the same maths on
+  a cylinder at several ages (`tools/streaks_sim.png`), to tune without the game.
+
 ## How it works
 
 No stock game file is replaced.

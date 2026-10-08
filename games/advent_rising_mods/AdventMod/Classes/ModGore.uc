@@ -166,6 +166,26 @@ struct Wound
 	var bool bDied;        // the body was dead with it: gone when the game reuses the pawn
 };
 var array<Wound> Wounds;
+var ModStump LastWound;            // the wound AddWound just made (None: none)
+// blood streaks down the bodies (the d3d8 layer's streaks.hpp, streaks=1 in U2Shaders.ini):
+// each wound, cut and fresh hit is a bleeding point the layer runs thin rivulets down from,
+// straight down in world space whatever the pose, drying with age (SendStreaks)
+struct StreakSrc
+{
+	var Pawn P;
+	var Actor M;           // a wound's or cut's stump (it rides its bone), or None: Bone + Rel
+	var name Bone;
+	var vector Rel;        // the point in the bone's own axes
+	var int Kind;          // 1 red, 2 purple (BloodKind)
+	var float Born, Str;   // when it began; how hard it bleeds (0.2-1.5)
+	var int Seed;          // its rivulets' pattern
+	var bool bDied;        // the body was dead with it: gone when the game reuses the pawn
+};
+var array<StreakSrc> Streaks;
+var config bool bBodyStreaks;
+var config float StreakLife;       // seconds a bleeding point lasts (it fades out over the last 5)
+var config int StreaksPerBody;
+var int StreaksSent;               // the slots the layer has been told about
 // an opened artery: some wounds spurt in heartbeats for a few seconds, painting what is near
 struct Spurt
 {
@@ -256,6 +276,8 @@ event PostBeginPlay()
 	else
 		Level.Game.GameRulesModifiers.AddGameRules(R);
 	class'ModSettings'.static.Note("gore: watching hits");
+	if (bBodyStreaks)
+		class'ModSettings'.static.NativeCall("Blood:streakclear");   // the last level's are gone
 }
 
 
@@ -568,8 +590,11 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 		Bleed(Victim, Damage);
 	if (bBloodCoats)
 		Spatter(Victim, HitLocation, 0.2 + Damage / 150.0, 130);
+	LastWound = None;
 	if (bWounds && Damage >= 8 && !Victim.IsHumanControlled())
 		AddWound(Victim, HitLocation);
+	// blood runs down the body from the hit (from the wound, if it got one)
+	AddStreak(Victim, HitLocation, LastWound, FClamp(Damage / 40.0, 0.3, 1.5));
 	// a pool under a fresh body
 	if (Victim.Health <= 0 || Damage >= Victim.Health)
 	{
@@ -1167,6 +1192,7 @@ function CorpseHit(Pawn P, vector Spot, vector Dir)
 	// doesn't pass hits on)
 	if (bBlood && BloodKind(P) != 0)
 	{
+		AddStreak(P, Spot, None, 0.6);
 		if (Trace(HitL, HitN, Spot + Normal(Dir + vect(0,0,-0.4)) * SprayReach, Spot, false) != None)
 			Mark(SprayTex(P), HitL, HitN, Dir, DecalScale * 0.6);
 		if (Trace(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,10), false) != None)
@@ -1568,6 +1594,8 @@ event Tick(float DeltaTime)
 		CheckWounds();
 	}
 	TrackShots();
+	if (bBodyStreaks)
+		SendStreaks();
 	if (bBleedTrail)
 		BleedTrails(DeltaTime);
 	Spurts_(DeltaTime);
@@ -1910,6 +1938,7 @@ function AddWound(Pawn P, vector Spot)
 	W.M.SetRelativeLocation(Rel);
 	W.P = P;
 	Wounds[Wounds.Length] = W;
+	LastWound = W.M;
 	if (bBlood && FRand() < SpurtChance)
 	{
 		Spurts.Length = Spurts.Length + 1;
@@ -1965,6 +1994,172 @@ function Spurts_(float DeltaTime)
 			if (Trace(HitL, HitN, V - vect(0,0,300), V, false) != None)
 				Mark(KindSplat(Spurts[i].Kind), HitL, HitN, vect(0,0,0), DecalScale * 0.12);
 		}
+	}
+}
+
+// a bleeding point on P at Spot: a wound's or cut's stump M, or (None) the nearest bone
+function AddStreak(Pawn P, vector Spot, Actor M, float Str)
+{
+	local int i, n, Best, Oldest, Kind;
+	local float D, BestD;
+	local coords BC;
+	local vector Off;
+	local StreakSrc S;
+
+	if (!bBodyStreaks || !bBlood || P == None || P.bDeleteMe || P.bHidden || React == None)
+		return;
+	Kind = BloodKind(P);
+	if (Kind == 0)
+		return;
+	Oldest = -1;
+	for (i = 0; i < Streaks.Length; i++)
+	{
+		if (Streaks[i].P != P)
+			continue;
+		n++;
+		if (Oldest < 0 || Streaks[i].Born < Streaks[Oldest].Born)
+			Oldest = i;
+		if (VSize(StreakSpot(i) - Spot) < 6)
+		{
+			// near one it has: that one bleeds harder
+			if (M != None && Streaks[i].M == None)
+				Streaks[i].M = M;
+			Streaks[i].Str = FMin(1.5, Streaks[i].Str + 0.5 * Str);
+			return;
+		}
+	}
+	if (n >= StreaksPerBody && Oldest >= 0)
+		Streaks.Remove(Oldest, 1);
+	if (Streaks.Length >= 32)
+		Streaks.Remove(0, 1);
+	S.P = P;
+	S.M = M;
+	S.Kind = Kind;
+	S.Born = Level.TimeSeconds;
+	S.Str = FClamp(Str, 0.2, 1.5);
+	S.Seed = Rand(65536);
+	if (M == None)
+	{
+		// the nearest bone, the spot pulled in to it (hits land on the collision cylinder)
+		BestD = 1000000;
+		Best = -1;
+		for (i = 0; i < 12; i++)
+		{
+			BC = P.GetBoneCoords(React.Bones[i]);
+			if (BC.Origin == vect(0,0,0))
+				continue;
+			D = VSize(BC.Origin - Spot);
+			if (D < BestD)
+			{
+				BestD = D;
+				Best = i;
+			}
+		}
+		if (Best < 0)
+			return;
+		BC = P.GetBoneCoords(React.Bones[Best]);
+		Off = Spot - BC.Origin;
+		if (VSize(Off) > 9)
+			Off = Normal(Off) * 9;
+		S.Bone = React.Bones[Best];
+		S.Rel.X = Off Dot BC.XAxis;
+		S.Rel.Y = Off Dot BC.YAxis;
+		S.Rel.Z = Off Dot BC.ZAxis;
+	}
+	Streaks[Streaks.Length] = S;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: streak source on " $ P $ " at " $ S.Bone $ " " $ M $ " (" $ Streaks.Length $ " in all)");
+}
+
+// where bleeding point i is now
+function vector StreakSpot(int i)
+{
+	local coords BC;
+
+	if (Streaks[i].M != None && !Streaks[i].M.bDeleteMe)
+		return Streaks[i].M.Location;
+	BC = Streaks[i].P.GetBoneCoords(Streaks[i].Bone);
+	return BC.Origin + Streaks[i].Rel.X * BC.XAxis + Streaks[i].Rel.Y * BC.YAxis + Streaks[i].Rel.Z * BC.ZAxis;
+}
+
+// every tick: the bleeding points go with their body (removed, blown apart, back to life, or
+// old), and the 8 nearest the view (newer ones count as nearer) go to the d3d8 layer, with the
+// body's outward direction there (from the hips' vertical line) so it paints only that side
+function SendStreaks()
+{
+	local int i, k, n;
+	local int Pick[8];
+	local float Score[8];
+	local float S, Age, Fade;
+	local vector Eye, Spot, Out, Core;
+	local PlayerController PC;
+	local coords BC;
+	local Pawn P;
+
+	for (i = Streaks.Length - 1; i >= 0; i--)
+	{
+		P = Streaks[i].P;
+		if (P != None && !P.bDeleteMe && P.Health <= 0)
+			Streaks[i].bDied = true;
+		if (P == None || P.bDeleteMe || (Streaks[i].bDied && P.Health > 0)
+			|| Level.TimeSeconds - Streaks[i].Born > StreakLife
+			|| (Streaks[i].Bone == '' && (Streaks[i].M == None || Streaks[i].M.bDeleteMe)))
+			Streaks.Remove(i, 1);
+	}
+	if (Streaks.Length == 0 && StreaksSent == 0)
+		return;
+	PC = Level.GetLocalPlayerController();
+	if (PC != None && PC.ViewTarget != None)
+		Eye = PC.ViewTarget.Location;
+	else if (PC != None)
+		Eye = PC.Location;
+	for (i = 0; i < Streaks.Length; i++)
+	{
+		if (Streaks[i].P.bHidden)
+			continue;                    // blown apart (gibs hide the body)
+		S = VSize(StreakSpot(i) - Eye) + 10 * (Level.TimeSeconds - Streaks[i].Born);
+		if (n < 8)
+		{
+			k = n;
+			n++;
+		}
+		else if (S >= Score[7])
+			continue;
+		else
+			k = 7;
+		while (k > 0 && Score[k - 1] > S)
+		{
+			Score[k] = Score[k - 1];
+			Pick[k] = Pick[k - 1];
+			k--;
+		}
+		Score[k] = S;
+		Pick[k] = i;
+	}
+	for (k = 0; k < n; k++)
+	{
+		i = Pick[k];
+		P = Streaks[i].P;
+		Spot = StreakSpot(i);
+		BC = P.GetBoneCoords(React.Bones[0]);
+		Core = P.Location;
+		if (BC.Origin != vect(0,0,0))
+			Core = BC.Origin;
+		Out = Spot - Core;
+		Out.Z = 0;
+		if (VSize(Out) < 1)
+			Out = vector(P.Rotation);
+		Out.Z = 0;
+		Out = Normal(Out);
+		Age = Level.TimeSeconds - Streaks[i].Born;
+		Fade = FClamp((StreakLife - Age) / 5.0, 0, 1);
+		class'ModSettings'.static.NativeCall("Blood:streak " $ k $ " " $ Spot.X $ " " $ Spot.Y $ " " $ Spot.Z $ " " $ Out.X $ " " $ Out.Y
+			$ " " $ Streaks[i].Kind $ " " $ Age $ " " $ (Streaks[i].Str * Fade) $ " " $ Streaks[i].Seed);
+	}
+	if (n != StreaksSent)
+	{
+		class'ModSettings'.static.NativeCall("Blood:streaks " $ n);
+		StreaksSent = n;
 	}
 }
 
@@ -2319,6 +2514,9 @@ defaultproperties
      RubbleTex=Texture'AdventMod.Dirt.DirtRubble0'
      CraterTex=Texture'AdventMod.Dirt.DirtCrater1'
      bWounds=True
+     bBodyStreaks=True
+     StreakLife=60.000000
+     StreaksPerBody=4
      MaxWounds=48
      WoundsPerBody=5
      SpurtChance=0.350000

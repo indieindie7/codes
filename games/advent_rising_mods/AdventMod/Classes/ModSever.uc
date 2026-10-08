@@ -160,6 +160,7 @@ function Sever(Pawn P, int c, vector Dir)
 	S.Slot = c;
 	if (bStumps)
 		S.Cap = Stump(P, c, Spot, Kind, K);
+	Gore.AddStreak(P, Spot, S.Cap, 1.5);     // blood runs down from the cut
 	Done[Done.Length] = S;
 	P.SetBoneScale(c, 0.0, Cuts[c].Bone);
 	// the piece (or pieces: an arm cut at the shoulder throws upper and lower arm)
