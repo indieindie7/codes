@@ -401,5 +401,48 @@ Without AvalonCards, the game says "saved and logged (AvalonCards isn't loaded h
     - QuickLoad still firing on F8;
     - "Unrecognized command: gm con ..." spam with U2GM loaded.
 
+## Texture adjust (click to alter)
+Click a surface in the game, get its texture, and change it live with sliders. Code: the fork's `source/texedit.hpp` (hooks to apply: `source/texedit_hooks.md`) and `U2Shaders/tex_adjust.hlsl`; the `gm tex` command here. Level 1 of `games/research_notes/In-game texture editing/design.md`. Built and compiled offline (2026-10-08), never run in the game.
+
+**How it works**
+- **Pick.** The panel arms a pick; the next world click picks. On the frame after, every on-screen draw is drawn again (the shotmask redraw, the game's depth still bound) into the fork's own target, cut down to the one pixel under the cursor, each writing its draw number. The topmost visible draw wins, as in the game's picture. Alpha-tested draws (grates) write their texture's alpha, so a click through a hole picks what is behind. The pixel is read back a frame later; the draw's table says which texture hashes were on stages 0–3.
+- **Adjust.** The texture is drawn once through `tex_adjust.hlsl` into a render-target copy of the same size. Each mip level comes from the source's own level, so the original mips are kept. That copy is swapped in for every draw of the hash, on stages 0–3, through `replace=`'s path. Only the texture changes, so it works under any stage setup. A slider move re-bakes it (one quad per mip level).
+- **Saved as numbers only, never pixels.** Save sends `gm tex HASH REV b c g s h sh sm sl sharp`. U2GM keeps one journal slot per hash: `Ops[k]="@* tex HASH REV ..."`. `@*` means global: the line is keyed by the texture's content, not by map. U2GM doesn't replay or bake it; the fork watches `U2GM.ini` and re-applies it, also after a map change, the next time the texture is drawn. `gm undo` / `gm redo` step through it like any line (undo and redo now keep a slot's whole line, tag included).
+- **Plain route.** `texadjust=HASH b c g s h sh sm sl sharp` in `System\U2Shaders.ini` is read at load and whenever the file changes; `map=` sections apply as for the other rules. "Copy ini line" in the panel puts this line on the clipboard.
+- **The numbers** (neutral value in brackets): b brightness, added (0); c contrast about mid-grey (1); g gamma (1; above 1 brightens the mids); s saturation (1); h hue shift in degrees (0); sh/sm/sl curves for shadows / mids / highlights, −1..1 (0); sharp sharpness, unsharp mask (0; negative softens). Order: sharpen → brightness → contrast → gamma → curves → saturation and hue. Alpha is never changed.
+- **Precedence for one hash.** The panel's unsaved values win over the journal line, which wins over `texadjust=`. The base being adjusted is the `replace=` DDS or `texgrade=` copy when there is one, else the game's own texture. Live blood pools and wall runs are not adjusted. Rules keyed by hash (`shader=`, `layer=`, `surface=`, `decal=`, `glass=`, `pbr=`) still match the original hash and read the adjusted copy, so terrain layers with `layer=terrain_hex.hlsl` show the change. These use the original: `gloss=` redraws, the `glass=` cube-map path, and `surface=`'s brightness levels (c3).
+- **Limits.** A hash is the texture's content, so an edit shows everywhere that texture is used, on every map. Textures the game remakes every frame (hash `ffffffff`) are refused. Only colour formats are adjusted (DXT1–5, 32-bit, 16-bit, L8/A8L8); bump maps are refused. The copy is uncompressed A8R8G8B8 in video memory (5.6 MB for a 1024² texture with mips).
+
+**Install for the test.** Apply `texedit_hooks.md` to the fork and build it. Copy `d3d8.dll` to `System` and `U2Shaders/tex_adjust.hlsl` to `System\U2Shaders\`. `gmpanel=1` must be on. For U2GM: copy `Classes` into `<game>\U2GM\Classes`, delete `SystemBuild\U2GM.u`, run `SystemBuild\UCC.exe make`, then put the new `U2GM.u` in `System` while the game is closed. The `gm tex` command is new and **not compiled yet**: the build in the game folder wasn't allowed in the session that wrote it. Keep `System\U2Shaders.log` open; texedit's lines start with `texedit:`.
+
+**Test list**
+1. Load a map with U2GM, press F7, and open "Texture (click to alter)". The log shows `texedit: U2Shaders.ini: 0 texadjust= line(s)` and `texedit: U2GM.ini: 0 texture line(s) in the journal`.
+2. Click **Pick texture (click)**. The hint "pick a texture (Esc cancels)" follows the cursor. Press Escape: the panel says "pick cancelled" and nothing is sent to the game. Pick again and click a wall.
+   - Within about 3 frames, the panel lists the draw's stages (stage 0 is the wall texture, stage 1 the lightmap) with hash, size, format and mip count, then "used by N draw(s)" and a thumbnail.
+   - The log says `texedit: picked draw K of N: stage 0, HASH ...`.
+   - The click did **not** also pick or move an actor.
+3. Hard cases for the pick:
+   - Click through a hole in the Avalon catwalk grating: it picks what is behind, not the grating.
+   - Click the first-person weapon: it picks the weapon (drawn after a depth clear).
+   - Click a blood decal: it picks the decal. Turn on **through decals** and click again: it picks the floor.
+   - Click the sky: it picks the sky texture or says "nothing textured under the cursor".
+   - Click the HUD: it never picks the HUD.
+   - Click a mesh edge: the panel may say "an edge pixel"; clicking further in works.
+4. Drag each slider on the picked wall: brightness, contrast, gamma, saturation, hue shift, shadows, mids, highlights, sharpness. Every wall with that texture changes **while you drag**, at all distances; watch far walls (the mips) for flicker. The thumbnail follows. Check:
+   - sharpness +2 gives crisp detail with no seam where the texture tiles;
+   - sharpness −1 softens it;
+   - hue ±180 gives the complementary colours;
+   - shadows / mids / highlights never turn black or white into grey.
+5. Drag on a 1024² texture: frame time doesn't jump, and `U2Shaders.log` has no `texedit: ... failed` lines.
+6. Click **Reset**: the wall looks original. Drag a few sliders, then click **Save**. The console says `[GM] texture HASH rev 1 saved (line K; ...)`, the panel says `journal rev 1 (Ops[K])`, and `U2GM.ini` has `Ops[K]="@* tex HASH 1 ..."`.
+7. Click **Undo**: the wall is back to the original, the sliders go neutral, and the panel says "not adjusted". Click **Redo**: the edit is back. Save twice more: still one slot, now rev 3. Undo goes back to rev 2's numbers.
+8. Reload the map, or travel to another map that uses the texture. The edit is back without doing anything, and the log says `texedit: U2GM.ini: 1 texture line(s)`. `gm journal` doesn't list the line (it is global), and `gm commit` still bakes only the map's own lines.
+9. Undo any journal line for the hash first. Then click **Copy ini line**, paste it into `U2Shaders.ini` as `texadjust=...`, and save the file. The wall takes the ini values within a second. Change a number in the ini and save: the wall follows. If you save a journal line too, the journal wins and the panel says the ini line is overridden.
+10. Terrain and replace=:
+    - On the hills or Avalon map, pick a terrain layer that has a `layer=HASH terrain_hex.hlsl` rule: the adjustment shows through the hex-tiling shader.
+    - Pick a texture that has a `replace=` rule: the adjustment goes on top of the replacement.
+11. Device reset: Alt-Tab out and back, or change the resolution. Within a frame or two the adjusted walls are back, the log has no errors, and picking still works.
+12. Choose a lightmap with the stage-1 radio button and raise its brightness: the light on those surfaces changes. Pick a bump texture or an `ffffffff` one: the panel says it can't be adjusted, and nothing crashes.
+
 ## Next
 - Week 1 is built: the terrain brush, the panel and commit are all untested in the game. Run the test lists above in order.

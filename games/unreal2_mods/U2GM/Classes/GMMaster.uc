@@ -61,6 +61,12 @@
 // one opens or closes; it only sets con= in PanelState (1 full, 2 one-line, 3 both), which the fork
 // reads to show its "Sketch" strip. "gm sketch mark NAME [NOTE]" (sent by the fork's Save as mark)
 // logs "GM: SKETCH NAME ..." and, when AvalonCards is loaded, runs "avalon mark NOTE sketch:NAME".
+//
+// Texture adjust (the fork's panel, "Texture (click to alter)"; source/texedit.hpp): "gm tex HASH REV
+// b c g s h sh sm sl sharp" keeps one journal line per texture hash, "@* tex HASH REV ..." ("@*": global,
+// keyed by the texture's content, not by map; nothing here replays or bakes it, the fork reads it from
+// this ini and re-applies it). It goes through Change like any line, so gm undo / gm redo step through
+// it. Undo and redo keep a slot's whole line, family tag included, so "@*" lines come back as they were.
 //=============================================================================
 class GMMaster extends Info
 	config(U2GM);
@@ -362,11 +368,20 @@ function int LastFreeOp()
 // one journal change: remembered for undo, the redo list dropped, saved
 function Change(int k, string L)
 {
+	if (L == "")
+		ChangeRaw(k, "");
+	else
+		ChangeRaw(k, "@"$Family()$" "$L);
+}
+
+// the same with the whole line (its tag included: "@* tex ..." lines); undo keeps whole lines
+function ChangeRaw(int k, string Raw)
+{
 	UndoAt[UndoAt.Length] = k;
-	UndoWas[UndoWas.Length] = GetOp(k);
+	UndoWas[UndoWas.Length] = Ops[k];
 	RedoAt.Length = 0;
 	RedoWas.Length = 0;
-	SetOp(k, L);
+	Ops[k] = Raw;
 	SaveConfig();
 }
 
@@ -760,7 +775,7 @@ function TakeBack(bool bRedo)
 		UndoAt.Length = UndoAt.Length - 1;
 		UndoWas.Length = UndoWas.Length - 1;
 		RedoAt[RedoAt.Length] = k;
-		RedoWas[RedoWas.Length] = GetOp(k);
+		RedoWas[RedoWas.Length] = Ops[k];
 	}
 	else
 	{
@@ -769,12 +784,38 @@ function TakeBack(bool bRedo)
 		RedoAt.Length = RedoAt.Length - 1;
 		RedoWas.Length = RedoWas.Length - 1;
 		UndoAt[UndoAt.Length] = k;
-		UndoWas[UndoWas.Length] = GetOp(k);
+		UndoWas[UndoWas.Length] = Ops[k];
 	}
-	SetOp(k, L);
+	Ops[k] = L;
 	SaveConfig();
 	Replay();
 	Say(Pick2(bRedo, "redo", "undo")$": line "$k$" now '"$L$"'");
+}
+
+// gm tex HASH REV b c g s h sh sm sl sharp (the fork's texture panel): one "@* tex" slot per hash
+function TexCmd(string Args)
+{
+	local int k;
+	local string H;
+
+	H = Locs(Word(Args, 0));
+	if (Len(H) != 8 || Word(Args, 10) == "")
+	{
+		Say("gm tex HASH REV b c g s h sh sm sl sharp (sent by the fork's panel: Texture, Save)");
+		return;
+	}
+	for (k = 0; k < ArrayCount(Ops); k++)
+		if (Word(Ops[k], 0) == "@*" && Word(Ops[k], 1) == "tex" && Word(Ops[k], 2) ~= H)
+			break;
+	if (k >= ArrayCount(Ops))
+		k = FreeOp();
+	if (k < 0)
+	{
+		Say("journal full");
+		return;
+	}
+	ChangeRaw(k, "@* tex "$H$" "$After(Args, 1));
+	Say("texture "$H$" rev "$Word(Args, 1)$" saved (line "$k$"; gm undo takes it back)");
 }
 
 function Possess()
@@ -1259,6 +1300,8 @@ function DoCommand(string Args)
 	}
 	else if (Cmd == "sketch")
 		SketchCmd(Args);
+	else if (Cmd == "tex")
+		TexCmd(After(Args, 1));
 	else if (Cmd == "on" || Cmd == "off")
 		SetOn(Cmd == "on");
 	else if (Cmd == "help")
@@ -1270,6 +1313,7 @@ function DoCommand(string Args)
 		Say("gm commit [cancel] (bake into <map>_LiveN: gm_commit.py --watch) | travel MAP");
 		Say("gm draw add [X Y Z] | undo | clear | done open|closed [NOTE] | list | forget N");
 		Say("gm sketch mark NAME [NOTE] (the fork's sketch tool) | con big|quick 1|0 (Console.ui's triggers)");
+		Say("gm tex HASH REV b c g s h sh sm sl sharp (the fork's texture panel; a global '@* tex' journal line)");
 	}
 	else if (Cmd == "panel")
 	{
