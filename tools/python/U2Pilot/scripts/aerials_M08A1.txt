@@ -1,0 +1,34 @@
+# aerials_M08A1: views from above the walkable area (hub tp hold + look + shot)
+background
+map M08A1
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console ghost
+console hub tp -4157 -8348 11230 hold
+wait 1.5
+look 45 -34
+wait 1
+shot
+console hub tp 5412 -8348 11230 hold
+wait 1.5
+look 135 -34
+wait 1
+shot
+console hub tp 5412 1222 11230 hold
+wait 1.5
+look 225 -34
+wait 1
+shot
+console hub tp -4157 1222 11230 hold
+wait 1.5
+look 315 -34
+wait 1
+shot
+console hub tp 627 -3562 14990 hold
+wait 1.5
+look 90 -89
+wait 1
+shot
+quit

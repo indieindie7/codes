@@ -1,0 +1,29 @@
+# gorelink_test: U2Gore live blood through GoreLink (fork gorelink=1): a merc and an Izarian killed on open ground
+# in M08A1's outdoor zone; their pools should be the layer's simulated blood (U2Shaders.log: gorelink found, pool lines)
+background
+map M08A1
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+console hub tp -1037 -5750 7540
+wait 1
+look 0 0
+spawn U2Pawns.U2MercJapLight 300
+turn 0 -30 0.3
+wait 0.5
+console hub kill 500
+wait 3
+shot
+wait 5
+shot
+look 90 0
+spawn U2Pawns.U2Izarian 300
+turn 0 -30 0.3
+wait 0.5
+console hub kill 500
+wait 6
+shot
+dump GoreManager Hits Marks LiveCount RunCount WetSkips
+dump GoreLink Seq Sent
+quit
