@@ -170,8 +170,13 @@ static V3 cosdir(V3 n, Rng *r)
 	return norm(add(add(mul(t, rr * cosf(ph)), mul(b, rr * sinf(ph))), mul(n, sqrtf(fmaxf(0.0f, 1 - u1)))));
 }
 
-/* sun + point lights at p with normal n, shadow rays */
-static V3 direct(V3 p, V3 n)
+/* sun + point lights at p with normal n, in the engine's units (1.0 = vertex colour byte 255).
+   UE2 (Engine.dll FDynamicLight::SampleIntensity + FUN_10404900, LightEffect none / LE_Sunlight):
+     point: 2 * cos * (1 - 3t^2 + 2t^3), t = dist / WorldLightRadius, 0 beyond the radius
+     sun:   2 * cos
+   times the light colour FGetHSV(Hue, Sat, 255) * LightBrightness/255 * LevelInfo.Brightness (bake.py).
+   shadows=0: no shadow rays (the engine traces them only for receivers with actor flag 0x268&0x10). */
+static V3 direct_s(V3 p, V3 n, int shadows)
 {
 	V3 e = v3(0, 0, 0), o = add(p, mul(n, EPS));
 	float th;
@@ -180,23 +185,25 @@ static V3 direct(V3 p, V3 n)
 	{
 		V3 tosun = mul(SUNDIR, -1.0f);
 		float c = dot(n, tosun);
-		if (c > 0 && trace(o, tosun, MAXDIST, 1, &th) < 0) e = add(e, mul(SUNCOL, c));
+		if (c > 0 && (!shadows || trace(o, tosun, MAXDIST, 1, &th) < 0)) e = add(e, mul(SUNCOL, 2.0f * c));
 	}
 	for (i = 0; i < NL; i++)
 	{
 		V3 d = sub(L[i].p, o);
-		float dist = sqrtf(dot(d, d)), c, f;
+		float dist = sqrtf(dot(d, d)), c, t, f;
 		if (dist >= L[i].radius || dist < 1e-3f) continue;
 		d = mul(d, 1.0f / dist);
 		c = dot(n, d);
 		if (c <= 0) continue;
-		f = 1.0f - dist / L[i].radius;            /* approximate UE2 falloff */
-		f *= f;
-		if (trace(o, d, dist - 1.0f, 1, &th) >= 0) continue;
-		e = add(e, mul(L[i].col, c * f));
+		t = dist / L[i].radius;
+		f = 2.0f * c * (1.0f - 3.0f * t * t + 2.0f * t * t * t);
+		if (shadows && trace(o, d, dist - 1.0f, 1, &th) >= 0) continue;
+		e = add(e, mul(L[i].col, f));
 	}
 	return e;
 }
+
+static V3 direct(V3 p, V3 n) { return direct_s(p, n, 1); }
 
 static V3 gather(V3 p, V3 n, int rays, int depth, Rng *rg, V3 *skyout)
 {
@@ -226,7 +233,7 @@ static V3 gather(V3 p, V3 n, int rays, int depth, Rng *rg, V3 *skyout)
 }
 
 /* ---- work split ---- */
-static const float *SP, *SN; static float *RESULT; static int NS; static volatile LONG NEXT; static unsigned SEED;
+static const float *SP, *SN; static const int *SF; static float *RESULT; static int NS; static volatile LONG NEXT; static unsigned SEED;
 
 static DWORD WINAPI worker(LPVOID unused)
 {
@@ -240,7 +247,7 @@ static DWORD WINAPI worker(LPVOID unused)
 		p = v3(SP[i * 3], SP[i * 3 + 1], SP[i * 3 + 2]);
 		n = norm(v3(SN[i * 3], SN[i * 3 + 1], SN[i * 3 + 2]));
 		rg.s = SEED ^ (unsigned)(i * 2654435761u);
-		d = direct(p, n);
+		d = direct_s(p, n, SF ? (SF[i] & 1) : 1);
 		b = BOUNCES > 0 ? gather(p, n, RAYS, BOUNCES, &rg, &s) : v3(0, 0, 0);
 		if (BOUNCES <= 0) s = v3(0, 0, 0);
 		RESULT[i * 9 + 0] = d.x; RESULT[i * 9 + 1] = d.y; RESULT[i * 9 + 2] = d.z;
@@ -251,9 +258,10 @@ static DWORD WINAPI worker(LPVOID unused)
 
 /* tri: 9 floats per triangle (a,b,c world); alb: 3 per triangle; outward normal = cross(b-a, c-a).
    lights: 7 per light (x,y,z, radius, r,g,b). sun: 7 (dir x,y,z = direction the light travels, r,g,b, on).
+   sflags: per sample (or NULL): bit 0 = trace shadow rays for its direct light (engine: receiver flag).
    opts: [eps, skyhit, far]. out: 9 per sample (direct rgb, sky rgb, bounce rgb). Returns 0 on success. */
-__declspec(dllexport) int bake(int ntri, const float *tri, const float *alb,
-                               int nsamp, const float *pos, const float *nrm,
+__declspec(dllexport) int bake_ex(int ntri, const float *tri, const float *alb,
+                               int nsamp, const float *pos, const float *nrm, const int *sflags,
                                int nlight, const float *lights, const float *sun, const float *sky,
                                int rays, int bounces, int bounce2rays, unsigned seed, const float *opts,
                                float *out, int nthreads)
@@ -288,7 +296,7 @@ __declspec(dllexport) int bake(int ntri, const float *tri, const float *alb,
 	SKY = v3(sky[0], sky[1], sky[2]);
 	EPS = opts[0]; SKYHIT = opts[1]; MAXDIST = opts[2];
 	RAYS = rays > 0 ? rays : 1; BOUNCES = bounces; B2RAYS = bounce2rays > 0 ? bounce2rays : 1; SEED = seed;
-	SP = pos; SN = nrm; RESULT = out; NS = nsamp; NEXT = 0;
+	SP = pos; SN = nrm; SF = sflags; RESULT = out; NS = nsamp; NEXT = 0;
 	if (nthreads < 1) nthreads = 1;
 	if (nthreads > 64) nthreads = 64;
 	for (i = 0; i < nthreads; i++) th[i] = CreateThread(NULL, 0, worker, NULL, 0, NULL);
@@ -296,4 +304,15 @@ __declspec(dllexport) int bake(int ntri, const float *tri, const float *alb,
 	for (i = 0; i < nthreads; i++) CloseHandle(th[i]);
 	free(T); free(TI); free(N); free(RIGHT); free(L);
 	return 0;
+}
+
+/* the first interface (no per-sample flags: every sample traces shadows) */
+__declspec(dllexport) int bake(int ntri, const float *tri, const float *alb,
+                               int nsamp, const float *pos, const float *nrm,
+                               int nlight, const float *lights, const float *sun, const float *sky,
+                               int rays, int bounces, int bounce2rays, unsigned seed, const float *opts,
+                               float *out, int nthreads)
+{
+	return bake_ex(ntri, tri, alb, nsamp, pos, nrm, NULL, nlight, lights, sun, sky, rays, bounces, bounce2rays,
+	               seed, opts, out, nthreads);
 }

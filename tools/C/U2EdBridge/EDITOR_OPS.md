@@ -77,6 +77,14 @@ lightmaps, terrain and other actors are untouched. It refuses movers, brushes, n
 the zone's `AmbientBrightness/Hue/Saturation`, and the lights in the leaf light lists with their
 type, brightness, radius and `bSpecialLit` (a mismatch with the actor means that light skips it).
 
+## 3b. Baked lighting write-back (built 2026-10-07, never run)
+
+`!meshverts [PAT] FILE` (engine geometry/colours/lights dump for U2Bake), `!bakeload FILE` (per-vertex
+colours into the static-mesh instances, through a hook on the engine's StaticLight), `!bakeclear PAT|all`,
+`!bakeinfo [derive on|off]`, `!setprop NAME PROP VALUE` (one property of one actor, e.g. one ZoneInfo's
+AmbientBrightness - `SET` is class-wide). Evidence, formats and the test plan: LIGHTING.md section 7.
+If PAT is left out of `!meshverts`, the path must not contain spaces.
+
 ## 4. New content in the running game
 
 - **Unique package per change works (recommended).** `DynamicLoadObject("AvalonSM_3.Group.Mesh",

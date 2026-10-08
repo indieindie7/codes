@@ -17,6 +17,11 @@
  *                                BSP light lists give it (what LIGHT APPLY will use)
  *   !lightsat x y z              the same for a point (BSP leaf + zone at that spot)
  *   !opsinfo                     resolved offsets / exports
+ *   !meshverts [PAT] FILE        engine geometry/colours/lights dump for U2Bake (see "Baked lighting")
+ *   !bakeload FILE               write U2Bake per-vertex colours into the static-mesh instances
+ *   !bakeclear PAT ...|all       back to the engine's own vertex light
+ *   !bakeinfo [derive on|off]    hook state
+ *   !setprop NAME PROP VALUE     one property of one actor (e.g. a ZoneInfo's AmbientBrightness)
  * PAT "selected" means the current selection.
  *
  * Everything here was read from the Ghidra decompile of Unreal II's Editor.dll / Engine.dll / Core.dll
@@ -545,6 +550,600 @@ static int OpLight(wchar_t **tok, int n)
 	return lit > 0;
 }
 
+/* ================================================================================================
+ * Baked lighting write-back (U2Bake <-> editor). See LIGHTING.md, "Write-back".
+ *
+ *   !meshverts [PAT] FILE     dump the engine's own static-mesh geometry (render vertex order), the
+ *                             actors' LocalToWorld, current per-instance vertex colours, zones and lights
+ *                             to a binary file for bake.py (format "U2MV", below)
+ *   !bakeload FILE            write baked per-vertex colours (format "U2BK", made by bake.py) into the
+ *                             actors' UStaticMeshInstance colour streams, through the StaticLight hook
+ *   !bakeclear PAT ...|all    forget the bake of these actors and let the engine recompute its colours
+ *   !bakeinfo                 hook state and baked actors
+ *   !setprop NAME PROP VALUE  set one property of ONE actor (ImportText + PostEditChange), e.g.
+ *                             !setprop ZoneInfo3 AmbientBrightness 40   (SET is class-wide)
+ *
+ * Engine facts (Engine.dll, Mar 14 2003; addresses at the Ghidra image base 0x10300000):
+ *  - UStaticMesh::Illuminate (0x1043e3b0) stores only visibility bits: UStaticMeshInstance (actor+0x1c8)
+ *    Lights[] at +0x28 ({AActor* Light; TArray<BYTE> Bits; UBOOL Applied} = 0x14 each) and a zeroed
+ *    FRawColorStream at +0x34 (colours: TArray<FColor> at +0x38, Revision at +0x4c).
+ *  - the colours are filled by FUN_10408ef0 (here "StaticLight"; cdecl (UStaticMesh*, Instance*,
+ *    FDynamicActor*)): zero, Revision++, for each light whose render data is static: colour +=
+ *    FColor(light.Color * SampleIntensity(pos, normal)) where the bit is set, Applied = 1; then the mesh's
+ *    own colour stream multiplies (if mesh+0x128) and gives alpha.
+ *  - callers: the per-actor draw path FUN_104097b0 (only when a light's Applied flag says its state
+ *    changed: first draw after Illuminate, light toggles) and FStaticMeshBatchVertexStream::GetStreamData
+ *    (every time a batch is built; batching is UseStaticMeshBatching, False in the game's ini, true in the
+ *    editor section [Editor.EditorEngine] but ULevel::PostLoad only batches when !GIsEditor).
+ *  - UStaticMeshInstance::Serialize saves the colour stream (LicenseeVer >= 13) and Lights with Applied.
+ *    So a saved map renders the saved colours as long as StaticLight is not called again for it.
+ * The hook: both call sites are redirected to BakeStaticLight, which calls the original and then adds
+ * (or puts) our colours. When it meets an instance it has no record of, it first remembers what the
+ * stream holds (= what was saved: engine light + our bake) and keeps the difference to the engine's
+ * recomputed light as that actor's bake. So a baked map needs no side file.
+ * ================================================================================================ */
+
+#define ENGINE_IMAGE_BASE   0x10300000u
+#define RVA_STATICLIGHT     (0x10408ef0u - ENGINE_IMAGE_BASE)
+#define RVA_CALL_BATCH      (0x1040233bu - ENGINE_IMAGE_BASE)   /* in FStaticMeshBatchVertexStream::GetStreamData */
+#define RVA_CALL_DRAW       (0x10409aa9u - ENGINE_IMAGE_BASE)   /* in FUN_104097b0 (FDynamicActor::Render's mesh path) */
+#define RVA_GETSTREAMDATA   (0x10402200u - ENGINE_IMAGE_BASE)   /* exported: proves this is the same Engine.dll */
+
+#define ACTOR_STATICMESH    0x38    /* StaticMesh (GetStreamData, FUN_104097b0) */
+#define ACTOR_FLAGS60       0x60    /* bStatic = 0x40 (UStaticMesh::Illuminate) */
+#define ACTOR_FLAGS268      0x268   /* 0x10 = mesh casts shadows in the static bake (Illuminate) */
+#define ACTOR_INSTANCE      0x1c8   /* UStaticMeshInstance* */
+#define DYNACTOR_L2W        0x08    /* FDynamicActor::LocalToWorld, 4x4 floats, row vectors */
+#define DYNACTOR_AMBIENT    0xb8    /* FColor ambient (zones + AmbientGlow) */
+#define MESH_SECTIONS       0x54    /* TArray<FStaticMeshSection>, 0x14 each, IsStrip at +4 */
+#define MESH_VERTS          0x64    /* TArray<FStaticMeshVertex> {FVector Position, Normal} 0x18 each */
+#define MESH_INDICES        0xc4    /* FRawIndexBuffer at 0xc0: TArray<WORD> Indices at +4 */
+#define INST_LIGHTS         0x28
+#define INST_COLORS         0x38
+#define INST_REVISION       0x4c
+#define INSTLIGHT_SIZE      0x14
+
+typedef void (__cdecl *StaticLightFn)(void *mesh, void *inst, void *dynActor);
+typedef float (TC *FloatFn)(void *self);
+typedef const wchar_t *(TC *ImportTextFn)(void *prop, const wchar_t *buf, void *data, int flags, void *parent);
+
+typedef struct { void *inst; int rev, n, mode; unsigned *data; } BakeRec;   /* mode 0 add, 1 replace */
+
+static struct {
+	int state;                  /* 0 not tried, 1 installed, -1 refused */
+	unsigned char *base;
+	StaticLightFn orig;
+	int derive;                 /* derive a bake from saved colours on first sight */
+	BakeRec *rec; int nrec, maxrec;
+	int calls, derived;
+	void *clsStaticMesh;
+	int importSlot;
+} BK = { 0, 0, 0, 1 };
+
+static unsigned *BkAlloc(int n) { return (unsigned *)HeapAlloc(GetProcessHeap(), 0, (size_t)(n > 0 ? n : 1) * 4); }
+static void BkFree(void *p) { if (p) HeapFree(GetProcessHeap(), 0, p); }
+
+static BakeRec *BkFind(void *inst)
+{
+	int i;
+	for (i = 0; i < BK.nrec; i++) if (BK.rec[i].inst == inst) return &BK.rec[i];
+	return NULL;
+}
+
+static BakeRec *BkAdd(void *inst)
+{
+	BakeRec *r = BkFind(inst);
+	if (r) return r;
+	if (BK.nrec == BK.maxrec)
+	{
+		int m = BK.maxrec ? BK.maxrec * 2 : 256;
+		BakeRec *p = BK.rec ? (BakeRec *)HeapReAlloc(GetProcessHeap(), 0, BK.rec, m * sizeof(BakeRec))
+		                    : (BakeRec *)HeapAlloc(GetProcessHeap(), 0, m * sizeof(BakeRec));
+		if (!p) return NULL;
+		BK.rec = p; BK.maxrec = m;
+	}
+	r = &BK.rec[BK.nrec++];
+	memset(r, 0, sizeof(*r));
+	r->inst = inst;
+	return r;
+}
+
+static void BkDrop(BakeRec *r)
+{
+	BkFree(r->data);
+	*r = BK.rec[--BK.nrec];
+}
+
+/* saturating per-channel add / subtract of BGR, alpha kept from a */
+static unsigned SatAdd(unsigned a, unsigned b)
+{
+	unsigned r = a & 0xff000000u;
+	int k;
+	for (k = 0; k < 24; k += 8)
+	{
+		unsigned s = ((a >> k) & 0xff) + ((b >> k) & 0xff);
+		r |= (s > 255 ? 255 : s) << k;
+	}
+	return r;
+}
+static unsigned SatSub(unsigned a, unsigned b)
+{
+	unsigned r = 0;
+	int k;
+	for (k = 0; k < 24; k += 8)
+	{
+		int s = (int)((a >> k) & 0xff) - (int)((b >> k) & 0xff);
+		r |= (unsigned)(s < 0 ? 0 : s) << k;
+	}
+	return r;
+}
+
+/* the replacement for both calls of StaticLight */
+static void __cdecl BakeStaticLight(void *mesh, void *inst, void *dynActor)
+{
+	BakeRec *r = BkFind(inst);
+	int n = AT(inst, INST_COLORS + 4, int), i;
+	unsigned *col;
+	BK.calls++;
+	if (BK.derive && (!r || r->rev != AT(inst, INST_REVISION, int) || r->n != n))
+	{
+		/* first sight (or the engine relit it since): the stream holds what was saved or set last */
+		unsigned *saved = BkAlloc(n);
+		int any = 0;
+		if (saved) memcpy(saved, AT(inst, INST_COLORS, unsigned *), (size_t)n * 4);
+		BK.orig(mesh, inst, dynActor);
+		col = AT(inst, INST_COLORS, unsigned *);
+		if (saved)
+		{
+			for (i = 0; i < n; i++) { saved[i] = SatSub(saved[i], col[i]); any |= saved[i] != 0; }
+			if (any)
+			{
+				if (!r) r = BkAdd(inst);
+				if (r) { BkFree(r->data); r->data = saved; r->n = n; r->mode = 0; saved = NULL; BK.derived++; }
+			}
+			else if (r) { BkDrop(r); r = NULL; }
+			BkFree(saved);
+		}
+		if (!r) return;
+	}
+	else
+	{
+		BK.orig(mesh, inst, dynActor);
+		if (!r) return;
+	}
+	col = AT(inst, INST_COLORS, unsigned *);
+	if (r->data && r->n == n)
+		for (i = 0; i < n; i++)
+			col[i] = r->mode ? (col[i] & 0xff000000u) | (r->data[i] & 0x00ffffffu) : SatAdd(col[i], r->data[i]);
+	r->rev = AT(inst, INST_REVISION, int);   /* StaticLight bumped it: the renderer re-uploads the stream */
+}
+
+static int PatchCall(unsigned rva, void *to)
+{
+	unsigned char *at = BK.base + rva;
+	DWORD old;
+	int rel = (int)((unsigned char *)to - (at + 5));
+	if (!VirtualProtect(at, 5, PAGE_EXECUTE_READWRITE, &old)) return 0;
+	memcpy(at + 1, &rel, 4);
+	VirtualProtect(at, 5, old, &old);
+	FlushInstructionCache(GetCurrentProcess(), at, 5);
+	return 1;
+}
+
+static int CallTargets(unsigned rva, unsigned target)
+{
+	unsigned char *at = BK.base + rva;
+	int rel;
+	if (at[0] != 0xE8) return 0;
+	memcpy(&rel, at + 1, 4);
+	return at + 5 + rel == BK.base + target;
+}
+
+/* checks everything before touching code; runs on the main thread (no concurrent renderer) */
+static int BakeHookInstall(void)
+{
+	HMODULE eng = GetModuleHandleW(L"Engine.dll");
+	static const unsigned char prologue[] = { 0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68 };
+	if (BK.state) return BK.state > 0;
+	BK.state = -1;
+	if (!eng) { CapLine(L"bake: Engine.dll not found"); return 0; }
+	BK.base = (unsigned char *)eng;
+	if ((unsigned char *)GetProcAddress(eng, "?GetStreamData@FStaticMeshBatchVertexStream@@UAEXPAX@Z") != BK.base + RVA_GETSTREAMDATA)
+	{ CapLine(L"bake: Engine.dll is not the build the hook was written for (GetStreamData moved); hook refused"); return 0; }
+	if (memcmp(BK.base + RVA_STATICLIGHT, prologue, sizeof(prologue)))
+	{ CapLine(L"bake: StaticLight prologue differs; hook refused"); return 0; }
+	if (!CallTargets(RVA_CALL_BATCH, RVA_STATICLIGHT) || !CallTargets(RVA_CALL_DRAW, RVA_STATICLIGHT))
+	{
+		if (CallTargets(RVA_CALL_BATCH, (unsigned)((unsigned char *)BakeStaticLight - BK.base)))
+			CapLine(L"bake: call sites already point at another BakeStaticLight (second ops DLL?); hook refused");
+		else
+			CapLine(L"bake: StaticLight call sites differ; hook refused");
+		return 0;
+	}
+	BK.orig = (StaticLightFn)(BK.base + RVA_STATICLIGHT);
+	if (!PatchCall(RVA_CALL_BATCH, (void *)BakeStaticLight) || !PatchCall(RVA_CALL_DRAW, (void *)BakeStaticLight))
+	{ CapLine(L"bake: VirtualProtect failed"); return 0; }
+	BLog("bake: StaticLight hook installed (Engine.dll at %p)", (void *)BK.base);
+	BK.state = 1;
+	return 1;
+}
+
+/* ---- small binary writer/reader ---- */
+
+typedef struct { HANDLE f; char buf[65536]; int len; int err; } BW;
+
+static void BwFlush(BW *w)
+{
+	DWORD put;
+	if (w->len && !w->err && (!WriteFile(w->f, w->buf, w->len, &put, NULL) || put != (DWORD)w->len)) w->err = 1;
+	w->len = 0;
+}
+static void BwPut(BW *w, const void *p, int n)
+{
+	const char *s = (const char *)p;
+	while (n > 0)
+	{
+		int k = (int)sizeof(w->buf) - w->len;
+		if (k > n) k = n;
+		memcpy(w->buf + w->len, s, k);
+		w->len += k; s += k; n -= k;
+		if (w->len == (int)sizeof(w->buf)) BwFlush(w);
+	}
+}
+static void BwInt(BW *w, int v) { BwPut(w, &v, 4); }
+static void BwStr(BW *w, const wchar_t *s) { int n = s ? lstrlenW(s) : 0; BwInt(w, n); BwPut(w, s, n * 2); }
+
+typedef struct { const unsigned char *p, *end; int err; } BR;
+static int BrInt(BR *r) { int v = 0; if (r->p + 4 > r->end) { r->err = 1; return 0; } memcpy(&v, r->p, 4); r->p += 4; return v; }
+static const void *BrTake(BR *r, int n) { const void *q = r->p; if (n < 0 || r->p + n > r->end) { r->err = 1; return NULL; } r->p += n; return q; }
+static int BrStr(BR *r, wchar_t *out, int max)
+{
+	int n = BrInt(r);
+	const wchar_t *s = (const wchar_t *)BrTake(r, n * 2);
+	if (!s || n >= max) { r->err = 1; out[0] = 0; return 0; }
+	memcpy(out, s, n * 2); out[n] = 0;
+	return 1;
+}
+
+static unsigned char *ReadWholeFile(const wchar_t *path, int *size)
+{
+	HANDLE f = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+	DWORD sz, got;
+	unsigned char *p;
+	if (f == INVALID_HANDLE_VALUE) return NULL;
+	sz = GetFileSize(f, NULL);
+	p = (unsigned char *)HeapAlloc(GetProcessHeap(), 0, sz ? sz : 1);
+	if (p && (!ReadFile(f, p, sz, &got, NULL) || got != sz)) { HeapFree(GetProcessHeap(), 0, p); p = NULL; }
+	CloseHandle(f);
+	*size = (int)sz;
+	return p;
+}
+
+/* "a b c" -> rejoin tokens [from, n) with single spaces (file paths with spaces) */
+static void JoinRest(wchar_t **tok, int from, int n, wchar_t *out, int max)
+{
+	int k;
+	out[0] = 0;
+	for (k = from; k < n; k++)
+	{
+		if (k > from) lstrcatW(out, L" ");
+		if (lstrlenW(out) + lstrlenW(tok[k]) + 2 >= max) break;
+		lstrcatW(out, tok[k]);
+	}
+	if (out[0] == L'"') { int l = lstrlenW(out); memmove(out, out + 1, l * 2); if (l > 1 && out[l - 2] == L'"') out[l - 2] = 0; }
+}
+
+static void *ActorMesh(void *a)
+{
+	void *m = AT(a, ACTOR_STATICMESH, void *);
+	return m && BK.clsStaticMesh && O.IsA(m, BK.clsStaticMesh) ? m : NULL;
+}
+
+/* the engine's own validity test (GetStreamData / FUN_104097b0): colours and every light's bits sized */
+static void *ValidInstance(void *a, void *mesh)
+{
+	void *inst = AT(a, ACTOR_INSTANCE, void *);
+	int nv = AT(mesh, MESH_VERTS + 4, int), nl, i;
+	if (!inst || AT(inst, INST_COLORS + 4, int) != nv) return NULL;
+	nl = AT(inst, INST_LIGHTS + 4, int);
+	for (i = 0; i < nl; i++)
+		if (AT(AT(inst, INST_LIGHTS, char *) + i * INSTLIGHT_SIZE, 8, int) != (nv + 7) / 8) return NULL;
+	return inst;
+}
+
+static int BakeInit(void)
+{
+	StaticClassFn sc;
+	HMODULE eng = GetModuleHandleW(L"Engine.dll");
+	int off;
+	if (BK.clsStaticMesh) return 1;
+	sc = eng ? (StaticClassFn)GetProcAddress(eng, "?StaticClass@UStaticMesh@@SAPAVUClass@@XZ") : NULL;
+	if (!sc) { CapLine(L"bake: UStaticMesh::StaticClass not exported"); return 0; }
+	BK.clsStaticMesh = sc();
+	off = PropOffset(O.clsActor, L"StaticMesh");
+	if (off != ACTOR_STATICMESH) { Out(L"bake: Actor.StaticMesh at +%x, the decompile says +%x; refused", off, ACTOR_STATICMESH); BK.clsStaticMesh = NULL; return 0; }
+	if (O.offStatic != ACTOR_FLAGS60 || O.maskStatic != 0x40)
+	{ Out(L"bake: bStatic at +%x/%x, the decompile says +60/40; refused", O.offStatic, O.maskStatic); BK.clsStaticMesh = NULL; return 0; }
+	return 1;
+}
+
+/* ---- !meshverts ---- */
+/*
+ * U2MV v1, little endian. str = int32 count + UTF-16 chars.
+ *   "U2MV" int version=1  float LevelBrightness
+ *   int nmeshes, per mesh:  str fullname; int nverts; float[6*nverts] (mesh-space position, normal, in the
+ *                           engine's vertex order = colour stream order); int nindices; uint16[nindices]
+ *                           (triangle list; 0 indices if a section is a strip); pad to 4
+ *   int nactors, per actor: str name; str class; int mesh; float[16] LocalToWorld (world = (x,y,z,1) * M,
+ *                           rows); int flags (1 bStatic, 2 valid instance, 4 hidden in editor,
+ *                           8 casts static shadows (0x268&0x10), 16 bSpecialLit); str zone;
+ *                           uint32 ambient (FColor BGRA); int ncolors; uint32[ncolors] current colours
+ *   int nlights, per light: str name; str class; float[3] location; int[3] rotation (pitch yaw roll);
+ *                           uint8 type, effect, brightness, hue, saturation, radius, pad, pad;
+ *                           float worldRadius; int flags (1 bStatic, 16 bSpecialLit); str zone
+ */
+static void ZoneName(void *a, wchar_t *out)
+{
+	int off = PropOffset(AT(a, UOBJ_CLASS, void *), L"Region");
+	void *z = off >= 0 ? AT(a, off, void *) : NULL;
+	lstrcpynW(out, z ? O.GetName(z) : L"", 128);
+}
+
+static int OpMeshVerts(wchar_t **tok, int n)
+{
+	void *lvl = Level(), **meshes = NULL;
+	wchar_t path[1024], zone[128], buf[256];
+	const wchar_t *pat = L"*";
+	BW *w;
+	int i, k, nmesh = 0, nact = 0, nlight = 0, offSpecial = -1, offLT, offLE, offLB, offLH, offLS, offLR;
+	unsigned maskSpecial = 0;
+	float lb = 1.0f;
+	if (!BakeInit()) return 0;
+	if (n < 1) { CapLine(L"usage: !meshverts [PAT] FILE"); return 0; }
+	if (n >= 2) { pat = tok[0]; JoinRest(tok, 1, n, path, 1024); } else JoinRest(tok, 0, n, path, 1024);
+	BoolProp(O.clsActor, L"bSpecialLit", &offSpecial, &maskSpecial);
+	offLT = PropOffset(O.clsActor, L"LightType"); offLE = PropOffset(O.clsActor, L"LightEffect");
+	offLB = PropOffset(O.clsActor, L"LightBrightness"); offLH = PropOffset(O.clsActor, L"LightHue");
+	offLS = PropOffset(O.clsActor, L"LightSaturation"); offLR = PropOffset(O.clsActor, L"LightRadius");
+	if (offLT != 0x28 || offLE != 0x29 || offLB != 0x2a || offLH != 0x2b || offLS != 0x2c || offLR != 0x2d)
+	{ Out(L"bake: light byte properties at %x %x %x %x %x %x, the decompile says 28..2d; refused", offLT, offLE, offLB, offLH, offLS, offLR); return 0; }
+	lb = (float)wcstod(PropText(O.LevelInfo(lvl), L"Brightness", buf), NULL);
+	if (!(lb > 0.0f)) { Out(L"note: LevelInfo.Brightness reads '%s'; 1.0 written", buf); lb = 1.0f; }
+	meshes = (void **)HeapAlloc(GetProcessHeap(), 0, sizeof(void *) * (NumActors(lvl) + 1));
+	w = (BW *)HeapAlloc(GetProcessHeap(), 0, sizeof(BW));
+	if (!meshes || !w) { CapLine(L"out of memory"); BkFree(meshes); BkFree(w); return 0; }
+	w->len = 0; w->err = 0;
+	w->f = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
+	if (w->f == INVALID_HANDLE_VALUE) { Out(L"Can't write %s", path); BkFree(meshes); BkFree(w); return 0; }
+	/* distinct meshes of the matching actors */
+	for (i = 0; i < NumActors(lvl); i++)
+	{
+		void *a = ActorAt(lvl, i), *m;
+		if (!Targets(lvl, pat, a) || !(m = ActorMesh(a))) continue;
+		for (k = 0; k < nmesh && meshes[k] != m; k++) {}
+		if (k == nmesh) meshes[nmesh++] = m;
+	}
+	BwPut(w, "U2MV", 4); BwInt(w, 1); BwPut(w, &lb, 4);
+	BwInt(w, nmesh);
+	for (k = 0; k < nmesh; k++)
+	{
+		void *m = meshes[k];
+		int nv = AT(m, MESH_VERTS + 4, int), ni = AT(m, MESH_INDICES + 4, int), ns = AT(m, MESH_SECTIONS + 4, int), s, strip = 0;
+		wchar_t full[512];
+		for (s = 0; s < ns; s++) if (AT(AT(m, MESH_SECTIONS, char *) + s * 0x14, 4, int)) strip = 1;
+		if (strip) ni = 0;
+		wsprintfW(full, L"%s.%s", O.GetName(AT(m, 0x18, void *) ? AT(m, 0x18, void *) : m), O.GetName(m));  /* Outer at +0x18 */
+		BwStr(w, full);
+		BwInt(w, nv);
+		BwPut(w, AT(m, MESH_VERTS, void *), nv * 0x18);
+		BwInt(w, ni);
+		BwPut(w, AT(m, MESH_INDICES, void *), ni * 2);
+		if (ni & 1) BwPut(w, "\0\0", 2);
+		if (strip) Out(L"note: %s has strip sections; its triangles are not dumped (occluder missing)", full);
+	}
+	for (i = 0; i < NumActors(lvl); i++) { void *a = ActorAt(lvl, i); if (Targets(lvl, pat, a) && ActorMesh(a)) nact++; }
+	BwInt(w, nact);
+	for (i = 0; i < NumActors(lvl); i++)
+	{
+		void *a = ActorAt(lvl, i), *m, *rd, *inst;
+		int flags = 0, nc = 0;
+		unsigned amb;
+		if (!Targets(lvl, pat, a) || !(m = ActorMesh(a))) continue;
+		for (k = 0; k < nmesh && meshes[k] != m; k++) {}
+		rd = O.ActorRenderData(a);
+		if (!rd) { Out(L"note: %s has no render data (skipped in the dump: actor count is now wrong)", O.GetName(a)); w->err = 1; break; }
+		inst = ValidInstance(a, m);
+		if (Flag(a, O.offStatic, O.maskStatic)) flags |= 1;
+		if (inst) flags |= 2;
+		if (Flag(a, O.offHiddenEd, O.maskHiddenEd) || Flag(a, O.offHiddenGroup, O.maskHiddenGroup)) flags |= 4;
+		if (AT(a, ACTOR_FLAGS268, unsigned) & 0x10) flags |= 8;
+		if (Flag(a, offSpecial, maskSpecial)) flags |= 16;
+		BwStr(w, O.GetName(a));
+		BwStr(w, O.GetName(AT(a, UOBJ_CLASS, void *)));
+		BwInt(w, k);
+		BwPut(w, (char *)rd + DYNACTOR_L2W, 64);
+		BwInt(w, flags);
+		ZoneName(a, zone); BwStr(w, zone);
+		amb = AT(rd, DYNACTOR_AMBIENT, unsigned); BwInt(w, (int)amb);
+		if (inst) nc = AT(inst, INST_COLORS + 4, int);
+		BwInt(w, nc);
+		if (nc) BwPut(w, AT(inst, INST_COLORS, void *), nc * 4);
+	}
+	for (i = 0; i < NumActors(lvl); i++) { void *a = ActorAt(lvl, i); if (a && AT(a, 0x28, unsigned char)) nlight++; }
+	BwInt(w, nlight);
+	for (i = 0; i < NumActors(lvl); i++)
+	{
+		void *a = ActorAt(lvl, i);
+		float wr;
+		int flags = 0;
+		if (!a || !AT(a, 0x28, unsigned char)) continue;
+		BwStr(w, O.GetName(a));
+		BwStr(w, O.GetName(AT(a, UOBJ_CLASS, void *)));
+		BwPut(w, (char *)a + O.offLocation, 12);
+		BwPut(w, (char *)a + O.offRotation, 12);
+		BwPut(w, (char *)a + 0x28, 6);
+		BwPut(w, "\0\0", 2);
+		wr = ((FloatFn)VSLOT(a, 0x7c))(a);               /* WorldLightRadius (Illuminate calls slot 0x7c) */
+		BwPut(w, &wr, 4);
+		if (Flag(a, O.offStatic, O.maskStatic)) flags |= 1;
+		if (Flag(a, offSpecial, maskSpecial)) flags |= 16;
+		BwInt(w, flags);
+		ZoneName(a, zone); BwStr(w, zone);
+	}
+	BwFlush(w);
+	k = w->err;
+	CloseHandle(w->f);
+	BkFree(w); BkFree(meshes);
+	if (k) { Out(L"write error on %s", path); return 0; }
+	Out(L"meshverts: %d meshes, %d actors, %d lights -> %s", nmesh, nact, nlight, path);
+	return 1;
+}
+
+/* ---- !bakeload ---- */
+/*
+ * U2BK v1: "U2BK" int version=1, int mode (0 = add to the engine's own light, 1 = replace it),
+ *          int nactors, per actor: str name; int nverts; uint32[nverts] FColor (BGRA in memory,
+ *          0xAARRGGBB as a little-endian int; alpha ignored) in the engine's vertex order (!meshverts).
+ */
+static void *FindActorNamed(void *lvl, const wchar_t *name)
+{
+	int i;
+	for (i = 0; i < NumActors(lvl); i++)
+	{
+		void *a = ActorAt(lvl, i);
+		if (a && !_wcsicmp(O.GetName(a), name)) return a;
+	}
+	return NULL;
+}
+
+static int OpBakeLoad(wchar_t **tok, int n)
+{
+	void *lvl = Level();
+	wchar_t path[1024], name[256];
+	unsigned char *file;
+	int size, mode, na, i, ok = 0, bad = 0;
+	BR r;
+	if (!BakeInit()) return 0;
+	if (n < 1) { CapLine(L"usage: !bakeload FILE"); return 0; }
+	JoinRest(tok, 0, n, path, 1024);
+	if (!BakeHookInstall()) return 0;
+	file = ReadWholeFile(path, &size);
+	if (!file) { Out(L"Can't read %s", path); return 0; }
+	r.p = file; r.end = file + size; r.err = 0;
+	if (size < 16 || memcmp(file, "U2BK", 4)) { Out(L"%s is not a U2BK file", path); BkFree(file); return 0; }
+	r.p += 4;
+	if (BrInt(&r) != 1) { CapLine(L"bake: unknown U2BK version"); BkFree(file); return 0; }
+	mode = BrInt(&r);
+	na = BrInt(&r);
+	Begin(L"Bridge Bake");
+	for (i = 0; i < na && !r.err; i++)
+	{
+		int nv;
+		const unsigned *cols;
+		void *a, *m, *inst;
+		BakeRec *rec;
+		BrStr(&r, name, 256);
+		nv = BrInt(&r);
+		cols = (const unsigned *)BrTake(&r, nv * 4);
+		if (r.err) break;
+		a = FindActorNamed(lvl, name);
+		if (!a) { if (bad++ < 50) Out(L"skip %s: no such actor", name); continue; }
+		if (!(m = ActorMesh(a))) { if (bad++ < 50) Out(L"skip %s: no static mesh", name); continue; }
+		if (AT(m, MESH_VERTS + 4, int) != nv)
+		{ if (bad++ < 50) Out(L"skip %s: %d colours for %d engine vertices (re-dump with !meshverts)", name, nv, AT(m, MESH_VERTS + 4, int)); continue; }
+		if (!(inst = ValidInstance(a, m)))
+		{ if (bad++ < 50) Out(L"skip %s: no valid static lighting instance (bStatic + !light or LIGHT APPLY first)", name); continue; }
+		rec = BkAdd(inst);
+		if (!rec) { CapLine(L"out of memory"); break; }
+		BkFree(rec->data);
+		rec->data = BkAlloc(nv);
+		if (!rec->data) { BkDrop(rec); CapLine(L"out of memory"); break; }
+		memcpy(rec->data, cols, (size_t)nv * 4);
+		rec->n = nv; rec->mode = mode ? 1 : 0;
+		rec->rev = AT(inst, INST_REVISION, int);          /* known: not a first sight */
+		((VoidFn)VSLOT(inst, VT_MODIFY))(inst);           /* undo record + package dirty */
+		BakeStaticLight(m, inst, O.ActorRenderData(a));   /* engine light again, then ours on top */
+		ok++;
+	}
+	End();
+	BkFree(file);
+	if (r.err) CapLine(L"bake: file truncated or corrupt (stopped there)");
+	((EdLevelFn)VSLOT(g_ed, VT_ED_REDRAWLEVEL))(g_ed, lvl);
+	Out(L"baked %d actor(s) (%s), %d skipped; save the map to keep it", ok, mode ? L"replace" : L"add", bad);
+	return ok > 0;
+}
+
+static int OpBakeClear(wchar_t **tok, int n)
+{
+	void *lvl = Level();
+	int i, k, count = 0, all = n == 1 && !_wcsicmp(tok[0], L"all");
+	if (!n) { CapLine(L"usage: !bakeclear PAT ...|all"); return 0; }
+	if (!BakeInit() || BK.state <= 0) { CapLine(L"bake: hook not installed, nothing baked this session"); return 0; }
+	for (i = 0; i < NumActors(lvl); i++)
+	{
+		void *a = ActorAt(lvl, i), *m, *inst;
+		BakeRec *rec;
+		if (!a || !(m = ActorMesh(a))) continue;
+		if (!all) { for (k = 0; k < n && !Targets(lvl, tok[k], a); k++) {} if (k == n) continue; }
+		if (!(inst = ValidInstance(a, m))) continue;
+		if ((rec = BkFind(inst))) BkDrop(rec);
+		BK.orig(m, inst, O.ActorRenderData(a));               /* engine colours only */
+		rec = BkAdd(inst);                                     /* remember it as "no bake" so the hook */
+		if (rec) { rec->n = AT(inst, INST_COLORS + 4, int); rec->rev = AT(inst, INST_REVISION, int); }  /* won't re-derive */
+		count++;
+	}
+	((EdLevelFn)VSLOT(g_ed, VT_ED_REDRAWLEVEL))(g_ed, lvl);
+	Out(L"%d actor(s) back to the engine's own vertex light", count);
+	return 1;
+}
+
+static int OpBakeInfo(wchar_t **tok, int n)
+{
+	int i, baked = 0;
+	if (n == 2 && !_wcsicmp(tok[0], L"derive")) { BK.derive = !_wcsicmp(tok[1], L"on"); Out(L"derive %s", BK.derive ? L"on" : L"off"); return 1; }
+	Out(L"hook: %s; StaticLight calls %d, bakes derived from saved colours %d, derive %s",
+	    BK.state > 0 ? L"installed" : BK.state < 0 ? L"refused" : L"not installed", BK.calls, BK.derived, BK.derive ? L"on" : L"off");
+	for (i = 0; i < BK.nrec; i++) if (BK.rec[i].data) baked++;
+	Out(L"%d instance(s) carry a bake", baked);
+	return 1;
+}
+
+/* ---- !setprop: one property of one actor ---- */
+static int OpSetProp(wchar_t **tok, int n)
+{
+	void *lvl = Level(), *a, *p;
+	wchar_t val[1024], b[256];
+	if (n < 3) { CapLine(L"usage: !setprop ACTORNAME PROPERTY VALUE"); return 0; }
+	if (!BK.importSlot)
+	{
+		/* find ImportText's vtable slot: compare UByteProperty's vtable with its exported ImportText */
+		HMODULE core = GetModuleHandleW(L"Core.dll");
+		void *fn = core ? (void *)GetProcAddress(core, "?ImportText@UByteProperty@@UBEPBGPBGPAEHPAVUStruct@@@Z") : NULL;
+		void *bp = FindProp(O.clsActor, L"LightType"), **vt;
+		int s;
+		if (!fn || !bp) { CapLine(L"setprop: ImportText not found"); return 0; }
+		vt = *(void ***)bp;
+		for (s = 0; s < 128 && vt[s] != fn; s++) {}
+		if (s == 128) { CapLine(L"setprop: ImportText slot not found"); return 0; }
+		BK.importSlot = s * 4;
+		BLog("setprop: ImportText at vtable +0x%x", BK.importSlot);
+	}
+	a = FindActorNamed(lvl, tok[0]);
+	if (!a) { Out(L"Not found: %s", tok[0]); return 0; }
+	p = FindProp(AT(a, UOBJ_CLASS, void *), tok[1]);
+	if (!p) { Out(L"%s has no property %s", O.GetName(a), tok[1]); return 0; }
+	JoinRest(tok, 2, n, val, 1024);
+	Begin(L"Bridge SetProp");
+	((VoidFn)VSLOT(a, VT_MODIFY))(a);
+	if (!((ImportTextFn)VSLOT(p, BK.importSlot))(p, val, (char *)a + AT(p, UPROP_OFFSET, int), 0, NULL))
+	{ End(); Out(L"Bad value for %s: %s", tok[1], val); return 0; }
+	((VoidFn)VSLOT(a, VT_POSTEDITCHANGE))(a);   /* ZoneInfo: recomputes AmbientVector, clears all render data */
+	End();
+	Redraw(lvl);
+	Out(L"%s.%s = %s", O.GetName(a), tok[1], PropText(a, tok[1], b));
+	return 1;
+}
+
 static int OpInfo(void)
 {
 	Out(L"GEditor %p Level %p (+%x) Trans %p (+%x)", g_ed, Level(), O.offLevel, Trans(), O.offTrans);
@@ -560,7 +1159,8 @@ static int OpInfo(void)
 static int OpsBang(const wchar_t *cmd)
 {
 	static const wchar_t *names[] = { L"!select", L"!deselect", L"!list", L"!move", L"!moveby", L"!light",
-	                                  L"!lights", L"!lightsat", L"!opsinfo" };
+	                                  L"!lights", L"!lightsat", L"!opsinfo", L"!meshverts", L"!bakeload",
+	                                  L"!bakeclear", L"!bakeinfo", L"!setprop" };
 	wchar_t buf[4096], *tok[64];
 	int i, len, n;
 	for (i = 0; i < (int)(sizeof(names) / sizeof(names[0])); i++)
@@ -583,6 +1183,11 @@ static int OpsBang(const wchar_t *cmd)
 	case 5: return OpLight(tok, n);
 	case 6: return OpLights(tok, n);
 	case 7: return OpLightsAt(tok, n);
+	case 9: return OpMeshVerts(tok, n);
+	case 10: return OpBakeLoad(tok, n);
+	case 11: return OpBakeClear(tok, n);
+	case 12: return OpBakeInfo(tok, n);
+	case 13: return OpSetProp(tok, n);
 	default: return OpInfo();
 	}
 }
