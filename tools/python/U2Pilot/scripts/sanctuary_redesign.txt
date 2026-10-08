@@ -1,0 +1,31 @@
+# sanctuary_redesign: the creative team's scenes in M08A1 (U2Sanctuary) + U2Gore's live blood through GoreLink
+# (d3d8 fork acfbd43, gorelink=1). Looks at a body's pool + spray near the start, kills a merc for a live pool
+# and a wall run, then dumps the counters. Read System\U2Shaders.log for the "gorelink:" lines after.
+background
+map M08A1
+waitcontrol 180
+wait 3
+console BeMyMonkey
+console god
+dump SanctuaryDirector Placed Skipped MapName
+dump GoreLink Seq Sent
+console hub tp -1450 4433 6560
+wait 1
+turn 180 -40 0.4
+wait 0.5
+shot
+turn 90 0 0.4
+shot
+console hub tp -730 5000 6530
+wait 1
+turn 0 -30 0.4
+spawn U2Pawns.U2MercJapLight 200
+wait 0.4
+console hub kill 400
+wait 3
+shot
+wait 6
+shot
+dump GoreManager Hits Marks LiveCount RunCount WetSkips
+dump GoreLink Seq Sent
+quit

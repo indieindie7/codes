@@ -15,6 +15,12 @@
 // gas and EMP don't), and the victim's gib set gives the species: humans and
 // Skaarj red, Izarians and Araknids green, Drakk and machines nothing.
 // The game's own blood particles and gibs are left as they are.
+// LIVE BLOOD (2026-10-08, the Advent chat's d3d8 layer, fork gi-cascades acfbd43 with
+// gorelink=1): a body's pool is a region the layer simulates (it spreads, finds the
+// floor's slope, splashes when walked through) and a spray on a wall runs down it. The
+// commands go out through GoreLink. Without the layer the placeholders are plain grey
+// (no change under the x2 multiply): set bLive False to go back to the grown pools.
+// No mark is laid in water (the probe asks the spot's PhysicsVolume).
 // Console: set GoreManager bBlood False | MaxDecals 120 | DecalSize 150 | bLog True
 //=============================================================================
 class GoreManager extends Info
@@ -38,6 +44,10 @@ var config int MaxCoats;
 var config bool bScreenBlood;      // a death close to the player splashes the screen (UIScripts/U2Gore.ui)
 var config float ScreenBloodReach;
 var config bool bLog;
+var config bool bLive;             // pools and wall runs simulated by the d3d8 layer (GoreLink)
+var config bool bWallRuns;
+var config float RunChance, RunSize;
+var config float RegionSize, LivePour, LivePourSecs;
 
 var Texture Splats[4], Sprays[2], Pool, RemainsTex[2], CoatTex[3];
 var Texture IchorSplats[4], IchorSprays[2], IchorPool, IchorRemains[2], IchorCoatTex[3];
@@ -61,7 +71,12 @@ var array<GoreBodyDecal> BodyDecals;
 var ComponentHandle Screen;        // the splash on screen now
 var float ScreenUntil;
 var int ScreenCount;
-var int Hits, Marks, CoatCount, RemainsCount, BodyCount, TrailCount;
+var int Hits, Marks, CoatCount, RemainsCount, BodyCount, TrailCount, LiveCount, RunCount, WetSkips;
+var GoreLink Link;
+var GoreProbe Probe;
+var Texture PoolLive[8], RunLive[8];
+var GoreLive Pools[8], Runs[8];
+var int NextRun;
 
 event PostBeginPlay()
 {
@@ -72,6 +87,8 @@ event PostBeginPlay()
 		return;
 	R = Spawn(class'GoreRules');
 	R.Gore = Self;
+	Link = Spawn(class'GoreLink');
+	Probe = Spawn(class'GoreProbe');
 	DyingPhase = Spawn(class'GoreDying', self);
 	if (DyingPhase != None)
 		DyingPhase.Gore = self;
@@ -154,7 +171,11 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	// the spray behind the victim, along the shot (a little downward: blood falls)
 	Dir = Normal(Dir + vect(0,0,-0.25));
 	if (Surface(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius))
+	{
 		Mark(SprayTex(Victim), HitL, HitN, Dir, Size * (0.8 + 0.6 * VSize(HitL - HitLocation) / SprayReach));
+		if (bLive && bWallRuns && Abs(HitN.Z) < 0.5 && FRand() < RunChance)
+			WallRun(HitL, HitN, LayerKind(Victim), FClamp(Damage / 60.0, 0.3, 1.5));
+	}
 	// drips under the hit
 	if (FRand() < 0.85 && Surface(HitL, HitN, HitLocation - vect(0,0,400), HitLocation))
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
@@ -215,7 +236,8 @@ event Tick(float DeltaTime)
 		if (Dying[i] != None && !Dying[i].bDeleteMe && Dying[i].Health <= 0)
 		{
 			Spot = Dying[i].Location;
-			if (Surface(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,20)) && HitN.Z > 0.6)
+			if (Surface(HitL, HitN, Spot - vect(0,0,300), Spot + vect(0,0,20)) && HitN.Z > 0.6 &&
+				!(bLive && PourInto(HitL, HitN, LayerKind(Dying[i]))))
 			{
 				if (BloodKind(Dying[i]) == 2)
 					T = IchorPool;
@@ -497,6 +519,8 @@ function GoreDecal Mark(Texture T, vector Spot, vector N, vector Along, float Si
 {
 	local GoreDecal D;
 
+	if (Wet(Spot + N * 8))
+		return None;
 	while (Decals.Length > 0 && (Decals.Length >= MaxDecals || Decals[0] == None || Decals[0].bDeleteMe))
 	{
 		if (Decals[0] != None && !Decals[0].bDeleteMe)
@@ -514,8 +538,146 @@ function GoreDecal Mark(Texture T, vector Spot, vector N, vector Along, float Si
 	return D;
 }
 
+// ---- live blood (the d3d8 layer through GoreLink) -------------------------------------------
+// 0 red, 1 the layer's other colour (its purple stands in for Izarian green)
+function int LayerKind(Pawn P)
+{
+	if (BloodKind(P) == 2)
+		return 1;
+	return 0;
+}
+
+function bool Wet(vector Spot)
+{
+	if (Probe == None)
+		return false;
+	Probe.SetLocation(Spot);
+	if (Probe.PhysicsVolume != None && Probe.PhysicsVolume.bWaterVolume)
+	{
+		WetSkips++;
+		return true;
+	}
+	return false;
+}
+
+// a body's blood goes into the live region under it; if none covers the spot a new one is laid there
+// (a free slot, else the region farthest from the player, which the layer freezes as it is)
+function bool PourInto(vector Spot, vector N, int Kind)
+{
+	local int i, K;
+	local float D, Far;
+	local Pawn Me;
+	local Controller C;
+	local GoreLive R;
+
+	if (Link == None || Wet(Spot + N * 8))
+		return false;
+	for (i = 0; i < 8; i++)
+		if (Pools[i] != None && !Pools[i].bDeleteMe && Pools[i].PourAt(Spot, LivePour, LivePourSecs, Kind))
+			return true;
+	K = -1;
+	for (i = 0; i < 8 && K < 0; i++)
+		if (Pools[i] == None || Pools[i].bDeleteMe)
+			K = i;
+	if (K < 0)
+	{
+		for (C = Level.ControllerList; C != None; C = C.NextController)
+			if (PlayerController(C) != None && C.Pawn != None)
+				Me = C.Pawn;
+		Far = -1;
+		for (i = 0; i < 8; i++)
+		{
+			D = float(i);
+			if (Me != None)
+				D = VSize(Pools[i].Location - Me.Location);
+			if (D > Far)
+			{
+				Far = D;
+				K = i;
+			}
+		}
+		Pools[K].EndLive();
+	}
+	R = Spawn(class'GoreLive',,, Spot + N * 16);
+	if (R == None)
+		return false;
+	R.Place(PoolLive[K], Spot, N, vect(0,0,0), RegionSize);
+	R.GoLive(Link, K, PoolLive[K], RegionSize, LivePour, LivePourSecs, Kind);
+	Pools[K] = R;
+	LiveCount++;
+	if (bLog)
+		Log("U2Gore: live pool slot "$K$" at "$Spot);
+	return true;
+}
+
+// blood on a wall runs down it: into the run region already there, or a new one with the spot near its top
+function WallRun(vector Spot, vector N, int Kind, float Amount)
+{
+	local int i, K;
+	local float U, W;
+	local vector Down, Across, Center;
+	local GoreLive R;
+
+	for (i = 0; i < 8; i++)
+		if (Runs[i] != None && !Runs[i].bDeleteMe && Runs[i].RunLocal(Spot, U, W))
+		{
+			Runs[i].Drip(U, W, Amount);
+			return;
+		}
+	K = -1;
+	for (i = 0; i < 8 && K < 0; i++)
+		if (Runs[i] == None || Runs[i].bDeleteMe)
+			K = i;
+	if (K < 0)
+	{
+		K = NextRun;
+		NextRun = (NextRun + 1) % 8;
+		Runs[K].EndRun();
+	}
+	// down along the wall; the region's middle below the spot (the blood has room to run)
+	Down = Normal(vect(0,0,-1) - N * (vect(0,0,-1) Dot N));
+	Across = Normal(N Cross Down);
+	Center = Spot + Down * RunSize * 0.3;
+	if (Wet(Center + N * 8))
+		return;
+	R = Spawn(class'GoreLive',,, Center + N * 16);
+	if (R == None)
+		return;
+	R.Place(RunLive[K], Center, N, Across, RunSize);
+	R.GoRun(Link, K, RunLive[K], RunSize, Kind);
+	Runs[K] = R;
+	RunCount++;
+	if (R.RunLocal(Spot, U, W))
+		R.Drip(U, W, Amount);
+	if (bLog)
+		Log("U2Gore: wall run slot "$K$" at "$Spot);
+}
+
 defaultproperties
 {
+	bLive=True
+	bWallRuns=True
+	RunChance=0.800000
+	RunSize=150.000000
+	RegionSize=640.000000
+	LivePour=1.400000
+	LivePourSecs=2.600000
+	PoolLive(0)=Texture'BloodLive0'
+	PoolLive(1)=Texture'BloodLive1'
+	PoolLive(2)=Texture'BloodLive2'
+	PoolLive(3)=Texture'BloodLive3'
+	PoolLive(4)=Texture'BloodLive4'
+	PoolLive(5)=Texture'BloodLive5'
+	PoolLive(6)=Texture'BloodLive6'
+	PoolLive(7)=Texture'BloodLive7'
+	RunLive(0)=Texture'BloodRun0'
+	RunLive(1)=Texture'BloodRun1'
+	RunLive(2)=Texture'BloodRun2'
+	RunLive(3)=Texture'BloodRun3'
+	RunLive(4)=Texture'BloodRun4'
+	RunLive(5)=Texture'BloodRun5'
+	RunLive(6)=Texture'BloodRun6'
+	RunLive(7)=Texture'BloodRun7'
 	bBlood=True
 	MaxDecals=80
 	SprayReach=260.000000

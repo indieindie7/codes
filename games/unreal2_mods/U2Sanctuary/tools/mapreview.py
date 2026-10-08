@@ -29,7 +29,8 @@ generator (U2Avalon/tools/codirect.py), with their rules turned from a generated
                     A2 texture variety per zone (distinct brush textures), and no zone with 1
                     A3 hero details: zones with at least one mesh used only there
 
-    py mapreview.py <map.t3d> [out_dir]   -> <map>_review.md, <map>_review.png, <map>_redesign.json
+    py mapreview.py <map.t3d> [out_dir] [scenes=U2Sanctuary.ini]   -> <map>_review.md/.png, <map>_redesign.json
+                                     (with scenes=: the map as the SanctuaryDirector redesigns it -> <map>_after_*)
 
 The T3D is an EDIT COPY of all actors from UnrealEd (MAP EXPORT writes nothing for the Sanctuary maps), e.g.
 Documents\U2_research\sanctuary\M08A1.t3d. The redesign json is the team's proposals with world positions: the
@@ -95,8 +96,31 @@ def inside(b, q, pad=0):
     return all(b[0][i] - pad <= q[i] <= b[1][i] + pad for i in range(3))
 
 
-def review(path):
+def overlay(A, scenes_ini, mapname):
+    """the redesign as placed by U2Sanctuary's SanctuaryDirector (U2Sanctuary.ini Scenes=...), added as actors so the
+    team can score the map after it: blood marks count as blood, key lights as lights, cover as three crates"""
+    added = 0
+    for m in re.finditer(r'Scenes=\(Map="([^"]+)",Kind="([^"]+)",At=\(X=([-\d.]+),Y=([-\d.]+),Z=([-\d.]+)\)', open(scenes_ini).read()):
+        if m.group(1).upper() != mapname.upper():
+            continue
+        k, p = m.group(2), np.array([float(m.group(3)), float(m.group(4)), float(m.group(5))])
+        if k == "keylight":
+            A.append({"cls": "Light", "name": "SanctuaryLight%d" % added, "p": p + [0, 0, 170], "zone": -1, "LightBrightness": "150",
+                      "LightRadius": "24", "LightHue": "24", "LightSaturation": "110"})
+        elif k == "cover":
+            for a in (0, 2.1, 4.2):
+                A.append({"cls": "StaticMeshActor", "name": "SanctuaryCover%d" % added, "zone": -1,
+                          "p": p + [400 * math.cos(a), 400 * math.sin(a), 0], "StaticMesh": "SanctuaryCover"})
+        else:
+            A.append({"cls": "Decal", "name": "SanctuaryBlood%d" % added, "p": p, "zone": -1, "Tag": "blood_" + k})
+        added += 1
+    return added
+
+
+def review(path, scenes=None):
     A = parse(path)
+    if scenes:
+        overlay(A, scenes, os.path.splitext(os.path.basename(path))[0])
     by = defaultdict(list)
     for a in A:
         by[a["cls"]].append(a)
@@ -464,10 +488,14 @@ def report(Rv, name):
 
 
 if __name__ == "__main__":
-    src = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.dirname(os.path.abspath(src))
+    args = [a for a in sys.argv[1:] if not a.startswith("scenes=")]
+    sc = [a[7:] for a in sys.argv[1:] if a.startswith("scenes=")]
+    src = args[0]
+    out = args[1] if len(args) > 1 else os.path.dirname(os.path.abspath(src))
     name = os.path.splitext(os.path.basename(src))[0]
-    Rv = review(src)
+    Rv = review(src, sc[0] if sc else None)
+    if sc:
+        name += "_after"
     open(os.path.join(out, name + "_review.md"), "w", encoding="utf-8").write(report(Rv, name))
     draw(Rv, os.path.join(out, name + "_review.png"))
     json.dump({k: v for k, v in Rv.items() if k != "_draw"}, open(os.path.join(out, name + "_redesign.json"), "w"), indent=1, default=float)
