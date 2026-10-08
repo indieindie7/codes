@@ -33,6 +33,14 @@ HERO = o.get("hero", "cooling_towers")
 # plots. passes=0 gives the old constant plots (for before/after metrics: tools/metrics.py)
 PASSES = int(o.get("passes", 4))      # 1 value fields, 2 imperfect plots, 3 epochs (old core at the dock), 4 back lanes + connectors
 WIND = (0.83, -0.55)                  # the prevailing wind (AvalonCards' Wind 60,-40): smoke and soot go this way
+# the approved parti (binder/parti.json, 2026-10-08): "The company holds the high ground; the town lives in its shadow and
+# its smoke." Read by the bid-rent (the shanty downwind) and by the works' placement (the tower hidden at the dock)
+try:
+    PARTI = json.load(open(os.path.join(HERE, "binder", "parti.json")))
+except (OSError, ValueError):
+    PARTI = {}
+SMOKE_K = float(o.get("smoke_k", 1.6 if PARTI.get("downwind") == "shanty" else 0.0))
+HIDE_K = float(o.get("hide_k", 3.0 if any(b.get("at") == "dock" and "hidden" in b.get("move", "") for b in PARTI.get("beats", [])) else 0.0))
 DBG = []
 VIS = None                            # vis=<viewshed npz>: how much the player sees each cell (viewshed.py)
 if o.get("vis"):
@@ -372,6 +380,32 @@ def value(x, y, skip=None):
     return min(max(v + 0.2, 0.0), 1.0)
 
 
+def hides_tower(x, y, b):
+    """beat 1 (the dock: compression, tower hidden): 1 when a building of b's size standing at (x, y) blocks the line
+    from the dock station (the spine 40 m in, eye height) to the tower's top, fading to 0 as it moves off the line or
+    falls short of the angle"""
+    ex, ey, _, _ = SPINE.point(40 * M)
+    tx_, ty_ = placed["tower"]["x"], placed["tower"]["y"]
+    th = buildings["tower"]["size"][2] if len(buildings["tower"]["size"]) > 2 else 110.0
+    dx, dy = tx_ - ex, ty_ - ey
+    D = math.hypot(dx, dy) / M
+    if D < 1:
+        return 0.0
+    ux_, uy_ = dx / (D * M), dy / (D * M)
+    along = ((x - ex) * ux_ + (y - ey) * uy_) / M
+    if not (5 < along < D - 20):
+        return 0.0
+    off = abs(-(x - ex) * uy_ + (y - ey) * ux_) / M
+    half = max(b["size"][0], b["size"][1]) / 2.0
+    hb = b["size"][2] if len(b["size"]) > 2 else 8.0
+    z_e = zb(ex, ey) / M + 1.6
+    z_b = zb(x, y) / M + hb
+    z_t = placed["tower"]["z"] / M + th
+    blocks = (z_b - z_e) / along >= (z_t - z_e) / D                     # its top rises over the tower's top
+    lateral = max(0.0, 1.0 - max(0.0, off - half) / 25.0)               # on the line (within its half width + 25 m)
+    return lateral * (1.0 if blocks else 0.35 * min(1.0, ((z_b - z_e) / along) / max(1e-6, (z_t - z_e) / D)))
+
+
 def is_poor(bid, b):
     return bid.startswith(("shanty", "old_camp")) or (b["kind"] == "house" and b.get("layer") == "decline")
 
@@ -384,7 +418,8 @@ def bid_rent(bid, b, x, y):
     if is_poor(bid, b):
         # ... but never under the company's nose: security keeps squatters 150 m off the tower and the pad
         guard = sum(max(0.0, 1.0 - math.hypot(placed[k]["x"] - x, placed[k]["y"] - y) / M / 150.0) for k in ANCHORS if k in placed)
-        return 1.2 * (1.0 - value(x, y)) + 0.8 * math.exp(-at(T_WORKS, x, y, 99) / 6.0) - 2.5 * guard
+        return (1.2 * (1.0 - value(x, y)) + 0.8 * math.exp(-at(T_WORKS, x, y, 99) / 6.0) - 2.5 * guard
+                + SMOKE_K * min(nu, 1.0))                  # the parti: the town lives in the smoke
     if kind == "office" or fn in ("social", "clinic", "store"):
         return 1.0 * access(x, y) + 0.5 * at(VIEW, x, y) - 0.6 * nu
     if kind == "dorm":
@@ -572,6 +607,8 @@ def try_place(bid, b):
         elo, ehi = {"core": (0.0, 0.8), "boom": (0.1, 9.0), "decline": (0.25, 9.0)}.get(lay, (0.0, 9.0))
         if max(lo, elo) < min(hi, ehi):
             lo, hi = max(lo, elo), min(hi, ehi)
+    if HIDE_K > 0 and kind in ("silo", "tank"):
+        lo = 0.0                          # the parti's beat 1: ore silos and tanks may stand at the quay, hiding the tower
     want_side = SIDE.get(kind, 0)
     max_slope = 32.0 if (bid.startswith("wellhead") or kind in ("mast",)) else 20.0
     best = None
@@ -624,6 +661,8 @@ def try_place(bid, b):
                         score += WINDOW_K * (1.5 if bid == HERO else (0.6 if camera_weight(bid, buildings[bid]) > 1.5 else 0.0))
                 if PASSES >= 2 and GAP == 0.0 and any(abs(s0 - b1) < 1.0 for _, b1 in road.taken[side]):
                     score += 0.35                 # dense rows build wall to wall
+                if HIDE_K > 0 and kind in ("hall", "silo", "tank", "cooling") and "tower" in placed:
+                    score += HIDE_K * hides_tower(cx, cy, b)
                 if PASSES >= 3 and road is SPINE and b.get("layer") == "core":
                     score += 0.6 * math.exp(-s0 / max(1.0, 0.5 * S_TOWER))      # the old core crowds the dock
                 score += rng.uniform(0, 0.15)

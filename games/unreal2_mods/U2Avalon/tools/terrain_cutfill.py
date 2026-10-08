@@ -207,6 +207,52 @@ if LAYOUT:
         road_cut += float(np.abs(newH - H).sum()) * SCALE[2] / 256 * SCALE[0] * SCALE[1]
         H = newH
     print(f"roads graded: {len(_L.get('roads', []))} legs, earth moved {road_cut / 1e9:.2f} (1e9 units^3)")
+    # the dock cutting (the approved parti's beat 1, "dock: dread - compression, tower hidden"; 2026-10-08): the tower
+    # stands on the high ground, ~35 m over the quay, so no building near the dock can hide it - the arrival climbs
+    # between raised, battered banks instead (retaining walls follow from clutter's rim walls), walling the tower off
+    # until the road leaves the cutting. dock_cut=<metres> (0 = none), over the spine's first dock_cut_len metres.
+    try:
+        _P = _j.load(open(os.path.join(HERE, "binder", "parti.json")))
+    except (OSError, ValueError):
+        _P = {}
+    _want = any(b.get("at") == "dock" and "hidden" in b.get("move", "") for b in _P.get("beats", []))
+    CUT_M = float(o.get("dock_cut", 9.0 if _want else 0.0))
+    CUT_LEN = float(o.get("dock_cut_len", 160.0))
+    if CUT_M > 0 and _L.get("roads"):
+        sp = _L["roads"][0]
+        s_acc, pts_s = 0.0, []
+        for (ax, ay), (bx, by) in zip(sp[:-1], sp[1:]):
+            seg = math.hypot(bx - ax, by - ay)
+            n = max(1, int(seg / (SCALE[0] * 0.25)))
+            for k in range(n):
+                t = k / n
+                pts_s.append((ax + (bx - ax) * t, ay + (by - ay) * t, s_acc + seg * t))
+            s_acc += seg
+            if s_acc > CUT_LEN * 50:
+                break
+        Dc = np.full(H.shape, np.inf)
+        Sc = np.zeros(H.shape)
+        for x, y, sv in pts_s:
+            d = np.hypot(X - x, Y - y) / SCALE[0]
+            better = d < Dc
+            Dc[better] = d[better]
+            Sc[better] = sv / 50.0
+        rw0 = (_L.get("road_w") or [ROAD_W])[0]
+        # lateral: flat road, then a bank rising over 0.6 cell (battered), its crest 1.6 cells wide, falling over 1 cell
+        lat = np.clip((Dc - rw0 / 2 - 0.3) / 0.6, 0, 1) * np.clip((rw0 / 2 + 3.5 - Dc) / 1.0, 0, 1)
+        along = np.clip((Sc - 15) / 25, 0, 1) * np.clip((CUT_LEN - Sc) / 40, 0, 1)
+        pad_mask = np.zeros(H.shape, bool)          # the buildings' own cells (+1): the banks never bury a building
+        for bid_, bb in _L.get("buildings", {}).items():
+            for ci, cj in bb.get("cells", []):
+                pad_mask[max(0, cj - 1):cj + 2, max(0, ci - 1):ci + 2] = True
+        land = ORIG > SEA_H                       # banks on land only (never out of the sea)
+        rise = CUT_M * 50 / (SCALE[2] / 256) * lat * along * (~pad_mask) * land
+        rise = np.where(Dc < 6, rise, 0)
+        if o.get("debug_cut"):
+            band = (lat > 0) & (along > 0)
+            print("  cutting debug: band %d, off pads %d, on land %d" % (band.sum(), (band & ~pad_mask).sum(), (band & ~pad_mask & land).sum()))
+        H = np.maximum(H, H + rise)
+        print(f"dock cutting: banks {CUT_M:.0f} m over the spine's first {CUT_LEN:.0f} m ({int((rise > 0).sum())} cells raised)")
 H = np.clip(np.round(H), 0, 65535).astype("<u2")
 pix = (H if rows_up else H[::-1]).tobytes()
 open(dst, "wb").write(raw[:off] + pix + raw[off + len(pix):])
