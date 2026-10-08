@@ -42,6 +42,7 @@ function PostBeginPlay()
 	Super.PostBeginPlay();
 	foreach DynamicActors(class'ModReact', React)
 		break;
+	Spawn(class'ModAction');     // the player's vault, wall slam and barge
 	class'ModSettings'.static.Note("moves: lean " $ bLean $ " (gain " $ LeanGain $ ", max " $ MaxLean $ "), slide meter " $ bSlideMeter);
 }
 

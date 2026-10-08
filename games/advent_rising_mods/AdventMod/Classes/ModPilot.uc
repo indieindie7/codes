@@ -24,6 +24,7 @@ class ModPilot extends Info
 	config(AdventMod);
 
 var config array<string> Steps;
+var bool bDashed;                      // DASH: the dodge was pressed
 
 // what ModInput adds each frame (class defaults: ModInput has no reference to us)
 var bool bActive;
@@ -955,6 +956,14 @@ function StartStep()
 	case "WAITCONTROL":
 		StepLength = ArgF(1, 120);
 		break;
+	case "DASH":
+		// DASH FORWARD STRAFE SECONDS: move like MOVE, and press dodge 0.25 s into it (a dodge
+		// needs a direction held)
+		class'ModPilot'.default.Forward = FClamp(ArgF(1, 0), -1, 1);
+		class'ModPilot'.default.Strafe = FClamp(ArgF(2, 0), -1, 1);
+		StepLength = ArgF(3, 1);
+		bDashed = false;
+		break;
 	case "MOVE":
 		class'ModPilot'.default.Forward = FClamp(ArgF(1, 0), -1, 1);
 		class'ModPilot'.default.Strafe = FClamp(ArgF(2, 0), -1, 1);
@@ -1213,6 +1222,11 @@ event Tick(float DeltaTime)
 			StartStep();
 		}
 		return;
+	}
+	if (Cmd == "DASH" && !bDashed && StepTime >= 0.25)
+	{
+		bDashed = true;
+		PressButton("DODGE");
 	}
 	if (Cmd == "TURN" || Cmd == "FACE")
 	{
