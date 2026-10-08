@@ -10,6 +10,13 @@ connections, footprints) and writes StaticMeshActors (T3D) from the game's own p
   * rocks on steep ground and ridges (Mission_03M.M03A1.Rock*), bigger ones higher up
   * trees on gentle grassy ground away from the town, in clumps (Flora_M.Tree.*), none on sand or rock
 Everything stands on the ground (bilinear height) with a random yaw; density scales with trees= / rocks=.
+
+Q35 (2026-10-08, games/research_notes/Believable city simulation, passes 6 + 8), when the layout has road classes:
+  * road slabs by class: lanes narrower, worn paths none (bare ground from groundpaint)
+  * space syntax: lamps go where the routes go (segments in the top 30 % of edge betweenness), a gathering spot
+    (lamp, crates to sit on, a barrel) at the busiest junctions, junk at the quiet dead ends
+  * time: each building's `additions` become lean-to sheds against its sides and back; an `abandoned` one gets
+    broken barrels and no yard stock
 """
 import json, math, os, struct, sys
 
@@ -134,10 +141,14 @@ for bid, b in B.items():
 # 0. the road surface: B_road slabs (10 m, pivot at the bottom of the gravel shoulders, 0.43 m to the asphalt
 #    top) every ~8 m along every road, aimed along it and pitched to the graded ground, stretched to the spacing
 ROAD = o.get("road", "AvalonSM.Liandri.B_road")
+RCLS = L.get("road_class") or ["spine"] + ["branch"] * (len(roads) - 1)
 n_road = 0
 if ROAD:
     seen = set()
-    for r in roads:
+    for r, rc in zip(roads, RCLS):
+        if rc == "path":                                 # worn foot paths: bare ground, no slab
+            continue
+        ys = 0.6 if rc == "lane" else 1.0
         pts = []
         for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
             seg = math.hypot(bx - ax, by - ay)
@@ -157,14 +168,64 @@ if ROAD:
             yaw = math.degrees(math.atan2(y1 - y0, x1 - x0))
             pitch = math.degrees(math.atan2(g1 - g0, seg))
             actors.append("Begin Actor Class=StaticMeshActor\n    StaticMesh=StaticMesh'%s'\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n"
-                          "    Rotation=(Pitch=%d,Yaw=%d)\n    DrawScale3D=(X=%.3f,Y=1,Z=1)\n    CullDistance=20000\n    bStatic=True\nEnd Actor"
-                          % (ROAD, mx, my, (g0 + g1) / 2 - 15, int(pitch * 65536 / 360) % 65536, int(yaw * 65536 / 360) % 65536, seg / 500 * 1.04))
+                          "    Rotation=(Pitch=%d,Yaw=%d)\n    DrawScale3D=(X=%.3f,Y=%.2f,Z=1)\n    CullDistance=20000\n    bStatic=True\nEnd Actor"
+                          % (ROAD, mx, my, (g0 + g1) / 2 - 15, int(pitch * 65536 / 360) % 65536, int(yaw * 65536 / 360) % 65536, seg / 500 * 1.04, ys))
             n_road += 1
 
-# 1. lamps along the longest roads (the trunk), every ~60 m, on the right-hand verge
-roads_sorted = sorted(roads, key=lambda r: -sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(r[:-1], r[1:])))
+# 1. lamps. With road classes (Q35 pass 6): where the routes go - space syntax "choice" (edge betweenness) on the
+#    road + lane + path graph; the busiest junctions get a gathering spot, the quietest dead ends collect junk.
+#    Without: along the longest roads (the trunk), every ~60 m, on the right-hand verge
 n_lamps = 0
-for r in roads_sorted[:4]:
+n_spots = n_junk = 0
+LAMPS_AT = []
+SYNTAX = L.get("road_class") is not None
+if SYNTAX:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import metrics
+    G = {"roads": [r for r, rc in zip(roads, RCLS)]}
+    pos, edges, adj = metrics.road_graph(G)
+    eb = metrics.edge_betweenness(adj, list(adj.keys()))
+    vals = np.array([eb.get(e, 0.0) for e in edges])
+    busy = np.percentile(vals, 70) if len(vals) else 0
+    acc = 0.0
+    for e in sorted(edges, key=lambda e: -eb.get(e, 0.0)):
+        if eb.get(e, 0.0) < busy:
+            break
+        (ax, ay), (bx, by) = pos[e[0]], pos[e[1]]
+        seg = math.hypot(bx - ax, by - ay)
+        if seg < 1:
+            continue
+        ux, uy = (bx - ax) / seg, (by - ay) / seg
+        acc = acc % (40 * M)
+        while acc < seg:
+            x, y = ax + ux * acc, ay + uy * acc
+            if not any(math.hypot(x - lx, y - ly) < 30 * M for lx, ly in LAMPS_AT):
+                actor(LAMP, x + uy * 230, y - ux * 230, math.degrees(math.atan2(uy, ux)) + 90, 1.0)
+                LAMPS_AT.append((x, y))
+                n_lamps += 1
+            acc += 40 * M
+    node_load = {n: sum(eb.get((min(n, m), max(n, m)), 0.0) for m in adj[n]) for n in adj}
+    hubs = sorted([n for n in adj if len(adj[n]) >= 3], key=lambda n: -node_load[n])[:5]
+    for n in hubs:                                      # a gathering spot: lamp, crates to sit on, a barrel
+        x, y = pos[n]
+        a0 = rng.uniform(0, 2 * math.pi)
+        actor(LAMP, x + 320 * math.cos(a0), y + 320 * math.sin(a0), rng.uniform(0, 360), 1.0)
+        for k in range(3):
+            a = a0 + 1.2 + k * 0.5
+            actor(CRATES[int(rng.integers(len(CRATES)))], x + 380 * math.cos(a), y + 380 * math.sin(a), rng.uniform(0, 360), rng.uniform(0.8, 1.1))
+        actor(BARRELS[0], x + 300 * math.cos(a0 - 1.0), y + 300 * math.sin(a0 - 1.0), rng.uniform(0, 360), 1.0)
+        n_spots += 1
+    quiet = np.percentile(list(node_load.values()), 30) if node_load else 0
+    for n in adj:                                       # the quiet dead ends: junk
+        if len(adj[n]) == 1 and node_load[n] <= quiet:
+            x, y = pos[n]
+            for k in range(int(rng.integers(2, 5))):
+                a, d = rng.uniform(0, 2 * math.pi), rng.uniform(100, 300)
+                mesh = BARRELS[1] if rng.random() < 0.6 else CRATES[int(rng.integers(len(CRATES)))]
+                actor(mesh, x + d * math.cos(a), y + d * math.sin(a), rng.uniform(0, 360), rng.uniform(0.8, 1.1))
+            n_junk += 1
+roads_sorted = sorted(roads, key=lambda r: -sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(r[:-1], r[1:])))
+for r in ([] if SYNTAX else roads_sorted[:4]):
     acc = 0.0
     for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
         seg = math.hypot(bx - ax, by - ay)
@@ -197,6 +258,30 @@ for bid, b in B.items():
             d = rng.uniform(220, 480)
             actor(BARRELS[int(rng.integers(len(BARRELS)))], b["x"] + d * math.cos(ang), b["y"] + d * math.sin(ang), rng.uniform(0, 360), 1.0)
             n_crates += 1
+
+# 2b. time (Q35 pass 3 data): additions as lean-to sheds on the sides and back; the abandoned get broken barrels
+SHED = o.get("shed", "AvalonSM.B_shed_a")
+n_add = 0
+for bid, b in B.items():
+    k = int(b.get("additions", 0) or 0)
+    r_b = math.sqrt(max(1, len(b.get("cells", []))) / math.pi) * CELL * 0.75
+    yaw = math.radians(b["yaw"])
+    fx, fy = math.cos(yaw), math.sin(yaw)
+    sides = [(-fy, fx), (fy, -fx), (-fx, -fy)]              # left, right, back - never the front
+    for j in range(min(k, 3)):
+        sx, sy = sides[int(rng.integers(len(sides)))]
+        along = rng.uniform(-0.4, 0.4) * r_b
+        x = b["x"] + sx * (r_b + 160) + (-sy) * along
+        y = b["y"] + sy * (r_b + 160) + sx * along
+        if any(math.hypot(o_["x"] - x, o_["y"] - y) < 250 for oid, o_ in B.items() if oid != bid):
+            continue
+        actor(SHED, x, y, b["yaw"] + rng.choice([0, 90, 180, 270]) + rng.uniform(-6, 6), rng.uniform(0.45, 0.6))
+        n_add += 1
+    if b.get("abandoned"):
+        for j in range(int(rng.integers(3, 6))):
+            a, d = rng.uniform(0, 2 * math.pi), r_b + rng.uniform(80, 300)
+            actor(BARRELS[1], b["x"] + d * math.cos(a), b["y"] + d * math.sin(a), rng.uniform(0, 360), 1.0)
+            n_junk += 1
 
 # 3. fence runs: the spine layout gives the gaps between plots; otherwise along each core building's front
 n_fence = 0
@@ -284,4 +369,4 @@ if WALL and BEFORE and os.path.exists(BEFORE):
                                   % (WALL, x, y, min(Z[j, i], Z[nj, ni]) - 10, int(yawd * 65536 / 360), max(0.6, hgt / 110.0), cull_of(WALL)))
                     n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
-print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
+print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_spots} gathering spots, {n_junk} junk, {n_add} lean-tos, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
