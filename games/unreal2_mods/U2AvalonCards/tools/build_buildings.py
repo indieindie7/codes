@@ -225,7 +225,7 @@ def frustum(x, y, z, w0, d0, w1, d1, h, m):
     return place(ob, x, y, z, m)
 
 
-def crane_tower():
+def crane_tower(crane=True):
     # the Liandri temple-tower on the mountain: a stepped, battered base (the Aztec read the user loves), a
     # tall setback tower, red domes, and a lattice crane leaning off one side with red buoys on cables
     # a battered stone plinth under the steps (Q33, 2026-10-08: on the slope the flat underside of the base hung
@@ -255,6 +255,8 @@ def crane_tower():
     for sgn in (-1, 1):
         cyl(sgn * 9, 5, 30, 2.4, 8, "beige", 12)                # side turrets
         sphere(sgn * 9, 5, 35.5, 2.6, "domered")
+    if not crane:
+        return                                                  # pyramid_tower: the user (2026-10-08 Q83) "remove the cranes from the pyramid buildings, they make no sense"
     # the crane (the user: the thin jib read as "fishing poles"): a real lattice crane on the tower's flank -
     # a square truss boom with zigzag lacing, an A-frame, backstays to a counterweight, a cab, one hoist
     # cable with a heavy hook block
@@ -439,7 +441,7 @@ def road_segment():
 
 BUILDERS = {"factory_hall": factory_hall, "factory_block": factory_block, "chimney_stack": chimney_stack,
             "silo_cluster": silo_cluster, "pipe_rack": pipe_rack, "road_segment": road_segment,
-            "crane_tower": crane_tower, "aframe_hut": aframe_hut, "dorm_pod": dorm_pod, "tin_shack": tin_shack,
+            "crane_tower": crane_tower, "pyramid_tower": lambda: crane_tower(False), "aframe_hut": aframe_hut, "dorm_pod": dorm_pod, "tin_shack": tin_shack,
             "twin_towers": twin_towers, "water_tower": water_tower,
             "cooling_tower": cooling_tower, "processing_hall": processing_hall, "storage_tank": storage_tank,
             "ore_tank": ore_tank, "dock_crane": dock_crane, "drilling_rig": drilling_rig, "dead_rig": dead_rig,

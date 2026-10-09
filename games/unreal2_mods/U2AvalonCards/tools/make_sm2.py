@@ -16,14 +16,15 @@ from uedlib import session, short_path  # noqa
 
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
 PKG = o.get("name", "AvalonSM2")
-SRC = os.path.join(HERE, "..", "Models", "round2_ase")
+SRC = o.get("src", os.path.join(HERE, "..", "Models", "round2_ase"))
+PAL = o.get("pal", "Pal2")                             # the palette texture (and the ASE material) name
 GAME = r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening"
 OUT = os.path.join(GAME, "StaticMeshes", PKG + ".usx")
 
 
 def job(ed):
     ed.exec("!answer yes")
-    ed.ok('TEXTURE IMPORT FILE="%s" NAME="Pal2" PACKAGE="%s" GROUP="Pal" MIPS=0' % (os.path.abspath(os.path.join(SRC, "Pal2.tga")), PKG))
+    ed.ok('TEXTURE IMPORT FILE="%s" NAME="%s" PACKAGE="%s" GROUP="Pal" MIPS=0' % (os.path.abspath(os.path.join(SRC, PAL + ".tga")), PAL, PKG))
     for f in sorted(glob.glob(os.path.join(SRC, "*.ase"))):
         n = os.path.splitext(os.path.basename(f))[0]
         ed.import_staticmesh(os.path.abspath(f), PKG, "Liandri", n)
