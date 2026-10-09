@@ -18,8 +18,8 @@ remix rules).
    player's home, the camera. The hero the parti needs is a different building, the Liandri stepped
    temple-tower (CraneTower in U2AvalonCards), on the summit. The company built lower and still stands higher.
    The sentence finally reads literally: *the company holds the high ground*. (Section 1.)
-2. **The lone figure in the peak frame is Hawkins.** At dusk she stands on the tower catwalk and looks at the
-   company's tower. The player sees her from 40-100 m on the way up. Beat 4 (melancholy) becomes a person, not just a view.
+2. **The lone figure in the peak frame is Hawkins.** At dusk he stands on the tower catwalk and looks at the
+   company's tower. The player sees him from 40-100 m on the way up. Beat 4 (melancholy) becomes a person, not just a view.
 3. **Interiors tell the three-powers story by whose stuff is where.** Every room has an owner, one prop that
    is the room's sentence, and one sign of the other two powers intruding. (Section 3.)
 4. **The drain is the outlaws' road.** A new building, the outfall culvert, runs under the spine from the
@@ -111,7 +111,7 @@ metres (1 m = 50 UU). The player walks 5.3 m/s.
 ### 3.1 The command room (TutA, existing): "busy out there, nothing in here"
 - **Owner:** the Authority (Hawkins, Oduya).
 - **Sentence:** the long window is the brightest thing in the room, and the room behind it is dim.
-- **Props, Authority:** Hawkins's desk, clean and unused (she stands); her binoculars on the sill, aimed at the
+- **Props, Authority:** Hawkins's desk, clean and unused (he stands); his binoculars on the sill, aimed at the
   dead rig, not at the plant; Oduya's traffic board, a row of green company callsigns (LIANDRI CARGO 21, RIG
   SHUTTLE) and no Authority traffic; one drawer of complaint forms in order; a charter-survey brass plate by the
   door from before the company came.
@@ -140,8 +140,8 @@ metres (1 m = 50 UU). The player walks 5.3 m/s.
 - **Sentence:** a dark overhang frame, a grated catwalk, one person at the rail at dusk, rain.
 - **Props:** the railing (Q7/Q9 edge), a coffee tin of cigarette ends at the rail (Hawkins's), a wind sock, the
   antenna guy-wires as leading lines.
-- **Figure:** Hawkins at 1930 (see her sheet below). If the engine cannot put her there, the garrison sentry
-  stands in the same spot. The frame works with any lone figure, and it works best with her.
+- **Figure:** Hawkins at 1930 (see his sheet below). If the engine cannot put him there, the garrison sentry
+  stands in the same spot. The frame works with any lone figure, and it works best with him.
 - **Fix that serves the story:** Q47/Q61, "deck too dark". The overhang should be dark; the *horizon* must be
   bright. That is the compression-release, so do not light the overhang flat.
 
@@ -393,7 +393,7 @@ users: hawkins oduya garrison
 lit: yes
 wear: 0.5
 
-The long window is the brightest thing in the room. Hawkins's desk is clean and unused, her binoculars on
+The long window is the brightest thing in the room. Hawkins's desk is clean and unused, his binoculars on
 the sill aimed at the dead rig. Oduya's board shows green company callsigns and nothing of the Authority's.
 The one power cable comes in through a cored hole with LIANDRI SUPPLY stencilled on its tag. A bucket
 under one skylight.
@@ -428,8 +428,8 @@ rail. At dusk, Hawkins.
 ```
 routine: 0630 tower; 0800 tower; 1230 tower; 1300 tower; 1800 tower; 1930 tower:catwalk; 2200 tower
 ```
-Prose addition: *At half past seven she goes out on the catwalk with one cigarette and looks at the company's
-tower on its hill until its lights come on. Then she looks for the light on the dead rig. Some nights she finds it.*
+Prose addition: *At half past seven he goes out on the catwalk with one cigarette and looks at the company's
+tower on its hill until its lights come on. Then he looks for the light on the dead rig. Some nights he finds it.*
 
 ### 5.6 citizens/ilunga.md (NEW: the medic the clinic already describes)
 ```
@@ -533,7 +533,7 @@ and the "quietest patrol" beat as written; no new dialogue), show don't tell, de
 3. **Then the Authority.** The camera lets the cargo ship go and drops to the small pad in the corner of the
    frame. Vask's Atlantis is small, alone, with a fuel hose from a company bowser.
 4. **The tower, dark.** Tilt up the Authority tower: few lights, one cable climbing to it from the plant.
-5. **Inside.** Hawkins is at the window, not the desk. Hold on her back with the lit town beyond (the peak-frame
+5. **Inside.** Hawkins is at the window, not the desk. Hold on his back with the lit town beyond (the peak-frame
    logic: dark frame, bright horizon, lone figure). The original dialogue plays here.
 6. **Out.** On "quietest patrol", the brownout (pa03) dims the room for a second. Nobody remarks on it.
 
@@ -571,7 +571,7 @@ public domain.
   (yaw 300 +-34, 28 deg down) and read as a silhouette above the skyline? If the summit is out of the window's
   cone, the window hero stays the cooling towers and the Liandri tower is the deck/catwalk hero (Q51's
   view is west onto that mountain, which may be the better fit).
-- The catwalk beat: Hawkins at 40-100 m, back-lit at dusk. Sun az 136 vs the catwalk's facing: check that she
+- The catwalk beat: Hawkins at 40-100 m, back-lit at dusk. Sun az 136 vs the catwalk's facing: check that he
   reads as a silhouette.
 - Q56: stage the 6-shot cinematic in section 6. Hawkins's lines unchanged.
 - Interiors: each has one "sentence" prop. Frame it from the door.
