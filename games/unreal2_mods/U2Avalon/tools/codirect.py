@@ -383,11 +383,12 @@ def marks_review(Z, ZG, L, sheets, run_dir=None):
         s = sheets.get(bid)
         if not s or "size" not in s or s.get("kind") in ("rig", "islet", "barge", "wreck") or bid in ("far_islands", "tower") or b.get("underground"):
             continue                                      # "tower" is the stock map's, not generated
-        # the footprint's own cells (half the longest side; the layout's `cells` are the 0.6x clearance disc)
-        r = max(s["size"][0], s["size"][1]) * M * 0.5 / CELL
-        fi, fj = (b["x"] - LOC[0]) / CELL + N / 2, (b["y"] - LOC[1]) / CELL + N / 2
-        zs = [ZE[j, i] for j in range(max(0, int(fj - r)), min(N, int(fj + r) + 2)) for i in range(max(0, int(fi - r)), min(N, int(fi + r) + 2))
-              if (i + 0.5 - fi) ** 2 + (j + 0.5 - fj) ** 2 <= (r + 0.5) ** 2]
+        # the footprint's own cells: the sheet's w x d rectangle turned by the yaw, one per instance of a `count:` group,
+        # plus half a cell, in the game's cell frame (cell i's centre at LOC + (i - N/2) * CELL, as _g reads it). Round 4:
+        # it was a disc of half the LONGEST side centred half a cell off - for a 48 m hall that disc reached 24 m into
+        # the road in front, measuring the street's slope instead of the plinth
+        import anchors
+        zs = [ZE[j, i] for i, j in anchors.footprint_cells(anchors.footprints(b, s), CELL * 0.5)]
         if not zs:
             continue
         n += 1

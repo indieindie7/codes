@@ -193,3 +193,73 @@ holds (not applied here):
   (story_export emits the real poles and drums; the Pylon-at-0.45 stand-ins would double them).
 - The "still open" list above: the sagging-cable mesh (B_sagcable), the drain build (story_export.drain_actors) and
   the hollow-shell kit (shells.py) are no longer open; rooms.py's plans drive shells.py unchanged.
+
+## Round 4 (2026-10-09): marks M1 and M3 in the generator; the TutA_Remake907 build run
+
+Before (Town7's own layout re-graded, marks on isl_ec.bmp): M1 0.67, M3 0.40. After, on the same layout: M1 0.92
+(the three left are footprints the old layout stacked on each other: shed_b in the dorm's row, the silos under the
+hero's plinth), M3 1.00. On the fresh TutA_Remake907 run (below): M1 1.00, M3 1.00.
+
+- **M1, the cause.** terrain_cutfill gave every sheet with an `at:` a disc of 0.6 x size + 600 UU at the mean height
+  of its instances, merged overlapping discs into terraces up to 64 m across whatever their heights (area-weighted),
+  forced the footprints last-wins, and graded the roads AFTER the pads. `far_islands` (kind islet, 400 x 200 m,
+  "3 along") was not excluded: a 42600 UU disc at -4191 that forced most of Town7's island to one level (the dock
+  rose 26 m, the director's house fell 26 m: E23's 15.5 m quay, the M3 flip from 1.0 natural to 0.4 graded). The nine
+  chain sheets absent from an old layout got pads at their placeholder `at:` spots.
+- **M1, the fix (terrain_cutfill.py, rewritten).** Order: the arenas' floors (anchors.arenas on the natural ground,
+  land cells, lowest priority) -> the roads (graded from the natural ground) -> the pads -> the dock cutting -> every
+  footprint forced level once more. A pad is the sheet's w x d rectangle turned by the layout yaw, one per instance of a
+  `count:` group (anchors.footprints, shared with codirect), plus half a cell; ONE level per building = the mean of the
+  road-graded ground under its footprint (a plot sits at its street); blended back over 400 UU. Touching pads within
+  4 m share a terrace (members' own levels never span more than 6 m: `max_step=`, `max_span=`); otherwise each keeps
+  its level and the step is a wall (clutter's rim walls, unchanged). Skipped: rig/barge/wreck/islet/culvert, the stock
+  tower, and with layout= every sheet the layout did not place. The hero gets the same flat plinth terrace. A pad never
+  sits under 2 m over the sea (`quay_m=`; E23). The tool prints its own M1 self-check (footprints over 2 m of range).
+- **M1, the check (codirect.marks_review).** It read a disc of half the LONGEST side, centred half a cell off the
+  game's cell frame (`i + 0.5 - fi`; _g and the export use `i - fi`). For a 48 m hall the disc reached 24 m into the
+  street, measuring the road's slope, and the half-cell offset made every small footprint read its neighbour cell. It
+  now reads the same rectangles + half a cell the grader forces (anchors.footprint_cells). The old numbers in this file
+  are the old check's.
+- **M1, the layout.** try_place never tested a plot against buildings placed off the roads (the hero on the summit, the
+  chain, a cross-road neighbour): Town7 put the silos under the hero's plinth. layout_spine.overlaps_placed (separating
+  axis test on the group rectangles + 2 m) rejects such plots; "every free plot overlaps a placed footprint" on stderr
+  when nothing is left (add_branch then runs as before).
+- **M3 (Q74), layout_spine.** RICH = directors_house, staff_houses, guest_house (beside the director's, so it follows);
+  poor = is_poor (shanty*, old_camp, decline houses). The boom layer is placed before the decline, so: a RICH plot must
+  stand on ground >= the town's plot ground's 60th percentile (and >= the poor's mean + 1 m when poor are placed); a
+  poor plot on ground < the rich's mean - 1 m and < the 90th percentile (never on the top 10 %). The best plot that keeps
+  the rule wins whenever one exists (hard); otherwise the score pays `rank_k` (2.0) per 10 m short and stderr says
+  "Q74: no plot keeps the rank order". bid_rent reads the same rank (0..1 among the plot ground) as a value field:
+  rich +0.6 x (rank - 0.5), poor the opposite. The plume rule (SMOKE_K, the shanty downwind) and the plot/road logic are
+  untouched.
+- **town.py.** `island=<run folder>` copies that run's island files (isl_e.bmp, isl_sketch.*, isl_vis.*; islands=1
+  styles) and skips the island stage; the layouts are made afresh for the seed given. `from=score` resumes a finished
+  stop=score run with the editor stages only (see the resume command below).
+
+### The build run (the other chat's input)
+
+    py tools/town.py 907 name=TutA_Remake style=plateau pilot=0 stop=score island=C:\Users\john\Documents\U2_research\towns\TutA_Town7
+
+-> `C:\Users\john\Documents\U2_research\towns\TutA_Remake907`: Town7's island, six layouts rolled (907, 1007 ... 1407),
+the best by systems + window frame built (isl_layout_1007.json -> isl_layout.json, with arenas, drain, taps, chain,
+occluders), isl_ec.bmp, walks, rooms.json (27 plans, the hollow kit's input), isl_paths.t3d, story.txt, drawings, plans,
+codirection_final.txt (five roles + marks; report.md only comes with the editor stages, from=score). The final table (graded ground): total 0.775 - WRITER 0.86,
+DIRECTOR 0.62, ENGINEER 0.75, LEVEL 0.92, ARTIST 0.77; MARKS 1.00 (M1 0 of 47 footprints over 2 m, M2 1.0, M3 the company
+houses 26 m over the shanty's mean and no poor housing on the top 10 %, M4 PyramidTower). Still open on this island: the
+water tower's head (20 m, want 28), the belts over 12 deg (the HOOKS round-3 note), E1 (35 % of the road length over its
+grade cap: the roads now follow the real ground; the old grading had flattened the island). The arena floors are only
+partly level after the roads re-grade through them (E4 19 m of range, E1/E3 half over the sea): remake_build's cover
+sits at the stop's ground, so check the greybox fights in the editor. Re-running the same command with `reuse=1` keeps the islands and
+layouts and redoes the grading and the scores (deterministic: systems, walks, rooms and pathlinks draw no random
+numbers; takes seeds its drums by crc32).
+
+### The resume command (the editor stages only, no re-scoring)
+
+    py tools/town.py 907 name=TutA_Remake style=plateau pilot=0 from=score
+
+`reuse=1` WITHOUT stop= would also work but is not what you want: it re-runs systems on every kept candidate, copies the
+chosen candidate over isl_layout.json again, re-grades, re-walks and re-makes the story keys before reaching the editor
+(the same bytes, a few minutes). `from=score` touches none of that: it reads isl_layout.json and isl_ec.bmp as they are,
+re-reads the two reviews for report.md, then runs ground paint, terrain_apply, export, clutter (+ the PathNodes again),
+populate (import + LIGHT APPLY), low sun and motion -> `Maps\TutA_Remake907.un2`, and the report. pilot=0 keeps the
+game out of it. It refuses to start without isl_layout.json + isl_ec.bmp in the run folder.

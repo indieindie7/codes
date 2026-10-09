@@ -413,6 +413,81 @@ def is_poor(bid, b):
     return bid.startswith(("shanty", "old_camp")) or (b["kind"] == "house" and b.get("layer") == "decline")
 
 
+# Q74 (the user's mark, marks M3; round 4, 2026-10-09): rich high, poor low. The company's dwellings (RICH) stand on
+# ground above the shanty's mean, the shanty and the old camp below the company housing's mean and never on the
+# town's top 10 %. The boom layer is placed before the decline, so a RICH plot is tested against the poor already
+# placed (if any) and the town's plot ground (its 60th percentile), a poor plot against the rich already placed and
+# the 90th percentile. A HARD rule when any candidate plot satisfies it (the best such plot wins), a penalty on the
+# score otherwise (rank_k per 10 m short); bid_rent reads the same rank as a value field (rich up, poor down).
+RICH = ("directors_house", "staff_houses", "guest_house")
+RANK_K = float(o.get("rank_k", 2.0))
+RANK_MARGIN_M = 1.0
+_TOWN_Z = {}
+
+
+def is_rich(bid, b):
+    return bid in RICH
+
+
+def town_ground():
+    """the ground the plots can take: zb along every road's plot line (both sides), cached per road count"""
+    key = len(ROADS)
+    if key not in _TOWN_Z:
+        zs = []
+        for road in ROADS:
+            for sv in np.arange(0, road.length, 10 * M):
+                x, y, ux, uy = road.point(sv)
+                for side in (+1, -1):
+                    nx, ny = (-uy, ux) if side > 0 else (uy, -ux)
+                    d = (ROAD_HALF_M + SETBACK_M + 8) * M
+                    px, py = x + nx * d, y + ny * d
+                    if at(MAIN, px, py, 0) and not at(WATER, px, py, 1):
+                        zs.append(zb(px, py))
+        zs = np.array(zs) if zs else np.array([SEA_Z])
+        _TOWN_Z[key] = (zs, float(np.percentile(zs, 60)), float(np.percentile(zs, 90)))
+    return _TOWN_Z[key]
+
+
+def rank_of(x, y):
+    """the ground's rank among the town's plot ground, 0 (lowest) .. 1 (highest)"""
+    zs, _, _ = town_ground()
+    return float((zs < zb(x, y)).mean())
+
+
+def rank_rule(bid, b, x, y):
+    """(ok, short_m): does the spot keep Q74's order, and by how many metres it misses"""
+    z = zb(x, y)
+    _, p60, p90 = town_ground()
+    if is_rich(bid, b):
+        poor_z = [placed[k]["z"] for k in placed if is_poor(k, buildings[k])]
+        ref = max(p60, (float(np.mean(poor_z)) + RANK_MARGIN_M * M) if poor_z else -1e9)
+        return z >= ref, max(0.0, ref - z) / M
+    if is_poor(bid, b):
+        rich_z = [placed[k]["z"] for k in placed if is_rich(k, buildings[k])]
+        ref = min(p90, (float(np.mean(rich_z)) - RANK_MARGIN_M * M) if rich_z else 1e9)
+        return z < ref, max(0.0, z - ref) / M
+    return True, 0.0
+
+
+def footprint_rect(bid, x, y, yaw):
+    wdt_m, dpt_m = footprint_m(buildings[bid])
+    return (x, y, yaw, wdt_m * M / 2, dpt_m * M / 2)
+
+
+def overlaps_placed(bid, x, y, yaw, pad_m=2.0):
+    """the footprint (the group's w x d turned by the yaw) against every placed building's: marks M1 - two footprints on
+    one cell can't both be level (Town7: the silos under the hero's plinth, shed_b in the dorm's row)"""
+    rc = footprint_rect(bid, x, y, yaw)
+    for pid, p in placed.items():
+        if pid == bid or p["kind"] in ("rig", "barge", "wreck", "islet"):
+            continue
+        if math.hypot(p["x"] - x, p["y"] - y) > p["r"] + rc[3] + rc[4] + pad_m * M + 2000:
+            continue
+        if anchors.rects_overlap(rc, footprint_rect(pid, p["x"], p["y"], p["yaw"]), pad_m * M):
+            return True
+    return False
+
+
 def bid_rent(bid, b, x, y):
     """who outbids whom for this spot: company core on access + view, dorms on the works, the director on view
     away from the smoke, the poor on what is left - cheap land still within walking distance of the works"""
@@ -422,13 +497,14 @@ def bid_rent(bid, b, x, y):
         # ... but never under the company's nose: security keeps squatters 150 m off the tower and the pad
         guard = sum(max(0.0, 1.0 - math.hypot(placed[k]["x"] - x, placed[k]["y"] - y) / M / 150.0) for k in ANCHORS if k in placed)
         return (1.2 * (1.0 - value(x, y)) + 0.8 * math.exp(-at(T_WORKS, x, y, 99) / 6.0) - 2.5 * guard
-                + SMOKE_K * min(nu, 1.0))                  # the parti: the town lives in the smoke
+                + SMOKE_K * min(nu, 1.0)                   # the parti: the town lives in the smoke
+                - 0.6 * (rank_of(x, y) - 0.5))             # Q74: the poor take the low ground
     if kind == "office" or fn in ("social", "clinic", "store"):
         return 1.0 * access(x, y) + 0.5 * at(VIEW, x, y) - 0.6 * nu
     if kind == "dorm":
         return 0.9 * math.exp(-at(T_WORKS, x, y, 99) / 3.0) - 0.3 * nu
     if kind == "house":
-        return 0.8 * at(VIEW, x, y) - 1.0 * nu + 0.3 * access(x, y)
+        return 0.8 * at(VIEW, x, y) - 1.0 * nu + 0.3 * access(x, y) + (0.6 * (rank_of(x, y) - 0.5) if is_rich(bid, b) else 0.0)
     return 0.0
 
 S_DOCK = 0.0
@@ -635,6 +711,8 @@ def try_place(bid, b):
     want_side = SIDE.get(kind, 0)
     max_slope = 32.0 if (bid.startswith("wellhead") or kind in ("mast",)) else 20.0
     best = None
+    best_ok = None                        # Q74: the best plot that keeps the rank order (hard when any does)
+    n_overlap = 0
     for road in ROADS:
         smax = road.length
         cands = np.arange(0, smax - front * M, 5 * M)
@@ -652,6 +730,9 @@ def try_place(bid, b):
                 nx, ny = (-uy, ux) if side > 0 else (uy, -ux)
                 d = ROAD_HALF_M * M + SETB * M + dpt_m * M / 2
                 cx, cy = x + nx * d, y + ny * d
+                if overlaps_placed(bid, cx, cy, math.degrees(math.atan2(-ny, -nx))):
+                    n_overlap += 1
+                    continue              # never on another footprint (the hero's plinth, a chain stage, a cross-road neighbour)
                 score = 1.0
                 # the sea side for the works, the hill side for people
                 ss = sea_side(road, (s0 + s1) / 2)
@@ -693,9 +774,19 @@ def try_place(bid, b):
                 if PASSES >= 3 and road is SPINE and b.get("layer") == "core":
                     score += 0.6 * math.exp(-s0 / max(1.0, 0.5 * S_TOWER))      # the old core crowds the dock
                 score += rng.uniform(0, 0.15)
+                rk_ok, rk_short = rank_rule(bid, b, cx, cy)
+                score -= RANK_K * min(1.0, rk_short / 10.0)                  # Q74's penalty: rank_k per 10 m short
+                if rk_ok and (best_ok is None or score > best_ok[0]):
+                    best_ok = (score, road, s0, s1, side, cx, cy, ux, uy, nx, ny)
                 if best is None or score > best[0]:
                     best = (score, road, s0, s1, side, cx, cy, ux, uy, nx, ny)
+    if best_ok is not None:
+        best = best_ok
+    elif best is not None and (is_rich(bid, b) or is_poor(bid, b)):
+        print("  Q74: no plot keeps the rank order for %s; the least bad one (%.0f m off)" % (bid, rank_rule(bid, b, best[5], best[6])[1]), file=sys.stderr)
     if best is None:
+        if n_overlap:
+            print("  %s: every free plot overlaps a placed footprint (%d)" % (bid, n_overlap), file=sys.stderr)
         return False
     score, road, s0, s1, side, cx, cy, ux, uy, nx, ny = best
     s1b = s1 - GAP * M                                                     # the building's own frontage

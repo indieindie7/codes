@@ -162,6 +162,62 @@ def cells_of(x, y, size):
             if (i + 0.5 - fi) ** 2 + (j + 0.5 - fj) ** 2 <= (rc + 0.5) ** 2]
 
 
+def footprints(b, sheet):
+    """the building's footprint rectangles in world units: [(cx, cy, yaw, hw, hd)], one per instance of the sheet's
+    `count:` ("3 along", "2 across", "3x4"), hw along the yaw (size[0] / 2), hd across (size[1] / 2); the group's
+    offsets turned with the yaw (the same arithmetic as terrain_cutfill and export_mutator). Round 4 (marks M1)"""
+    w_, d_ = sheet["size"][0] * M, sheet["size"][1] * M
+    gap = max(w_, d_) * 1.5
+    spec = str(sheet.get("count", "1")).split()
+    pts = [(0.0, 0.0)]
+    if "x" in spec[0].lower():
+        na, nc = (int(v) for v in spec[0].lower().split("x"))
+        pts = [((ka - (na - 1) / 2) * gap, (kc - (nc - 1) / 2) * gap) for kc in range(nc) for ka in range(na)]
+    elif len(spec) == 2:
+        n = int(spec[0])
+        pts = [((k - (n - 1) / 2) * gap, 0.0) if spec[1] == "along" else (0.0, (k - (n - 1) / 2) * gap) for k in range(n)]
+    a = math.radians(b["yaw"])
+    return [(b["x"] + da * math.cos(a) - dc * math.sin(a), b["y"] + da * math.sin(a) + dc * math.cos(a), b["yaw"], w_ / 2, d_ / 2)
+            for da, dc in pts]
+
+
+def footprint_cells(rects, margin_uu=CELL * 0.5):
+    """the heightmap cells (i, j) whose centre - world (LOC + (i - N/2) * CELL), the game's own mapping - lies within
+    margin_uu of any of the rectangles"""
+    out = set()
+    for cx, cy, yaw, hw, hd in rects:
+        a = math.radians(yaw)
+        reach = (math.hypot(hw, hd) + margin_uu) / CELL
+        fi, fj = (cx - LOC[0]) / CELL + N / 2, (cy - LOC[1]) / CELL + N / 2
+        for j in range(max(0, int(fj - reach)), min(N, int(fj + reach) + 2)):
+            for i in range(max(0, int(fi - reach)), min(N, int(fi + reach) + 2)):
+                dx, dy = (i - fi) * CELL, (j - fj) * CELL
+                lx = dx * math.cos(a) + dy * math.sin(a)
+                ly = -dx * math.sin(a) + dy * math.cos(a)
+                ox, oy = max(abs(lx) - hw, 0.0), max(abs(ly) - hd, 0.0)
+                if math.hypot(ox, oy) <= margin_uu:
+                    out.add((i, j))
+    return sorted(out)
+
+
+def rects_overlap(A, B, pad_uu=0.0):
+    """do two oriented rectangles (cx, cy, yaw, hw, hd), each grown by pad_uu, overlap? (separating axis test)"""
+    def corners(r):
+        cx, cy, yaw, hw, hd = r
+        a = math.radians(yaw)
+        ux, uy, vx, vy = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
+        hw, hd = hw + pad_uu, hd + pad_uu
+        return [(cx + sx * hw * ux + sy * hd * vx, cy + sx * hw * uy + sy * hd * vy) for sx in (-1, 1) for sy in (-1, 1)], ((ux, uy), (vx, vy))
+    ca, axa = corners(A)
+    cb, axb = corners(B)
+    for ax, ay in axa + axb:
+        pa = [x * ax + y * ay for x, y in ca]
+        pb = [x * ax + y * ay for x, y in cb]
+        if max(pa) < min(pb) or max(pb) < min(pa):
+            return False
+    return True
+
+
 def chaikin(pts, n=2):
     for _ in range(n):
         out = [pts[0]]

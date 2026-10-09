@@ -1,6 +1,7 @@
 r"""Concept to believable town, one command (see ../PIPELINE.md):
 
     py tools/town.py <seed> [style=plateau|ridges] [name=TutA_Town] [pilot=1] [shift=-5300] [rerolls=3] [sun=low|stock]
+                            [stop=score] [reuse=1] [island=<run folder>] [from=score]
 
 island (terrain tool sketch, formed + eroded) -> layout (interest maps, roads, Voronoi drift) -> systems
 (provides/needs, connections; an unmet core need re-rolls the layout with the next seed) -> pads -> TutA
@@ -9,6 +10,12 @@ Everything lands in Documents\U2_research\towns\<name><seed>\ (root=<dir> puts i
 The co-directors' FINAL review runs on the graded heightmap (isl_ec.bmp) after the walks; the pre-grading review is
 kept for comparison (codirection_final.txt, report.md). stop=score ends there: the CPU-only part, no editor or game
 (with reuse=1 it re-scores an existing run folder's islands and layouts).
+island=<run folder> (round 4) borrows that run's island (isl_e.bmp, isl_sketch.*, isl_vis.*; islands=1 styles only):
+the files are copied in, the island stage is skipped and the layouts are made afresh for THIS seed.
+from=score (round 4) resumes a finished stop=score run with the editor stages only: nothing before the final review
+is redone (no island, layouts, grading, walks, story keys, drawings or plans), isl_layout.json and isl_ec.bmp are
+taken as they are, the reviews are re-read for report.md, then ground paint, terrain, export, clutter, populate
+(LIGHT APPLY), low sun, motion, the pilot and the report run as usual.
 """
 import json, os, re, shutil, subprocess, sys, time
 
@@ -60,20 +67,34 @@ def step(title, fn):
 NAV = os.path.join(os.path.dirname(TOOLS), "data", "navpoints_TutA.json")
 CODIRECT = STYLE == "cinema"
 REUSE = o.get("reuse", "0") == "1"           # reuse=1: keep islands/layouts already made in this run folder (a resumed build)
-
-
-def made(path):
-    return REUSE and os.path.exists(path)
+FROM = o.get("from")                         # from=score: the editor stages only, on a finished stop=score run (see above)
+ISLAND_SRC = o.get("island")                 # island=<run folder>: that run's island files, the layouts made afresh
+if FROM and FROM != "score":
+    sys.exit("from=%s: only from=score exists" % FROM)
+if FROM and not (os.path.exists(base + "_layout.json") and os.path.exists(base + "_ec.bmp")):
+    sys.exit("from=score needs a finished stop=score run in %s (isl_layout.json + isl_ec.bmp)" % RUN)
 ISLANDS = int(o.get("islands", 4 if CODIRECT else 1))
+if ISLAND_SRC and ISLANDS == 1 and not FROM:
+    for suf in ("_e.bmp", "_sketch.json", "_sketch.png", "_vis.npz", "_vis.json", "_vis.png"):
+        srcf = os.path.join(ISLAND_SRC, "isl" + suf)
+        if os.path.exists(srcf) and not os.path.exists(base + suf):
+            shutil.copy(srcf, base + suf)
+    print("  island from %s (%s)" % (ISLAND_SRC, "copied" if os.path.exists(base + "_e.bmp") else "NOT FOUND: isl_e.bmp"), flush=True)
+elif ISLAND_SRC:
+    print("  island= ignored (islands=%d or from=score)" % ISLANDS, flush=True)
+
+
+def made(path, island=False):
+    return (REUSE or (island and ISLAND_SRC is not None)) and os.path.exists(path)
 if CODIRECT:
     REROLLS = int(o.get("rerolls", 2))
 layout = base + "_layout.json"
 best = None
 reviews = []
-for ki in range(ISLANDS):
+for ki in range(0 if FROM else ISLANDS):
     iseed = seed if ISLANDS == 1 else seed * 10 + ki
     ib_ = base if ISLANDS == 1 else base + "_i%d" % ki
-    if not made(ib_ + "_e.bmp"):
+    if not made(ib_ + "_e.bmp", island=True):
      step("island %d (seed %d, %s)" % (ki, iseed, STYLE), lambda: ib.run(["py", os.path.join(TOOLS, "island_form.py"), iseed, ib.TEMPLATE,
                                                                      ib_ + "_e.bmp", "png=" + ib_ + "_sketch.png", "style=" + STYLE]))
     # the stock island's relief: hills as tall as TutA's own, the plain kept at the tower's foot
@@ -113,7 +134,10 @@ for ki in range(ISLANDS):
             best = (key, cand, frame, ib_)
         if not core_unmet and not COMPOSE and not CODIRECT:
             break
-if CODIRECT:
+if FROM:                                             # the finished run's own layout, as it is
+    best = ((0, 0.0), layout, compose.score(base + "_e.bmp", layout) if COMPOSE else {"total": 0.0}, base)
+    print("  from=score: resuming %s with the editor stages only" % RUN, flush=True)
+if CODIRECT and not FROM:
     open(os.path.join(RUN, "codirection.txt"), "w", encoding="utf-8").write("\n\n".join(reviews) + "\n\nCHOSEN: %s\n" % os.path.basename(best[1]))
 if best[3] != base:                                  # the chosen island becomes THE island of this run
     import glob as _glob
@@ -124,8 +148,9 @@ if best[3] != base:                                  # the chosen island becomes
 score = subprocess.run(["py", ib.TERRAIN, "score", base + "_e.bmp", "--cell", "512", "--zstep", "0.5", "--unit", "0.02"],
                        capture_output=True, text=True).stdout
 open(os.path.join(RUN, "terrain_score.txt"), "w").write(score)
-shutil.copy(best[1], layout)
-shutil.copy(best[1][:-5] + ".png", base + "_layout.png")
+if not FROM:
+    shutil.copy(best[1], layout)
+    shutil.copy(best[1][:-5] + ".png", base + "_layout.png")
 L = json.load(open(layout))
 FRAME = best[2]
 if COMPOSE:
@@ -139,11 +164,12 @@ open(os.path.join(RUN, "systems.txt"), "w").write(
 PRE = codirect.review(base + "_e.bmp", layout)
 
 # 4. pads, 5. terrain into TutA, 6. the buildings as actors + lighting + editor pictures
-step("pads + roads", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout]))
-ib.island_png(base + "_ec.bmp", base + "_map.png")
-step("viewshed (final ground)", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), base + "_ec.bmp", NAV, layout, base]))
-# the citizens' routines walked on the graded ground: desire lines, door wants, travel-time checks
-step("walks", lambda: ib.run(["py", os.path.join(TOOLS, "walks.py"), base + "_ec.bmp", layout, "png=" + base + "_walks.png"]))
+if not FROM:
+    step("pads + roads", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout]))
+    ib.island_png(base + "_ec.bmp", base + "_map.png")
+    step("viewshed (final ground)", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), base + "_ec.bmp", NAV, layout, base]))
+    # the citizens' routines walked on the graded ground: desire lines, door wants, travel-time checks
+    step("walks", lambda: ib.run(["py", os.path.join(TOOLS, "walks.py"), base + "_ec.bmp", layout, "png=" + base + "_walks.png"]))
 
 
 def story_extras():
@@ -208,11 +234,12 @@ def story_extras():
     print("\n".join("  " + x for x in lines), flush=True)
 
 
-step("taps, interiors (story keys)", story_extras)
-# the architect's thinking drawings (Q36): figure-ground, Nolli plan, sections A/B/C at true scale
-step("drawings", lambda: ib.run(["py", os.path.join(TOOLS, "drawings.py"), base + "_ec.bmp", layout, base]))
-# the architectural set (parti, site analysis, framework, figure-ground, sections, codes, serial vision): <run>\plans
-step("plans", lambda: ib.run(["py", os.path.join(TOOLS, "plans.py"), RUN]))
+if not FROM:
+    step("taps, interiors (story keys)", story_extras)
+    # the architect's thinking drawings (Q36): figure-ground, Nolli plan, sections A/B/C at true scale
+    step("drawings", lambda: ib.run(["py", os.path.join(TOOLS, "drawings.py"), base + "_ec.bmp", layout, base]))
+    # the architectural set (parti, site analysis, framework, figure-ground, sections, codes, serial vision): <run>\plans
+    step("plans", lambda: ib.run(["py", os.path.join(TOOLS, "plans.py"), RUN]))
 try:                                     # believability (Q35, tools/metrics.py), after the walks' paths join the network
     import metrics
     MET = metrics.score(layout)
