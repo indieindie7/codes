@@ -11,11 +11,14 @@
      thigh: trace the floor under the animated ankle, pick the ankle target (clamped lift/drop),
             solve the knee (the animated knee gives the bend plane) and rotate the thigh there;
      calf:  rotate the calf so the ankle reaches the target;
-     foot:  undo both rotations on the foot, so it keeps the orientation the clip gave it.
+     foot:  undo both rotations on the foot, so it keeps the orientation the clip gave it; then, with
+            the tilt on, turn it level with the floor traced under it (pitch and roll only: the
+            smallest rotation taking up onto the floor's normal has a level axis, so the clip's yaw
+            stays; at most MaxTilt degrees; the normal eased at Gain as the lift is).
    No pelvis move in this pass: Hips is EonEngine's (orient-to-floor), so the reach is what the
    knee's bend allows; the uphill foot lifts (MaxLift), the downhill one drops a little (MaxDrop).
 
-   Script (ModFeet) installs it per pawn: "FootIKConfig drop lift gain log", "FootIK <pawn name>
+   Script (ModFeet) installs it per pawn: "FootIKConfig drop lift gain log [tilt]", "FootIK <pawn name>
    <class name> <left thigh> <left calf> <left foot> <right...> <standing collision height>" (bone
    indices from MatchRefBone),
    "FootIKOff <pawn name> <class name>". The pawn is found through Core's GObjObjects.
@@ -60,8 +63,8 @@ static ObjArray* Objs;
 static int Ready, Tried;
 
 /* config (FootIKConfig) */
-static float MaxDrop = 12, MaxLift = 35, Gain = 10;
-static int LogOn;
+static float MaxDrop = 12, MaxLift = 35, Gain = 10, MaxTilt = 25;
+static int LogOn, TiltOn = 1;
 
 /* the bone FCoords convention: 1 = rows are the bone's basis vectors in mesh space,
    2 = rows are the rows of the local->mesh rotation; 0 = not known yet (nothing is changed) */
@@ -79,6 +82,9 @@ typedef struct {
 	int PendingCalf, PendingFoot;
 	Vec DeltaMesh;                   /* this frame's ankle move, mesh space */
 	float Lift;                      /* smoothed world dz */
+	Vec FloorN, TiltN;               /* the floor's normal under the ankle (world), and the eased one the foot follows */
+	int HaveFloorN, HaveTilt;
+	float Dt, TiltDeg;               /* this frame's step, and the tilt applied (log) */
 	float LastGap, LastGround;       /* log */
 	int Solves;
 	LARGE_INTEGER LastT;
@@ -282,8 +288,8 @@ static Vec DirToMesh(const float* M, Vec w)
 	return V(w.x * inv[0] + w.y * inv[3] + w.z * inv[6], w.x * inv[1] + w.y * inv[4] + w.z * inv[7], w.x * inv[2] + w.y * inv[5] + w.z * inv[8]);
 }
 
-/* the floor under a world point: its height, or 0 when nothing is within Up above / Down below */
-static int FloorUnder(PawnIK* P, Vec At, float Up, float Down, float* OutZ)
+/* the floor under a world point: its height and normal, or 0 when nothing is within Up above / Down below */
+static int FloorUnder(PawnIK* P, Vec At, float Up, float Down, float* OutZ, Vec* OutN)
 {
 	DWORD Hit[24];
 	Vec Start = V(At.x, At.y, At.z + Up), End = V(At.x, At.y, At.z - Down);
@@ -292,7 +298,8 @@ static int FloorUnder(PawnIK* P, Vec At, float Up, float Down, float* OutZ)
 	memset(Hit, 0, sizeof(Hit));
 	P->Traces++;
 	if (SingleLineCheck(Level, NULL, Hit, P->Actor, &End, &Start, 0x86 /* TRACE_World */, 0, 0, 0)) return 0;   /* 1 = nothing hit */
-	*OutZ = ((float*)Hit)[4];    /* FCheckResult.Location.Z */
+	*OutZ = ((float*)Hit)[4];    /* FCheckResult.Location.Z (Location at +8, Normal at +0x14) */
+	if (OutN) *OutN = V(((float*)Hit)[5], ((float*)Hit)[6], ((float*)Hit)[7]);
 	return 1;
 }
 
@@ -337,7 +344,7 @@ static int SmallChain(const Leg* L) { return L->L1 < 5 || L->L2 < 5; }
 static void ThighStage(PawnIK* P, Leg* L, FCoords* Ret, const FCoords* T, void* Inst)
 {
 	Mat3 Rt = RotOf(T), Rc, Q;
-	Vec H = T->O, K, A, Hw, Aw, Up, target, Kp, d, n;
+	Vec H = T->O, K, A, Hw, Aw, Up, target, Kp, d, n, floorN;
 	float M[16], dt, groundFoot, groundActor, delta, dist, L1 = L->L1, L2 = L->L2, cosa, sina;
 	LARGE_INTEGER Now;
 	BYTE* Actor = (BYTE*)P->Actor;
@@ -372,22 +379,26 @@ static void ThighStage(PawnIK* P, Leg* L, FCoords* Ret, const FCoords* T, void* 
 	dt = L->LastT.QuadPart ? (float)((Now.QuadPart - L->LastT.QuadPart) / (double)Freq.QuadPart) : 0.016f;
 	if (dt > 0.1f) dt = 0.1f;
 	L->LastT = Now;
+	L->Dt = dt;
 
 	/* where the clip stands: the bottom of the collision cylinder as drawn (PrePivot included: the
 	   script lowers the whole body with it so the lower foot can reach). A trace under the centre
 	   would be wrong on a step edge, where the cylinder is held up by the edge. */
 	groundActor = ((float*)(Actor + 0x130))[2] + ((float*)(Actor + 0x1B4))[2] - P->StandHeight;
-	if (!FloorUnder(P, Aw, 60, 120, &groundFoot) || groundFoot - groundActor > MaxLift + 5 || groundFoot - groundActor < -(MaxDrop + 40))
+	if (!FloorUnder(P, Aw, 60, 120, &groundFoot, &floorN) || groundFoot - groundActor > MaxLift + 5 || groundFoot - groundActor < -(MaxDrop + 40))
 	{
 		/* nothing under the foot (a ledge, water), or a surface the pawn couldn't step onto (a crate,
 		   a bench: higher than the lift allows) or reach down to: not ground for the feet, ease out */
 		L->Lift *= 0.9f;
 		delta = L->Lift;
 		P->Clamped++;
+		L->HaveFloorN = 0;               /* (the foot eases back level) */
 	}
 	else
 	{
 		delta = groundFoot - groundActor;
+		L->FloorN = floorN;
+		L->HaveFloorN = floorN.z > 0.5f; /* a wall's side under the ankle (n.z low) isn't a floor to stand level with */
 		L->LastGround = delta;
 		L->GroundZ = groundFoot; L->FloorZ = groundActor; L->AnimZ = Aw.z;
 		if (delta > MaxLift) delta = MaxLift;
@@ -451,10 +462,52 @@ static void CalfStage(PawnIK* P, Leg* L, FCoords* Ret, const FCoords* C, void* I
 	SetRot(Ret, MM(Q, Rc));
 }
 
+/* the foot tilted to the floor under it (TiltOn): the smallest rotation taking mesh-up onto the traced
+   normal, whose axis is level, so the clip's yaw is kept and only pitch and roll change; at most
+   MaxTilt degrees; the normal is eased at Gain as the lift is, and goes back to level where there is
+   no ground to use. Applied about the ankle (the FCoords origin is the engine's), so the toe follows
+   the slope. Answers 1 when Rf was changed */
+static int FootTilt(PawnIK* P, Leg* L, void* Inst, Mat3* Rf)
+{
+	float M[16], k, c, cmax, smax;
+	Vec target, upM, nM, perp;
+	Mat3 T;
+	target = L->HaveFloorN ? L->FloorN : V(0, 0, 1);
+	k = Gain * L->Dt;
+	if (k > 1) k = 1;
+	if (!L->HaveTilt) { L->TiltN = target; L->HaveTilt = 1; }
+	else L->TiltN = Norm(Add(L->TiltN, Mul(Sub(target, L->TiltN), k)));
+	if (Len(L->TiltN) < 0.5f) L->TiltN = V(0, 0, 1);
+	L->TiltDeg = 0;
+	if (L->TiltN.z > 0.99995f) return 0;                 /* level */
+	MeshToWorld(Inst, NULL, M);
+	upM = Norm(DirToMesh(M, V(0, 0, 1)));
+	nM = Norm(DirToMesh(M, L->TiltN));
+	if (Len(upM) < 0.5f || Len(nM) < 0.5f) return 0;
+	c = Dot(upM, nM);
+	cmax = (float)cos(MaxTilt * 3.14159265f / 180);
+	smax = (float)sin(MaxTilt * 3.14159265f / 180);
+	if (c < cmax)
+	{
+		/* steeper than the foot may tilt: the same direction, MaxTilt from up */
+		perp = Sub(nM, Mul(upM, c));
+		if (Len(perp) < 1e-5f) return 0;
+		perp = Norm(perp);
+		nM = Add(Mul(upM, cmax), Mul(perp, smax));
+		c = cmax;
+	}
+	if (c > 1) c = 1;
+	L->TiltDeg = (float)(acos(c) * 180 / 3.14159265);
+	T = RotBetween(upM, nM);
+	*Rf = MM(T, *Rf);
+	return 1;
+}
+
 static void FootStage(PawnIK* P, Leg* L, FCoords* Ret, const FCoords* F, void* Inst)
 {
 	FCoords* C = BoneCoords(Inst, L->Calf);
 	Mat3 Rc, Rf;
+	int Changed = 0;
 	*Ret = *F;
 	if (!C || !Conv) return;
 	Rc = RotOf(C);
@@ -463,19 +516,25 @@ static void FootStage(PawnIK* P, Leg* L, FCoords* Ret, const FCoords* F, void* I
 	L->HaveAnkle = 1;
 	if (!L->PendingFoot) return;
 	L->PendingFoot = 0;
-	if (Len(L->DeltaMesh) < 1e-4f) return;
-	if (LogOn && GetTickCount() - L->LastDiag > 1000)
-	{
-		float M[16];
-		Vec Fw;
-		L->LastDiag = GetTickCount();
-		MeshToWorld(Inst, NULL, M);
-		Fw = ToWorld(M, F->O);
-		Note(L"footik: %ls %ls: ankle as animated z %.1f, asked z %.1f, got z %.1f (floor under it %.1f, the body's base %.1f, lift %+.1f) at %.0f %.0f %.0f", P->Name, L == &P->L[0] ? L"left" : L"right", L->AnimZ, L->TargetZ, Fw.z, L->GroundZ, L->FloorZ, L->Lift, ((float*)((BYTE*)P->Actor + 0x130))[0], ((float*)((BYTE*)P->Actor + 0x130))[1], ((float*)((BYTE*)P->Actor + 0x130))[2]);
-	}
-	/* the foot keeps the orientation the clip gave it: undo the calf's and the thigh's turns */
 	Rf = RotOf(F);
-	SetRot(Ret, MM(Tr(L->QThigh), MM(Tr(L->QCalf), Rf)));
+	if (Len(L->DeltaMesh) >= 1e-4f)
+	{
+		if (LogOn && GetTickCount() - L->LastDiag > 1000)
+		{
+			float M[16];
+			Vec Fw;
+			L->LastDiag = GetTickCount();
+			MeshToWorld(Inst, NULL, M);
+			Fw = ToWorld(M, F->O);
+			Note(L"footik: %ls %ls: ankle as animated z %.1f, asked z %.1f, got z %.1f (floor under it %.1f, the body's base %.1f, lift %+.1f, tilt %.1f deg) at %.0f %.0f %.0f", P->Name, L == &P->L[0] ? L"left" : L"right", L->AnimZ, L->TargetZ, Fw.z, L->GroundZ, L->FloorZ, L->Lift, L->TiltDeg, ((float*)((BYTE*)P->Actor + 0x130))[0], ((float*)((BYTE*)P->Actor + 0x130))[1], ((float*)((BYTE*)P->Actor + 0x130))[2]);
+		}
+		/* the foot keeps the orientation the clip gave it: undo the calf's and the thigh's turns */
+		Rf = MM(Tr(L->QThigh), MM(Tr(L->QCalf), Rf));
+		Changed = 1;
+	}
+	/* ... then level with its floor */
+	if (TiltOn && FootTilt(P, L, Inst, &Rf)) Changed = 1;
+	if (Changed) SetRot(Ret, Rf);
 }
 
 static void LogPawn(PawnIK* P)
@@ -483,8 +542,8 @@ static void LogPawn(PawnIK* P)
 	DWORD Now = GetTickCount();
 	if (!LogOn || Now - P->LastLog < 5000) return;
 	P->LastLog = Now;
-	Note(L"footik: %ls: %d callbacks, %d traces, %.1f us per callback, %d passes (no ground to use); left ground %+.1f lift %+.1f, right ground %+.1f lift %+.1f (conv %d, faults %d)",
-		P->Name, P->Calls, P->Traces, P->Calls ? P->SolveUs / P->Calls : 0.0, P->Clamped, P->L[0].LastGround, P->L[0].Lift, P->L[1].LastGround, P->L[1].Lift, Conv, P->Faults);
+	Note(L"footik: %ls: %d callbacks, %d traces, %.1f us per callback, %d passes (no ground to use); left ground %+.1f lift %+.1f tilt %.1f, right ground %+.1f lift %+.1f tilt %.1f (conv %d, faults %d)",
+		P->Name, P->Calls, P->Traces, P->Calls ? P->SolveUs / P->Calls : 0.0, P->Clamped, P->L[0].LastGround, P->L[0].Lift, P->L[0].TiltDeg, P->L[1].LastGround, P->L[1].Lift, P->L[1].TiltDeg, Conv, P->Faults);
 	P->Calls = P->Traces = 0; P->SolveUs = 0;
 }
 
@@ -623,14 +682,15 @@ static int Remove(const wchar_t* Arg)
 
 static int Config(const wchar_t* Arg)
 {
-	float d, l, g; int lg;
-	if (swscanf(Arg, L"%f %f %f %d", &d, &l, &g, &lg) != 4) return 0;
-	MaxDrop = d; MaxLift = l; Gain = g; LogOn = lg;
-	Note(L"footik: config drop %.0f lift %.0f gain %.1f log %d", MaxDrop, MaxLift, Gain, LogOn);
+	float d, l, g; int lg, tl = 1, n;
+	n = swscanf(Arg, L"%f %f %f %d %d", &d, &l, &g, &lg, &tl);
+	if (n < 4) return 0;
+	MaxDrop = d; MaxLift = l; Gain = g; LogOn = lg; TiltOn = tl != 0;
+	Note(L"footik: config drop %.0f lift %.0f gain %.1f log %d tilt %d (at most %.0f deg)", MaxDrop, MaxLift, Gain, LogOn, TiltOn, MaxTilt);
 	return Resolve();
 }
 
-/* "FootIKConfig ...", "FootIK <name> <class> <6 bones>", "FootIKOff <name> <class>" */
+/* "FootIKConfig drop lift gain log [tilt]", "FootIK <name> <class> <6 bones>", "FootIKOff <name> <class>" */
 int FootIKCommand(const wchar_t* Cmd)
 {
 	if (!_wcsnicmp(Cmd, L"FootIKConfig ", 13)) return Config(Cmd + 13);

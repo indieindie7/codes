@@ -35,7 +35,12 @@ and takes the axes it returns (the origin is kept). The three stages, in bone or
    the knee that reaches it is solved in the clip's bend plane and the thigh rotated there;
 2. calf: rotated so the ankle (the clip's, fresh this frame, with the thigh's turn undone) lands
    on the target;
-3. foot: both turns undone, so the foot keeps the orientation the clip gave it.
+3. foot: both turns undone, so the foot keeps the orientation the clip gave it; then (bFootTilt) it
+   is turned level with the floor traced under its ankle: the smallest rotation taking world-up onto
+   the floor's normal (its axis is level, so only pitch and roll change and the clip's yaw stays),
+   at most 25 degrees, the normal eased at Gain like the lift and back to level where the trace
+   found no ground to use (a ledge, a crate, a wall's side: n.z under 0.5). Applied about the ankle,
+   so the toe follows the slope.
 
 Nothing is changed while any doubt remains: the mesh instance's vtable slots must be the very
 exports we resolved by name, the ref skeleton must say calf→thigh and foot→calf, the first
@@ -58,6 +63,7 @@ which EonEngine drives for orient-to-floor, is never touched.
 | bPelvis / PelvisDrop | True / 30 | the body lowered to the lower foot's floor, at most this |
 | bFeetLog | False | the DLL's per-pawn lines (hooks, 5-s stats, once-a-second ankle asked/got) |
 | bFeetMeter / SlopeStep | False / 4 | the meter below; "step" = the two feet's floors differ by more |
+| bFootTilt | True | the foot tilted to its floor's slope (pitch/roll, clamped +-25 degrees); added offline 2026-10-09, **not yet seen running** |
 
 ## Measured (2026-10-09, hidden harness, level03sectionb stairs and level03sectionc)
 
@@ -108,7 +114,13 @@ are new ModPilot steps.
 
 - The downhill foot only goes as far as the pelvis drop + the knee's bend allow (a straight idle
   leg gives ~5 of drop on its own); PelvisDrop 30 covers normal steps.
-- The foot keeps the clip's orientation: no tilt to the slope's normal yet.
+- The foot tilt (bFootTilt) is built but unseen: a GPU session should run the stairs/slope steps
+  below with `bFeetLog` (the once-a-second ankle line now ends `tilt N deg`, the 5-s line has a
+  `tilt` per leg) and look at a pawn on a ramp (level03sectionb's station has slopes by the
+  stairs) for the sole lying on it rather than cutting in at the toe; and at a run on flat
+  ground for any foot wobble (the normal is eased at Gain, so a trace that flicks between a
+  floor and a step's riser should blend, not snap). The clamp is 25 degrees; the Seekers'
+  and hounds' chains are still not hooked.
 - Humans only (leftUpLeg/leftLeg/leftFoot). Seekers and hounds have other chains; a hound's
   UpLegs are EonEngine's (orient-to-floor): never hook those.
 - The knee target uses the calf's local rotation of the previous frame (the correction lags a

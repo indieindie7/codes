@@ -16,7 +16,8 @@
 // drawn (Location + PrePivot - the standing CollisionHeight), so the two agree.
 // Config [AdventMod.ModFeet]: bFootIK (off until verified), bPlayerFeet, bAIFeet, MaxDrop /
 // MaxLift (units the ankle may go down / up from the clip), Gain (1/s, how fast it follows),
-// Range, bFeetLog (the DLL's per-pawn lines), bFeetMeter, bPelvis, PelvisDrop.
+// Range, bFeetLog (the DLL's per-pawn lines), bFeetMeter, bPelvis, PelvisDrop, bFootTilt (the
+// foot turned level with the floor traced under it, pitch and roll only, at most 25 degrees).
 //=============================================================================
 class ModFeet extends Info
 	config(AdventMod);
@@ -33,6 +34,7 @@ var config bool bFeetMeter;
 var config float SlopeStep;
 var config bool bPelvis;            // the body lowered (PrePivot) so the lower foot reaches its floor
 var config float PelvisDrop;        // at most this much
+var config bool bFootTilt;          // the foot tilted to its floor's slope (the DLL's foot stage; the clip's yaw kept)
 
 struct Foot
 {
@@ -157,7 +159,7 @@ function Sweep()
 		Player = PC.Pawn;
 	if (!bConfigSent)
 	{
-		bNativeOk = class'ModSettings'.static.NativeCall("FootIKConfig " $ MaxDrop $ " " $ MaxLift $ " " $ Gain $ " " $ Eval2(bFeetLog, "1", "0"));
+		bNativeOk = class'ModSettings'.static.NativeCall("FootIKConfig " $ MaxDrop $ " " $ MaxLift $ " " $ Gain $ " " $ Eval2(bFeetLog, "1", "0") $ " " $ Eval2(bFootTilt, "1", "0"));
 		bConfigSent = true;
 		if (!bNativeOk)
 		{
@@ -369,4 +371,5 @@ defaultproperties
 	SlopeStep=4
 	bPelvis=True
 	PelvisDrop=30
+	bFootTilt=True
 }
