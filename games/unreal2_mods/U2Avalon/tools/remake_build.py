@@ -75,13 +75,21 @@ def path_node(x, y, z, tag):
 
 
 def arena_actors():
-    A, n = [], {}
+    """cover on the ground under each piece (the arena floors are only partly level: roads re-grade through them),
+    never below the sea; pieces over the sea are left out"""
+    import story_export  # noqa
+    ground = story_export.ground_fn(os.path.join(RUN, "isl_ec.bmp"))
+    A, n, sea = [], {}, 0
     for aid, a in sorted((L.get("arenas") or {}).items()):
         if not a.get("placed"):
             print("  arena %s not placed: %s" % (aid, a.get("why")))
             continue
         for p in a["pieces"]:
-            k, z = p["kind"], p["z"]
+            k = p["kind"]
+            z = ground(p["x"], p["y"])
+            if z <= -4967 + 40 and k in ("full", "half", "spawn", "high", "entry", "exit", "P"):
+                sea += 1
+                continue
             tag = re.sub(r"\W+", "_", "Arena_%s_%s" % (aid, k))
             if k in ("full", "half"):
                 h = 140 if k == "full" else 80
@@ -91,6 +99,8 @@ def arena_actors():
             else:
                 continue          # solid / pillar / water / terrace / deck: the real buildings and ground stand there
             n[aid] = n.get(aid, 0) + 1
+    if sea:
+        print("  arenas: %d pieces over the sea left out" % sea)
     print("  arenas:", n or "none in the layout (needs a run made after anchors.arenas, round 3)")
     return A
 
@@ -163,6 +173,8 @@ def stage_map():
     from uedlib import short_path  # noqa
     shutil.copyfile(os.path.join(MAPS, SRC_MAP + ".un2"), os.path.join(MAPS, OUT + ".un2"))
     hollow = set(json.load(open(os.path.join(RUN, "hollow.json"))).get("hollow", [])) if os.path.exists(os.path.join(RUN, "hollow.json")) else set()
+    if o.get("tower") != "1":
+        hollow.discard("tower")         # its shell is left out, so its solid stays
     files = []
     for name in ("remake_story", "remake_shells", "remake_arenas") + (("remake_shells_tower",) if o.get("tower") == "1" else ()):
         p = os.path.join(RUN, name + ".t3d")
