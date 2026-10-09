@@ -1,6 +1,6 @@
 r"""The Avalon remake's editor build (redesign 2026-10-09, plan s.7 Phase B), on top of a finished town.py run.
 
-    py tools/remake_build.py <run folder> <map built by town.py> [out=TutA_Remake] [stage=t3d|mesh|map|paths|specs|bsp|patchin|all] [maps=A,B (bsp)]
+    py tools/remake_build.py <run folder> <map built by town.py> [out=TutA_Remake] [stage=t3d|mesh|map|paths|specs|bsp|patchin|arenas|patchlayers|all] [maps=A,B (bsp)]
                              [pkg=AvalonSM4] [entry=stair|hatch] [tower=0|1] [start=dock|tower]
 
 town.py already builds the terrain, buildings, clutter, lighting and low sun into Maps\<map>. This adds what the
@@ -455,6 +455,118 @@ def stage_patchin():
     ed_session(job)
 
 
+def stage_arenas():
+    """re-place the greybox arenas in OUT from the layout's current L["arenas"] (e.g. after anchors.arenas changed:
+    3b315e5 slid E1 / E3 inland): delete every actor tagged Arena_*, import the new remake_arenas.t3d, light it,
+    PATHS DEFINE, save (backup <OUT>_prearenas.un2)"""
+    from uedlib import Ops  # noqa
+    p = os.path.join(RUN, "remake_arenas.t3d")
+    write_t3d(p, arena_actors())
+    files = chunks(p)
+    shutil.copyfile(os.path.join(MAPS, OUT + ".un2"), os.path.join(MAPS, OUT + "_prearenas.un2"))
+
+    def job(ed):
+        ed.exec("!answer yes")
+        ed.load(OUT)
+        old = [a["Name"] for c in ("StaticMeshActor", "PathNode") for a in ed.actors(c)
+               if a["props"].get("Tag", "").startswith("Arena_")]
+        ops = Ops.attach_to(ed.pid)
+        for k in range(0, len(old), 40):
+            ops.select(*old[k:k + 40])
+            ed.ok("ACTOR DELETE")
+        ops.stop()
+        ed.deselect()
+        for f in files:
+            ed.import_t3d(f, add=True)
+        ed.light(selected=True)
+        ed.deselect()
+        ed.paths()
+        ed.save(OUT)
+        print("  %s: %d old arena actors out, %d in" % (OUT, len(old), sum(len(actors_of(f)) for f in files)))
+    ed_session(job)
+
+
+def stage_patchlayers():
+    r"""the terrain patch gets the island's texture layers (Q92 follow-up: it had the first layer only, no alpha): each
+    island alpha map (<run>\alphas\<layer>.tga, the 128 x 128 maps groundpaint.py wrote and terrain_apply imported)
+    resampled over the patch's area to the patch's own grid, imported as MyLevel.PatchLayers.<layer>, and the patch
+    TerrainInfo re-made from the island's (all its layers, AlphaMap -> the patch's, UV scale x island/patch cell so the
+    textures keep their world size), then LIGHT APPLY, save (backup <OUT>_prelayers.un2)"""
+    from PIL import Image
+    import numpy as np
+    from uedlib import Ops, t3d_set  # noqa
+    prefix = os.path.join(RUN, o.get("patch", "patch2"))
+    info = json.load(open(prefix + ".json"))
+    n, cell = info["n"], info["TerrainScale"][0]
+    ISL = (-14487.546875, 4835.837891)
+    out_dir = os.path.join(RUN, "patch_alphas")
+    os.makedirs(out_dir, exist_ok=True)
+    made = []
+    for f in sorted(os.listdir(os.path.join(RUN, "alphas"))):
+        if not f.endswith(".tga"):
+            continue
+        im = Image.open(os.path.join(RUN, "alphas", f))
+        A = np.asarray(im.convert("RGBA")).astype(float)
+        H, W = A.shape[:2]
+        # patch point (i, j) -> world -> island alpha pixel (same mapping as the heightmap: 512 UU a pixel, centred)
+        ii, jj = np.meshgrid(np.arange(n), np.arange(n))
+        X = info["Location"][0] + (ii - n / 2) * cell
+        Y = info["Location"][1] + (jj - n / 2) * cell
+        fi = np.clip((X - ISL[0]) / 512.0 + W / 2, 0, W - 1.001)
+        fj = np.clip((Y - ISL[1]) / 512.0 + H / 2, 0, H - 1.001)
+        i0, j0 = fi.astype(int), fj.astype(int)
+        u, v = (fi - i0)[..., None], (fj - j0)[..., None]
+        R = (A[j0, i0] * (1 - u) * (1 - v) + A[j0, i0 + 1] * u * (1 - v) + A[j0 + 1, i0] * (1 - u) * v
+             + A[j0 + 1, i0 + 1] * u * v)
+        p = os.path.join(out_dir, f)
+        Image.fromarray(np.clip(R, 0, 255).astype(np.uint8), "RGBA").save(p)
+        made.append((os.path.splitext(f)[0], p))
+    print("  %d patch alpha maps -> %s" % (len(made), out_dir))
+    shutil.copyfile(os.path.join(MAPS, OUT + ".un2"), os.path.join(MAPS, OUT + "_prelayers.un2"))
+    k = 512.0 / cell
+
+    def job(ed):
+        ed.exec("!answer yes")
+        ed.load(OUT)
+        for name, p in made:
+            ed.import_texture(p, name, "MyLevel", "PatchLayers", MIPS=0, ALPHA=1)
+        T = ed.actors("TerrainInfo")
+        isl = [a for a in T if "island" in a["props"].get("TerrainMap", "")][0]
+        old = [a for a in T if a["Name"].startswith("TerrainPatch_")]
+        if not old:
+            sys.exit("no TerrainPatch_ in " + OUT)
+        pname = old[0]["Name"]
+        blk = re.sub(r"Name=\w+", "Name=" + pname, isl["text"], count=1)
+        blk = t3d_set(blk, "TerrainMap", old[0]["props"]["TerrainMap"])
+        blk = t3d_set(blk, "Location", "(X=%f,Y=%f,Z=%f)" % tuple(info["Location"]))
+        blk = t3d_set(blk, "TerrainScale", "(X=%f,Y=%f,Z=%f)" % tuple(info["TerrainScale"]))
+        lines = []
+        for l in blk.splitlines():
+            if re.match(r"\s*Layers\(\d+\)=", l):
+                l = l.replace("IslandTerrainLayers", "PatchLayers")
+                l = re.sub(r"(UScale|VScale)=([-\d.]+)", lambda q: "%s=%f" % (q.group(1), float(q.group(2)) * k), l)
+                l = re.sub(r",?TerrainMatrix=\(.*?\)\)\)", ")", l)      # the engine recomputes it
+            lines.append(l)
+        tp = prefix + "_layers.t3d"
+        open(tp, "w").write("Begin Map\n" + "\n".join(lines) + "\nEnd Map\n")
+        print("  patch layers:", [l.strip()[:110] for l in lines if "Layers(" in l])
+        ops = Ops.attach_to(ed.pid)
+        ops.select(pname)
+        ed.ok("ACTOR DELETE")
+        ops.stop()
+        ed.deselect()
+        ed.import_t3d(tp, add=True)
+        ed.deselect()
+        ed.ok("LIGHT APPLY", allow=("Couldn't bring window", "Can't find"))
+        ed.paths()
+        ed.save(OUT)
+    ed_session(job)
+
+
+if STAGE == "patchlayers":
+    stage_patchlayers()
+if STAGE == "arenas":
+    stage_arenas()
 if STAGE == "patchin":
     stage_patchin()
 if STAGE == "bsp":

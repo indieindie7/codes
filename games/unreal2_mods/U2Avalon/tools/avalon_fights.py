@@ -75,13 +75,33 @@ for aid, cast in CAST.items():
     A = L["arenas"][aid]
     cx, cy = A["centre"]
     P = nodes.get("Arena_%s_P" % aid, [(cx, cy)])[0]
-    lines.append('Beats=(Id="%s",At=%s,Radius=1700,Topics="",Objective="",Encounter="%s",After="")' % (aid, pt(cx, cy), aid))
+    # the fight starts at the arena's way in (P), not its middle: E1's middle is 19 m from the PlayerStart since the
+    # arena slide (anchors 3b315e5), a middle trigger would start it on spawn
+    lines.append('Beats=(Id="%s",At=%s,Radius=500,Topics="",Objective="",Encounter="%s",After="")' % (aid, pt(P[0], P[1]), aid))
     for pawns, when, delay, src in cast:
         extra = piece_spawns(aid, src) if src else ()
         d = doors(aid, extra) if not src else (";".join("%.0f,%.0f,%.0f" % (x, y, gz(x, y) + lift(x, y) + 100) for x, y in extra) or doors(aid))
         lines.append('Waves=(Encounter="%s",Pawns="%s",Doors="%s",When="%s",Delay=%d)' % (aid, pawns, d, when, delay))
     lines.append('Supplies=(At=%s,After="%s!",Items="U2.HealthPickup:2,U2.U2FullAmmoPickup:1",Message="%s is quiet. Supplies by the way in.")'
                  % (pt(P[0], P[1], 60), aid, NAMES[aid][0].upper() + NAMES[aid][1:]))
+# I2, the production line in hall_b (plan s.5 stop 3: 4 Light + a Medium on the gantry + a Heavy at the end): inside
+# the hollow shell, so the points come from rooms.json in the hall's own frame (both gable ends, the mezzanine)
+if o.get("indoor", "1") == "1":
+    import binder, shells  # noqa
+    R = json.load(open(os.path.join(run, "rooms.json")))
+    _, sheets = binder.load()
+    hp = R["hall_b"]
+    S = shells.Shell(hp, sheets["hall_b"], shells.instances("hall_b", L["buildings"]["hall_b"], sheets["hall_b"])[0])
+    W = hp["shell_m"][0]
+    mz = next(r for r in hp["rooms"] if r["id"] == "mezzanine")
+    at = lambda x, y, z: "%.0f,%.0f,%.0f" % (lambda w: (w[0], w[1], w[2] + 150))(S.world_of(x, y, z))
+    ends = ";".join(at(sx * (W / 2 - 4), dy, 0) for sx in (1, -1) for dy in (-4, 4))
+    cx, cy, cz = S.world_of(0, 0, 0)
+    lines += ['Beats=(Id="I2",At=(X=%.0f,Y=%.0f,Z=%.0f),Radius=900,Topics="",Objective="",Encounter="I2",After="")' % (cx, cy, cz + 100),
+              'Waves=(Encounter="I2",Pawns="U2MercJapLight:4",Doors="%s",When="enter",Delay=2)' % ends,
+              'Waves=(Encounter="I2",Pawns="U2MercJapMedium:1",Doors="%s",When="lasthalf",Delay=3)' % at(10, mz["y"], mz["z"]),
+              'Waves=(Encounter="I2",Pawns="U2MercJapHeavy:1",Doors="%s",When="cleared",Delay=4)' % at(W / 2 - 4, 0, 0),
+              'Supplies=(At=(X=%.0f,Y=%.0f,Z=%.0f),After="I2!",Items="U2.HealthPickup:2,U2.U2FullAmmoPickup:1",Message="The production line is quiet. Supplies on the floor.")' % (cx, cy, cz + 80)]
 out = o.get("out", os.path.join(GAME, "System", "U2AvalonFights.ini"))
 open(out, "w", newline="\r\n").write("\n".join(lines) + "\n")
 print("\n".join(lines))
