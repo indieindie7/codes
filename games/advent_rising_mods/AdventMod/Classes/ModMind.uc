@@ -33,6 +33,7 @@ const T_Panic = 7;          // broken: running
 const T_Advance = 8;        // ordered to push: closer to the enemy along paths
 const T_Skip = 9;           // a hound's zig-zag leg (ModMinds.SkipLeg)
 const T_Want = 10;          // acting on a need (ModNeeds: feeding, resting, investigating, regrouping)
+const T_Rest = 11;          // a tired hound's rest at the pack's rear in a lull (ModMinds.HoundPack, bHoundRest)
 
 // hound pack roles (ModMinds.HoundPack, AI-MINDS-DESIGN.md section 9)
 const R_None = 0;           // not in a pack (or packs off)
@@ -93,6 +94,10 @@ var bool bKickBackOff;              // its skip leg backs off a wall it stood ag
 var vector KickBackToward, KickBackTarget;   // ... and the kick to try again when the leg ends
 var bool bKickBackAttack;
 var string KickBackWhy;
+var float ProgressAt, ProgressBest;  // a leg's progress: when it was last nearer its spot than ever, and how near (a stalled want leg re-plans)
+var bool bWantReplanned;            // its want leg re-planned once already (the next stall gives it up)
+var float RestAt;                   // no rest before this (T_Rest)
+var bool bResting;                  // at its resting spot, waiting
 
 // the abilities: ours (a copy only this pawn uses) and the game's values the feelings start from
 var AdventPawnAbilities Own;
@@ -160,6 +165,7 @@ static function string TaskName(int T)
 		case T_Advance: return "advance";
 		case T_Skip: return "skip";
 		case T_Want: return "want";
+		case T_Rest: return "rest";
 	}
 	return "?";
 }

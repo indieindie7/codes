@@ -289,6 +289,8 @@ function Decay(int i, float DeltaTime)
 		Recs[i].V[N_Hunger] += HungerRise * DeltaTime;
 	if (bExerting)
 		Recs[i].V[N_Fatigue] += FatigueRise * DeltaTime;
+	else if (M.Task == 11/*T_Rest*/ && M.bResting)
+		Recs[i].V[N_Fatigue] -= 5 * FatigueRest * DeltaTime;    // a hound's rest at the pack's rear (ModMinds.HoundPack): 0.1-0.2 off per rest
 	else if (bStill)
 		Recs[i].V[N_Fatigue] -= FatigueRest * DeltaTime;
 	if (bQuiet)

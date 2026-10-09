@@ -106,6 +106,9 @@ var int KicksGone, KicksPlantedGone, KickLeapsGone, KickBitesGone, LinkUsesGone;
 var array<ModMind> Minds;
 var ModMindRules Rules;
 var ModNeeds Needs;                 // the needs layer (section 11; ModMutator sets it, or Adopt finds it): wants, HuntDrive, the tell
+var config bool bWantReplan;        // a want leg that makes no progress for 1.5 s re-plans once via a node toward the ad, then gives up
+var config bool bHoundRest;         // a tired hound (Fatigue over HoundRestFatigue) rests 1-2 s at the pack's rear while no closer commits
+var config float HoundRestFatigue;
 var float AdoptWait, FlankWait, TokenWait;
 var int ShotsAtPlayer, ShotsUntokened, PlayerHits, PlayerDamage;
 
@@ -660,6 +663,10 @@ function SetTask(ModMind M, int T, float Limit, string Why)
 	M.Task = T;
 	M.TaskTime = 0;
 	M.TaskLimit = Limit;
+	M.ProgressAt = 0;
+	M.ProgressBest = 0;
+	M.bWantReplanned = false;
+	M.bResting = false;
 	Log2(M.P.Name $ " -> " $ M.TaskName(T) $ " (" $ Why $ "): " $ M.Describe());
 }
 
@@ -899,6 +906,36 @@ static function string ProfileName(int P)
 	return "?";
 }
 
+// a stalled want leg's way on: a path node within 1000 that M can run straight to (a trace at hip height), nearer
+// Dest than M is by 100 or more, and not where it stands; the nearest to Dest, the run to it weighed a little
+function bool WantWaypoint(ModMind M, vector Dest, out vector Spot)
+{
+	local NavigationPoint N;
+	local float D, S, Best, Here;
+	local bool bFound;
+
+	Here = VSize((M.P.Location - Dest) * vect(1,1,0));
+	Best = 100000;
+	for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+	{
+		D = VSize(N.Location - M.P.Location);
+		if (D < 80 || D > 1000)
+			continue;
+		S = VSize((N.Location - Dest) * vect(1,1,0));
+		if (S > Here - 100)
+			continue;
+		S += 0.3 * D;
+		if (S >= Best)
+			continue;
+		if (!FastTrace(N.Location + vect(0,0,30), M.P.Location + vect(0,0,30)))
+			continue;
+		Best = S;
+		Spot = N.Location;
+		bFound = true;
+	}
+	return bFound;
+}
+
 function vector NextLeg(ModMind M, vector Dest)
 {
 	local Actor Step;
@@ -1027,7 +1064,7 @@ function Decide(ModMind M, float DeltaTime)
 {
 	local Pawn Enemy;
 	local vector Spot, Away, At;
-	local float Now;
+	local float Now, D;
 	local int W;
 	local Actor Target;
 
@@ -1049,7 +1086,8 @@ function Decide(ModMind M, float DeltaTime)
 			|| (M.Task == 3/*T_FallBack*/ && M.Fear < FleeFear - 0.25)
 			|| (M.Task == 5/*T_Charge*/ && M.Anger < ChargeAnger - 0.3 && M.Role != 3/*R_Closer*/)
 			|| (M.Task == 10/*T_Want*/ && (Now - M.LastHit < 1.0 || M.Pressure > FreePressure
-				|| (Enemy != None && (M.Species != 3/*S_Hound*/ || VSize(Enemy.Location - M.P.Location) < 400)))))
+				|| (Enemy != None && (M.Species != 3/*S_Hound*/ || VSize(Enemy.Location - M.P.Location) < 400))))
+			|| (M.Task == 11/*T_Rest*/ && (Now - M.LastHit < 1.0 || (Enemy != None && VSize(Enemy.Location - M.P.Location) < 400))))
 		{
 			Log2(M.P.Name $ " done with " $ M.TaskName(M.Task) $ " after " $ int(M.TaskTime) $ " s");
 			if (M.Task == 4/*T_Flank*/)
@@ -1108,11 +1146,55 @@ function Decide(ModMind M, float DeltaTime)
 			else if (!M.bSkipDodge && !Going(M))
 				Go(M, 'Mind_Skip', M.TaskDest);
 			return;
+		case 11/*T_Rest*/:
+			// to the pack's rear, then a wait there (the task's time, set on arrival, ends it; ModNeeds rests the fatigue meanwhile)
+			if (M.bResting)
+				return;
+			if (VSize((M.P.Location - M.TaskDest) * vect(1,1,0)) < 140)
+			{
+				M.bResting = true;
+				M.TaskLimit = M.TaskTime + 1 + FRand();
+				M.B.DoWait('Mind_Rest', 2.0);
+				HoundLog(M.P.Name $ " rests " $ (int((M.TaskLimit - M.TaskTime) * 10) / 10.0) $ " s");
+			}
+			else if (!Going(M))
+				Go(M, 'Mind_ToRest', NextLeg(M, M.TaskDest));
+			return;
 		case 3/*T_FallBack*/:
 		case 4/*T_Flank*/:
 		case 8/*T_Advance*/:
 		case 6/*T_Circle*/:
 		case 10/*T_Want*/:
+			// a want leg that stalls (no progress toward its spot for 1.5 s: no route from here, a mate on the spot) re-plans
+			// once, to a node it can run straight to that is nearer the ad, and gives up the second time
+			if (M.Task == 10/*T_Want*/ && bWantReplan && !Busy(M))
+			{
+				D = VSize((M.P.Location - M.TaskDest) * vect(1,1,0));
+				if (M.ProgressAt == 0 || D < M.ProgressBest - 25)
+				{
+					M.ProgressAt = Now;
+					M.ProgressBest = D;
+				}
+				else if (Now - M.ProgressAt > 1.5)
+				{
+					if (!M.bWantReplanned && WantWaypoint(M, M.TaskDest, Spot))
+					{
+						M.bWantReplanned = true;
+						M.ProgressAt = Now;
+						Log2(M.P.Name $ " want leg stalled " $ int(D) $ " from its spot: re-plans via a node " $ int(VSize(Spot - M.P.Location)) $ " away, " $ int(VSize((Spot - M.TaskDest) * vect(1,1,0))) $ " from the spot");
+						M.ReissueAt = Now;
+						Go(M, 'Mind_WantReplan', Spot);
+						return;
+					}
+					Log2(M.P.Name $ " want leg stalled " $ int(D) $ " from its spot" $ IfText(M.bWantReplanned, " again", "") $ ": gives up");
+					if (Needs != None)
+						Needs.GiveUp(M.P, "leg stalled");
+					M.Task = 0/*T_None*/;
+					M.NextDecision = Now + 1;
+					M.B.DoWait('Mind_Arrived', 0.5);
+					return;
+				}
+			}
 			if (VSize((M.P.Location - M.TaskDest) * vect(1,1,0)) < 140)
 			{
 				if (M.Task == 6/*T_Circle*/)
@@ -1750,8 +1832,8 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 		O = Minds[j];
 		if (O.B.Squad != S || O.Species != 3/*S_Hound*/ || O.P.Health <= 0 || O.B.EnemyInfo.Enemy == None)
 			continue;
-		if (O.Task == 10/*T_Want*/)
-			continue;               // feeding or regrouping in a lull (ModNeeds): out of the roles until it is done
+		if (O.Task == 10/*T_Want*/ || O.Task == 11/*T_Rest*/)
+			continue;               // feeding, regrouping or resting in a lull (ModNeeds): out of the roles until it is done
 		Members[Members.Length] = O;
 		if ((Now - O.LastHit < 1.0 && O.Role != 3/*R_Closer*/) || O.Role == 0)
 			bHurt = true;           // deal roles now: one is hurt, or one has none (its charge just ended)
@@ -1951,6 +2033,27 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 		if (O.Task != 0/*T_None*/ || Busy(O) || Now < O.LegAt || O.Fear > FleeFear)
 			continue;
 		D = VSize((O.P.Location - Prey.Location) * vect(1,1,0));
+		// a tired hound in a lull (no closer committing, the prey not on it) rests at the pack's rear for a second or
+		// two (ModNeeds takes its fatigue down meanwhile): the sink fatigue had none of in a fight
+		if (bHoundRest && Needs != None && Closers == 0 && O.Role != 3/*R_Closer*/ && D > 450 && Now > O.RestAt
+			&& Needs.NeedOf(O.P, 1/*N_Fatigue*/) > HoundRestFatigue)
+		{
+			Back = PackCentre(O);
+			Back = Back + Normal((Back - Prey.Location) * vect(1,1,0)) * 400;
+			O.RestAt = Now + 8;
+			O.TaskDest = Back;
+			SetTask(O, 11/*T_Rest*/, 6, "tired (fatigue " $ int(Needs.NeedOf(O.P, 1/*N_Fatigue*/) * 100) $ "), to the pack's rear");
+			HoundLog(O.P.Name $ " tired (fatigue " $ int(Needs.NeedOf(O.P, 1/*N_Fatigue*/) * 100) $ "): rests at the rear, " $ int(VSize(Back - O.P.Location)) $ " away");
+			if (VSize((Back - O.P.Location) * vect(1,1,0)) < 140)
+			{
+				O.bResting = true;
+				O.TaskLimit = 1 + FRand();
+				O.B.DoWait('Mind_Rest', 2.0);
+			}
+			else
+				Go(O, 'Mind_ToRest', NextLeg(O, Back));
+			continue;
+		}
 		switch (O.Role)
 		{
 		case 1/*R_Holder*/:
@@ -3217,6 +3320,9 @@ defaultproperties
 	bWallKickLog=False
 	bWallKickBackOff=False
 	bLeapLinks=True
+	bWantReplan=True
+	bHoundRest=False
+	HoundRestFatigue=0.7
 	LeapLinksMax=40
 	RangedTokens=2
 	RangedPer=4
