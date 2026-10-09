@@ -32,6 +32,7 @@ DROP_UU = 256.0              # B_culvert_drop's length (2.56 upper floor + 2.56 
 DROP_MAX = 3.6 * M
 MAX_PITCH = math.radians(30)
 MIN_BEND = 12.0
+DP_TOL = 2.5 * M             # the polyline simplification: straights of >= ~10 m between elbows
 STAIR_DEPTH, STAIR_MAX_Z = 7.4 * M, 1.6
 GAL_L, GAL_W, JUN_L = 1536.0, 768.0, 768.0
 OUTFALL_UU = 128.0
@@ -128,103 +129,106 @@ def drain_actors(L, entry="stair", pkg=None, notes=None):
         dense.append(list(path[k]))
         sd.append(s[k])
     forced = [i for i, sv in enumerate(sd) if any(abs(sv - c) < 0.5 for c in cuts)]
-    keep = douglas_peucker(dense, forced, 1.2 * M)
+    keep = douglas_peucker(dense, forced, DP_TOL)
     V = [dense[i] for i in keep]
     SV = [sd[i] for i in keep]
+    nV = len(V)
 
-    def special_of(sa, sb):
-        mid = (sa + sb) / 2
+    def special_of(k):
+        """the special span the straight V[k] -> V[k+1] lies in, or None"""
+        mid = (SV[k] + SV[k + 1]) / 2
         for name, a, b in specials:
             if a - 0.5 <= mid <= b + 0.5:
                 return name
         return None
 
-    A = []
-    cur = [V[0][0], V[0][1], V[0][3]]            # x, y, invert z
-    heading = None
-    n_straight = n_bend = n_drop = 0
-    k = 0
-    while k < len(V) - 1:
-        nxt = V[k + 1]
-        sp = special_of(SV[k], SV[k + 1])
-        tx, ty = nxt[0], nxt[1]
-        dxy = math.hypot(tx - cur[0], ty - cur[1])
-        if dxy < 5:
-            k += 1
+    def heading(k):
+        return math.atan2(V[k + 1][1] - V[k][1], V[k + 1][0] - V[k][0])
+
+    # 1. the elbow chains at the interior corners between two plain straights: nb elbows of 22.5 deg, the chain
+    #    centred on the corner; each adjacent straight gives up half the chain's run (A per elbow)
+    chains = {}
+    for k in range(1, nV - 1):
+        if special_of(k - 1) or special_of(k):
             continue
-        yaw = math.atan2(ty - cur[1], tx - cur[0])
+        turn = math.degrees((heading(k) - heading(k - 1) + math.pi) % (2 * math.pi) - math.pi)
+        if abs(turn) >= MIN_BEND:
+            chains[k] = max(1, int(round(abs(turn) / BEND_DEG))) * (1 if turn > 0 else -1)
+    A = []
+    n_straight = n_bend = n_drop = n_short = 0
+    exit_pt = None                      # where the previous piece left off (x, y, z) if it is not V[k]
+    for k in range(nV - 1):
+        sp = special_of(k)
+        if sp is not None and k > 0 and special_of(k - 1) == sp:
+            continue                                        # inside a span already emitted (exit_pt stays)
+        P0 = exit_pt or [V[k][0], V[k][1], V[k][3]]
+        exit_pt = None
         if sp is not None:
-            # the room covers this whole span: one piece along the chord at the span's start invert
             end_k = k
-            while end_k < len(V) - 1 and special_of(SV[end_k], SV[end_k + 1]) == sp:
+            while end_k < nV - 1 and special_of(end_k) == sp:
                 end_k += 1
             ex, ey = V[end_k][0], V[end_k][1]
-            chord = math.hypot(ex - cur[0], ey - cur[1])
-            yaw = math.atan2(ey - cur[1], ex - cur[0])
+            chord = math.hypot(ex - P0[0], ey - P0[1])
+            yaw = math.atan2(ey - P0[1], ex - P0[0])
             if sp == "junction":
-                A.append(actor("B_junction", cur[0], cur[1], cur[2], yaw, 0, chord / JUN_L, 1, 1, pkg))
+                A.append(actor("B_junction", P0[0], P0[1], P0[2], yaw, 0, chord / JUN_L, 1, 1, pkg))
             elif sp == "gallery":
-                A.append(actor("B_gallery", cur[0], cur[1], cur[2], yaw, 0, chord / GAL_L, 1, 1, pkg))
+                A.append(actor("B_gallery", P0[0], P0[1], P0[2], yaw, 0, chord / GAL_L, 1, 1, pkg))
                 for i in range(4):
                     for side in (-1, 1):
-                        px = 3.84 * M + i * 7.68 * M * (chord / GAL_L)
-                        py = side * (GAL_W / 2 - 1.1 * M)
-                        off = rot((px, py, 0), yaw)
-                        A.append(actor("B_pillar", cur[0] + off[0], cur[1] + off[1], cur[2], yaw, 0, 1, 1, 1, pkg))
+                        off = rot((3.84 * M + i * 7.68 * M * (chord / GAL_L), side * (GAL_W / 2 - 1.1 * M), 0), yaw)
+                        A.append(actor("B_pillar", P0[0] + off[0], P0[1] + off[1], P0[2], yaw, 0, 1, 1, 1, pkg))
             else:
                 mid = rot((chord / 2, 0, 0), yaw)
-                A.append(actor("B_outfall", cur[0] + mid[0], cur[1] + mid[1], cur[2], yaw, 0, 1, 1, 1, pkg))
-            cur = [ex, ey, cur[2]]
-            heading = yaw
-            k = end_k
+                A.append(actor("B_outfall", P0[0] + mid[0], P0[1] + mid[1], P0[2], yaw, 0, 1, 1, 1, pkg))
+            exit_pt = [ex, ey, P0[2]]
             continue
-        # bends where the heading turns
-        if heading is not None:
-            turn = math.degrees((yaw - heading + math.pi) % (2 * math.pi) - math.pi)
-            if abs(turn) >= MIN_BEND:
-                nb = max(1, int(round(abs(turn) / BEND_DEG)))
-                for _ in range(nb):
-                    part = "B_culvert_bendP" if turn > 0 else "B_culvert_bendN"
-                    A.append(actor(part, cur[0], cur[1], cur[2], heading, 0, 1, 1, 1, pkg))
-                    th = math.radians(BEND_DEG) * (1 if turn > 0 else -1)
-                    ex = cur[0] + BEND_A * (math.cos(heading) + math.cos(heading + th))
-                    ey = cur[1] + BEND_A * (math.sin(heading) + math.sin(heading + th))
-                    cur = [ex, ey, cur[2]]
-                    heading += th
-                    n_bend += 1
-                # skip vertices the elbows passed
-                while k < len(V) - 2 and ((V[k + 1][0] - cur[0]) * math.cos(heading) + (V[k + 1][1] - cur[1]) * math.sin(heading)) < 1.0 * M \
-                        and special_of(SV[k + 1], SV[k + 2]) is None:
-                    k += 1
-                nxt = V[k + 1]
-                tx, ty = nxt[0], nxt[1]
-                dxy = math.hypot(tx - cur[0], ty - cur[1])
-                yaw = math.atan2(ty - cur[1], tx - cur[0])
-        dz = nxt[3] - cur[2]
-        if dz < -STEP and math.atan2(-dz, dxy) > MAX_PITCH:
-            # too steep for a ramp: a drop shaft, then the lower culvert from its end at the lower invert
+        # a plain straight V[k] -> V[k+1], shortened by the elbow chains at either end
+        yaw = math.atan2(V[k + 1][1] - P0[1], V[k + 1][0] - P0[0])
+        ux, uy = math.cos(yaw), math.sin(yaw)
+        full = math.hypot(V[k + 1][0] - P0[0], V[k + 1][1] - P0[1])
+        cut1 = abs(chains.get(k + 1, 0)) * BEND_A         # the chain at the far corner starts this far before it
+        z0, z1 = P0[2], V[k + 1][3]
+        end = full - cut1
+        if end < 40:
+            n_short += 1
+            end = max(end, 0.0)
+        dz = (z1 - z0) * (end / full if full else 0)
+        sx, sy, sz = P0
+        if dz < -STEP and math.atan2(-dz, end) > MAX_PITCH:
+            # a drop shaft at the start, then the straight from its exit at the lower invert
             drop = -dz
             nshaft = int(math.ceil(drop / DROP_MAX))
             for i in range(nshaft):
                 d_i = drop / nshaft
-                A.append(actor("B_culvert_drop", cur[0], cur[1], cur[2], yaw, 0, 1, 1, 1, pkg))
-                ex, ey = cur[0] + DROP_UU * math.cos(yaw), cur[1] + DROP_UU * math.sin(yaw)
-                A.append(actor("B_shaft_slab", cur[0] + 3.84 * M * math.cos(yaw), cur[1] + 3.84 * M * math.sin(yaw), cur[2] - d_i, yaw, 0, 1, 1, 1, pkg))
-                cur = [ex, ey, cur[2] - d_i]
+                A.append(actor("B_culvert_drop", sx, sy, sz, yaw, 0, 1, 1, 1, pkg))
+                A.append(actor("B_shaft_slab", sx + 3.84 * M * ux, sy + 3.84 * M * uy, sz - d_i, yaw, 0, 1, 1, 1, pkg))
+                sx, sy, sz = sx + DROP_UU * ux, sy + DROP_UU * uy, sz - d_i
                 n_drop += 1
-            heading = yaw
-            while k < len(V) - 2 and ((V[k + 1][0] - cur[0]) * math.cos(yaw) + (V[k + 1][1] - cur[1]) * math.sin(yaw)) < 1.0 * M \
-                    and special_of(SV[k + 1], SV[k + 2]) is None:
-                k += 1
-            continue
-        length = math.hypot(dxy, dz)
-        pitch = math.atan2(dz, dxy)
-        mid = rot((length / 2, 0, 0), yaw, pitch)
-        A.append(actor("B_culvert", cur[0] + mid[0], cur[1] + mid[1], cur[2] + mid[2], yaw, pitch, length / CULVERT_UU * 1.01, 1, 1, pkg))
-        n_straight += 1
-        cur = [tx, ty, nxt[3]]
-        heading = yaw
-        k += 1
+            end -= DROP_UU * nshaft
+            dz = 0.0
+            if end < 40:
+                notes.append("drop shaft at (%.0f, %.0f) overran its straight by %.0f UU: the next piece overlaps" % (sx, sy, -end))
+                end = max(end, 0.0)
+        if end >= 40:
+            length = math.hypot(end, dz)
+            pitch = math.atan2(dz, end)
+            mid = rot((length / 2, 0, 0), yaw, pitch)
+            A.append(actor("B_culvert", sx + mid[0], sy + mid[1], sz + mid[2], yaw, pitch, length / CULVERT_UU + 0.004, 1, 1, pkg))
+            n_straight += 1
+        cx, cy, cz = sx + end * ux, sy + end * uy, sz + dz
+        nb = chains.get(k + 1, 0)
+        if nb:
+            # the chain: elbows from the straight's end, each turning 22.5 toward the next straight
+            h = yaw
+            th = math.radians(BEND_DEG) * (1 if nb > 0 else -1)
+            for _ in range(abs(nb)):
+                A.append(actor("B_culvert_bendP" if nb > 0 else "B_culvert_bendN", cx, cy, cz, h, 0, 1, 1, 1, pkg))
+                cx += BEND_A * (math.cos(h) + math.cos(h + th))
+                cy += BEND_A * (math.sin(h) + math.sin(h + th))
+                h += th
+                n_bend += 1
+            exit_pt = [cx, cy, cz]
     # the entrance at the grate: the stair climbs back along -heading0 from the first invert point to the ground
     x0, y0, zg0, zi0 = path[0]
     yaw0 = math.atan2(path[1][1] - y0, path[1][0] - x0)
@@ -236,14 +240,13 @@ def drain_actors(L, entry="stair", pkg=None, notes=None):
     if part == "B_drain_stair":
         run = PIVOTS["B_drain_stair"]["run"] * M
         c = [rot((-run - 0.3 * M, sgn * 1.58 * M, 0), yaw0) for sgn in (-1, 1)] + [rot((0.3 * M, sgn * 1.58 * M, 0), yaw0) for sgn in (1, -1)]
-        hole = [[round(x0 + p[0], 1), round(y0 + p[1], 1)] for p in c]
     else:
         c = [rot((sx * 1.73 * M, sy * 1.73 * M, 0), yaw0) for sx, sy in ((-1, -1), (-1, 1), (1, 1), (1, -1))]
-        hole = [[round(x0 + p[0], 1), round(y0 + p[1], 1)] for p in c]
+    hole = [[round(x0 + p[0], 1), round(y0 + p[1], 1)] for p in c]
     notes.append({"terrain_hole": hole, "entrance": part, "depth_uu": round(depth, 1), "top_z": round(zg0, 1),
                   "note": "paint this rectangle as a terrain visibility hole (UnrealEd terrain tool, visibility/hole mode); the terrain stays solid elsewhere"})
-    notes.append("drain: %d straight culverts, %d elbows, %d drop shafts, junction, gallery + 8 pillars, outfall, %s; %d actors"
-                 % (n_straight, n_bend, n_drop, part, len(A)))
+    notes.append("drain: %d straight culverts, %d elbows, %d drop shafts, junction, gallery + 8 pillars, outfall, %s; %d actors (%d straights shorter than their elbows, overlapped)"
+                 % (n_straight, n_bend, n_drop, part, len(A), n_short))
     return A
 
 

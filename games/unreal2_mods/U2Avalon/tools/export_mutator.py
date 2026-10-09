@@ -156,6 +156,13 @@ if LAYOUT:
         print(nct, "conveyor towers + cable spans")
     if npyl:
         print(npyl, "pylons along the power lines")
+if STORY and LAYOUT:
+    import story_export  # noqa
+    _notes = []
+    actors += story_export.drain_actors(_L, o.get("entry", "stair"), notes=_notes)
+    actors += story_export.tap_actors(_L, ground, notes=_notes)
+    for _n in _notes:
+        print("story:", _n)
 if T3D:
     open(T3D, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
     print(len(actors), "StaticMeshActors ->", T3D)
