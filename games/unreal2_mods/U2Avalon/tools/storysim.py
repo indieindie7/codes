@@ -34,7 +34,7 @@ DAYS = int(o.get("days", 3))
 STEP = int(o.get("step", 60))                    # minutes per tick
 OUT = o.get("out", os.path.join(r"C:\Users\john\Documents\U2_research\storysim", time.strftime("%Y%m%d-%H%M%S")))
 SMALL = o.get("small", "http://127.0.0.1:8081/v1")
-BIG = o.get("big", "http://127.0.0.1:8082/v1")
+BIG = o.get("big", "claude")          # Pantheon (local :8082) deleted 2026-10-09 for disk space; big=URL still works
 DM = o.get("dm", "claude")
 DM_MODEL = o.get("model_dm", "opus")
 BACKEND = o.get("backend", "live")
