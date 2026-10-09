@@ -276,3 +276,18 @@ chosen candidate over isl_layout.json again, re-grades, re-walks and re-makes th
 re-reads the two reviews for report.md, then runs ground paint, terrain_apply, export, clutter (+ the PathNodes again),
 populate (import + LIGHT APPLY), low sun and motion -> `Maps\TutA_Remake907.un2`, and the report. pilot=0 keeps the
 game out of it. It refuses to start without isl_layout.json + isl_ec.bmp in the run folder.
+
+## Vision review (2026-10-09): the local vision model on the pilot shots
+
+`tools/vision_review.py` sends each pilot shot (a downscaled JPEG, 1024 px, q85) with four compact rubrics (director
+= frame/layers/hour/reveal/silhouette, artist = one landmark/grain/wear/palette/figure-ground, level = cover/sightlines/
+entries as they read from the picture, marks = the six checklist items + anything that looks wrong) to llama-server's
+OpenAI chat API (storysim's `small` server, port 8081, Gemma 4 12B; the server must run with `--mmproj <projector.gguf>`
+or it cannot see pictures; no mmproj file is in Documents\Tools\llm\models yet) and asks for JSON: four 0..1 scores, the
+findings (what / where / severity / rule) and one line. It writes `<run>\vision_review.md` + `.json` (+ `vision_marks.txt`
+with `--marks`: `MARK V<n> | <note> | <shot>` lines, markwatch.sh's own format), and `--against marks/QUEUE.md` reports
+the agreement with the user's notes by category. `--dry` writes the prompts to `<run>\vision_prompts\` without a call;
+`--fake FILE` feeds a canned answer (the parser's test). Hooks: town.py step 7b runs `vision_review.hook(RUN, name)` after
+the pilot when a server answers a 1 s `/health` probe (never started from there; report.md gets a "Vision review"
+section, or a skip note) and codirect.review adds a sixth entry `R["vision"]` (the mean score, printed as VISION beside
+MARKS, outside the five-role total and never a veto) when `<run>\vision_review.json` exists.

@@ -31,6 +31,7 @@ import takes  # noqa  (the informal taps: binder takes:)
 import rooms  # noqa  (interior plans for the shell build -> <run>/rooms.json)
 import pathlinks  # noqa  (pathnodes.py on the run folder + the drain / truck-road node chains -> <run>/isl_paths.t3d)
 import binder  # noqa
+import vision_review  # noqa  (the local vision model on the pilot shots; stdlib only, the model call is optional)
 
 args = [a for a in sys.argv[1:] if "=" not in a]
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
@@ -302,6 +303,15 @@ if PILOT:
     if cruns and os.path.exists(os.path.join(ib.PILOT, "runs", cruns[-1], "sheet.png")):
         shutil.copy(os.path.join(ib.PILOT, "runs", cruns[-1], "sheet.png"), os.path.join(RUN, "closeups_sheet.png"))
 
+# 7b. the vision model on the pilot shots (tools/vision_review.py): only when a llama-server with a vision projector
+# answers on its port (a 1 s probe); never started from here. Writes <run>/vision_review.md|json (+ vision_marks.txt).
+VISION = None
+if PILOT:
+    try:
+        VISION = step("vision review", lambda: vision_review.hook(RUN, name))
+    except Exception as e:                                                   # never sinks the build
+        print("vision review failed: %s" % e, flush=True)
+
 # 8. the report
 S = L["systems"]
 rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
@@ -314,6 +324,8 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
        "on the graded ground: score %.2f, %s buildings, hero %s" % (FRAME_G.get("total", 0), FRAME_G.get("in_frame"), FRAME_G.get("hero")) if FRAME_G else "", "",
        "## Co-direction (final = graded ground, isl_ec.bmp; codirection_final.txt)", "```", codirect.report(FINAL, "FINAL (graded)"), "```",
        "before grading (isl_e.bmp), for comparison: total %.3f, %s" % (PRE["total"], ", ".join("%s %.2f" % (k, PRE[k]["score"]) for k in ("writer", "director", "engineer", "level", "artist"))), "",
+       "## Vision review (the local vision model on the pilot shots; vision_review.md)",
+       *(VISION or ["- skipped: no vision server answered on %s (start it with --mmproj, then: py tools/vision_review.py %s)" % (vision_review.DEFAULT_SERVER, RUN)]), "",
        "## Story keys (story.txt: summit, water tower, drain, taps, conc, interiors)",
        open(os.path.join(RUN, "story.txt"), encoding="utf-8").read().strip() if os.path.exists(os.path.join(RUN, "story.txt")) else "-", "",
        "## Walks", "%d trips a day, %.1f km on foot; checks:" % (

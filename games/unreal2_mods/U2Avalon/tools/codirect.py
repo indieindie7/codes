@@ -749,6 +749,18 @@ def review(heightmap, layout_path, graded=None):
 
     # ---------------------------------------------------------------- the MARKS (outside the total)
     R["marks"] = marks_review(Z, ZG, L, sheets, run_dir=os.path.dirname(os.path.abspath(layout_path)))
+    # the vision model's look at the run's pilot shots (vision_review.py -> <run>/vision_review.json): the sixth
+    # entry, beside the five-role mean like the marks, never in it and never a veto
+    vj = os.path.join(os.path.dirname(os.path.abspath(layout_path)), "vision_review.json")
+    if os.path.exists(vj):
+        try:
+            V = json.load(open(vj, encoding="utf-8"))
+            if (V.get("mean") or {}).get("mean") is not None:
+                R["vision"] = {"score": round(float(V["mean"]["mean"]), 3), "veto": None, "notes": [
+                    "%d shots %s: %s" % (len(V.get("shots") or []), V.get("when", ""), ", ".join("%s %.2f" % (k, V["mean"][k]) for k in ("director", "artist", "level", "marks") if V["mean"].get(k) is not None))]
+                    + ["%.2f %s: %s" % (a["severity"], a["rule"], a["what"]) for a in (V.get("top") or [])[:3]]}
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            R["vision"] = {"score": 0.0, "veto": None, "notes": ["vision_review.json unreadable: %s" % e]}
 
     vetoes = [r["veto"] for r in R.values() if isinstance(r, dict) and r.get("veto")]
     sc = [max(1e-3, R[k]["score"]) for k in ("writer", "director", "engineer", "level", "artist")]
@@ -764,6 +776,8 @@ def report(R, label=""):
     if "marks" in R:                          # the user's marks: scored beside the total, never in it
         lines.append("  %-8s %.2f  %s" % ("MARKS", R["marks"]["score"], " | ".join(R["marks"]["notes"])))
         lines.append("           needs the game: " + " | ".join(R["marks"]["needs_in_game"]))
+    if "vision" in R:                         # the vision model on the pilot shots: beside the total, never in it
+        lines.append("  %-8s %.2f  %s" % ("VISION", R["vision"]["score"], " | ".join(R["vision"]["notes"])))
     return "\n".join(lines)
 
 
