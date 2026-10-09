@@ -116,7 +116,7 @@ def write_t3d(path, actors):
 def stage_t3d():
     hm = os.path.join(RUN, "isl_ec.bmp")
     run(["py", os.path.join(TOOLS, "story_export.py"), os.path.join(RUN, "isl_layout.json"),
-         "out=" + os.path.join(RUN, "remake_story.t3d"), "pkg=" + LIB, "entry=" + o.get("entry", "stair"), "heightmap=" + hm])
+         "out=" + os.path.join(RUN, "remake_story.t3d"), "pkg=" + LIB, "entry=" + o.get("entry", "stair"), "heightmap=" + hm, "start=dock"])   # + remake_start.json
     run(["py", os.path.join(TOOLS, "shells.py"), RUN, "out=" + os.path.join(RUN, "remake_shells.t3d"), "pkg=" + LIB])
     if o.get("tower") != "1":
         tw = os.path.join(RUN, "remake_shells_tower.t3d")
@@ -224,14 +224,10 @@ def stage_map():
         ps = ed.actors("PlayerStart")
         if ps:
             if start == "dock":
-                # the main road's first point, on the graded ground (the dock's own layout z is under the sea:
-                # a PlayerStart there spawned no pawn - "AddDefaultInventory: Assertion failed")
-                import story_export  # noqa
-                gz = story_export.ground_fn(os.path.join(RUN, "isl_ec.bmp"))
-                sp = L.get("spine") or (L.get("roads") or [[]])[0]
-                p0, p1 = sp[0], sp[min(3, len(sp) - 1)]
-                yaw = int(round(math.degrees(math.atan2(p1[1] - p0[1], p1[0] - p0[0])) * 65536 / 360)) % 65536
-                ops.move(ps[0]["Name"], p0[0], p0[1], gz(p0[0], p0[1]) + 100, pitch=0, yaw=yaw, roll=0)
+                # story_export.dock_start (e432e5b): the spine point nearest the dock, walked inland until the ground
+                # is 40 UU over the sea, Z = ground + 54 + 30, yaw along the spine (remake_start.json)
+                st = json.load(open(os.path.join(RUN, "remake_start.json")))
+                ops.move(ps[0]["Name"], st["X"], st["Y"], st["Z"], pitch=0, yaw=int(st["Yaw"]) % 65536, roll=0)
             else:
                 ops.move(ps[0]["Name"], pitch=62805)      # TutA's command room: compose.PITCH_RU (-15 deg)
         ops.stop()
