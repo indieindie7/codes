@@ -123,3 +123,35 @@ squatter guard.
   sizes and the segments (grate, culvert, junction room, sluice gallery, outfall). The shell build needs a
   `B_culvert` part (artist s. 5).
 - `rooms.json` is input for the hollow-shell kit (engineer s. 2.0), which doesn't exist yet.
+
+## Round 3, unfinished (stopped 2026-10-09: the PC was powering off)
+
+No code changed in round 3; these items are the plan, not done:
+1. **An edge-only hero counts as outside the frame** (u < 0.1 or > 0.9).
+   - anchors.summit: drop the half bonus for edge spots, and break ties among inner spots by height over the works.
+   - compose.py: the parti hero counts as the window hero only when it is inner. Otherwise the cooling towers stay
+     the window hero (plan D1 fallback c).
+2. **Water tower (E14'):** in water_tower_site, pick the LOWEST candidate whose head is >= 28 m (target 28-50 m)
+   over the highest floor of everything it serves, the hero included. Compute the head per candidate. If no
+   candidate reaches 28 m, take the one with the most head.
+3. **Beat 1.** codirect.serial already tests the hero.
+   - Add a cheap occluder: anchors.dock_occluder() puts a B_shed_a stack on the first station's sightline to the
+     hero, when the free ground allows it.
+   - Write it to L["occluders"] and place it in clutter.py. codirect's _boxes must count it.
+   - If no occluder fits, beat 1 is a WARN (0.5 credit), not a fail.
+   - LD2: a gap over 60 s becomes a note; the score only counts past 90 s.
+   - LD7: give credit for the drain's quiet stretch (25-60 s before the sluice gallery).
+4. **pathnodes.py** (f112e91) runs in town.py's story step.
+   - When isl_clutter.t3d doesn't exist yet, run it in a temp folder with an empty clutter T3D, and run it again
+     after the clutter step in a full build.
+   - Add PathNodes along the drain (invert + 60 UU) and the hero's truck road, from anchors.py.
+   - Report the parts before and after: Town7 had 7 parts (1887 + 78 + 40 + ...).
+5. **A "marks" review in codirect** (redesign/2026-10-09/marks_checklist.md): its own section, scored with notes,
+   no veto, kept out of the 5-role total so the scores stay comparable.
+   - Floating props: building footprints on graded ground, and clutter Z against the ground.
+   - Horizon rigs: rigs, islets and far_islands inside the map extent and visible from the eye.
+   - Q74: rich high, poor low, no poor housing on the town's top 10 %.
+   - No cranes on pyramids: the hero's `model:` must not be a Crane. NOTE: liandri_tower.md says `model:
+     CraneTower`, while the checklist says the summit tower is the PyramidTower (Q83), so this check would fail
+     today.
+   - Interiors too dark and rain roofs: list them as "needs in-game check", plus binder hints (lit: no, roof: none).
