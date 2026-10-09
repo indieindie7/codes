@@ -1,5 +1,8 @@
 # Avalon redesign, 2026-10-09: the combined plan
 
+> **Decisions, 2026-10-09:** D1–D4 approved on the 9th (hero liandri_tower, Hawkins male on the catwalk, ~470 vs 380, Liandri House glass-only). D5–D11 all approved the next morning with the team's picks ("all, it sounds very good"): 12 palette stripes, beats on TutA + dock-start generated maps, the combined drain ending, hostile dorm-square security, the engineer's process chain, the plant control room on hall_b, the binder folds. Window pitch −15 (Advent chat's call). Hints off, no grenade launcher, never AI voice.
+
+
 This merges the five role files in this folder: [writer.md](writer.md), [director.md](director.md),
 [engineer.md](engineer.md), [level_designer.md](level_designer.md) and [artist.md](artist.md). It was written during
 the playtest swap (PIPELINE.md "Playtest swap"): nothing was generated, rendered, launched or downloaded. The web
