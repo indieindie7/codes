@@ -1,0 +1,719 @@
+{
+ "E1": {
+  "name": "Dock Yard",
+  "size": [
+   3200,
+   2400
+  ],
+  "target": "breaks 50-60 %",
+  "check": {
+   "cover": 14,
+   "entries": 3,
+   "sight_broken": 0.51,
+   "from_P": 0.36,
+   "nearest_cover_uu": [
+    250,
+    787
+   ],
+   "spawns": 4,
+   "high": 1
+  },
+  "pieces": [
+   [
+    "water",
+    0,
+    2000,
+    3200,
+    400,
+    "sea"
+   ],
+   [
+    "deck",
+    150,
+    1700,
+    1300,
+    140,
+    "jetty deck"
+   ],
+   [
+    "P",
+    250,
+    1770,
+    "jetty"
+   ],
+   [
+    "pillar",
+    1650,
+    1780,
+    60,
+    "crane leg"
+   ],
+   [
+    "pillar",
+    1900,
+    1780,
+    60,
+    "crane leg"
+   ],
+   [
+    "pillar",
+    1650,
+    1530,
+    60,
+    "crane leg"
+   ],
+   [
+    "pillar",
+    1900,
+    1530,
+    60,
+    "crane leg"
+   ],
+   [
+    "high",
+    1775,
+    1655,
+    400,
+    "crane cab (ladder)"
+   ],
+   [
+    "half",
+    500,
+    1450,
+    320,
+    90,
+    "crates"
+   ],
+   [
+    "full",
+    1150,
+    1350,
+    480,
+    200,
+    "container"
+   ],
+   [
+    "half",
+    2450,
+    1450,
+    360,
+    90,
+    "pallets"
+   ],
+   [
+    "full",
+    2900,
+    1250,
+    160,
+    480,
+    "container stack"
+   ],
+   [
+    "full",
+    1500,
+    300,
+    420,
+    160,
+    "container"
+   ],
+   [
+    "solid",
+    150,
+    750,
+    520,
+    420,
+    "quay shed"
+   ],
+   [
+    "half",
+    1050,
+    950,
+    200,
+    110,
+    "forklift"
+   ],
+   [
+    "spawn",
+    1350,
+    800,
+    "boat: Medium at +10 s"
+   ],
+   [
+    "half",
+    1650,
+    750,
+    260,
+    90,
+    "barrels"
+   ],
+   [
+    "full",
+    2100,
+    950,
+    200,
+    480,
+    "container"
+   ],
+   [
+    "solid",
+    2750,
+    700,
+    300,
+    300,
+    "silo (hides the tower)"
+   ],
+   [
+    "half",
+    500,
+    450,
+    220,
+    80,
+    "crates"
+   ],
+   [
+    "half",
+    2450,
+    450,
+    220,
+    80,
+    "barrels"
+   ],
+   [
+    "spawn",
+    1200,
+    1150,
+    "merc"
+   ],
+   [
+    "spawn",
+    1800,
+    1100,
+    "merc"
+   ],
+   [
+    "spawn",
+    2300,
+    700,
+    "merc"
+   ],
+   [
+    "entry",
+    60,
+    300,
+    "shore path"
+   ],
+   [
+    "exit",
+    1600,
+    30,
+    "dock gate (spine)"
+   ],
+   [
+    "entry",
+    3140,
+    300,
+    "back lane"
+   ]
+  ]
+ },
+ "E2": {
+  "name": "Dorm Square",
+  "size": [
+   2400,
+   2000
+  ],
+  "target": "breaks 55-70 %",
+  "check": {
+   "cover": 5,
+   "entries": 2,
+   "sight_broken": 0.54,
+   "from_P": 0.55,
+   "nearest_cover_uu": [
+    344,
+    590
+   ],
+   "spawns": 3,
+   "high": 2
+  },
+  "pieces": [
+   [
+    "solid",
+    100,
+    1350,
+    700,
+    550,
+    "dorm_c (dark, door torn)"
+   ],
+   [
+    "solid",
+    1500,
+    1600,
+    300,
+    250,
+    "memorial"
+   ],
+   [
+    "high",
+    1650,
+    1500,
+    160,
+    "memorial plinth"
+   ],
+   [
+    "P",
+    80,
+    1100,
+    "hall exit lane"
+   ],
+   [
+    "half",
+    900,
+    1050,
+    300,
+    80,
+    "sandbags"
+   ],
+   [
+    "full",
+    1450,
+    1000,
+    450,
+    120,
+    "barricade (faces the drainage)"
+   ],
+   [
+    "solid",
+    1950,
+    650,
+    400,
+    500,
+    "checkpoint"
+   ],
+   [
+    "high",
+    2150,
+    900,
+    300,
+    "checkpoint roof (stair)"
+   ],
+   [
+    "spawn",
+    1900,
+    1200,
+    "checkpoint door: merc"
+   ],
+   [
+    "spawn",
+    1650,
+    1180,
+    "merc"
+   ],
+   [
+    "spawn",
+    2150,
+    900,
+    "Heavy (roof)"
+   ],
+   [
+    "solid",
+    100,
+    300,
+    800,
+    550,
+    "dorm"
+   ],
+   [
+    "half",
+    1000,
+    600,
+    260,
+    90,
+    "laundry carts"
+   ],
+   [
+    "half",
+    1200,
+    300,
+    200,
+    90,
+    "carts"
+   ],
+   [
+    "half",
+    1300,
+    1450,
+    120,
+    220,
+    "husk pile (half)"
+   ],
+   [
+    "entry",
+    30,
+    150,
+    "back lane"
+   ],
+   [
+    "exit",
+    1400,
+    30,
+    "road north (drainage path)"
+   ]
+  ]
+ },
+ "E3": {
+  "name": "Cooling-Tower Basin",
+  "size": [
+   3600,
+   3000
+  ],
+  "target": "bowl: pillars break 35-50 %",
+  "check": {
+   "cover": 7,
+   "entries": 3,
+   "sight_broken": 0.57,
+   "from_P": 0.44,
+   "nearest_cover_uu": [
+    538,
+    969
+   ],
+   "spawns": 3,
+   "high": 2
+  },
+  "pieces": [
+   [
+    "terrace",
+    0,
+    2700,
+    3600,
+    300,
+    300,
+    "rim (+300)"
+   ],
+   [
+    "high",
+    900,
+    2850,
+    300,
+    "pipe-rack walkway"
+   ],
+   [
+    "high",
+    2700,
+    2850,
+    300,
+    "rim: merc sniper"
+   ],
+   [
+    "P",
+    150,
+    2450,
+    "sluice mouth (from I3)"
+   ],
+   [
+    "exit",
+    3500,
+    2450,
+    "ramp to spine"
+   ],
+   [
+    "pillar",
+    1500,
+    1950,
+    220,
+    "tower leg"
+   ],
+   [
+    "pillar",
+    1700,
+    1450,
+    220,
+    "tower leg"
+   ],
+   [
+    "pillar",
+    1500,
+    950,
+    220,
+    "tower leg"
+   ],
+   [
+    "water",
+    400,
+    1700,
+    600,
+    350,
+    "puddles"
+   ],
+   [
+    "half",
+    2400,
+    1950,
+    360,
+    120,
+    "pump skid"
+   ],
+   [
+    "half",
+    500,
+    1250,
+    200,
+    120,
+    "valve"
+   ],
+   [
+    "solid",
+    2600,
+    1100,
+    450,
+    400,
+    "control hut"
+   ],
+   [
+    "full",
+    2500,
+    1050,
+    100,
+    500,
+    "hut wall"
+   ],
+   [
+    "spawn",
+    2550,
+    1300,
+    "mercs: hut door"
+   ],
+   [
+    "spawn",
+    300,
+    800,
+    "Skaarj: second culvert"
+   ],
+   [
+    "spawn",
+    3000,
+    300,
+    "Skaarj: drain grate"
+   ],
+   [
+    "half",
+    2400,
+    550,
+    200,
+    100,
+    "crates"
+   ],
+   [
+    "entry",
+    60,
+    300,
+    "maintenance stair"
+   ],
+   [
+    "entry",
+    3000,
+    60,
+    "drain grate (Skaarj only)"
+   ]
+  ]
+ },
+ "E4": {
+  "name": "Company Gate and Stair Cut-in",
+  "size": [
+   2800,
+   2400
+  ],
+  "target": "terrace edges = cover",
+  "check": {
+   "cover": 6,
+   "entries": 4,
+   "sight_broken": 0.74,
+   "from_P": 0.67,
+   "nearest_cover_uu": [
+    666,
+    1044
+   ],
+   "spawns": 3,
+   "high": 1
+  },
+  "pieces": [
+   [
+    "terrace",
+    0,
+    0,
+    2800,
+    800,
+    160,
+    "terrace 1 (+160)"
+   ],
+   [
+    "terrace",
+    0,
+    800,
+    2800,
+    800,
+    360,
+    "terrace 2 (+360)"
+   ],
+   [
+    "terrace",
+    0,
+    1600,
+    2800,
+    800,
+    600,
+    "terrace 3 / tower plateau (+600)"
+   ],
+   [
+    "solid",
+    0,
+    780,
+    1200,
+    40,
+    "terrace wall"
+   ],
+   [
+    "solid",
+    1500,
+    780,
+    1300,
+    40,
+    "terrace wall"
+   ],
+   [
+    "solid",
+    0,
+    1580,
+    1250,
+    40,
+    "battered company wall"
+   ],
+   [
+    "solid",
+    1450,
+    1580,
+    900,
+    40,
+    "battered company wall"
+   ],
+   [
+    "entry",
+    1350,
+    1600,
+    "STAIR CUT-IN (192 wide)"
+   ],
+   [
+    "entry",
+    1350,
+    800,
+    "ramp"
+   ],
+   [
+    "entry",
+    2600,
+    1200,
+    "side switchback (long, covered)"
+   ],
+   [
+    "P",
+    200,
+    300,
+    "from the spine"
+   ],
+   [
+    "half",
+    1500,
+    300,
+    400,
+    90,
+    "barrier"
+   ],
+   [
+    "spawn",
+    2200,
+    400,
+    "drop pod 2 (visible streak)"
+   ],
+   [
+    "half",
+    300,
+    1100,
+    300,
+    100,
+    "planters"
+   ],
+   [
+    "half",
+    1100,
+    1350,
+    220,
+    90,
+    "dead mercs' crates"
+   ],
+   [
+    "half",
+    600,
+    500,
+    260,
+    90,
+    "crates"
+   ],
+   [
+    "high",
+    2400,
+    1800,
+    600,
+    "parapet corner"
+   ],
+   [
+    "solid",
+    1800,
+    1000,
+    600,
+    450,
+    "company_store"
+   ],
+   [
+    "spawn",
+    900,
+    1200,
+    "drop pod 1"
+   ],
+   [
+    "full",
+    300,
+    1800,
+    600,
+    120,
+    "parapet"
+   ],
+   [
+    "solid",
+    1200,
+    1900,
+    500,
+    350,
+    "generator_house"
+   ],
+   [
+    "half",
+    2000,
+    1800,
+    300,
+    100,
+    "fuel drums"
+   ],
+   [
+    "spawn",
+    1350,
+    2000,
+    "Berserker (charges the stair)"
+   ],
+   [
+    "exit",
+    700,
+    2340,
+    "tower base, I1 door"
+   ]
+  ]
+ }
+}
