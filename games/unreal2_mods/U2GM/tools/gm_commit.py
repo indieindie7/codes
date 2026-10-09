@@ -7,7 +7,8 @@ r"""gm_commit - bake a U2GM session's journal into a real map with UnrealEd, the
   options: --family tuta  --map TutA_Live2 (the source map; default: CommitRequest's, else the newest
            <Map>_LiveN, else <Map>)  --out-map NAME  --no-ops (T3D copy/delete/re-import, no ops DLL)
            --full-light (LIGHT APPLY instead of CHANGED=1)  --bake (U2Bake pass, needs the ops DLL)
-           --paths (PATHS BUILD)  --no-send (don't tell the game)  --ini/--section/--key (another journal,
+           --paths changed|full|off (default auto: PATHS DEFINECHANGED near the edits when the map has
+           NavigationPoints and the commit touches terrain or meshes; full = PATHS BUILD)  --no-send (don't tell the game)  --ini/--section/--key (another journal,
            e.g. AvalonEditor's: --ini U2AvalonCards.ini --section U2AvalonCards.AvalonEditor)
 
 The journal: <game>\System\U2GM.ini, [U2GM.GMMaster] Ops[k]="@family op ..." (read only: the game owns
@@ -29,7 +30,11 @@ How it is baked (on a copy: the source map is loaded and saved under the next fr
     DrawScale changed, or every one with --no-ops, goes the T3D way: copy, ACTOR DELETE, edited, re-imported.
   * hide: select + ACTOR DELETE.   * mesh: one MAP IMPORTADD of StaticMeshActor blocks (Group=U2GM).
   * light: !light on the moved and imported meshes, then LIGHT APPLY CHANGED=1 (the real incremental mode).
-  * --bake: !meshverts -> U2Bake/bake.py --mode add -> !bakeload (untested chain).  --paths: PATHS BUILD.
+  * --bake: !meshverts -> U2Bake/bake.py --mode add -> !bakeload (untested chain).
+  * paths (2026-10-09, research_notes/Lighter AI pathing for UE2): the NavigationPoints within 1200 UU (the engine's
+    hard pair limit) of an edit (terrain brush rectangle + radius, a placed / new mesh) are nudged up 1 UU and back
+    with the ops DLL (an editor move sets bPathsChanged), then PATHS DEFINECHANGED rebuilds only the pairs with a
+    changed end (FPathBuilder::defineChangedPaths) - seconds instead of a full define. --paths full: PATHS BUILD.
 
 Double apply: the baked lines must not replay on the baked map. The game is told, through
 System\U2GMPanel.txt (q-lines in the watcher's own session, 2^30 and up), "gm baked STAMP K TEXT" for every
@@ -439,8 +444,8 @@ class DryEd:
     def deselect(self):
         self._c("ACTOR SELECT NONE")
 
-    def actors(self, cls):
-        self._c("ACTOR SELECT OFCLASS CLASS=%s / EDIT COPY (read)" % cls)
+    def actors(self, cls, subclasses=False):
+        self._c("ACTOR SELECT %s CLASS=%s / EDIT COPY (read)" % ("OFSUBCLASS" if subclasses else "OFCLASS", cls))
         if cls != "TerrainInfo":
             return []
         t = self.terrain
@@ -532,9 +537,50 @@ class Bake:
             ed.ok("LIGHT APPLY" if self.full_light else "LIGHT APPLY CHANGED=1", allow=("Couldn't bring window", "Can't find"))
         if self.bake:
             self.u2bake(ed, ops, dry)
-        if self.paths:
-            ed.paths(full=True)
+        self.repath(ed, ops)
         ed.save(self.out)
+
+    # -- AI paths: only near the edits (DEFINECHANGED), or a full build, or none
+    PAIR_UU = 1200.0
+
+    def edit_spots(self):
+        """(x, y, r) of every edit that can change walkability"""
+        spots = []
+        for _s, _t, o in self.ops_list:
+            if o["kind"] == "terrain":
+                spots.append((o["x"], o["y"], o["r"]))
+            elif o["kind"] in ("place", "mesh"):
+                spots.append((o["loc"][0], o["loc"][1], 256.0))
+        return spots
+
+    def repath(self, ed, ops):
+        mode = self.paths if isinstance(self.paths, str) else ("full" if self.paths else "auto")
+        if mode == "off":
+            return
+        if mode == "full":
+            ed.paths(full=True)
+            self.log("  paths: PATHS BUILD (full)")
+            return
+        spots = self.edit_spots()
+        if not spots:
+            if mode == "changed":
+                self.log("  paths: no terrain or mesh edits, nothing to rebuild")
+            return
+        navs = ed.actors("NavigationPoint", subclasses=True)
+        if not navs:
+            self.log("  paths: the map has no NavigationPoints")
+            return
+        near = [a for a in navs if a.get("Location") and any(
+            math.hypot(a["Location"][0] - x, a["Location"][1] - y) <= r + self.PAIR_UU for x, y, r in spots)]
+        if ops is not None:
+            for a in near:                    # an editor move marks bPathsChanged; up 1 UU and back
+                x, y, z = a["Location"]
+                ops.move(a["Name"], x, y, z + 1)
+                ops.move(a["Name"], x, y, z)
+        else:
+            self.log("  paths: no ops DLL, nodes not nudged (DEFINECHANGED sees only nodes already flagged)")
+        ed.ok("PATHS DEFINECHANGED")
+        self.log("  paths: DEFINECHANGED around %d edit(s), %d of %d NavigationPoints nudged" % (len(spots), len(near), len(navs)))
 
     # -- terrain
     def terrain(self, ed):
@@ -850,7 +896,7 @@ def main(argv=None):
     ap.add_argument("--no-ops", action="store_true")
     ap.add_argument("--full-light", action="store_true")
     ap.add_argument("--bake", action="store_true")
-    ap.add_argument("--paths", action="store_true")
+    ap.add_argument("--paths", nargs="?", const="changed", default="auto", choices=("auto", "changed", "full", "off"))
     ap.add_argument("--no-send", action="store_true")
     a = ap.parse_args(argv)
     if a.watch:
