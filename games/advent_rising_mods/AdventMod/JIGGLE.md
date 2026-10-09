@@ -1,4 +1,4 @@
-# Flesh jiggle on the Seekers (2026-10-09, phase A + C built offline; B and the game test wait for the GPU)
+# Flesh jiggle on the Seekers (2026-10-09: A + C built, run in game the same day; B below)
 
 Secondary motion for the Seeker infantry's flesh: the belly, chest, hump, throat, the four upper
 arms and the two thighs lag and overshoot the body's own motion and swing away from hits. The
@@ -131,7 +131,7 @@ inpainting model, no downloads over 2 GB), outputs in `Documents\AdventRising_me
 
   | key | default | |
   |---|---|---|
-  | bJiggle | False | on/off (off until verified in game) |
+  | bJiggle | True | on/off (on since the runs below) |
   | Gain | 1.0 | on every bone's drive |
   | StiffScale / DampScale | 1.0 / 1.0 | on every bone's k / d |
   | HitStrength | 2.0 | rad/s of swing per hit at 20 damage (x0.3..2 by damage) |
@@ -173,3 +173,25 @@ Gotchas met: Blender 5's actions have no `fcurves` (set the keyframe interpolati
 instead); a stiff soft body blows up to NaN on the explicit integrator (goal spring 0.5, 4-60
 substeps, error 0.02 is stable); the .amesh bone record is 96 bytes; a per-vertex least-squares
 turn goes wild on the few loose points of a violent clip (the centroid is the mass that jiggles).
+
+## Results (2026-10-09, hidden runs on level14sectiond, build of master c07dd2b + the two fixes below)
+
+Harness: `scratchpad\jiggleun_jiggle_test.ps1` (`-On`, `-Fight`), on `test_run.ps1`. Four runs:
+bJiggle off (baseline), on, on again after the first fix, and a 3-minute fight with three spawned
+Seeker infantry (`-Fight`: 12 fire/capture cycles). The game ran to the end of every run; 0
+`exception`, 0 `crash:` lines, 0 callback faults.
+
+| what | result |
+|---|---|
+| relink | every Seeker infantry in range (4 placed `SeekerInfantry_PulseRifle*`/`SeekerInfantry4`, the spawned ones) logged "relinked to the jiggle mesh" then "hooked ... 10 bones, 88 posed"; they keep walking, aiming, firing and dying after the relink (fight run: 7 relinks, 32 hits) |
+| skin | the relinked Seekers draw with their own skin (Skins[0]): no white or checkered body in any frame |
+| convention | "bone coords convention: rows are the rotation's rows (0.00 vs 30.76)" on the first callback |
+| cost | 0.8-0.9 us per callback, ~1170 callbacks/s per pawn (the pose is built twice a tick) |
+| amplitudes, first on-run | every bone pegged at its clamp (means 15-25 deg) on moving Seekers: the pose build runs twice per tick, the second with a dt near 0, and the finite difference blew up to MaxAccel. **Fix**: a dt under 4 ms is the same frame again: no new motion, nothing integrated |
+| amplitudes after the fix | standing/idle 0.1-0.9 deg mean (max 1-5); walking/fighting 4-9 deg mean, peaks at the clamp (14-30) on the throat, chest and arms; a hit adds a visible kick (J_ArmL 1.8/18.6 on SeekerInfantry3 after pistol hits) |
+| hits | `jiggle: hit on <pawn>, strength 0.6..4.0` for every pistol (0.6) and heavier hit; ModReact.Flinch reaches the DLL |
+| the spawned `SeekerInfantry1` | 0.0 all along in every run: hooked, posed (3000 callbacks / 5 s) but it never moves nor gets hit (the pilot's HURT found the nearer placed Seekers): the springs idle at 0 as they should |
+| off/on frames | `jiggle_off_on_pairs.jpg`, `fight_sheet.jpg` (scratchpad): the bodies are intact in every frame, no stretched or detached flesh, the left arm's guard sits on the arm as before (structurally guaranteed: its points carry no J_ weight, verified on the game's copy of the mesh) |
+
+bJiggle is therefore on by default. Not measured yet: how it reads in motion to the user (stills can't
+show the 5-10 deg of lag); the Gain and the per-bone clamps are the knobs.

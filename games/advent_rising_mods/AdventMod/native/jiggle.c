@@ -302,7 +302,10 @@ static void Spring(JPawn* P, JBone* B, FCoords* Ret, const FCoords* Cur, void* I
 	QueryPerformanceCounter(&Now);
 	dt = B->LastT.QuadPart ? (float)((Now.QuadPart - B->LastT.QuadPart) / (double)Freq.QuadPart) : 0.0f;
 	B->LastT = Now;
-	if (dt <= 0 || dt > 0.1f) { B->History = 0; B->PosW[0] = cw; B->History = 1; dt = 0; }
+	/* the pose is built more than once per tick (CalculateBoneLocations, then the render): a dt
+	   under 4 ms is the same frame again, no new motion to read and nothing to integrate */
+	if (dt > 0 && dt < 0.004f) { B->LastT.QuadPart -= (LONGLONG)(dt * Freq.QuadPart); dt = -1; }
+	else if (dt <= 0 || dt > 0.1f) { B->History = 0; B->PosW[0] = cw; B->History = 1; dt = 0; }
 	a = V(0, 0, 0);
 	if (dt > 0)
 	{
@@ -515,6 +518,7 @@ static int HitCmd(const wchar_t* Arg)
 			/* a push along d swings the mass about the joint: omega += strength * (c x d) / |c| */
 			B->Impulse = Add(B->Impulse, Mul(Cross(c, dl), strength / (Len(c) + 1e-3f)));
 		}
+		if (LogOn) Note(L"jiggle: hit on %ls, strength %.2f along %.2f %.2f %.2f", Name, strength, d.x, d.y, d.z);
 		return 1;
 	}
 	return 0;

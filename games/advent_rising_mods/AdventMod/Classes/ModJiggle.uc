@@ -8,7 +8,7 @@
 // The springs per bone come from ModJiggleBones (generated from the soft-body fit), scaled by
 // StiffScale / DampScale / Gain here, each overridable per bone through OverK/OverD/OverGain/
 // OverMaxDeg (0 = keep the table's).
-// Config [AdventMod.ModJiggle]: bJiggle (off until verified in game), Gain, Range, bJiggleLog
+// Config [AdventMod.ModJiggle]: bJiggle (on since the 2026-10-09 runs, JIGGLE.md), Gain, Range, bJiggleLog
 // (the DLL's 5-s amplitude lines), StiffScale, DampScale, HitStrength (rad/s of swing per hit at
 // 20 damage), MaxAccel (units/s^2 the driver is clamped to), bRelink (Seeker infantry in range
 // get LinkMesh to the jiggle mesh, once each), the Over* arrays.
@@ -264,7 +264,7 @@ function Tick(float DeltaTime)
 
 defaultproperties
 {
-     bJiggle=False
+     bJiggle=True
      Gain=1.000000
      Range=3500.000000
      bJiggleLog=False
