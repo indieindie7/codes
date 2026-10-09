@@ -47,7 +47,9 @@ def contains(path, needle):
 
 # refusals before anything else
 ufile = "System/AdventMod-graphics.u" if GRAPHICS else "System/AdventMod.u"
-if contains(os.path.join(HERE, ufile), "SeekerSkinJ"):
+# the plain build names the texture in ModJiggle's code ("SeekerSkinJ" twice); only the -JiggleSkin
+# build carries the imported texture, whose source file name survives in the package
+if contains(os.path.join(HERE, ufile), "seeker_infantry_filled"):
     refuse(ufile + " is a build.ps1 -JiggleSkin build (it carries the filled Seeker skin, a game texture).\n"
            "  Run build.ps1 with no switch (or -GraphicsOnly for the graphics edition) and try again.")
 if not contains(os.path.join(HERE, "System", "d3d8.dll"), "atmos"):
