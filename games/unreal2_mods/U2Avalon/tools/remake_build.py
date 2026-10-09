@@ -223,11 +223,15 @@ def stage_map():
         ed.deselect()
         ps = ed.actors("PlayerStart")
         if ps:
-            if start == "dock" and "dock" in L["buildings"]:
-                d = L["buildings"]["dock"]
-                sp = (L.get("spine") or (L.get("roads") or [[(d["x"], d["y"] + 1)]])[0])[0]    # spine: a list of points
-                yaw = int(round(math.degrees(math.atan2(sp[1] - d["y"], sp[0] - d["x"])) * 65536 / 360)) % 65536
-                ops.move(ps[0]["Name"], d["x"], d["y"], d.get("z", 0) + 120, pitch=0, yaw=yaw, roll=0)
+            if start == "dock":
+                # the main road's first point, on the graded ground (the dock's own layout z is under the sea:
+                # a PlayerStart there spawned no pawn - "AddDefaultInventory: Assertion failed")
+                import story_export  # noqa
+                gz = story_export.ground_fn(os.path.join(RUN, "isl_ec.bmp"))
+                sp = L.get("spine") or (L.get("roads") or [[]])[0]
+                p0, p1 = sp[0], sp[min(3, len(sp) - 1)]
+                yaw = int(round(math.degrees(math.atan2(p1[1] - p0[1], p1[0] - p0[0])) * 65536 / 360)) % 65536
+                ops.move(ps[0]["Name"], p0[0], p0[1], gz(p0[0], p0[1]) + 100, pitch=0, yaw=yaw, roll=0)
             else:
                 ops.move(ps[0]["Name"], pitch=62805)      # TutA's command room: compose.PITCH_RU (-15 deg)
         ops.stop()
