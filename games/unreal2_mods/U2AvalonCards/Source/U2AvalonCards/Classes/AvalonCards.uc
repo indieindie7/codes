@@ -43,6 +43,9 @@ var config int TreeLook[8];        // which tree picture (0-2)
 // X Y Z (a point in a room, about eye height) N rays go out to the walls; each wall gets a lamp 20 units over the
 // floor, set 12 units into the room (2026-10-08)
 var config string Lamps[32];
+// rooms the rain must not fall in although the roof trace sees sky (glass or other non-blocking ceilings, Q50):
+// one box per line, "X1 Y1 Z1 X2 Y2 Z2"
+var config string NoRain[16];
 var config string Props[256];      // 256 since 2026-10-08 (shanty ring + factory districts with roads and pipes)
 
 // rough blocking: plain boxes, one per line: "X Y Yaw SizeX SizeY SizeZ Lift Colour" (world units, Yaw in
@@ -230,6 +233,7 @@ function FromSet()
 
 	for (i = 0; i < ArrayCount(Props); i++) Props[i] = Set.Props[i];
 	for (i = 0; i < ArrayCount(Lamps); i++) Lamps[i] = Set.Lamps[i];
+	for (i = 0; i < ArrayCount(NoRain); i++) NoRain[i] = Set.NoRain[i];
 	for (i = 0; i < ArrayCount(Blocks); i++) Blocks[i] = Set.Blocks[i];
 	for (i = 0; i < ArrayCount(Cards); i++) Cards[i] = Set.Cards[i];
 	for (i = 0; i < ArrayCount(Extras); i++) Extras[i] = Set.Extras[i];
@@ -248,6 +252,7 @@ function ToSet()
 
 	for (i = 0; i < ArrayCount(Props); i++) Set.Props[i] = Props[i];
 	for (i = 0; i < ArrayCount(Lamps); i++) Set.Lamps[i] = Lamps[i];
+	for (i = 0; i < ArrayCount(NoRain); i++) Set.NoRain[i] = NoRain[i];
 	for (i = 0; i < ArrayCount(Blocks); i++) Set.Blocks[i] = Blocks[i];
 	for (i = 0; i < ArrayCount(Cards); i++) Set.Cards[i] = Cards[i];
 	for (i = 0; i < ArrayCount(Extras); i++) Set.Extras[i] = Extras[i];
@@ -492,6 +497,12 @@ function Live(string S, PlayerController PC)
 		if (i >= 0 && i < ArrayCount(Cards))
 			Cards[i] = Rest(Arg);
 		break;
+	case "NORAIN":
+		if (i >= 0 && i < ArrayCount(NoRain))
+			NoRain[i] = Rest(Arg);
+		if (LiveStorm != None)
+			StormBoxes(LiveStorm);
+		break;
 	case "LAMPS":
 		if (i >= 0 && i < ArrayCount(Lamps))
 			Lamps[i] = Rest(Arg);
@@ -681,11 +692,32 @@ function Storm()
 	St.Gloom = StormGloom;
 	St.Cycle(StormClear, StormRamp, StormHold);
 	St.GloomFog = StormGloomFog;
+	StormBoxes(St);
 	for (i = 0; i < 5; i++)
 		if (StormThunder[i] != "")
 			St.AddThunder(Sound(DynamicLoadObject(StormThunder[i], class'Sound', true)));
 	Made[Made.Length] = St;
 	Log("Cards: storm on "$MapName()$", "$St.Drops.Length$" drops, "$St.NThunder$" thunder sounds");
+}
+
+// the NoRain boxes into the storm (at the start, and live)
+function StormBoxes(AvalonStorm St)
+{
+	local int i;
+	local vector A, B;
+
+	St.BoxMin.Length = 0;
+	St.BoxMax.Length = 0;
+	for (i = 0; i < ArrayCount(NoRain); i++)
+		if (NoRain[i] != "")
+		{
+			A.X = float(Word(NoRain[i], 0)); A.Y = float(Word(NoRain[i], 1)); A.Z = float(Word(NoRain[i], 2));
+			B.X = float(Word(NoRain[i], 3)); B.Y = float(Word(NoRain[i], 4)); B.Z = float(Word(NoRain[i], 5));
+			St.BoxMin[St.BoxMin.Length] = vect(1,0,0) * FMin(A.X, B.X) + vect(0,1,0) * FMin(A.Y, B.Y) + vect(0,0,1) * FMin(A.Z, B.Z);
+			St.BoxMax[St.BoxMax.Length] = vect(1,0,0) * FMax(A.X, B.X) + vect(0,1,0) * FMax(A.Y, B.Y) + vect(0,0,1) * FMax(A.Z, B.Z);
+		}
+	St.bIndoors = !St.bIndoors;        // force the next roof check to re-apply
+	Log("Cards: "$St.BoxMin.Length$" no-rain box(es)");
 }
 
 function Motion()

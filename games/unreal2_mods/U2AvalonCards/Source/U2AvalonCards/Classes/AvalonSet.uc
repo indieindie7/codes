@@ -13,6 +13,7 @@ class AvalonSet extends Object
 
 var config bool bUsed;
 var config string Lamps[32];
+var config string NoRain[16];
 var config string Props[256];      // 256 since 2026-10-08 (shanty ring + factory districts with roads and pipes)
 var config string Blocks[128];
 var config string Cards[64];

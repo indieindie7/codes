@@ -34,6 +34,7 @@ class AvalonStorm extends Actor;
 var array<AvalonPuff> Drops;    // near drops, then the mid and far rain sheets (each puff's Glow = its layer 0/1/2)
 var int Slant;                  // the baked slant in use: 0 left, 1 straight, 2 right (from the wind across the view)
 var int NSheets;
+var array<vector> BoxMin, BoxMax;  // no-rain rooms (AvalonCards NoRain[], Q50): glass roofs the trace sees through
 var array<AvalonPuff> Splashes;  // short-lived crowns on the ground round the player (Age/Life/Size0 on each)
 var CardMesh Dome;              // the storm sky in the sky zone (None: AvalonSky.usx missing - the sprite deck only)
 var float DomeR;                // its radius (world units)
@@ -284,7 +285,7 @@ function Drop(AvalonPuff P, bool bAnyHeight)
 		S.Z -= FRand() * Top * 1.8;
 	P.SetLocation(S);
 	P.Start = S;
-	P.bHidden = FRand() > Intensity || !FastTrace(S + vect(0,0,6000), S);
+	P.bHidden = FRand() > Intensity || bIndoors || !FastTrace(S + vect(0,0,6000), S) || InBox(S);
 }
 
 event Tick(float DeltaTime)
@@ -409,7 +410,7 @@ function Splash(AvalonPuff P, vector E)
 	}
 	if (Trace(HitL, HitN, S - vect(0,0,2500), S + vect(0,0,80), false) == None || HitN.Z < 0.6)
 		return;
-	if (!FastTrace(HitL + vect(0,0,6000), HitL + vect(0,0,8)))
+	if (!FastTrace(HitL + vect(0,0,6000), HitL + vect(0,0,8)) || InBox(HitL + vect(0,0,8)))
 		return;
 	P.Size0 = 0.35 + FRand() * 0.45;
 	P.Glow = 0.35 + FRand() * 0.45;
@@ -417,6 +418,16 @@ function Splash(AvalonPuff P, vector E)
 	P.SetDrawScale(P.Size0 * 0.6);
 	P.SetLocation(HitL + vect(0,0,1) * 2);
 	P.bHidden = False;
+}
+
+function bool InBox(vector V)
+{
+	local int i;
+
+	for (i = 0; i < BoxMin.Length; i++)
+		if (V.X >= BoxMin[i].X && V.Y >= BoxMin[i].Y && V.Z >= BoxMin[i].Z && V.X <= BoxMax[i].X && V.Y <= BoxMax[i].Y && V.Z <= BoxMax[i].Z)
+			return true;
+	return false;
 }
 
 // the dome: in the sky zone at its view point, as big as fits inside the sky box (traces out to its walls)
@@ -514,7 +525,7 @@ function Roof(vector E)
 	local int i;
 
 	A = Trace(HitL, HitN, E + vect(0,0,2000), E, true);     // true: static-mesh ceilings count (the command room's)
-	bIn = A != None && (A == Level || A.bWorldGeometry || StaticMeshActor(A) != None);
+	bIn = (A != None && (A == Level || A.bWorldGeometry || StaticMeshActor(A) != None)) || InBox(E);
 	if (bIn == bIndoors)
 		return;
 	bIndoors = bIn;
