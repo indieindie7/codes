@@ -38,6 +38,28 @@ stb_image_write, UnityPCSS), the stray `U2Shaders\UsersjohnAppDataLocalTempg3.as
 `terrain_detail_preview.png` would go into the zip's `System\U2Shaders`, and the installer's "Done!"
 line still points at menus that no longer exist (Video > More Display Options).
 
+## Status after the fix pass (2026-10-09, source only, no build)
+
+| blocker | state |
+|---|---|
+| 1. -JiggleSkin `AdventMod.u` | **pending the build session**. `package.py` now refuses any `AdventMod.u` / `AdventMod-graphics.u` that contains `SeekerSkinJ` |
+| 2. stale `d3d8.dll` | **pending the build session**. `package.py` now refuses a `System\d3d8.dll` without the string `atmos` |
+| 3. defaults | **fixed in source**: `ModReact.bDeathAnims=True`, `ModMoves.bSlideMeter=False`, `ModPlayerBlood.bLogBones=False` (table rows below updated). Every other log/measure default was already off. Needs the plain build to take effect |
+| 4. `gideon_uniform_pbr.dds` | **fixed in package.py**: the .dds is not in the allow-list and the `pbr=2e106041 ...` line is cut from the shipped `U2Shaders.ini` (`package.py` refuses if the name is still in it). The local `U2Shaders\gideon_uniform_pbr.dds` and the rule in the repo's `System\U2Shaders.ini` stay for the user's own play. **The PBR skin rule is left out of the release**: a player can regenerate it with `tools\make_pbr_maps.py <Gideon's uniform texture, exported from the game's Textures as dds/png> gideon_uniform_pbr.dds uniform` (needs numpy + Pillow) into `System\U2Shaders\` and add `pbr=2e106041 gideon_uniform_pbr.dds 1.8 1.6` to `U2Shaders.ini` (`tools\tex_hash.py` gives the hash); not documented in the README |
+| 5. armour data | **fixed in package.py / installer / README**: `AdventMod\Armour\*.amesh` ship from the game folder build.ps1 wrote them to (`--game <folder>` to point elsewhere; refuses when none are there); never `*_faces.png` / `*_mask.png` (an image-extension guard refuses any png/tga/jpg in the list bar the LUT bmps). The installer copies them to `<game>\AdventMod\Armour` and removes them on uninstall; README manual step 2 names the folder; KNOWN LIMITS reworded |
+| licences | **fixed**: `Licenses\DearImGui-LICENSE.txt` (copied from the fork), `stb_image_write-LICENSE.txt` (the header's dual-licence block), `UnityPCSS-LICENSE.txt` (MIT, Copyright (c) 2017 Lucas Norr). AMD CAS and Khronos: no licence file exists locally (only the shader header's notice), so CREDITS.txt names the licence and where its text lives instead of a reproduced copy. CREDITS.txt: branch gi-cascades, the fork's licence (BSD-2 for the layer, GPL-3 for the U2Shaders additions), atmos.hlsl under Quilez, the technique credits, Kimodo clips, "no game textures" + the derived meshes |
+| stray shader files | **fixed**: `package.py` takes `U2Shaders\` by an explicit allow-list (the tracked files bar the pbr dds; .py + terrain_src.hlsl go to Source) and prints what it skipped |
+| installer "Done!" line | **fixed**: names the Options hub (Gameplay, Camera, Audio, Screen, Graphics, Quality, Accessibility, Controls) |
+| version | **fixed**: `VER = "3.0"`, README title "AdventMod 3.0 - ...", CHANGES header "3.0 (2026-10)". The "Gore (new in 2.1)" heading is true as written and stays; `package.py --graphics` now cuts on `"  Gore ("` instead of the version. `package.py --check` (new) runs every refusal and anchor lookup without writing a zip: it passes on a scratch copy with stand-in binaries, and on the real tree it refuses as it should (blockers 1 and 2) |
+
+**What remains for the build session** (in order): close the game; plain `build.ps1` (no switch); confirm
+`System\AdventMod.u` has no `SeekerSkinJ`; `build.ps1 -GraphicsOnly` for `System\AdventMod-graphics.u`,
+then plain again so the installed build is the full one; copy the fork's current `d3d8.dll`
+(`Documents\github\d3d8to9-gi\bin\Release`, c04da3a; contains `atmos`) into `System\`; commit
+`System\AdventMod.u`, `AdventMod-graphics.u`, `AdventNative.dll`, `d3d8.dll` by path; `package.py --check`,
+then `package.py` and `package.py --graphics` when the user asks for the zips. The play-test (section 4)
+still decides the "needs verdict" rows; nothing in this pass touched a feature switch.
+
 ---
 
 ## 1. Shipping defaults
@@ -69,8 +91,8 @@ played it; the play-test in section 4 decides. The user's live `System\AdventMod
 | ModNeeds | ForceHunger / ForceFatigue / ForceCuriosity | -1 | | ship -1 (test hooks) |
 | ModAction / ModBody / ModFeet / ModJiggle | bActionLog, bBodyLog, bFeetLog, bJiggleLog | False | | ship off |
 | ModFeet | bFeetMeter | False | | ship off (the foot-to-floor meter logs every 8 s) |
-| **ModMoves** | **bSlideMeter** | **True** | | **ship off**: it is a measuring tool (per-footfall bone reads for every walking character on screen, a log line every 8 s). It was left on for the stride-match work; nothing a player sees depends on it |
-| **ModPlayerBlood** | **bLogBones** | **True** | | **ship off**: a once-per-level log of the hand bones and weapon place. Harmless but a debug default |
+| ModMoves | bSlideMeter | False (was True; fixed 2026-10-09) | | ship off: it is a measuring tool (per-footfall bone reads for every walking character on screen, a log line every 8 s). It was left on for the stride-match work; nothing a player sees depends on it |
+| ModPlayerBlood | bLogBones | False (was True; fixed 2026-10-09) | | ship off: a once-per-level log of the hand bones and weapon place. Harmless but a debug default |
 | ModPilot | Steps | empty | | ship empty (a non-empty list makes the mod drive the player) |
 | ModLive | bResume etc. | False | | written by "live save" only; nothing to ship |
 
@@ -105,7 +127,7 @@ ship in the source (GPL) and are inert. `ModTestCommandlet` is a compiler-side c
 | ModGore | bHoundRagdolls | False | ship off (hound ragdolls crash the game; hounds use the hand-keyed clips) |
 | ModGore | budgets: MaxDecals 80, MaxHoles 160, MaxGibs 60, MaxDrops 24, MaxFootprints 40, MaxWounds 48, MaxClutter 150, MaxCoats 10, MaxDirt 60, MaxRubble 30 | | ship as is |
 | ModReact | bFlinch, bSpringFlinch, bStagger, bKnockdown, bDeathRagdoll, bClipFloor | True | ship on |
-| **ModReact** | **bDeathAnims** | **False** | **decide**: README.txt 2.1 says "new death animations by where the hit landed", 31 clips are compiled in, the user's own ini has `bDeathAnims=True` (they play with it on). Either ship True (what the user plays) or drop the sentence from the README. The audit's README keeps the sentence: set the default to True if the play-test confirms, or edit the README |
+| ModReact | bDeathAnims | True (was False; fixed 2026-10-09) | ship on: what the README promises and what the user plays with (their ini had it on). Play-test item 9 still has to confirm it |
 | ModReact | bDeathAnimRagdoll | False | ship off (a ragdoll begun from a clip crashed twice) |
 | ModReact | bPoweredRagdoll | False | ship off (calibration never finished) |
 | ModSever | bSever True, bStumps True | | ship on |
@@ -128,9 +150,9 @@ ship in the source (GPL) and are inert. `ModTestCommandlet` is a compiler-side c
 | ModJiggle | bJiggleSkin | False | **ship off, and the release build must be the plain build** (no `-JiggleSkin`): the filled skin is a game texture, local only (blocker 1) |
 | ModJiggle | bRelink True | | ship on (the mesh swap the jiggle needs) |
 
-**Recommended release set:** every table above as shipped, with these edits to `defaultproperties`:
-`ModMoves.bSlideMeter=False`, `ModPlayerBlood.bLogBones=False`, and `ModReact.bDeathAnims=True`
-(or the README sentence out). Everything marked "needs verdict" ships **on** if the play-test (section 4)
+**Recommended release set:** every table above as shipped; the three `defaultproperties` edits
+(`ModMoves.bSlideMeter=False`, `ModPlayerBlood.bLogBones=False`, `ModReact.bDeathAnims=True`) are done in
+the source (2026-10-09) and need the plain build. Everything marked "needs verdict" ships **on** if the play-test (section 4)
 passes and gets its config key named in the README so a player can turn it off; `bFootIK` goes on only
 with a yes from the user. Nothing else changes.
 
@@ -145,11 +167,12 @@ and with the README's installer paragraphs replaced):
 | System\AdventMod.int, AdventNative.dll | System\ | AdventNative.dll in the working tree is current (modified, uncommitted); commit it with the .u |
 | System\d3d8.dll | System\d3d8.dll | **stale** (blocker 2): copy the fork build (gi-cascades, the one in the game folder or `bin\Release`) |
 | System\U2Shaders.ini | written from System\U2Shaders.ini | current; see item 4 on the `pbr=` line |
-| System\U2Shaders\* | U2Shaders\* except *.py and terrain_src.hlsl | ships **two stray files**: `UsersjohnAppDataLocalTempg3.asm` (a compiler dump, git-ignored but on disk) and `terrain_detail_preview.png` (508 KB, git-ignored). `package.py` takes the whole folder: delete them locally before packaging or make package.py skip `.asm`/`.png`. Also ships `gideon_uniform_pbr.dds` (blocker 4) |
+| System\U2Shaders\* | the `SHADERS` allow-list in package.py | fixed 2026-10-09: the stray `.asm` / `_preview.png` and `gideon_uniform_pbr.dds` are skipped (the first two were taken by the old whole-folder copy) |
 | Source\U2Shaders\*.py, terrain_src.hlsl | | fine (generators) |
 | KarmaData\Advent.ka | | fine (full edition only) |
-| Install / Uninstall AdventMod.bat | | full zip only; **not in the Nexus zip** (correct). Its "Done!" message names the old menus |
-| Licenses\* | | see section 5: three licence texts missing |
+| Install / Uninstall AdventMod.bat | | full zip only; **not in the Nexus zip** (correct). "Done!" names the hub now; copies/removes `AdventMod\Armour` (2026-10-09) |
+| AdventMod\Armour\*.amesh | `<game>\AdventMod\Armour` (build.ps1's output; `--game`) | added 2026-10-09; the `*_faces.png` / `*_mask.png` beside them never (allow-list + image guard) |
+| Licenses\* | | seven files now (section 5); the three missing texts added 2026-10-09 |
 | Source\native\*.c | | fine (nothing third-party inside: only the CRT and windows.h) |
 | Source\Classes\*.uc | | fine; includes the test classes (ModPilot, ModTestCommandlet, ModArmourGrid), which is right for GPL source |
 | README.txt | README.txt (rewritten for the Nexus zip) | updated by this audit |
@@ -271,14 +294,14 @@ camera were not tried with foot IK.
 | Jimenez et al. Separable SSS (technique, own kernel) | sss.hlsl | technique | add a line |
 | Radiance cascades (Sannikov) | gi.hlsl | technique | add a line |
 | Valve lightwarp / Penner pre-integrated skin (technique) | char_skin.hlsl | technique | optional |
-| **UnityPCSS (Lucas Norr)** | pcss_proj.hlsl ("method after ... as implemented in UnityPCSS, MIT") | MIT | **missing**: add the MIT notice (Copyright (c) 2017 Lucas Norr) and a CREDITS line |
-| **Dear ImGui (Omar Cornut)** | compiled into d3d8.dll (fork source/imgui) | MIT | **missing**: copy `d3d8to9-gi\source\imgui\LICENSE.txt` |
-| **stb_image_write (Sean Barrett)** | compiled into d3d8.dll (fork source/stb_image_write.h) | public domain / MIT (dual) | **missing**: add a note or the MIT text |
+| UnityPCSS (Lucas Norr) | pcss_proj.hlsl ("method after ... as implemented in UnityPCSS, MIT") | MIT | yes (2026-10-09): UnityPCSS-LICENSE.txt + CREDITS line |
+| Dear ImGui (Omar Cornut) | compiled into d3d8.dll (fork source/imgui) | MIT | yes (2026-10-09): DearImGui-LICENSE.txt, copied from the fork |
+| stb_image_write (Sean Barrett) | compiled into d3d8.dll (fork source/stb_image_write.h) | public domain / MIT (dual) | yes (2026-10-09): stb_image_write-LICENSE.txt, the header's block |
 | Jolt | not used | | n/a |
 | MinHook / Zydis / SafetyHook | not used (AdventNative.dll is plain C with windows.h) | | n/a |
 | Kimodo (NVIDIA) generated clips | Anims\*.json → ModDeaths.psa, blade takes | the clips are outputs; Kimodo code Apache-2.0, models "NVIDIA Open Model" | the mod ships motion data, not the model: a credit line ("death clips generated with NVIDIA Kimodo, hand-keyed blade and hound clips") would be honest; check the Open Model licence's output clause before the Nexus upload |
 | Advent Rising assets | gib meshes, jiggle mesh, armour data: geometry derived from the game's models; no texture pixels shipped (see blocker 4 for the one derived map) | GlyphX/Majesco | CREDITS says "No game files are included": true for files; say "no game textures" and note the derived meshes |
-| AdventMod itself | | GPL-3.0, non-commercial | yes: GPL-3.0.txt, CREDITS.txt (fix the branch name to gi-cascades) |
+| AdventMod itself | | GPL-3.0, non-commercial | yes: GPL-3.0.txt, CREDITS.txt (branch name fixed to gi-cascades 2026-10-09) |
 
 ## 6. What this audit changed
 

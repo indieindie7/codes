@@ -6,7 +6,9 @@ the shaders in System\U2Shaders written for it) is free software under the
 GNU General Public License version 3 (GPL-3.0.txt), and it is a non-commercial
 mod: share it, change it, keep the source open. Source:
   https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods
-  https://github.com/indieindie7/d3d8to9 (branch advent-post)
+  https://github.com/indieindie7/d3d8to9 (branch gi-cascades)
+The fork keeps d3d8to9's own licence (BSD 2-clause, d3d8to9-LICENSE.md) for the
+layer; the U2Shaders additions in it are GPL-3.0 like the rest of the mod.
 
 Parts by others, under their own licences:
 
@@ -19,20 +21,53 @@ Parts by others, under their own licences:
   SMAA-LICENSE.txt.  https://github.com/iryoku/smaa
 
 - AMD FidelityFX Contrast Adaptive Sharpening (CAS), Copyright (c) 2020
-  Advanced Micro Devices, Inc.: ported to ps_2 in post_final.hlsl. MIT.
-  https://github.com/GPUOpen-Effects/FidelityFX-CAS
+  Advanced Micro Devices, Inc.: ported to ps_2 in post_final.hlsl (a re-write
+  of the 3x3 filter, not a copy of the source). MIT; the notice is in the
+  shader's header. The full MIT text is the one in the LICENSE file of
+  https://github.com/GPUOpen-Effects/FidelityFX-CAS (not reproduced here: the
+  port carries no file from that repository).
 
-- Khronos PBR Neutral tone mapper (Khronos Group): its highlight shoulder in
-  post_final.hlsl. Apache-2.0.
-  https://github.com/KhronosGroup/ToneMapping
+- Khronos PBR Neutral tone mapper (Khronos Group): the formula of its
+  highlight shoulder, re-written in post_final.hlsl. Apache-2.0; the licence
+  text is the LICENSE file of https://github.com/KhronosGroup/ToneMapping
+  (https://www.apache.org/licenses/LICENSE-2.0); no file from that repository
+  is included.
+
+- UnityPCSS by Lucas Norr: pcss_proj.hlsl (contact-hardening shadows) follows
+  its method. MIT, see UnityPCSS-LICENSE.txt.
+  https://github.com/TheMasonX/UnityPCSS
+
+- Dear ImGui by Omar Cornut: compiled into d3d8.dll (the layer's in-game
+  panel). MIT, see DearImGui-LICENSE.txt.  https://github.com/ocornut/imgui
+
+- stb_image_write by Sean Barrett: compiled into d3d8.dll (PNG writing).
+  Public domain / MIT (dual), see stb_image_write-LICENSE.txt.
+  https://github.com/nothings/stb
 
 - Inigo Quilez: "texture repetition" technique 3 and "better fog", in the
-  terrain shader (terrain3.hlsl, terrain4.hlsl, terrain_src.hlsl).
+  terrain shader (terrain3.hlsl, terrain4.hlsl, terrain_src.hlsl) and the fog
+  integral of atmos.hlsl.
   CC BY-NC-SA 3.0 (https://creativecommons.org/licenses/by-nc-sa/3.0/), so
   those files are under CC BY-NC-SA 3.0 too.
   https://iquilezles.org/articles/texturerepetition/
 
+- Techniques followed, in our own code: hex-tiling after Morten S. Mikkelsen
+  (2022) in terrain_src.hlsl; Scalable Ambient Obscurance after McGuire, Mara
+  and Luebke (2012) in ssao.hlsl; Separable Subsurface Scattering after
+  Jimenez et al. (2015) in sss.hlsl (our own kernel); radiance cascades after
+  Alexander Sannikov in gi.hlsl; Valve's light-warp ramp and Penner's
+  pre-integrated skin shading in char_skin.hlsl; NVIDIA's PCSS (Fernando
+  2005) in pcss_proj.hlsl.
+
 - Bloom down/up sampling after Jorge Jimenez, "Next Generation Post Processing
   in Call of Duty: Advanced Warfare" (SIGGRAPH 2014).
 
-Advent Rising is (c) GlyphX Games / Majesco. No game files are included.
+- Death animations: clips generated with NVIDIA Kimodo (its code is
+  Apache-2.0; the models under the NVIDIA Open Model licence), then edited;
+  the blade swings and the hound clips are hand-keyed. Only the motion data
+  ships, none of Kimodo.
+
+Advent Rising is (c) GlyphX Games / Majesco. No game files and no game
+textures are included. A few meshes are derived from the game's own models
+(the gib pieces cut from them, the re-rigged Seeker for the flesh springs,
+and the armour data files: geometry plus one armour bit per face, no pixels).

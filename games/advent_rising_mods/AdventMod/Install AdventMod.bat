@@ -189,11 +189,17 @@ try {
             Copy-Item (Join-Path $here 'KarmaData\Advent.ka') (Join-Path $game 'KarmaData\Advent.ka') -Force
             Say "  copied KarmaData\Advent.ka (ragdolls)"
         }
+        # the armour hit data: AdventNative reads <game>\AdventMod\Armour\<mesh>.amesh
+        if (Test-Path (Join-Path $here 'AdventMod\Armour')) {
+            New-Item -ItemType Directory -Force (Join-Path $game 'AdventMod\Armour') | Out-Null
+            Copy-Item (Join-Path $here 'AdventMod\Armour\*.amesh') (Join-Path $game 'AdventMod\Armour') -Force
+            Say "  copied AdventMod\Armour (armour hit data)"
+        }
         foreach ($t in $targets) {
             Add-Controller (Join-Path $t 'Mydefault.ini') $sys
             Add-Mutator (Join-Path $t 'MyDefUser.ini')
         }
-        Say "`nDone! In game: Options > Video > More Display Options > Graphics (post effects, shadows, anti-aliasing, frame cap)." 'Green'
+        Say "`nDone! In game, Options is a hub of pages: Gameplay, Camera, Audio, Screen, Graphics, Quality, Accessibility, Controls (Graphics: post effects, shadows, GI, anti-aliasing; Screen: resolution, fullscreen mode, frame cap)." 'Green'
     }
     else {
         foreach ($t in $targets) {
@@ -208,6 +214,8 @@ try {
         if (Test-Path $dir) { Remove-Item $dir -Recurse -Force; Say "  removed the U2Shaders folder" }
         $ka = Join-Path $game 'KarmaData\Advent.ka'
         if (Test-Path $ka) { Remove-Item $ka -Force; Say "  removed KarmaData\Advent.ka" }
+        $am = Join-Path $game 'AdventMod\Armour'
+        if (Test-Path $am) { Remove-Item $am -Recurse -Force; Say "  removed AdventMod\Armour" }
         # a d3d8.dll or U2Shaders.ini that was there before the mod comes back
         foreach ($f in 'd3d8.dll', 'U2Shaders.ini') {
             $bak = Join-Path $sys "$f.adventmod-backup"

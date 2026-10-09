@@ -392,5 +392,5 @@ defaultproperties
      HandBones(1)=leftHand
      ArmBones(0)=rightForeArm
      ArmBones(1)=leftForeArm
-     bLogBones=True
+     bLogBones=False
 }

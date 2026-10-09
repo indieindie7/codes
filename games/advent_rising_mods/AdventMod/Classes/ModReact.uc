@@ -1162,6 +1162,7 @@ defaultproperties
      StaggerSlow=0.350000
      StaggerTime=0.450000
      bDeathRagdoll=True
+     bDeathAnims=True
      bClipFloor=True
      FloorBones(0)=hips
      FloorBones(1)=head

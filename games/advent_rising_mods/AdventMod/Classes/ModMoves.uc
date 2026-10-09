@@ -287,7 +287,7 @@ defaultproperties
 	LeanGain=1.0
 	MaxLean=12
 	LeanSpring=9
-	bSlideMeter=True
+	bSlideMeter=False
 	LeanSign=1
 	bStrideMatch=True
 	StrideGain=0.35

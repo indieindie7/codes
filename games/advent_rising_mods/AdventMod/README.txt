@@ -1,4 +1,4 @@
-AdventMod 2.1 - shadows, post-processing, gore and in-game options for Advent Rising
+AdventMod 3.0 - shadows, post-processing, gore and in-game options for Advent Rising
 ====================================================================================
 
 What it does:
@@ -167,7 +167,9 @@ Manual way:
    If the game's System folder already has a d3d8.dll, rename it first
    (e.g. d3d8.dll.old) so you can put it back later.
    Copy the zip's KarmaData folder (Advent.ka, the ragdoll skeletons) next to
-   the game's System folder (...\Advent Rising\KarmaData).
+   the game's System folder (...\Advent Rising\KarmaData), and the zip's
+   AdventMod folder (Armour\*.amesh, the armour hit data) next to it too
+   (...\Advent Rising\AdventMod\Armour).
 
 3. Open System\Mydefault.ini. Under the line [Engine.Engine] add:
 
@@ -266,9 +268,8 @@ KNOWN LIMITS
   little with each stride. It was not tried in cutscenes or vehicles.
 - Hounds never ragdoll (the game crashes when they do); they die and are
   knocked down with hand-keyed animations instead.
-- The armour test needs data files for each enemy mesh that the release does
-  not carry; without them it falls back to a per-bone table (less precise,
-  same sparks).
+- The armour test reads AdventMod\Armour\*.amesh (in the zip); if that folder
+  is missing it falls back to a per-bone table (less precise, same sparks).
 - The fog's light shafts were never seen in testing (the sun sits too high
   for the third-person camera on the levels tried).
 - Exclusive fullscreen, the GOG version and AMD/Intel GPUs were not tested.
@@ -283,7 +284,7 @@ the mod's files, puts back a d3d8.dll or U2Shaders.ini you had before, and
 leaves everything else as it was. By hand: remove the lines from steps 3-5,
 delete AdventMod.u, AdventMod.int, AdventNative.dll, d3d8.dll, U2Shaders.ini,
 AdventMod.ini, the logs and the U2Shaders folder from System, delete
-KarmaData\Advent.ka, and rename your
+KarmaData\Advent.ka and the AdventMod folder, and rename your
 old d3d8.dll back if you had one.
 
 
@@ -313,7 +314,7 @@ HOW IT WORKS
 
 CHANGES
 -------
-Next release (2026-10), everything since 2.1:
+3.0 (2026-10), everything since 2.1:
 - Enemy minds: feelings, cover, suppression, fall-backs, panic, charges,
   attack turns, a late first shot, pushes and flanks along the level's paths.
 - Hound packs: holder, flankers, one leaper at a time, pinning; wall-kicks.
