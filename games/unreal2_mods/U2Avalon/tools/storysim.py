@@ -2,7 +2,7 @@ r"""Avalon story simulation: the binder's citizens as agents living a few days i
 into a drama manager (user 2026-10-09: "lets do the drama manager that makes a safety net on those small agents and
 lets have for important characters bigger agents. lets evolve the writer").
 
-    py tools/storysim.py [days=3] [out=<dir>] [small=URL] [big=URL|claude] [dm=claude|URL] [step=60] [only=a,b]
+    py tools/storysim.py [days=3] [out=<dir>] [resume=<earlier run dir>] [small=URL] [big=URL|claude] [dm=claude|URL] [step=60] [only=a,b]
                          [backend=live|dry] [model_dm=opus] [think_big=0|1]
 
 Three tiers (research_notes/Local models for character writing):
@@ -22,7 +22,7 @@ once more at a lower temperature and then replaced by the agent's routine (logge
 Nothing here touches the game. Output in <out>: log.jsonl (every turn), day_N.md (the day as prose + the drama
 manager's review), memories.json, nudges.json, and story.md (the run in one read).
 """
-import json, os, random, re, subprocess, sys, time, urllib.request
+import json, os, random, re, shutil, subprocess, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -248,8 +248,25 @@ def main():
     story = ["# Avalon story simulation (%s)\n\n%d citizens (%d big), %d days, step %d min; small %s, big %s, drama "
              "manager %s/%s\n" % (time.strftime("%Y-%m-%d %H:%M"), len(citizens), sum(tier(c) == "big" for c in citizens),
                                  DAYS, STEP, SMALL, BIG, DM, DM_MODEL)]
-    eid = 0
-    for day in range(1, DAYS + 1):
+    eid, first = 0, 1
+    if o.get("resume"):     # resume=<earlier run dir>: its days are copied in, then the run goes on from the next day
+        src = o["resume"]
+        done = sorted(int(f[4:-3]) for f in os.listdir(src) if re.match(r"day_\d+\.md$", f))
+        for f in os.listdir(src):
+            if re.match(r"day_\d+(_review\.json|\.md)$", f) or f in ("log.jsonl", "memories.json"):
+                if os.path.abspath(os.path.join(src, f)) != os.path.abspath(os.path.join(OUT, f)):
+                    shutil.copyfile(os.path.join(src, f), os.path.join(OUT, f))
+        state["memory"] = json.load(open(os.path.join(src, "memories.json"), encoding="utf-8"))
+        r = json.load(open(os.path.join(src, "day_%d_review.json" % done[-1]), encoding="utf-8"))
+        state["nudges"] = [dict(n) for n in r.get("nudges", [])][:3]
+        state["directives"] = {k: v for k, v in r.get("directives", {}).items() if k in citizens}
+        story += [open(os.path.join(src, "day_%d.md" % d), encoding="utf-8").read().rstrip("\n") for d in done]
+        story[0] = story[0].rstrip("\n") + " (days %s from %s)\n" % (",".join(map(str, done)), src)
+        eid = max((json.loads(l)["id"] for l in open(os.path.join(src, "log.jsonl"), encoding="utf-8") if l.strip()), default=0)
+        first = done[-1] + 1
+    logf.close()
+    logf = open(os.path.join(OUT, "log.jsonl"), "a", encoding="utf-8")
+    for day in range(first, DAYS + 1):
         events = []
         for t in range(DAY_START, DAY_END + 1, STEP):
             for cid, c in citizens.items():

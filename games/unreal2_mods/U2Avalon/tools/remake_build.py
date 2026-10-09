@@ -563,6 +563,59 @@ def stage_patchlayers():
     ed_session(job)
 
 
+def stage_dock():
+    """The dark first view (2026-10-09, user: "do both"): the PlayerStart's yaw turned away from the low sun
+    (codirect.SUN_AZ, Unreal yaw degrees; yaw= in degrees, default 0: front light at 136 deg off the sun, still 45 deg
+    toward the spine) and a soft sky fill over the dock (one unshadowed-looking Light 12 m up, wide and dim, cool;
+    fill=0 leaves it out), then LIGHT APPLY. OUT is backed up first as <OUT>_predock.un2."""
+    from uedlib import Ops  # noqa
+    st = json.load(open(os.path.join(RUN, "remake_start.json")))
+    yaw = float(o.get("yaw", 0))
+    fp = os.path.join(RUN, "remake_dockfill.t3d")
+    fill = o.get("fill", "1") == "1"
+    if fill:
+        write_t3d(fp, ["\n".join([
+            "Begin Actor Class=Light Name=GenLight_dockfill",
+            "    Location=(X=%.1f,Y=%.1f,Z=%.1f)" % (st["X"], st["Y"], st["Z"] + 600),
+            "    LightBrightness=%s" % o.get("bright", "56"),
+            "    LightHue=150",
+            "    LightSaturation=210",
+            "    LightRadius=%s" % o.get("radius", "64"),
+            "End Actor"])])
+    if not os.path.exists(os.path.join(MAPS, OUT + "_predock.un2")):     # reruns keep the first backup
+        shutil.copyfile(os.path.join(MAPS, OUT + ".un2"), os.path.join(MAPS, OUT + "_predock.un2"))
+
+    def job(ed):
+        ed.exec("!answer yes")
+        ed.load(OUT)
+        ed.deselect()
+        old = [a["Name"] for a in ed.actors("Light") if a["Name"].startswith("GenLight_dockfill")]
+        ps = ed.actors("PlayerStart")
+        ops = Ops.attach_to(ed.pid)
+        if old:
+            ops.select(*old)
+            ed.ok("ACTOR DELETE")
+        if fill:
+            ed.import_t3d(fp, add=True)
+            ed.deselect()
+        ops.move(ps[0]["Name"], pitch=0, yaw=int(yaw * 65536 / 360) % 65536, roll=0)
+        ops.stop()
+        print("  start %s yaw %g deg (sun at %g), fill %s" % (ps[0]["Name"], yaw, 136, fill))
+        # the outdoor zone had no ambient at all (AmbientBrightness 0): whatever the low sun misses rendered pure
+        # black. SET reaches every ZoneInfo in memory (the class default too, harmless: the map saves the actor's)
+        amb = o.get("ambient", "14")
+        if amb != "0":
+            for p, v in (("AmbientBrightness", amb), ("AmbientHue", "150"), ("AmbientSaturation", "200")):
+                ed.exec("SET ZoneInfo %s %s" % (p, v))
+            print("  zone ambient %s (hue 150, sat 200): %s" % (amb, [a["props"].get("AmbientBrightness") for a in ed.actors("ZoneInfo")]))
+        ed.ok("LIGHT APPLY", allow=("Couldn't bring window", "Can't find"))
+        ed.paths()          # a new actor marks the level changed: the game refuses to load it with stale paths
+        ed.save(OUT)
+    ed_session(job)
+
+
+if STAGE == "dock":
+    stage_dock()
 if STAGE == "patchlayers":
     stage_patchlayers()
 if STAGE == "arenas":
