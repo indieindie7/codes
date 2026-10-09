@@ -1,12 +1,16 @@
 """PathNodes for a generated Avalon town, from its GRADED heightmap (redesign plan s.7 Phase A step 5).
 
-    py tools/pathnodes.py <town dir> [out=<dir>/isl_paths.t3d] [z=60] [slope=0.9] [reach=6]
+    py tools/pathnodes.py <town dir> [out=<dir>/isl_paths.t3d] [z=60] [slope=0.9] [reach=6] [layout=stagger|grid] [cover=0|1]
 
 Reads <town dir>/isl_ec.bmp (the cut-and-fill ground that ships), isl_layout.json (building cells) and
 isl_clutter.t3d (cover props). Places:
-  - ground nodes: one per walkable heightmap cell centre (512 UU apart = the plan's 400-600 spacing);
+  - ground nodes: layout=stagger (default, 2026-10-09): a staggered lattice on the heightmap cells, rows 1024 UU apart,
+    every 2nd cell, odd rows shifted one cell, so each node has ~6 neighbours at 1024-1145 UU (all under the engine's
+    hard 1200 UU pair limit); a lattice cell that isn't walkable falls back to a walkable 4-neighbour. ~20x fewer node
+    pairs for PATHS DEFINE than layout=grid (one node per 512 UU cell: TutA_Remake's define ran 45+ min and was
+    stopped; research_notes/Lighter AI pathing for UE2/report.md);
     walkable = above the sea + 50, within `reach` cells of a building or road, not a building cell, steepest rise to a 4-neighbour <= slope * 512;
-  - cover nodes: two per cover prop (crates, barrels, walls, sheds, pipe racks, rocks), 140 UU out on each side
+  - cover nodes (cover=1 only; off by default: U2's AI makes its own CoverSpots at runtime): two per cover prop (crates, barrels, walls, sheds, pipe racks, rocks), 140 UU out on each side
     across the prop's facing, when that spot is walkable;
   - high nodes: walkable cells that are the top of their 5x5 window (sniping/overlook spots, tagged in Tag=).
 Nodes sit `z` UU over the ground (the player's CollisionHeight is 54: facts_measured.md).
@@ -19,12 +23,14 @@ import numpy as np
 LOC = (-14487.546875, 4835.837891, -131.845703)     # TutA TerrainInfo0 (every generated town keeps it)
 SCALE = (512.0, 512.0, 128.0)
 SEA_Z = -4967.0
-COVER = re.compile(r"Crate|Barrel|B_wall|B_shed|PipeRack|Rock\d", re.I)
+COVER_RE = re.compile(r"Crate|Barrel|B_wall|B_shed|PipeRack|Rock\d", re.I)
 
 town = sys.argv[1]
 o = dict(a.split("=", 1) for a in sys.argv[2:] if "=" in a)
 out = o.get("out", os.path.join(town, "isl_paths.t3d"))
 ZUP, SLOPE = float(o.get("z", 60)), float(o.get("slope", 0.9))
+LAYOUT = o.get("layout", "stagger")
+COVER_ON = o.get("cover", "0") == "1"
 
 raw = open(os.path.join(town, "isl_ec.bmp"), "rb").read()
 off = struct.unpack_from("<I", raw, 10)[0]
@@ -90,18 +96,40 @@ def walkable(x, y):
 
 
 nodes = []      # (x, y, z, tag)
+taken = set()
+
+
+def is_high(i, j):
+    win = Z[max(0, j - 2):j + 3, max(0, i - 2):i + 3]
+    return Z[j, i] >= win.max() and win.max() - win.min() > 150
+
+
+def lattice(i, j):
+    return j % 2 == 0 and i % 2 == (j // 2) % 2
+
+
 for j in range(n):
     for i in range(w):
-        if walk[j, i]:
-            x, y = world(i, j)
-            win = Z[max(0, j - 2):j + 3, max(0, i - 2):i + 3]
-            nodes.append((x, y, Z[j, i] + ZUP, "high" if Z[j, i] >= win.max() and win.max() - win.min() > 150 else "ground"))
+        if LAYOUT == "grid":
+            pick = (i, j) if walk[j, i] else None
+        elif is_high(i, j) and walk[j, i]:
+            pick = (i, j)                    # the high spots stay, on or off the lattice
+        elif lattice(i, j):
+            pick = next(((a, b) for a, b in ((i, j), (i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1))
+                         if 0 <= a < w and 0 <= b < n and walk[b, a] and (a, b) not in taken), None)
+        else:
+            pick = None
+        if pick and pick not in taken:
+            taken.add(pick)
+            a, b = pick
+            x, y = world(a, b)
+            nodes.append((x, y, Z[b, a] + ZUP, "high" if is_high(a, b) else "ground"))
 
 txt = open(os.path.join(town, "isl_clutter.t3d"), encoding="utf-8", errors="replace").read()
 ncover = 0
 for blk in re.findall(r"Begin Actor(.*?)End Actor", txt, re.S):
     m = re.search(r"StaticMesh=StaticMesh'([^']+)'", blk)
-    if not m or not COVER.search(m.group(1)):
+    if not COVER_ON or not m or not COVER_RE.search(m.group(1)):
         continue
     L = re.search(r"Location=\(X=([-\d.]+),Y=([-\d.]+),Z=([-\d.]+)\)", blk)
     yaw = re.search(r"Yaw=(-?\d+)", blk)

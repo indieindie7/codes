@@ -20,7 +20,8 @@ redesign needs and town.py doesn't do, without editing town.py (the Advent chat'
          (hollow.json: Liandri building meshes within 6 m of the building's layout point), IMPORTADD the three T3Ds in chunks of <= 150 actors (one 850-actor import crashed UnrealEd),
          light the new actors, move the PlayerStart (start=dock: the dock, facing the spine, plan D6 for generated
          maps; start=tower: TutA's command room, pitch -15 = 62805, compose.PITCH_RU), save
-  paths  load <out>, IMPORTADD remake_paths.t3d, PATHS DEFINE, save (paths after LIGHT APPLY: the Sanctuary gotcha)
+  paths  load <out>, LevelInfo PathSizes = 3 sizes (pathsizes=), IMPORTADD remake_paths.t3d, PATHS DEFINE, save
+         (paths after LIGHT APPLY: the Sanctuary gotcha)
 Not automated (STORY_ASSETS.md s.3, by hand / U2GM): the drain grate's terrain hole (isl_story_notes.json has the
 rectangle), the gallery movers, the drain lamps and beacon, interior lights, Door nav points. TutA.un2 is never
 written; the swap is a separate, tested step.
@@ -240,9 +241,19 @@ def stage_paths():
     def job(ed):
         ed.exec("!answer yes")
         ed.load(OUT)
+        # 3 path sizes instead of U2's 9 (research_notes/Lighter AI pathing for UE2): 28/54 the player-sized,
+        # 34/70 the Skaarj, 60/96 the smallest that fits Pawn's default 34/78 (mercs, marines); each pair is walked
+        # once per size, so this cuts the define ~3x. A bigger creature on Avalon needs its size added back.
+        sizes = o.get("pathsizes", "(Height=54,Radius=28),(Height=70,Radius=34),(Height=96,Radius=60)")
+        ed.ok("SET LevelInfo PathSizes (%s)" % sizes)
+        li = ed.actors("LevelInfo")
+        print("  LevelInfo PathSizes now:", [v for k, v in (li[0]["props"].items() if li else []) if k.startswith("PathSizes")])
         for p in files:
             ed.import_t3d(p, add=True)
-        ed.paths(full=True)
+        import time
+        t0 = time.time()
+        ed.paths()                         # PATHS DEFINE
+        print("  PATHS DEFINE took %.0f s" % (time.time() - t0))
         ed.save(OUT)
     ed_session(job)
 
