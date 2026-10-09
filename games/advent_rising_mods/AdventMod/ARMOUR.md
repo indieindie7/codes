@@ -100,8 +100,8 @@ repaint `bExpose` and the gib-piece throw `bPlates` are off).
 The user's idea: use the enemies' texture layout ("sprite bounding") to know, for any hit,
 whether it struck armour or flesh, so damage, gore (sparks against blood) and the AI
 (presenting the plated side) can react per spot. Built offline on 2026-10-09; compiles (0
-errors); the offline check passes; **not yet run in the game** (the GPU was taken by another
-run). The test list is at the end.
+errors); the offline check passes; **run in the game the same day**: the test list and the
+results are at the end.
 
 ## Inventory: what the enemies are made of
 
@@ -212,7 +212,7 @@ The log lines: the native's `armour hit: ...` (above), the table's
 `armour hit: <pawn> <bone> armour=yes/no share=S (bone table)`, and `gore: the hit on <pawn>
 met armour: sparks, no blood`.
 
-## Test list (not run yet; the harness is in the scratchpad)
+## Test list (run 2026-10-09: see Results below; the harness is tools/run_armour_test.ps1)
 
 1. `scratchpad\armour\run_armour_test.ps1`: level14sectiond (Seeker infantry), the pilot spawns
    a `SeekerInfantry` 450 units ahead, then `ModArmourGrid` (ini `GridTest=5 8 5 45`) fires a
@@ -236,3 +236,30 @@ static arrays inside a struct literal in `defaultproperties` were refused ("Bad 
 for three of nine entries (flat arrays instead); heredocs through the shell lose tabs, so
 `.uc` edits went through the editor; `python` on this PC has no numpy/Pillow, `py` does
 (`build.ps1` calls `py -I` for the generator, which is numpy-free).
+
+## Results (2026-10-09, hidden runs on the committed sources, worktree build of d30b5ba)
+
+Harness `tools/run_armour_test.ps1` (also in the scratchpad), sheets by `tools/armour_sheet.py`,
+offline check `tools/armour_test.c`. Eight game runs that reached the level, one of them a fight.
+
+| run | target | result |
+|---|---|---|
+| grid, Seeker infantry (level03sectionb, spawned) | 5x8 rays, each a 5-point pistol hit | data loaded (78 bones, 3135 tris, 112 armour); **row convention 2 learnt on the first query** (0.47 against 25.9 units per bone: rows are the rotation's rows, as FEET.md found); 13 of 40 rays met the body; hits on feet, legs, hips, front arm, all `armour=no` (the guards are on the arms, which this grid didn't cross); no exceptions |
+| grid, SpecOpsSoldier (the level's own, twice) | | 9 of 40 met the body, 0 armour (its chrome bits are small vest pieces) |
+| grid, SeekerDog (spawned) | | 12 of 40 met the body, **0 armour, no spark line** (as required) |
+| grid, SeekerScanner (spawned) | | 16 of 40 met the body, **3 hits on the left forearm guard `armour=yes`, each `gore: ... met armour: sparks, no blood`**; sheet `sheet_run13.png`: the dots sit on the scanner's body in the frame, the orange ones on the gun arm |
+| fight, level14sectiond, the player's own pistol on a spawned infantry | 22 real hits in 15 s | hips, spine2, neck, Neck02, Head_Nose, leftUpLeg, LeftFrontElbow `armour=no`; **leftForeArm and leftArm `armour=yes` with sparks** (the gauntlet); 3 hits whose ray missed the body fell back to the bone table (`righthand`, `leftLeg`, `share=0.00`); a SeekerCommander of the level was classified too (its data loaded on the fly). The game crashed about 35 s after the last armour line, in the level's own firefight (wall holes, pools, hound packs): not attributable to the classification |
+| fallback, infantry `.amesh` moved aside | | `armour: no data for mesh SeekerInfantry (..\AdventMod\Armour\SeekerInfantry.amesh): the bone table decides`, logged once; no crash. (The grid probe alone doesn't consult the table; the table's live use is the fight run's `(bone table)` lines) |
+
+- **Cost in game: 0.7-1.3 ms per cast** (2.6 ms the first time a mesh is seen), against 0.24 ms
+  offline: the difference is `FindActor`, a scan of the whole object table per call. A cache of
+  the last actor by name would bring it back to ~0.3 ms; a few hits a second cost nothing either way.
+- Seeker pilot: `EonCharacters.SeekerPilot` and `SeekerPilot_AssaultRifle` don't load through
+  `DynamicLoadObject` from the pilot's SPAWN ("no class"), so the helmet (head 43 %) is untested;
+  the scanner's forearm guard (71 %) stood in.
+- **Harness lesson:** `bD3DTrace=True` in the test ini is a General Protection Fault at the
+  level's first tick on every build tried (7 runs, including the commit before this work); the
+  level must be opened as `open <map>?Menu=?Game=EonEngine.EonGameInfo`. Neither is in this work.
+- The sheet's ref-pose panels place the live mesh-space point on the T-pose render, so a hit on a
+  raised arm shows beside the T-pose arm; the frame overlay (UE2 projection from the logged
+  camera) is the one to read for where a shot landed.
