@@ -62,6 +62,7 @@ var float SceneBase;                 // the scene's own SceneSpeed
 var float RunTarget, LastCT;
 var bool bRunThenPause, bRunFast, bRanFast, bFastOn;
 var bool bWePaused, bAutoPaused, bWasCon, bPendingRestore;
+var bool bTypingSeen, bWasTyping;   // PC.bIsTyping has been seen true: it is the console's state (Q72b)
 var bool bTDHeld;
 var float AuthoredTD, OurTD;
 var DialogEngine DE;
@@ -103,6 +104,26 @@ event Tick(float DeltaTime)
 		SceneOver();
 	FindWatched(RealDelta);
 	bCon = Master.bConBig || Master.bConQuick;
+	// the engine's own typing flag, every tick: Console.ui's triggers reached us late (the open on close)
+	if (PC != None && PC.bIsTyping != bWasTyping)
+	{
+		bWasTyping = PC.bIsTyping;
+		bTypingSeen = bTypingSeen || bWasTyping;
+		Log("GM: cine sees typing "$bWasTyping);
+		if (bTypingSeen)
+		{
+			if (!bWasTyping)
+			{
+				Master.bConBig = false;    // a stuck open from a missed close
+				Master.bConQuick = false;
+			}
+			bWasCon = bWasTyping;
+			ConChanged(bWasTyping);
+			StateWait = 0;
+		}
+	}
+	if (bTypingSeen)
+		bCon = bWasTyping;
 	if (bCon != bWasCon)
 	{
 		bWasCon = bCon;
@@ -641,6 +662,8 @@ function ShowStatus()
 // from a missed close (Avalon Q72, 2026-10-08); the Tick's change test stays for the panel's own state
 function ConEvent(bool bOpen)
 {
+	if (bTypingSeen)
+		return;                 // the typing flag drives the pause; the triggers only fill in before it is seen
 	bWasCon = Master.bConBig || Master.bConQuick;
 	ConChanged(bOpen);
 	StateWait = 0;
