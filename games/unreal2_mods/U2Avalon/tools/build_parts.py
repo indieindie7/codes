@@ -343,6 +343,11 @@ if not ONLY or "cable" in ONLY:
         ob.select_set(ob.type == "MESH")
     bpy.ops.export_scene.gltf(filepath=os.path.join(out, "B_cable.glb"), use_selection=True, export_format="GLB", export_apply=True)
     print("BUILT cable ->", os.path.join(out, "B_cable.glb"))
+# the story parts (drain culverts, tap poles/cables/drums, the hollow-shell kit): tools/kit_parts.py, ids=kit for all
+# of them or any B_ name it lists; they go to Models/glb and through part_to_ase.py scale=50 zero=1 hulls=1
+if ONLY and (ONLY & {"kit"} or any(n.startswith("B_") for n in ONLY)):
+    import kit_parts  # noqa
+    kit_parts.build_all(out, ONLY, box, cyl, mat)
 for bid, b in buildings.items():
     if b["kind"] not in ASSEMBLED or "size" not in b:
         continue

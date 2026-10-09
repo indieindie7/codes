@@ -29,6 +29,7 @@ PAL = o.get("pal", "Pal")
 STRIPES = int(o.get("stripes", 8))
 ZERO = set(o.get("zero", "CraneTower").split(","))   # meshes whose pivot stays at the model's z=0 (CraneTower: its plinth, Q33)
 MATERIAL = o.get("material", "0") == "1"            # 1 = write 1-V (if the ASE importer does not flip V itself)
+HULLS = o.get("hulls", "0") == "1"                  # 1 = Blender objects named MCDCX_* become collision GEOMOBJECTs (kit_parts.py)
 palette = []          # list of (r,g,b)
 
 
@@ -66,7 +67,8 @@ for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
     name = "".join(w.capitalize() for w in stem[:-7].split("_")) if stem.endswith("_script") else stem
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=f)
-    meshes = [x for x in bpy.context.scene.objects if x.type == "MESH"]
+    meshes = [x for x in bpy.context.scene.objects if x.type == "MESH" and not (HULLS and x.name.startswith("MCDCX"))]
+    hull_obs = [x for x in bpy.context.scene.objects if x.type == "MESH" and HULLS and x.name.startswith("MCDCX")]
     P = np.concatenate([[tuple(mm.matrix_world @ v.co) for v in mm.data.vertices] for mm in meshes])
     lo, hi = P.min(0), P.max(0)
     cx, cy, z0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2]
@@ -96,7 +98,27 @@ for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
                 idx.append(len(verts) - 1)
             want = (-n.y, n.x, n.z)
             tris.append(tri_facing(verts, tuple(idx), want))
-    write_ase(os.path.join(out, name + ".ase"), name, verts, uvs, tris, material=PAL if MATERIAL else None)
+    extras = []
+    for hk, hob in enumerate(hull_obs):
+        # one convex GEOMOBJECT per hull object, named MCDCX_<name>_<k>, through the same turn/scale/recentre
+        hme = hob.data
+        hme.calc_loop_triangles()
+        HM = hob.matrix_world
+        HR = HM.to_3x3()
+        hv, hu, ht = [], [], []
+        for t in hme.loop_triangles:
+            n = HR @ t.normal
+            idx = []
+            for vi in t.vertices:
+                x, y, z = HM @ hme.vertices[vi].co
+                hv.append((-(y - cy) * SCALE, (x - cx) * SCALE, (z - z0) * SCALE))
+                hu.append((0.0, 0.0))
+                idx.append(len(hv) - 1)
+            ht.append(tri_facing(hv, tuple(idx), (-n.y, n.x, n.z)))
+        extras.append(("MCDCX_%s_%d" % (name, hk), hv, hu, ht))
+    write_ase(os.path.join(out, name + ".ase"), name, verts, uvs, tris, material=PAL if MATERIAL else None, extras=extras)
+    if extras:
+        print("  hulls:", len(extras))
     bounds[name] = {"w": float(hi[1] - lo[1]) * SCALE, "d": float(hi[0] - lo[0]) * SCALE, "h": float(hi[2] - lo[2]) * SCALE,
                     "texture": (stem if MESH_UVS else PAL)}
     print("ASE", name, len(tris), "tris", bounds[name])

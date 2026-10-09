@@ -10,15 +10,24 @@ def tri_facing(v, tri, want):
     return tri
 
 
-def write_ase(path, name, verts, uvs, tris, material=None):
+def write_ase(path, name, verts, uvs, tris, material=None, extras=()):
     """material= a texture name: a one-entry material list whose bitmap is <material>.tga, so UnrealEd's
-    importer can bind the mesh to the texture of that name already loaded (AvalonSM2's palette)"""
+    importer can bind the mesh to the texture of that name already loaded (AvalonSM2's palette).
+    extras = [(name, verts, uvs, tris), ...]: more GEOMOBJECTs in the same file - the MCDCX_<name> collision
+    hulls (one convex piece each) that the importer uses as the mesh's collision instead of its render polys"""
     L = ["*3DSMAX_ASCIIEXPORT 200"]
     if material:
         L += ["*MATERIAL_LIST {", "\t*MATERIAL_COUNT 1", "\t*MATERIAL 0 {", f'\t\t*MATERIAL_NAME "{material}"',
               '\t\t*MATERIAL_CLASS "Standard"', "\t\t*MAP_DIFFUSE {", f'\t\t\t*MAP_NAME "{material}"',
               f'\t\t\t*BITMAP "{material}.tga"', "\t\t}", "\t}", "}"]
-    L += ["*GEOMOBJECT {", f'\t*NODE_NAME "{name}"', "\t*MESH {",
+    L += geomobject(name, verts, uvs, tris, material)
+    for en, ev, eu, et in extras:
+        L += geomobject(en, ev, eu, et, material)
+    open(path, "w").write("\n".join(L) + "\n")
+
+
+def geomobject(name, verts, uvs, tris, material=None):
+    L = ["*GEOMOBJECT {", f'\t*NODE_NAME "{name}"', "\t*MESH {",
          f"\t\t*MESH_NUMVERTEX {len(verts)}", f"\t\t*MESH_NUMFACES {len(tris)}", "\t\t*MESH_VERTEX_LIST {"]
     L += [f"\t\t\t*MESH_VERTEX {k} {-v[0]:.3f} {v[1]:.3f} {v[2]:.3f}" for k, v in enumerate(verts)]
     L += ["\t\t}", "\t\t*MESH_FACE_LIST {"]
@@ -32,6 +41,6 @@ def write_ase(path, name, verts, uvs, tris, material=None):
     if material:
         L += ["\t*MATERIAL_REF 0"]
     L += ["}"]
-    open(path, "w").write("\n".join(L) + "\n")
+    return L
 
 

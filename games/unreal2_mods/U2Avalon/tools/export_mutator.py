@@ -22,6 +22,11 @@ SHIFT = float(o.get("shift", -5300))
 T3D = o.get("t3d")                 # also write the buildings as StaticMeshActors in a T3D for MAP IMPORTADD
 HEIGHTMAP = o.get("heightmap")     # the map's final G16 BMP: ground Z for the T3D actors (TutA frame)
 WRITE_PROPS = o.get("props", "1") != "0"   # props=0: only Cards[] go to the ini (the map holds the buildings)
+STORY = o.get("story", "0") == "1"         # story=1: the drain culverts and the taps' poles/cables/drums (story_export.py) into the T3D
+HOLLOW = set()                             # hollow=<hollow.json from shells.py>: buildings whose solid mesh the shells replace
+if o.get("hollow"):
+    import json as _json0
+    HOLLOW = set(_json0.load(open(o["hollow"])).get("hollow", []))
 LOOK = 300.0
 M = 50.0
 SCRIPTED = {"tank": "StorageTank", "silo": "OreTank", "cooling": "CoolingTower", "mast": "RadioMast",
@@ -112,8 +117,8 @@ for bid, b in buildings.items():
             actor("AvalonSM.Liandri.Quay", x, y, deg, 1.0, -80)
             continue
         mesh = b.get("mesh") or (f"B_{bid}" if kind in ASSEMBLED else SCRIPTED.get(bid, SCRIPTED.get(kind)))
-        if mesh is None:
-            continue
+        if mesh is None or mesh.lower() == "none" or bid in HOLLOW:
+            continue                      # mesh: none without a card = nothing to place; hollow = shells.py's T3D holds it
         lift = -0.9 * M if kind == "barge" else 0
         props.append("AvalonSM.Liandri.%s %.0f %.0f %.0f 1.0 %.0f 0 0 0" % (mesh, x, y, deg, lift))
         actor("AvalonSM.Liandri.%s" % mesh, x, y, deg, 1.0, lift)
