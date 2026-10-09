@@ -85,6 +85,25 @@ for k, (sc, wt) in enumerate(((1400, 0.55), (600, 0.3), (260, 0.15))):
 gully = value_noise(X + 913, Y - 377, 900, SEED + 9)
 detail = AMP * steep * (ridge - 0.5 + 0.6 * (gully - 0.5))
 
+# mask=1: no detail under or near a building (every copy of every placed building, footprint + 4 m, eased over 4 m):
+# rock ribs must not come up through floors, and the floors keep the island's own graded pads
+if o.get("mask") == "1":
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import binder, shells  # noqa
+    L = json.load(open(os.path.join(RUN, "isl_layout.json")))
+    _, sheets = binder.load()
+    keep = np.ones_like(X)
+    for bid, b in L["buildings"].items():
+        if bid not in sheets:
+            continue
+        W, D = (sheets[bid].get("size") or [8, 8])[:2]
+        r = max(W, D) * 25 + 200
+        for p in shells.instances(bid, b, sheets[bid]):
+            d = np.hypot(X - p["x"], Y - p["y"])
+            keep = np.minimum(keep, np.clip((d - r) / 200, 0, 1))
+    detail = detail * keep
+    print("  mask: %.0f %% of the patch kept flat (buildings)" % (100 * (keep < 1).mean()))
+
 # fade to nothing at the edge so the patch meets the island with only the lift
 d_edge = np.minimum(np.minimum(ii, N - 1 - ii), np.minimum(jj, N - 1 - jj)).astype(float)
 fade = np.clip(d_edge / max(EDGE, 1), 0, 1)

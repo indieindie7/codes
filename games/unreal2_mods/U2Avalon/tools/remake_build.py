@@ -1,6 +1,6 @@
 r"""The Avalon remake's editor build (redesign 2026-10-09, plan s.7 Phase B), on top of a finished town.py run.
 
-    py tools/remake_build.py <run folder> <map built by town.py> [out=TutA_Remake] [stage=t3d|mesh|map|paths|specs|bsp|all] [maps=A,B (bsp)]
+    py tools/remake_build.py <run folder> <map built by town.py> [out=TutA_Remake] [stage=t3d|mesh|map|paths|specs|bsp|patchin|all] [maps=A,B (bsp)]
                              [pkg=AvalonSM4] [entry=stair|hatch] [tower=0|1] [start=dock|tower]
 
 town.py already builds the terrain, buildings, clutter, lighting and low sun into Maps\<map>. This adds what the
@@ -286,7 +286,7 @@ def stage_bsp():
             for a in ed.actors("StaticMeshActor"):
                 x, y, z = a["Location"]
                 mesh = a["props"].get("StaticMesh", "")
-                if "Avalon" in mesh or (TOWER[0] <= x <= TOWER[2] and TOWER[1] <= y <= TOWER[3]):
+                if "AvalonSM" in mesh or (TOWER[0] <= x <= TOWER[2] and TOWER[1] <= y <= TOWER[3]):
                     continue
                 if z - gz(x, y) > 250:
                     seat.append((a["Name"], x, y, gz(x, y)))
@@ -370,6 +370,93 @@ def stage_specs():
     ed_session(job)
 
 
+def stage_patchin():
+    """Fold the tested pieces into OUT (2026-10-09, user: "patch them in"): the finer terrain patch (terrain_patch.py
+    <run> <run>\\patch2 amp=120 mask=1: no rock detail under buildings), every PathNode / PlayerStart in the patch lifted
+    by the patch's height over the island there, the interior lights (interior_lights.py), then LIGHT APPLY and PATHS
+    DEFINE (fast since the stagger layout: the node moves invalidate the old specs anyway). OUT is backed up first as
+    <OUT>_prepatch.un2."""
+    import struct
+    import numpy as np
+    import story_export  # noqa
+    from uedlib import Ops, t3d_set  # noqa
+    prefix = os.path.join(RUN, o.get("patch", "patch2"))
+    info = json.load(open(prefix + ".json"))
+    raw = open(prefix + ".bmp", "rb").read()
+    n = info["n"]
+    PZ = np.frombuffer(raw[54:54 + n * n * 2], dtype="<u2").reshape(n, n)[::-1].astype(float)
+    PZ = info["Location"][2] + (PZ - 32768) * info["TerrainScale"][2] / 256
+    cell = info["TerrainScale"][0]
+    gz = story_export.ground_fn(os.path.join(RUN, "isl_ec.bmp"))
+
+    def lift(x, y):
+        fi, fj = (x - info["Location"][0]) / cell + n / 2, (y - info["Location"][1]) / cell + n / 2
+        if not (0 <= fi < n - 1 and 0 <= fj < n - 1):
+            return 0.0
+        i, j = int(fi), int(fj)
+        u, v = fi - i, fj - j
+        z = (PZ[j, i] * (1 - u) * (1 - v) + PZ[j, i + 1] * u * (1 - v) + PZ[j + 1, i] * (1 - u) * v + PZ[j + 1, i + 1] * u * v)
+        return max(0.0, z - gz(x, y))
+
+    lights = os.path.join(RUN, "remake_lights.t3d")
+    run(["py", os.path.join(TOOLS, "interior_lights.py"), RUN, "out=" + lights])
+    lfiles = chunks(lights)
+    shutil.copyfile(os.path.join(MAPS, OUT + ".un2"), os.path.join(MAPS, OUT + "_prepatch.un2"))
+    name = os.path.basename(prefix)
+    k = 512.0 / cell
+
+    def job(ed):
+        ed.exec("!answer yes")
+        ed.load(OUT)
+        ed.import_texture(os.path.abspath(prefix + ".bmp"), name, "MyLevel", "terrain_maps", MIPS=0)
+        isl = [a for a in ed.actors("TerrainInfo") if "island" in a["props"].get("TerrainMap", "")]
+        if not isl:
+            sys.exit("no island TerrainInfo in " + OUT)
+        blk = re.sub(r"Name=\w+", "Name=TerrainPatch_" + name, isl[0]["text"], count=1)
+        blk = t3d_set(blk, "TerrainMap", "Texture'MyLevel.terrain_maps.%s'" % name)
+        blk = t3d_set(blk, "Location", "(X=%f,Y=%f,Z=%f)" % tuple(info["Location"]))
+        blk = t3d_set(blk, "TerrainScale", "(X=%f,Y=%f,Z=%f)" % tuple(info["TerrainScale"]))
+        keep = []
+        for l in blk.splitlines():
+            m = re.match(r"\s*Layers\((\d+)\)=(.*)", l)
+            if m and m.group(1) != "0":
+                continue
+            if m:
+                l = re.sub(r"AlphaMap=[^,)]+,?", "", l)
+                l = re.sub(r"(UScale|VScale)=([-\d.]+)", lambda q: "%s=%f" % (q.group(1), float(q.group(2)) * k), l)
+            keep.append(l)
+        tp = prefix + "_terrain.t3d"
+        open(tp, "w").write("Begin Map\n" + "\n".join(keep) + "\nEnd Map\n")
+        ed.deselect()
+        ed.import_t3d(tp, add=True)
+        ed.deselect()
+        moves = []
+        for cls in ("PathNode", "PlayerStart"):
+            for a in ed.actors(cls):
+                x, y, z = a["Location"]
+                d = lift(x, y)
+                if d > 1:
+                    moves.append((a["Name"], x, y, z + d))
+        for p in lfiles:
+            ed.import_t3d(p, add=True)
+            ed.deselect()
+        ops = Ops.attach_to(ed.pid)
+        for nm, x, y, z in moves:
+            ops.move(nm, x, y, z)
+        ops.stop()
+        print("  patch %s in, %d nav points lifted (max %.0f UU), %d lights" % (
+            name, len(moves), max([0.0] + [lift(m[1], m[2]) for m in moves]), sum(len(actors_of(p)) for p in lfiles)))
+        ed.ok("LIGHT APPLY", allow=("Couldn't bring window", "Can't find"))
+        import time
+        t0 = time.time()
+        ed.paths()
+        print("  LIGHT APPLY + PATHS DEFINE (%.0f s for paths)" % (time.time() - t0))
+        ed.save(OUT)
+    ed_session(job)
+
+
+if STAGE == "patchin":
+    stage_patchin()
 if STAGE == "bsp":
     stage_bsp()
 if STAGE == "specs":

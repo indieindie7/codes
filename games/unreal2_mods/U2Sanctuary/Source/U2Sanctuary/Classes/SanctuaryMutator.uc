@@ -14,6 +14,9 @@ event PostBeginPlay()
 	// Sanctuary Open (one open map): the shipped maps' beats, fights and story props (OpenDirector)
 	if (Left(Caps(string(Level.Outer)), 16) == "PRAIRIESANCTUARY")
 		Spawn(class'OpenDirector');
+	// the Avalon remake's fights (AvalonDirector, U2AvalonFights.ini)
+	if (Left(Caps(string(Level.Outer)), 11) == "TUTA_REMAKE")
+		Spawn(class'AvalonDirector');
 	foreach DynamicActors(class'SanctuaryDirector', D)
 		return;
 	Spawn(class'SanctuaryDirector');
