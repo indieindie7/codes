@@ -22,6 +22,7 @@ import codirect  # noqa  (the five co-directors; the final review runs on the gr
 import anchors  # noqa  (the story buildings' placement rules: the hero's summit, guest house, water tower, the drain)
 import takes  # noqa  (the informal taps: binder takes:)
 import rooms  # noqa  (interior plans for the shell build -> <run>/rooms.json)
+import pathlinks  # noqa  (pathnodes.py on the run folder + the drain / truck-road node chains -> <run>/isl_paths.t3d)
 import binder  # noqa
 
 args = [a for a in sys.argv[1:] if "=" not in a]
@@ -188,6 +189,10 @@ def story_extras():
                      "%d drop shafts, %d m at grade (covered cut)" % (
             D["length_m"], D["length_uu"], D["walk_s"], 100 * D["under_spine"], D["min_depth_m"], D["max_depth_m"], D.get("max_cover_m", 0),
             D["outfall_invert_vs_sea_m"], len(D.get("drop_shafts", [])), D.get("shallow_m", 0)))
+    try:                                 # PathNodes on the graded ground (pathnodes.py; before the clutter: an empty clutter T3D)
+        lines.append(pathlinks.summary(pathlinks.run(RUN)))
+    except Exception as e:
+        lines.append("pathnodes failed: %s" % e)
     open(os.path.join(RUN, "story.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     print("\n".join("  " + x for x in lines), flush=True)
 
@@ -226,6 +231,10 @@ step("export", lambda: ib.run(["py", os.path.join(TOOLS, "export_mutator.py"), "
 # clutter and vegetation: lamps along the trunk roads, crates and barrels in the yards, fences, rocks, trees
 clut = base + "_clutter.t3d"
 step("clutter", lambda: ib.run(["py", os.path.join(TOOLS, "clutter.py"), base + "_ec.bmp", layout, clut, "seed=%d" % seed, "before=" + base + "_e.bmp", "vis=" + base + "_vis.npz"]))
+try:                                           # the PathNodes again, now with the clutter's cover props (isl_paths.t3d: import AFTER the lighting build)
+    print("  " + pathlinks.summary(pathlinks.run(RUN)), flush=True)
+except Exception as e:
+    print("  pathnodes (with clutter) failed:", e)
 with open(t3d, "a") as f:                      # one import: the clutter actors are appended to the buildings' T3D
     body = open(clut).read()
     f.write("\n" + body[body.index("\n") + 1:body.rindex("End Map")])

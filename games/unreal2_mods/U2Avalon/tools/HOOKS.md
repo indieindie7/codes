@@ -13,6 +13,7 @@ layout_spine.py, and the `conc` chain in systems.py, so those parts are not repe
 | `anchors.py` | heightmap + spine / layout | hero summit + truck road, guest_house, water_tower (E14'), the drain | `py tools/anchors.py <run>` -> `anchors.json`, `isl_anchors.png` |
 | `takes.py` | layout with systems connections | `L["taps"]`, clutter props, conc report | `py tools/takes.py <run>` -> `taps.json`, `isl_taps.png` |
 | `rooms.py` | sheets + room sheets (+ layout) | interior plans | `py tools/rooms.py <run>` -> `rooms.json`, `isl_rooms.png` |
+| `pathlinks.py` | `isl_ec.bmp`, layout, `isl_clutter.t3d` (or an empty one) | runs `pathnodes.py` + drain / truck-road node chains | `py tools/pathlinks.py <run>` -> `isl_paths.t3d`, `paths.txt` |
 
 The standalone CLIs never rewrite the run's layout unless you pass `write=1`.
 
