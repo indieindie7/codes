@@ -232,6 +232,19 @@ hero's plinth), M3 1.00. On the fresh TutA_Remake907 run (below): M1 1.00, M3 1.
   "Q74: no plot keeps the rank order". bid_rent reads the same rank (0..1 among the plot ground) as a value field:
   rich +0.6 x (rank - 0.5), poor the opposite. The plume rule (SMOKE_K, the shanty downwind) and the plot/road logic are
   untouched.
+- **Arenas over the sea (anchors.arenas, after the build run).** TutA_Remake907 had E1 and E3 51 % over the water and
+  remake_build left 17 cover pieces out. Two causes. (a) The facing: arenas.json's E1 draws the sea strip + jetty at
+  the TOP of the plan with P under them and the dock gate at the bottom, E3 the rim + sluice mouth at the top and the
+  legs below, so both look DOWN the plan (-y); placed with the docstring's +y they went inland-side-out (E1's "sea"
+  strip sat on the quay, its dock gate 12 m under the sea). `ARENA_FACING` = {E1: -1, E3: -1} picks the local axis P
+  looks along; E2/E4 keep +y. (b) The slide: once origin + yaw stand, the origin slides along the facing axis (and
+  sideways), 4 m steps up to 40 m, the smallest slide first, until >= 80 % of the plan's full piece extent is land on
+  the Z given (the graded isl_ec.bmp in story_extras, the natural in terrain_cutfill's floor pass); the yaw stays, P
+  moves with the origin (`p`); no offset reaching 80 % = the best one, `land_short`, logged via log=. Per arena:
+  `land_share_before` (the facing fixed, no slide), `land_share`, `slide_m/along/side`. On TutA_Remake907's graded
+  ground: E1 0.49 -> 0.81 (33 m), E3 0.49 -> 0.83 (4 m), E2/E4 1.00 unmoved; cover on land E1 4 -> 10 of 10, E3 2 -> 4
+  of 4. On the natural ground E1 reaches 78 % at 40 m (the dock pad is not cut yet), so cutfill's E1 floor sits ~7 m
+  off the graded placement; harmless (the dock cutting follows), noted.
 - **town.py.** `island=<run folder>` copies that run's island files (isl_e.bmp, isl_sketch.*, isl_vis.*; islands=1
   styles) and skips the island stage; the layouts are made afresh for the seed given. `from=score` resumes a finished
   stop=score run with the editor stages only (see the resume command below).

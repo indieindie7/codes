@@ -16,6 +16,8 @@ The rules (redesign/2026-10-09: writer s. 1 + 3.10, engineer E14', level designe
   * arenas: the greybox plans E1-E4 (tools/arenas.py, redesign/2026-10-09/greybox/arenas.json) placed by origin + yaw
     at the level designer's route stops (E1 the dock, E2 the dorm square = the drain's grate, E3 the drain's outfall
     facing the cooling towers, E4 the truck road's foot facing the hero) -> L['arenas'] in world UU, for export.
+    Round 4: P looks along the plan's ARENA_FACING axis (E1/E3 down the plan), and the origin slides along the facing
+    (and sideways, up to ARENA_SLIDE_M) until >= ARENA_LAND of the plan's extent is land; the yaw stays.
   * the process chain (binder 10829b6, D9): mine_portal, crusher_house, silos, transfer_tower, thickener, conc_shed,
     shiploader, sewage_works, tailings_outfall placed in chain order along the ore line (process_chain()).
   * drain: an UNDERGROUND culvert from the dorm square, under the spine, to a sea outfall (by the pump house, >= 150 m
@@ -873,10 +875,57 @@ def _bearing(a, b):
     return math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
 
 
-def arenas(Z, L, sheets, plans=None):
+# Which local axis P looks along toward what the fight is about (+1: local +y, the docstring's convention, E2/E4;
+# -1: local -y). E1 draws the sea strip and the jetty at the TOP of the plan (y 2000-2400) with P on the jetty just
+# under it and the dock gate to the spine at y 30; E3 draws the rim with the sluice mouth at the top and the tower legs
+# below: both look DOWN the plan. Placed as +y (round 3) E1's "sea" strip sat on the quay and its dock gate 12 m
+# under the sea, E3's control hut and grate likewise (TutA_Remake907: 51 % of each over the water).
+ARENA_FACING = {"E1": -1.0, "E3": -1.0}
+ARENA_LAND = 0.8                         # round 4: an arena's rectangle must be >= this much land (E1/E3 sat half over the sea)
+ARENA_SLIDE_M = 40.0                     # ... searched by sliding its origin along the facing axis (and sideways) up to this
+ARENA_STEP_M = 4.0
+
+
+def _arena_extent(a):
+    """the plan's full piece extent in local UU: (x0, y0, x1, y1), at least the plan's size"""
+    xs, ys = [0.0, float(a["size"][0])], [0.0, float(a["size"][1])]
+    for p in a["pieces"]:
+        k = p[0]
+        if k in ("solid", "full", "half", "water", "terrace", "deck"):
+            xs += [p[1], p[1] + p[3]]
+            ys += [p[2], p[2] + p[4]]
+        elif k == "pillar":
+            xs += [p[1] - p[3], p[1] + p[3]]
+            ys += [p[2] - p[3], p[2] + p[3]]
+        else:
+            xs.append(p[1])
+            ys.append(p[2])
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _arena_ground(Z, ox, oy, yaw, ext, n=13):
+    """ground samples under the arena's extent rectangle at origin (ox, oy) turned by yaw"""
+    zs = []
+    for gx in np.linspace(ext[0], ext[2], n):
+        for gy in np.linspace(ext[1], ext[3], n):
+            rx, ry = _rot(gx, gy, yaw)
+            zs.append(zat(Z, ox + rx, oy + ry))
+    return zs
+
+
+def _land_share(zs):
+    return sum(1 for z in zs if z > SEA_Z) / len(zs)
+
+
+def arenas(Z, L, sheets, plans=None, land=ARENA_LAND, slide_m=ARENA_SLIDE_M, log=None):
     """place the four arenas: {E1: {name, origin, yaw, anchor, stop, z, size, ground_range_m, pieces (world), ...}}.
-    The local frame is rotated so local +y lies along `yaw` (world degrees) and local +x along yaw - 90."""
+    The local frame is rotated so local +y lies along `yaw` (world degrees) and local +x along yaw - 90.
+    Round 4: once an arena's origin + yaw are chosen from its stop, the origin slides along the facing axis (and if
+    needed sideways), the smallest slide first, up to `slide_m`, until >= `land` of its full piece extent is land on Z
+    (pass the graded heightmap when there is one, else the natural); the yaw is kept. No offset reaching it = the
+    best one, logged (`land_short`). `land_share_before` / `land_share` / `slide_m` are reported per arena."""
     plans = plans or json.load(open(ARENAS_JSON))
+    log = log or (lambda *a: None)
     B = L["buildings"]
     hero = PARTI_HERO if PARTI_HERO in B else "tower"
     spine = L.get("spine") or (L["roads"][0] if L.get("roads") else [])
@@ -916,19 +965,46 @@ def arenas(Z, L, sheets, plans=None):
             continue
         st, yaw_y, why, anchor = stops[aid]
         P = next(p for p in a["pieces"] if p[0] == "P")
-        yaw = yaw_y - 90.0                       # local +x -> yaw - 90, so local +y -> yaw_y
+        facing = ARENA_FACING.get(aid, 1.0)
+        yaw = yaw_y - 90.0 * facing              # local +x -> yaw - 90: local +y -> yaw_y (facing +1), or local -y (facing -1)
         px, py = _rot(P[1], P[2], yaw)
         ox, oy = st[0] - px, st[1] - py
         W, H = a["size"]
+        ext = _arena_extent(a)
+        # the ground under the arena's full extent; too much sea -> slide the origin (the yaw stays): along the facing
+        # axis first, then sideways, the smallest slide that reaches `land`, else the best
+        zs = _arena_ground(Z, ox, oy, yaw, ext)
+        share0 = _land_share(zs)
+        fwd = (math.cos(math.radians(yaw_y)), math.sin(math.radians(yaw_y)))   # world unit vectors: the facing (P -> the target)
+        side = (fwd[1], -fwd[0])                                              # ... and its right-hand side
+        slide = (0.0, 0.0)
+        if share0 < land and slide_m > 0:
+            steps = [0.0] + [float(s_) * k for s_ in np.arange(ARENA_STEP_M, slide_m + 1e-6, ARENA_STEP_M) for k in (1, -1)]
+            cands = sorted(((math.hypot(fa, sa), 1 if sa else 0, fa, sa) for fa in steps for sa in steps if (fa, sa) != (0.0, 0.0)
+                            and math.hypot(fa, sa) <= slide_m + 1e-6))
+            best = (share0, 0.0, 0.0, 0.0, zs)
+            for d_, _, fa, sa in cands:
+                dx, dy = (fa * fwd[0] + sa * side[0]) * M, (fa * fwd[1] + sa * side[1]) * M
+                zz = _arena_ground(Z, ox + dx, oy + dy, yaw, ext)
+                sh_ = _land_share(zz)
+                if sh_ > best[0] + 1e-9:
+                    best = (sh_, d_, fa, sa, zz)
+                if sh_ >= land:
+                    break
+            if best[1]:
+                fa, sa = best[2], best[3]
+                ox, oy = ox + (fa * fwd[0] + sa * side[0]) * M, oy + (fa * fwd[1] + sa * side[1]) * M
+                zs, slide = best[4], (fa, sa)
+            if _land_share(zs) < land:
+                log("arena %s: no slide within %.0f m reaches %.0f %% land (best %.0f %% at %.0f m along, %.0f m aside)" % (
+                    aid, slide_m, 100 * land, 100 * _land_share(zs), slide[0], slide[1]))
         cx, cy = _rot(W / 2, H / 2, yaw)
         centre = (ox + cx, oy + cy)
-        # the ground under the arena's rectangle
-        zs = []
-        for gx in np.linspace(0, W, 9):
-            for gy in np.linspace(0, H, 9):
-                rx, ry = _rot(gx, gy, yaw)
-                zs.append(zat(Z, ox + rx, oy + ry))
-        z0 = zat(Z, *st)
+        p_world = (ox + px, oy + py)             # P (the arrival point): the stop, slid with the origin
+        z0 = zat(Z, *p_world)
+        if z0 <= SEA_Z:                          # P over the water after the slide: the floor is the land's mean
+            land_z = [z for z in zs if z > SEA_Z]
+            z0 = float(np.mean(land_z)) if land_z else z0
         pieces = []
         for p in a["pieces"]:
             k = p[0]
@@ -948,10 +1024,16 @@ def arenas(Z, L, sheets, plans=None):
                 d = {"kind": k, "x": round(ox + wx, 1), "y": round(oy + wy, 1), "label": p[-1]}
             d["z"] = round(z0, 1)                  # the arena floor: the stop's graded ground (export grades the rest to it)
             pieces.append(d)
-        sea = sum(1 for z in zs if z <= SEA_Z) / len(zs)
+        share = _land_share(zs)
+        land_zs = [z for z in zs if z > SEA_Z] or zs
         out[aid] = {"name": a["name"], "placed": True, "origin": [round(ox, 1), round(oy, 1)], "yaw": round(yaw, 1), "size": [W, H],
-                    "anchor": anchor, "stop": [round(st[0], 1), round(st[1], 1)], "why": why, "centre": [round(centre[0], 1), round(centre[1], 1)],
-                    "z": round(z0, 1), "ground_range_m": round((max(zs) - min(zs)) / M, 1), "over_sea_share": round(sea, 2),
+                    "extent": [round(v) for v in ext],
+                    "anchor": anchor, "stop": [round(st[0], 1), round(st[1], 1)], "p": [round(p_world[0], 1), round(p_world[1], 1)], "why": why,
+                    "centre": [round(centre[0], 1), round(centre[1], 1)],
+                    "z": round(z0, 1), "ground_range_m": round((max(land_zs) - min(land_zs)) / M, 1), "over_sea_share": round(1 - share, 2),
+                    "land_share_before": round(share0, 2), "land_share": round(share, 2),
+                    "slide_m": round(math.hypot(*slide), 1), "slide_along_m": round(slide[0], 1), "slide_side_m": round(slide[1], 1),
+                    "land_short": share < land, "facing": facing,
                     "target": a.get("target"), "check": a.get("check"), "pieces": pieces}
     return out
 
