@@ -637,6 +637,15 @@ function ShowStatus()
 
 // ---- the console
 
+// each Console.ui trigger as an event (GMMaster's "gm con"): an open pauses even when con= was stuck at open
+// from a missed close (Avalon Q72, 2026-10-08); the Tick's change test stays for the panel's own state
+function ConEvent(bool bOpen)
+{
+	bWasCon = Master.bConBig || Master.bConQuick;
+	ConChanged(bOpen);
+	StateWait = 0;
+}
+
 function ConChanged(bool bCon)
 {
 	if (bCon)

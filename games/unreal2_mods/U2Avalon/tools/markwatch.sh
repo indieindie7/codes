@@ -8,7 +8,7 @@
 L="/c/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/System/Unreal2.log"
 SK="C:\\Program Files (x86)\\Steam\\steamapps\\common\\Unreal II The Awakening\\System\\Sketch"
 T="$(cd "$(dirname "$0")" && pwd)"
-P='edit MARK|GM: SKETCH|AvalonChat|Unrecognized command: .*(mark|avlon|avalon)|Critical:|General protection'
+P='edit MARK|GM: SKETCH|AvalonChat|Unrecognized command|Critical:|General protection'
 n0=$(grep -aEc "$P" "$L" 2>/dev/null || echo 0)
 while true; do
 	n=$(grep -aEc "$P" "$L" 2>/dev/null || echo 0)
@@ -31,6 +31,7 @@ while true; do
 				note=$(echo "$line" | sed -n 's/.* note \(.*\)$/\1/p')
 				echo "SKETCH $sk | $note | $SK\\$sk.png" ;;
 			*AvalonChat*) echo "CHAT | $(echo "$line" | cut -c1-300)" ;;
+			*Unrecognized*) echo "TYPED | $(echo "$line" | cut -c1-300)" ;;
 			*) echo "CRASH | $(echo "$line" | cut -c1-300)" ;;
 			esac
 		done

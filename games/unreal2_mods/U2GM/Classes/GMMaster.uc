@@ -114,11 +114,14 @@ const WatchBase = 1073741824;
 
 var PlayerController PC;
 var bool bOn;
+var bool bSetFlush;                 // a replayed "set" changed lighting: FLUSH once after the replay
 var bool bWasGod;
 var Actor Picked;
 var string PickedName;              // the journal's name: a map actor's name or "mesh#K"
 var array<Actor> Made;              // what the replay spawned
 var array<string> MadeName;         // each one's journal name
+var array<Actor> SetA;              // gm set: actors whose properties the journal changed,
+var array<string> SetProp, SetOld;  // which property, and its value before the first change (restored on replay)
 var array<Actor> Hid;               // map actors the replay hid
 var array<int> UndoAt;              // journal slots changed, newest last
 var array<string> UndoWas;          // what each slot said before
@@ -532,6 +535,13 @@ function Replay()
 			Hid[k].SetCollision(Hid[k].default.bCollideActors, Hid[k].default.bBlockActors, Hid[k].default.bBlockPlayers);
 		}
 	Hid.Length = 0;
+	for (k = SetA.Length - 1; k >= 0; k--)
+		if (SetA[k] != None)
+			SetA[k].SetPropertyText(SetProp[k], SetOld[k]);
+	SetA.Length = 0;
+	SetProp.Length = 0;
+	SetOld.Length = 0;
+	bSetFlush = false;
 	for (k = 0; k < ArrayCount(Ops); k++)
 	{
 		Op = Word(GetOp(k), 0);
@@ -560,11 +570,140 @@ function Replay()
 		}
 		else if (Op == "light")
 			NewLight(GetOp(k), "light#"$k);
+		else if (Op == "set")
+			SetLine(GetOp(k));
+		else if (Op == "collide")
+			NewCollider(GetOp(k), "collide#"$k);
 	}
+	if (bSetFlush)
+		PC.ConsoleCommand("FLUSH");          // lighting properties: rebuild the cached lightmaps
 	Stamp++;
 	// the picked actor again (the replay made new copies)
 	if (PickedName != "")
 		SetPicked(Named(PickedName));
+}
+
+// "set NAME PROP VALUE...": SetPropertyText on a map actor (or a GM one); the first old value is kept for the replay
+function SetLine(string Line)
+{
+	local Actor A;
+	local string P, V;
+	local int k;
+	local bool bHave;
+
+	A = Named(Word(Line, 1));
+	P = Word(Line, 2);
+	if (A == None || P == "")
+		return;
+	V = After(Line, 3);
+	for (k = 0; k < SetA.Length; k++)
+		if (SetA[k] == A && SetProp[k] ~= P)
+			bHave = true;
+	if (!bHave)
+	{
+		SetA[SetA.Length] = A;
+		SetProp[SetProp.Length] = P;
+		SetOld[SetOld.Length] = A.GetPropertyText(P);
+	}
+	A.SetPropertyText(P, V);
+	if ((A.IsA('ZoneInfo') || A.IsA('Light')) && (Left(Caps(P), 7) == "AMBIENT" || Left(Caps(P), 5) == "LIGHT"))
+	{
+		A.SetPropertyText("bLightChanged", "True");
+		bSetFlush = true;
+	}
+}
+
+// "collide X Y Z R H": an invisible blocking cylinder
+function GMCollider NewCollider(string Line, string N)
+{
+	local GMCollider C;
+	local vector P;
+
+	P.X = float(Word(Line, 1));
+	P.Y = float(Word(Line, 2));
+	P.Z = float(Word(Line, 3));
+	C = Spawn(class'GMCollider',,, P);
+	if (C == None)
+		return None;
+	C.Set(float(Word(Line, 4)), float(Word(Line, 5)));
+	Made[Made.Length] = C;
+	MadeName[MadeName.Length] = N;
+	return C;
+}
+
+// "gm set [NAME] PROP VALUE": the picked actor unless the first word names one
+function SetCmd(string Args)
+{
+	local Actor A;
+	local string N, P, V, L;
+	local int k;
+
+	A = Named(Word(Args, 1));
+	if (A != None && Word(Args, 3) != "")
+	{
+		N = Word(Args, 1);
+		P = Word(Args, 2);
+		V = After(Args, 3);
+	}
+	else
+	{
+		A = Picked;
+		N = PickedName;
+		P = Word(Args, 1);
+		V = After(Args, 2);
+	}
+	if (A == None || P == "")
+	{
+		Say("gm set [NAME] PROP VALUE (the picked actor without NAME); now: "$Pick2(A == None, "nothing picked", P$" = "$A.GetPropertyText(P)));
+		return;
+	}
+	if (V == "")
+	{
+		Say(N$"."$P$" = "$A.GetPropertyText(P));
+		return;
+	}
+	k = FreeOp();
+	if (k < 0)
+	{
+		Say("journal full");
+		return;
+	}
+	L = "set "$N$" "$P$" "$V;
+	Change(k, L);
+	Replay();
+	Say("journal "$k$": "$L$" (now "$A.GetPropertyText(P)$")");
+}
+
+// "gm collide R H": a blocking cylinder at the crosshair, standing on what it hits
+function CollideCmd(string Args)
+{
+	local vector HitL, HitN;
+	local float R, H;
+	local int k;
+	local string L;
+
+	R = float(Word(Args, 1));
+	H = float(Word(Args, 2));
+	if (R <= 0 || H <= 0)
+	{
+		Say("gm collide R H (radius and half height, world units; an invisible blocking cylinder at the crosshair)");
+		return;
+	}
+	if (UnderCrosshair(HitL, HitN) == None && HitL == vect(0,0,0))
+	{
+		Say("nothing under the crosshair");
+		return;
+	}
+	k = FreeOp();
+	if (k < 0)
+	{
+		Say("journal full");
+		return;
+	}
+	L = "collide "$int(HitL.X)$" "$int(HitL.Y)$" "$int(HitL.Z + H)$" "$int(R)$" "$int(H);
+	Change(k, L);
+	Replay();
+	Say("journal "$k$": "$L);
 }
 
 // "light X Y Z [BRIGHT HUE SAT RADIUS]"
@@ -1136,6 +1275,30 @@ function TerrainBrush(string Kind, float R, float H)
 	Say(L$" (line "$k$"; the d3d8 fork applies it if gmterrain=1)");
 }
 
+// "gm terrainline KIND X Y R H": a terrain line at a world point (no crosshair), for tools that place
+// shapes from a sketch or a reference (Avalon Q63, 2026-10-08). KIND raise|lower|flatten|smooth.
+function TerrainLine(string Args)
+{
+	local int k;
+	local string Kind, L;
+
+	Kind = Locs(Word(Args, 1));
+	if ((Kind != "raise" && Kind != "lower" && Kind != "flatten" && Kind != "smooth") || Word(Args, 5) == "")
+	{
+		Say("gm terrainline raise|lower|flatten|smooth X Y R H");
+		return;
+	}
+	k = LastFreeOp();
+	if (k < 0)
+	{
+		Say("journal full");
+		return;
+	}
+	L = "terrain "$Kind$" "$int(float(Word(Args, 2)))$" "$int(float(Word(Args, 3)))$" "$int(float(Word(Args, 4)))$" "$int(float(Word(Args, 5)));
+	Change(k, L);
+	Say(L$" (line "$k$")");
+}
+
 // ---------------------------------------------------------------- commit (days 6-7)
 
 function bool CommitPending()
@@ -1459,7 +1622,8 @@ function DoCommand(string Args)
 	// while a commit bakes the journal, the journal must stay what the watcher read
 	if (CommitPending() && (Cmd == "move" || Cmd == "moveto" || Cmd == "turn" || Cmd == "scale" || Cmd == "hide"
 		|| Cmd == "spawn" || Cmd == "raise" || Cmd == "lower" || Cmd == "flatten" || Cmd == "smooth"
-		|| Cmd == "undo" || Cmd == "redo" || Cmd == "preview" || Cmd == "light" || Cmd == "gore" || Cmd == "accept"))
+		|| Cmd == "undo" || Cmd == "redo" || Cmd == "preview" || Cmd == "light" || Cmd == "gore" || Cmd == "accept"
+		|| Cmd == "set" || Cmd == "collide" || Cmd == "terrainline"))
 	{
 		Say("commit "$Word(CommitStatus, 0)$" is baking the journal: edits wait until it's done ('gm commit cancel' to edit now)");
 		return;
@@ -1485,6 +1649,10 @@ function DoCommand(string Args)
 			bConBig = Word(Args, 2) == "1";
 		else if (A1 ~= "quick")
 			bConQuick = Word(Args, 2) == "1";
+		if (Cine != None && Word(Args, 2) == "1")
+			Cine.ConEvent(true);
+		else if (Cine != None && !bConBig && !bConQuick)
+			Cine.ConEvent(false);
 	}
 	else if (Cmd == "sketch")
 		SketchCmd(Args);
@@ -1508,6 +1676,7 @@ function DoCommand(string Args)
 		Say("gm sketch mark NAME [NOTE] (the fork's sketch tool) | con big|quick 1|0 (Console.ui's triggers)");
 		Say("gm tex HASH REV b c g s h sh sm sl sharp (the fork's texture panel; a global '@* tex' journal line)");
 		Say("gm light [BRIGHT HUE SAT RADIUS] | gore pool|spray|drag_trail|smear|claw_marks  (at the crosshair)");
+		Say("gm set [NAME] PROP VALUE (any actor property, journaled) | collide R H (invisible blocking cylinder) | terrainline KIND X Y R H");
 		Say("gm proposals load|list|clear | accept N|all|WHO | reject N|all|WHO | goto N  (the creative team's co-GM proposals)");
 	}
 	else if (Cmd == "panel")
@@ -1621,6 +1790,12 @@ function DoCommand(string Args)
 		ProposalsCmd(Cmd, Args);
 	else if (Cmd == "raise" || Cmd == "lower" || Cmd == "flatten" || Cmd == "smooth")
 		TerrainBrush(Cmd, float(A1), float(Word(Args, 2)));
+	else if (Cmd == "terrainline")
+		TerrainLine(Args);
+	else if (Cmd == "set")
+		SetCmd(Args);
+	else if (Cmd == "collide")
+		CollideCmd(Args);
 	else if (Cmd == "palette")
 	{
 		if (A1 ~= "add")
