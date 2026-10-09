@@ -166,7 +166,8 @@ def story_extras():
         lines.append("guest house beside %s (%s): %d m from the fuel (E16 %s)" % (
             A["guest_house"]["host"], A["guest_house"]["side"], A["guest_house"]["fuel_m"], "ok" if A["guest_house"]["e16_ok"] else "SHORT"))
     if "water_tower" in A:
-        lines.append("water tower (E14'): head %.0f m (%s)" % (A["water_tower"]["head_m"], "ok" if A["water_tower"]["e14_ok"] else "short"))
+        lines.append("water tower (E14'): head %.0f m (%s; %s)" % (A["water_tower"]["head_m"], "ok" if A["water_tower"]["e14_ok"] else "short",
+                                                               A["water_tower"].get("pick", "highest ground")))
     if L_.get("drain"):
         D = L_["drain"]
         lines.append("drain: %.0f m (%d UU, %.0f s), %.0f %% under the spine, %.1f-%.1f m deep, cover <= %.1f m, outfall invert %+.1f m over the sea, "

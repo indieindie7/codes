@@ -8,8 +8,9 @@ The rules (redesign/2026-10-09: writer s. 1 + 3.10, engineer E14', level designe
     within TOWN_M of the spine, off the shore), where "buildable" = its footprint's ground spans no more than the 30 m
     battered plinth can take up; with a truck road (grade-capped, MAX_GRADE) down to the spine. Front faces the road.
   * guest_house: beside directors_house (same yaw, one side or the other, on the flatter free side).
-  * water_tower: E14' - the service reservoir on the highest ground within the pipe's reach (300 m) of the water
-    consumers, so its tank stands >= 20 m over the highest floor it serves; the pump house should sit below it.
+  * water_tower: E14' - the service reservoir on the LOWEST ground within the pipe's reach (300 m) of the water
+    consumers (the hero included) whose tank still stands >= 28 m over the highest floor it serves (target 28-50 m);
+    the pump house should sit below it.
   * drain: an UNDERGROUND culvert from the dorm square, under the spine, to a sea outfall (by the pump house, >= 150 m
     from the intake, E24). Section 384 x 320 UU with a dry ledge, the junction room 768 x 768 and the sluice gallery
     1536 x 768 x 448 UU (level designer I3); the invert falls >= 0.5 % to the sea. It counts as a walkable path for
@@ -68,7 +69,8 @@ MAX_COVER_M = 12.0                       # buildable: no more earth than this ov
 DROP_M = 2.0                             # a step down steeper than the fall by this much is a drop shaft
 HEADWALL_M = 15.0                        # the last metres to the outfall may run at grade (the headwall)
 WATER_REACH_M = 300.0                    # systems.RES water
-HEAD_M = 20.0                            # E14': tank base >= highest served floor + 20 m
+HEAD_M = 28.0                            # E14': tank base >= highest served floor + 28 m (round 3; the engineer's E14)
+HEAD_MAX_M = 50.0                        # ... and no more than this (the target 28-50 m: more bursts the pipes)
 NO_FLOORS = ("cooling", "tank", "silo", "mast", "pump", "wellhead", "rig", "pad", "dock", "jetty")
 
 
@@ -457,8 +459,9 @@ def water_consumers(B, sheets, exclude=("water_tower",)):
 
 
 def water_tower_site(Z, B, sheets, wid="water_tower", main=None, reach_m=WATER_REACH_M, head_m=HEAD_M, must=(PARTI_HERO,)):
-    """E14': the reservoir on the highest buildable ground that still reaches (most of) the water consumers.
-    Candidates must reach >= 75 % of the best coverage; of those, the highest ground wins."""
+    """E14': the reservoir on the lowest buildable ground that still reaches (most of) the water consumers with
+    head_m of head over the highest floor it serves. Candidates must reach >= 75 % of the best coverage (and the hero,
+    `must`, when any can); of those, the lowest with enough head wins (round 3; it was the highest ground)."""
     if wid not in sheets:
         return None
     main = main_land(Z) if main is None else main
@@ -490,22 +493,39 @@ def water_tower_site(Z, B, sheets, wid="water_tower", main=None, reach_m=WATER_R
                 cand &= near
             elif near.any():
                 cand = near
-    score = np.where(cand, Z, -1e12)
-    j, i = np.unravel_index(int(score.argmax()), score.shape)
-    x, y = c2w(i, j)
-    zg = float(Z[j, i])
-    served = [bid for bid in cons if math.hypot(B[bid]["x"] - x, B[bid]["y"] - y) / M <= reach_m]
     mast = sheets[wid]["size"][2] if len(sheets[wid]["size"]) > 2 else 22.0
-    tank_base = zg / M + 0.8 * mast                                     # the tank sits on the top fifth of the mast
+
     def floor_m(b):                    # the highest floor people use: storeys of 3.4 m (process plant has no floors)
         h = sheets[b]["size"][2] if len(sheets[b]["size"]) > 2 else 3.4
         storeys = 1 if sheets[b].get("kind") in NO_FLOORS else max(1, min(4, int(h // 3.4)))
         return zat(Z, B[b]["x"], B[b]["y"]) / M + (storeys - 1) * 3.4
+    # round 3 (E14'): the head is computed PER CANDIDATE - the tank base (the top fifth of the mast) over the highest
+    # floor of everything within reach of that spot - and the LOWEST candidate with head >= head_m wins (target
+    # head_m..HEAD_MAX_M: a tower on the peak gave Cine8 89 m, which bursts the pipes). If no candidate reaches
+    # head_m, the one with the most head is taken.
+    top_floor_map = np.full((N, N), -1e9)
+    for bid in cons:
+        near_b = np.hypot(WX - B[bid]["x"], WY - B[bid]["y"]) / M <= reach_m
+        top_floor_map = np.where(near_b, np.maximum(top_floor_map, floor_m(bid)), top_floor_map)
+    head_map = Z / M + 0.8 * mast - top_floor_map
+    enough = cand & (head_map >= head_m)
+    if enough.any():
+        score = np.where(enough, -Z, -1e12)          # the lowest ground that still gives the head
+        chosen = "lowest with >= %g m head" % head_m
+    else:
+        score = np.where(cand, head_map, -1e12)      # none reaches it: the most head
+        chosen = "most head (none reaches %g m)" % head_m
+    j, i = np.unravel_index(int(score.argmax()), score.shape)
+    x, y = c2w(i, j)
+    zg = float(Z[j, i])
+    served = [bid for bid in cons if math.hypot(B[bid]["x"] - x, B[bid]["y"] - y) / M <= reach_m]
+    tank_base = zg / M + 0.8 * mast                                     # the tank sits on the top fifth of the mast
     top_floor = max(floor_m(b) for b in served)
     head = tank_base - top_floor
     ph = B.get("pump_house")
     return {"x": round(x, 1), "y": round(y, 1), "z": round(zg, 1), "yaw": 0.0, "ground_m": round(zg / M - SEA_Z / M, 1),
             "served": served, "consumers": len(cons), "head_m": round(head, 1), "e14_ok": head >= head_m,
+            "head_in_target": head_m <= head <= HEAD_MAX_M, "pick": chosen, "candidates_with_head": int(enough.sum()),
             "pump_house_below": (zat(Z, ph["x"], ph["y"]) < zg) if ph else None}
 
 
