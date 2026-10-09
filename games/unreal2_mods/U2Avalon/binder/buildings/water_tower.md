@@ -16,5 +16,9 @@ provides: water
 needs: water
 ref: concept
 
-Steel tank on legs over the dorm side of the street, the work whistle on its rail. From the concept
-paintings: an 8-way card.
+Steel tank on legs, the work whistle on its rail. From the concept paintings: an 8-way card.
+
+The high service reservoir: it stands on the highest ground within 300 m of the houses it serves, its base
+at least 20 m over the highest floor it feeds (engineer E14'), on the company summit beside Liandri House.
+Arashiro's pump house pushes the rising main up the hill to it; the water tanks stay low by the pump house
+as raw and desalinated storage. Water runs uphill to the company first.

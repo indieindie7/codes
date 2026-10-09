@@ -5,7 +5,7 @@ layer: decline
 kind: jetty
 at: 18300 -5300 300
 size: 30 6 3
-users: rook
+users: rook ship_row
 doors:
 roof: none
 wear: 0.8

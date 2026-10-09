@@ -16,3 +16,4 @@ r07 | en_US-john-medium | Avalon tower, radio check. Anyone awake up there? Neve
 r08 | en_GB-northern_english_male-medium | Tower, harbour dock. Tell Sergeant Vask his parts are in. The docking fee has gone up again.
 r09 | en_GB-alan-medium | Avalon station, Sector relay. Commander Hawkins's report is acknowledged. No action will be taken. Relay out.
 r10 | en_US-hfc_male-medium | Tower, rig shuttle. There's a light on the old rig again. Company says it's maintenance. Just so you know.
+r11 | en_US-john-medium | Avalon checkpoint, this is Liandri fuel. Two long, Private. You know who it is.

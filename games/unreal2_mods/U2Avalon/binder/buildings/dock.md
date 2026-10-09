@@ -5,7 +5,7 @@ layer: boom
 kind: dock
 at: 19300 6200 300
 size: 130 22 6
-users: benedek dock_gang reyes rig_crews security tin_row_families tin_row_traders vask
+users: benedek dock_gang reyes rig_crews security ship_row tin_row_families tin_row_traders vask
 doors:
 roof: none
 wear: 0.2

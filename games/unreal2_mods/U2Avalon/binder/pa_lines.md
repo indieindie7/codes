@@ -19,3 +19,6 @@ pa09 | Congratulations to the night line. Quarterly output is up four percent. B
 pa10 | Pipeline walkers, the reported weep at kilometre three has been logged. No action is required at this time.
 pa11 | Tin Row residents are reminded that structures without a company permit may be removed without notice.
 pa12 | This is a reminder that Liandri Mining Corporation is your employer, your landlord and your doctor. Have a productive day.
+pa13 | Liandri Avalon is home to three hundred and eighty employees. Thank you for being one of them.
+pa14 | The culvert is a maintenance area. Personnel are reminded that the tide reaches the outfall gallery without warning.
+pa15 | The exchange windows at Liandri House remain closed until further notice. Scrip balances are unaffected.

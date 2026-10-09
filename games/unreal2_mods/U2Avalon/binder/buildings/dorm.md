@@ -6,7 +6,7 @@ kind: dorm
 at: 12700 -1600 120
 size: 24 10 7
 count: 2 along
-users: arashiro benedek haldane hands kitchen_crew reyes security
+users: arashiro benedek haldane hands ilunga kitchen_crew reyes security
 doors: front:personnel back:personnel
 beds: 96
 roof: flat

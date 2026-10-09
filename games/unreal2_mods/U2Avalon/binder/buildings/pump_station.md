@@ -1,5 +1,5 @@
 id: pump_station
-name: Pipeline pump station
+name: Slurry pipeline pump station
 owner: liandri
 layer: boom
 kind: pump
@@ -10,7 +10,10 @@ doors: front:personnel
 roof: flat
 wear: 0.35
 lit: yes
-pipes: shed_a
+pipes: tank_farm
+provides: conc
+needs: power
 ref: processing_hall
 
-A booster pump on the line between the generator house and the shore: pipes in, pipes out, one lamp.
+The slurry pipeline's terminal pump at the shore end, where the line from the tank farm meets the dock:
+pipes in, pipes out, one lamp. Haldane walks the line from here (the weep at kilometre three).

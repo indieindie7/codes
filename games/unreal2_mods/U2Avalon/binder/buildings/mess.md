@@ -5,7 +5,7 @@ layer: core
 kind: dorm
 at: 12200 -2400 120
 size: 16 9 5
-users: arashiro benedek dock_gang haldane hands hauliers kitchen_crew night_line okafor plant_staff reyes rig_crews
+users: arashiro benedek dock_gang haldane hands hauliers ilunga kitchen_crew marau night_line okafor plant_staff reyes rig_crews
 doors: front:personnel back:personnel left:personnel right:personnel
 roof: flat
 wear: 0.35

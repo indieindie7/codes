@@ -13,4 +13,5 @@ lit: yes
 mesh: radio_mast_1_kiln
 ref: radio_mast
 
-On the west hill, taller than the Authority's antenna.
+On the west hill, taller than the Authority's antenna. It stands beside Liandri House and is its comms
+provider.

@@ -5,7 +5,7 @@ layer: core
 kind: hall
 at: 12000 -2000 120
 size: 8 6 4
-users: hands kitchen_crew tin_row_families tin_row_traders
+users: hands kitchen_crew marau scrip_clerks tin_row_families tin_row_traders
 beds: 0
 doors: front:roller
 roof: flat

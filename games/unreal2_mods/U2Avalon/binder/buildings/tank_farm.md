@@ -1,5 +1,5 @@
 id: tank_farm
-name: Product tank farm
+name: Concentrate tank farm
 owner: liandri
 layer: boom
 kind: tank
@@ -12,8 +12,11 @@ roof: dome
 wear: 0.15
 lit: yes
 mesh: storage_tank_1_kiln
-pipes: cooling_towers
+pipes: pump_station
+provides: conc
+needs: power
 ref: storage_tank
 
-Four pale product tanks between the halls and the cooling towers, with a ladder each and the pipeline's
-origin at their feet.
+Four pale tanks of concentrate slurry, agitated, below hall_b's flotation floor, with a ladder each and the
+slurry pipeline's origin at their feet. Not fuel (engineer 2026-10-09): the only fire set-back case is the
+fuel depot. `conc` is a new resource systems.py does not route yet (hall_b -> tank_farm -> the dock).

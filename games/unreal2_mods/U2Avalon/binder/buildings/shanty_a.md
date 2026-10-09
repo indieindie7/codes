@@ -15,6 +15,7 @@ lit: yes
 mesh: B_old_camp
 provides: workers
 needs: 
+takes: power water
 ref: processing_hall
 
 Scrap-panel huts outside the fence where the first camp stood: contract workers who stayed after their contract, traders, families. Water carried from the dock in drums.
