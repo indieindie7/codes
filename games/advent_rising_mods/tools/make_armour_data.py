@@ -32,6 +32,7 @@ from ukx import Package  # noqa: E402
 # mesh -> (package, material, mask texture or None, mask channel, diffuse); None mask = borrow from 'borrow'
 ENEMIES = {
     "seekerinfantry": dict(pkg="seekercharacters_tx.utx", mat="seekerinfantry_hsh", mask=None, borrow="SeekerElite", diffuse="seeker_infantry", pawn="SeekerInfantry"),
+    "SeekerInfantryJ": dict(pkg="seekercharacters_tx.utx", mat="seekerinfantry_hsh", mask=None, borrow="SeekerElite", diffuse="seeker_infantry", pawn="SeekerInfantry (jiggle mesh)"),
     "SeekerElite": dict(pkg="seekercharacters_tx.utx", mat="eliteu_hsh", mask="seekerelite_rgb", ch=0, diffuse="seeker_elite", pawn="SeekerElite"),
     "SeekerCommander": dict(pkg="seekercharacters_tx.utx", mat="comanderu_hsh", mask="seeker_commander_rgb", ch=0, diffuse="seeker_commander", pawn="SeekerCommander, SeekerRanhor"),
     "seekerpilot": dict(pkg="seekercharacters_tx.utx", mat="skrspace_hsh", mask="seekerspace_rg", ch=0, diffuse="seeker_space", pawn="SeekerPilot"),

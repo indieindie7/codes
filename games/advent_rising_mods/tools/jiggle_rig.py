@@ -4,8 +4,9 @@ bones. Only flesh is weighted to them; the armour (the per-triangle flags of
 ever move with the skeleton (the user's rule). Asserted: no armour vertex carries any jiggle weight.
 
     py -I tools/jiggle_rig.py build <mesh.psk> <mesh.amesh> <out dir>
-        writes <out>/<mesh>_jiggle.psk (the re-rigged mesh), <out>/regions.json (bones, parents,
-        rest offsets, vertex lists and weights) and <out>/rig_report.md
+        writes <out>/<mesh>_jiggle.psk (the re-rigged mesh, stock space), <out>/<mesh>_jiggle_import.psk
+        (the same in the form the engine's MODELIMPORT wants: Y negated, winding reversed),
+        <out>/regions.json (bones, parents, rest offsets, vertex lists and weights) and <out>/rig_report.md
     py -I tools/jiggle_rig.py skin <mesh.psk> <out dir>/regions.json <clips dir> <out dir>
         writes <out>/anim_<clip>.npz: the mesh skinned by the clip, every frame (the sim's goal)
 
@@ -274,9 +275,31 @@ def build(psk_path, amesh_path, out):
     mesh = os.path.splitext(os.path.basename(psk_path))[0]
     out_psk = os.path.join(out, mesh + "_jiggle.psk")
     write_chunks(out_psk, ch, m["order"])
+    # the copy the game imports: the engine's MODELIMPORT negates Y (points and bone positions) and
+    # reverses every triangle's winding (measured on the first import: y-flipped, 3135 of 3135
+    # faces reversed against the stock), so the stock data comes back only from a psk flipped the
+    # other way first. A mirror about Y turns a rotation (x, y, z, w) into (-x, y, -z, w).
+    imp = dict(ch)
+    pts_raw = b"".join(struct.pack("<3f", pts[i][0], -pts[i][1], pts[i][2]) for i in range(len(pts)))
+    imp["PNTS0000"] = [ch["PNTS0000"][0], 12, len(pts), pts_raw]
+    recs_i = []
+    for b in bones:
+        q = b["quat"]
+        recs_i.append(struct.pack("<64sIii4f3ff3f", b["name"].encode("latin1"), b["flags"], b["children"] + kids.get(bones.index(b), 0), max(b["parent"], 0), -q[0], q[1], -q[2], q[3], b["pos"][0], -b["pos"][1], b["pos"][2], b["length"], *b["size"]))
+    for nb in new_bones:
+        recs_i.append(struct.pack("<64sIii4f3ff3f", nb["name"].encode("latin1"), 0, 0, nb["parent"], 0.0, 0.0, 0.0, 1.0, nb["pos"][0], -nb["pos"][1], nb["pos"][2], 1.0, 1.0, 1.0, 1.0))
+    imp["REFSKELT"] = [ch["REFSKELT"][0], 120, len(recs_i), b"".join(recs_i)]
+    fr, fs, fn = ch["FACE0000"][3], ch["FACE0000"][1], ch["FACE0000"][2]
+    faces_i = []
+    for i in range(fn):
+        a, b2, c, mat, aux, grp = struct.unpack_from("<3HBBI", fr, fs * i)
+        faces_i.append(struct.pack("<3HBBI", a, c, b2, mat, aux, grp))
+    imp["FACE0000"] = [ch["FACE0000"][0], 12, fn, b"".join(faces_i)]
+    out_imp = os.path.join(out, mesh + "_jiggle_import.psk")
+    write_chunks(out_imp, imp, m["order"])
     report += ["", "Armour assert: %d armour points with jiggle weight (must be 0). Max weight %.2f, influences per point capped at %d." % (assert_hits, MAX_WEIGHT, MAX_INFLUENCES),
                "Bones: %d + %d jiggle = %d. Weights: %d -> %d records." % (len(bones), len(new_bones), len(recs), len(m["weights"]), len(new_weights)),
-               "Written: %s" % out_psk]
+               "Written: %s (the stock space, for tools) and %s (the game's import form)" % (out_psk, out_imp)]
     open(os.path.join(out, "rig_report.md"), "w").write("\n".join(report) + "\n")
     json.dump(dict(mesh=mesh, psk=out_psk, bones=[b["name"] for b in bones] + [nb["name"] for nb in new_bones], armour_points=sorted(armour_pts), regions=regions),
               open(os.path.join(out, "regions.json"), "w"))

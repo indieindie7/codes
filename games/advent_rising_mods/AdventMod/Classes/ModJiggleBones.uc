@@ -6,7 +6,7 @@
 //=============================================================================
 class ModJiggleBones extends Object;
 
-var string Names[16];
+var name Names[16];
 var string Parents[16];
 var vector Lever[16];
 var float K[16];
@@ -20,7 +20,7 @@ var int Count;
 
 defaultproperties
 {
-     Names(0)="J_Belly"
+     Names(0)=J_Belly
      Parents(0)="spine1"
      Lever(0)=(X=-1.107,Y=-6.779,Z=19.777)
      K(0)=483.611
@@ -30,7 +30,7 @@ defaultproperties
      FitK(0)=44.753
      FitD(0)=0.480
      FitGain(0)=0.0033
-     Names(1)="J_Chest"
+     Names(1)=J_Chest
      Parents(1)="spine2"
      Lever(1)=(X=0.144,Y=-4.727,Z=18.372)
      K(1)=483.611
@@ -40,7 +40,7 @@ defaultproperties
      FitK(1)=115.501
      FitD(1)=166.372
      FitGain(1)=0.1374
-     Names(2)="J_Hump"
+     Names(2)=J_Hump
      Parents(2)="spine2"
      Lever(2)=(X=-4.482,Y=1.098,Z=-12.626)
      K(2)=483.611
@@ -50,7 +50,7 @@ defaultproperties
      FitK(2)=593.881
      FitD(2)=7.207
      FitGain(2)=0.0000
-     Names(3)="J_Throat"
+     Names(3)=J_Throat
      Parents(3)="Neck02"
      Lever(3)=(X=0.206,Y=3.009,Z=8.868)
      K(3)=483.611
@@ -60,7 +60,7 @@ defaultproperties
      FitK(3)=27.154
      FitD(3)=0.000
      FitGain(3)=0.0023
-     Names(4)="J_ArmR"
+     Names(4)=J_ArmR
      Parents(4)="rightArm"
      Lever(4)=(X=-25.312,Y=3.443,Z=2.447)
      K(4)=483.611
@@ -70,7 +70,7 @@ defaultproperties
      FitK(4)=2794.321
      FitD(4)=9.396
      FitGain(4)=0.2729
-     Names(5)="J_ArmL"
+     Names(5)=J_ArmL
      Parents(5)="leftArm"
      Lever(5)=(X=14.738,Y=-3.312,Z=3.451)
      K(5)=483.611
@@ -80,7 +80,7 @@ defaultproperties
      FitK(5)=1158.386
      FitD(5)=18.124
      FitGain(5)=0.1305
-     Names(6)="J_FrontArmR"
+     Names(6)=J_FrontArmR
      Parents(6)="RightFrontArm"
      Lever(6)=(X=-6.925,Y=0.927,Z=20.108)
      K(6)=483.611
@@ -90,7 +90,7 @@ defaultproperties
      FitK(6)=343.406
      FitD(6)=163.683
      FitGain(6)=0.0728
-     Names(7)="J_FrontArmL"
+     Names(7)=J_FrontArmL
      Parents(7)="LeftFrontArm"
      Lever(7)=(X=5.710,Y=1.206,Z=17.272)
      K(7)=483.611
@@ -100,7 +100,7 @@ defaultproperties
      FitK(7)=1.824
      FitD(7)=3.172
      FitGain(7)=0.0000
-     Names(8)="J_ThighR"
+     Names(8)=J_ThighR
      Parents(8)="rightUpLeg"
      Lever(8)=(X=-1.781,Y=26.931,Z=-5.813)
      K(8)=483.611
@@ -110,7 +110,7 @@ defaultproperties
      FitK(8)=1339.856
      FitD(8)=2.627
      FitGain(8)=0.0000
-     Names(9)="J_ThighL"
+     Names(9)=J_ThighL
      Parents(9)="leftUpLeg"
      Lever(9)=(X=3.018,Y=28.178,Z=-6.620)
      K(9)=483.611

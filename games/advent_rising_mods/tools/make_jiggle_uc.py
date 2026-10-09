@@ -30,7 +30,7 @@ TEMPLATE = """//================================================================
 //=============================================================================
 class ModJiggleBones extends Object;
 
-var string Names[16];
+var name Names[16];
 var string Parents[16];
 var vector Lever[16];
 var float K[16];
@@ -64,7 +64,7 @@ def main():
     for i, (name, b) in enumerate(bones.items()):
         maxdeg = min(30.0, max(8.0, b["max_deg"] * 1.3))
         gain = GAIN_MEAN * share[name] / mean if mean > 0 else GAIN_MEAN
-        lines += ['     Names(%d)="%s"' % (i, name), '     Parents(%d)="%s"' % (i, b["parent"]),
+        lines += ['     Names(%d)=%s' % (i, name), '     Parents(%d)="%s"' % (i, b["parent"]),
                   "     Lever(%d)=(X=%.3f,Y=%.3f,Z=%.3f)" % (i, *b["lever"]),
                   "     K(%d)=%.3f" % (i, k), "     D(%d)=%.3f" % (i, d), "     Gain(%d)=%.4f" % (i, gain), "     MaxDeg(%d)=%.2f" % (i, maxdeg),
                   "     FitK(%d)=%.3f" % (i, b["k"]), "     FitD(%d)=%.3f" % (i, b["d"]), "     FitGain(%d)=%.4f" % (i, b["gain"])]

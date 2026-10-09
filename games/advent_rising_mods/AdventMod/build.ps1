@@ -53,18 +53,21 @@ Copy-Item "$Here\Meshes\plate_*.ase" "$Game\AdventMod\Gibs" -Force
 Copy-Item "$Here\Meshes\gib_card.ase" "$Game\AdventMod\Gibs" -Force
 # the stump cap (ModStump), our own mesh
 Copy-Item "$Here\Meshes\stump.ase" "$Game\AdventMod\Gibs\stump.ase" -Force
+# the Seeker infantry with jiggle bones (ModJiggleMesh imports it, JIGGLE.md): re-rigged from the
+# game's own mesh by tools/jiggle_rig.py into Documents\AdventRising_meshes\jiggle, so it lives
+# outside the repo. Missing = the rig step wasn't run: the build stops rather than ship a stale mesh
+$JiggleDir = "$env:USERPROFILE\Documents\AdventRising_meshes\jiggle"
+$JigglePsk = "$JiggleDir\seekerinfantry_jiggle_import.psk"
+if (-not (Test-Path $JigglePsk)) { throw "jiggle mesh missing: $JigglePsk (run tools/jiggle_rig.py build, see JIGGLE.md)" }
+New-Item -ItemType Directory -Force "$Game\AdventMod\Meshes" | Out-Null
+Copy-Item $JigglePsk "$Game\AdventMod\Meshes\seekerinfantry_jiggle.psk" -Force
+# the stock-space copy beside the game's meshes, so the armour data (below) covers the jiggle mesh too
+Copy-Item "$JiggleDir\seekerinfantry_jiggle.psk" "$env:USERPROFILE\Documents\AdventRising_meshes\SeekerInfantryJ.psk" -Force
 # armour sections (ModArmor's per-hit test, ARMOUR.md): the enemies' triangles with their armour
 # flag, from the game's own meshes and masks, so they live in the game folder, not the repo
 New-Item -ItemType Directory -Force "$Game\AdventMod\Armour" | Out-Null
 & py -I (Join-Path (Split-Path -Parent $Here) 'tools\make_armour_data.py') "$env:USERPROFILE\Documents\AdventRising_meshes" "$Game\Textures" "$Game\AdventMod\Armour" | Select-String 'armour faces|refused|no psk'
 if ($LASTEXITCODE -ne 0) { throw 'make_armour_data failed' }
-# the Seeker infantry with jiggle bones (ModJiggleMesh imports it, JIGGLE.md): re-rigged from the
-# game's own mesh by tools/jiggle_rig.py into Documents\AdventRising_meshes\jiggle, so it lives
-# outside the repo. Missing = the rig step wasn't run: the build stops rather than ship a stale mesh
-$JigglePsk = "$env:USERPROFILE\Documents\AdventRising_meshes\jiggle\seekerinfantry_jiggle.psk"
-if (-not (Test-Path $JigglePsk)) { throw "jiggle mesh missing: $JigglePsk (run tools/jiggle_rig.py build, see JIGGLE.md)" }
-New-Item -ItemType Directory -Force "$Game\AdventMod\Meshes" | Out-Null
-Copy-Item $JigglePsk "$Game\AdventMod\Meshes\seekerinfantry_jiggle.psk" -Force
 # ragdoll skeletons (tools/make_ka.py): the engine reads <game>\KarmaData\*.ka
 New-Item -ItemType Directory -Force "$Game\KarmaData" | Out-Null
 Copy-Item "$Here\KarmaData\*.ka" "$Game\KarmaData" -Force

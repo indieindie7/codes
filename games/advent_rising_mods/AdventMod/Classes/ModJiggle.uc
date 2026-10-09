@@ -1,8 +1,8 @@
 //=============================================================================
 // ModJiggle - secondary flesh motion on the Seeker infantry (JIGGLE.md). One per level (ModMoves
-// spawns it). The Seekers spawned from now on get the re-rigged mesh (ModJiggleMesh: the stock
-// mesh plus ten J_ leaf bones weighted to flesh only; the armour keeps its ordinary bones), and
-// every half second each one within range of the player is hooked in the DLL ("Jiggle <pawn>
+// spawns it). Every Seeker infantry within range of the player is re-linked to the re-rigged mesh
+// (ModJiggleMesh: the stock mesh plus ten J_ leaf bones weighted to flesh only; the armour keeps
+// its ordinary bones), and every half second each one is hooked in the DLL ("Jiggle <pawn>
 // <class> <n> <bone indices>"): native/jiggle.c turns each J_ bone inside the pose build with a
 // damped spring driven by the body's own acceleration and by hits (ModReact's flinch calls Hit).
 // The springs per bone come from ModJiggleBones (generated from the soft-body fit), scaled by
@@ -10,9 +10,8 @@
 // OverMaxDeg (0 = keep the table's).
 // Config [AdventMod.ModJiggle]: bJiggle (off until verified in game), Gain, Range, bJiggleLog
 // (the DLL's 5-s amplitude lines), StiffScale, DampScale, HitStrength (rad/s of swing per hit at
-// 20 damage), MaxAccel (units/s^2 the driver is clamped to), bSwapDefaultMesh (the class default:
-// Seekers spawned later wear the jiggle mesh), bRelinkPlaced (Seekers already in the level get
-// LinkMesh: off, untested), the Over* arrays.
+// 20 damage), MaxAccel (units/s^2 the driver is clamped to), bRelink (Seeker infantry in range
+// get LinkMesh to the jiggle mesh, once each), the Over* arrays.
 //=============================================================================
 class ModJiggle extends Info
 	config(AdventMod);
@@ -25,8 +24,7 @@ var config float StiffScale;
 var config float DampScale;
 var config float HitStrength;
 var config float MaxAccel;
-var config bool bSwapDefaultMesh;
-var config bool bRelinkPlaced;
+var config bool bRelink;
 var config float OverK[16];
 var config float OverD[16];
 var config float OverGain[16];
@@ -44,12 +42,10 @@ var bool bConfigSent, bNativeOk;
 var SkeletalMesh JMesh;
 var Material Skin;
 var MeshAnimation Sets[4];
-var int Swapped, Relinked;
+var int Relinked;
 
 function PostBeginPlay()
 {
-	local class<Pawn> C;
-
 	Super.PostBeginPlay();
 	if (!bJiggle)
 		return;
@@ -64,16 +60,7 @@ function PostBeginPlay()
 	Sets[1] = MeshAnimation(DynamicLoadObject("Seekers.Reactions", class'MeshAnimation', true));
 	Sets[2] = MeshAnimation(DynamicLoadObject("Seekers.Targeting", class'MeshAnimation', true));
 	Sets[3] = MeshAnimation(DynamicLoadObject("Seekers.ambient", class'MeshAnimation', true));
-	if (bSwapDefaultMesh)
-	{
-		C = class<Pawn>(DynamicLoadObject("EonCharacters.SeekerInfantry", class'Class', true));
-		if (C != None)
-		{
-			C.default.Mesh = JMesh;
-			Swapped = 1;
-		}
-	}
-	class'ModSettings'.static.Note("jiggle: on (gain " $ Gain $ ", stiff x" $ StiffScale $ ", damp x" $ DampScale $ ", hit " $ HitStrength $ "), mesh " $ JMesh.Name $ ", skin " $ (Skin != None) $ ", sets " $ (Sets[0] != None) $ (Sets[1] != None) $ (Sets[2] != None) $ (Sets[3] != None) $ ", class default swapped " $ Swapped);
+	class'ModSettings'.static.Note("jiggle: on (gain " $ Gain $ ", stiff x" $ StiffScale $ ", damp x" $ DampScale $ ", hit " $ HitStrength $ "), mesh " $ JMesh.Name $ ", skin " $ (Skin != None) $ ", sets " $ (Sets[0] != None) $ (Sets[1] != None) $ (Sets[2] != None) $ (Sets[3] != None) $ ", relink " $ bRelink);
 }
 
 static function string Eval2(bool B, string T, string F)
@@ -133,12 +120,14 @@ function bool Alive(Pawn P)
 	return P.Physics == PHYS_Walking || P.Physics == PHYS_Falling || P.Physics == PHYS_RootMotion;
 }
 
-// a Seeker infantry on the stock mesh: the jiggle mesh instead (placed ones only when asked)
+// a Seeker infantry on the stock mesh: the jiggle mesh instead. Actor.Mesh is const, so the class
+// default can't be swapped: every Seeker infantry in range gets LinkMesh once (bKeepAnim), its
+// animation sets linked again and the skin set
 function bool Relink(Pawn P)
 {
 	local int i;
 
-	if (!bRelinkPlaced || !P.IsA('SeekerInfantry') || Caps(string(P.Mesh.Name)) != "SEEKERINFANTRY")
+	if (!bRelink || !P.IsA('SeekerInfantry') || Caps(string(P.Mesh.Name)) != "SEEKERINFANTRY")
 		return false;
 	P.LinkMesh(JMesh, true);
 	for (i = 0; i < 4; i++)
@@ -283,6 +272,5 @@ defaultproperties
      DampScale=1.000000
      HitStrength=2.000000
      MaxAccel=30000.000000
-     bSwapDefaultMesh=True
-     bRelinkPlaced=False
+     bRelink=True
 }

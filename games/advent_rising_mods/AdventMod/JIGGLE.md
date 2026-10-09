@@ -81,16 +81,28 @@ Files outside the repo (game-derived): `Documents\AdventRising_meshes\jiggle\`.
    ModDeathAnims). `Classes/ModJiggleMesh.uc` imports `Meshes\seekerinfantry_jiggle.psk` as
    `AdventMod.SeekerInfantryJ` with the stock origin (0 -89 0) and rotation (yaw -64, roll 64,
    read from seekers.ukx). The game's clips have no track for the J_ bones, so they stay at the
-   reference pose (identity at the parent's joint) until the DLL turns them. **Not yet compiled**:
-   the game was running during this work (advent.exe), and build.ps1 writes into its System
-   folder; the first build after it closes verifies the import (the SkeletalMesh export in
-   AdventMod.u, readable with tools/ukx.py) and the bone count (88).
-   The live route therefore adds bones through the mesh, not at run time: ModJiggle swaps the
-   class default mesh of `EonCharacters.SeekerInfantry` to the jiggle mesh at level start (every
-   Seeker infantry spawned from then on wears it; the skin `seekercharacters_tx.Main.infantry_hsh`
-   is set on `Skins[0]`, the animation sets re-linked), and only hooks pawns whose mesh is the
-   jiggle mesh. Placed Seekers keep the stock mesh unless `bRelinkPlaced` (LinkMesh on a live pawn:
-   off, untested). Fallback if the import or the swap fails in game: none of the existing Seeker
+   reference pose (identity at the parent's joint) until the DLL turns them. **Verified offline
+   (build.ps1, 0 errors, the game closed)**: `AdventMod.u` carries `SkeletalMesh SeekerInfantryJ`
+   (463 KB) and, read back with tools/ukx_mesh.py against the stock data: 1645 points at the same
+   positions (the importer reorders them), 88 bones with the same names, parents, positions and
+   rotations, 3135 faces with the same winding, 2080 wedges with the stock UVs, 3056 weights (the
+   importer renormalises: differences of 1e-4), scale 1, the stock bounding box and origin, and
+   **0 armour points with jiggle weight in the game's own copy** (130 armour points, as in the
+   rig). Two importer facts cost a round: MODELIMPORT negates Y and reverses every triangle (the
+   first import came out mirrored), so jiggle_rig.py writes a pre-flipped
+   `seekerinfantry_jiggle_import.psk` for the build; and without `MESHMAP SCALE` the mesh came
+   out with scale 0 and a zero box (now set from the stock). The material slot stays None (the
+   psk's material name doesn't resolve at compile time): ModJiggle puts the Seeker's own skin on
+   `Skins[0]`. `tools/make_armour_data.py` builds `SeekerInfantryJ.amesh` too (the stock-space
+   psk is copied beside the game meshes by build.ps1), so ARMOUR.md's per-triangle test keeps
+   working on the re-linked pawns.
+   The live route therefore adds bones through the mesh, not at run time: `Actor.Mesh` is const
+   (the class default can't be assigned: "Can't assign Const variables"), so ModJiggle re-links
+   every Seeker infantry within range once (`LinkMesh(JiggleMesh, bKeepAnim)`, the three animation
+   sets and `ambient` linked again, the skin `seekercharacters_tx.Main.infantry_hsh` on `Skins[0]`)
+   and only hooks pawns whose mesh is the jiggle mesh. LinkMesh on a live pawn is the untested
+   step (the movement channels may need the pawn's animation re-initialised: test 2 watches for a
+   Seeker that stops animating). Fallback if the import or the relink fails in game: none of the existing Seeker
    bones is flesh-only in the sense needed (spine1/spine2/neck/thighs carry the whole limb, so a
    spring on them would move the armour with the bone relation: allowed by the letter of the rule
    but a body lean, not jiggle); the fallback would be springs on spine1/Neck02/the thighs with
@@ -125,18 +137,18 @@ inpainting model, no downloads over 2 GB), outputs in `Documents\AdventRising_me
   | HitStrength | 2.0 | rad/s of swing per hit at 20 damage (x0.3..2 by damage) |
   | MaxAccel | 30000 | units/s^2 the driver is clamped to (a teleport never reads as a shove) |
   | Range | 3500 | AI within this of the player |
-  | bSwapDefaultMesh | True | Seekers spawned from now on wear the jiggle mesh |
-  | bRelinkPlaced | False | LinkMesh on Seekers already placed (untested) |
+  | bRelink | True | Seeker infantry in range get LinkMesh to the jiggle mesh, once each |
   | OverK[i] / OverD[i] / OverGain[i] / OverMaxDeg[i] | 0 | per bone (the table's order), 0 = keep |
   | bJiggleLog | False | the DLL's 5-s lines: callbacks, us each, amplitude mean/max per bone |
 
 ## Test list (after the GPU go)
 
-1. `build.ps1`: 0 errors; `tools/ukx.py <game>\System\AdventMod.u SkeletalMesh` lists
-   `SeekerInfantryJ`; `tools/ukx_mesh.py` reads it back with 88 bones (if its lazy arrays parse) or
-   at least the bone table does.
+1. `build.ps1`: 0 errors (done, see A.5; the last build of the day failed on another session's
+   in-progress ModMinds/ModNeeds edit, `ModMutator.uc(104): Unrecognized member 'Needs'`, not on
+   this work: the previous AdventMod.u, with the jiggle mesh, is back in the game folder).
 2. Hidden pilot run, level03sectionb or level14sectiond, `bJiggle=True bJiggleLog=True`, a spawned
-   `SeekerInfantry` (it gets the jiggle mesh: the log's "hooked <pawn> (10 bones)"), walking,
+   `SeekerInfantry` (the log's "relinked to the jiggle mesh" then "hooked <pawn> (10 bones)"; it
+   must keep walking and animating after the relink), walking,
    running, hit by the pistol; `ShotP` pairs bJiggle off/on; expected log: "bone coords convention:
    rows are the rotation's rows", amplitudes mean 2-8 deg / max under the clamp while moving, ~0 at
    rest, a spike on a hit, 1-3 us per callback, 0 faults, no `exception` lines.
