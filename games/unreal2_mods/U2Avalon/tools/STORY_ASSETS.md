@@ -41,6 +41,20 @@ origin flag). Then re-import the 39 kit ASEs (s. 1: the drain, the taps, the hol
 parts), which were rebuilt on the new stripes; the older Liandri meshes (B_wall, B_ctower, B_cable, B_road, the
 buildings, make_avalon's own meshes) are untouched and need no re-import.
 
+**The d3d8 fork's palette hash (U2Shaders.ini).** The fork keys its world-space detail rule to the palette textures'
+hashes (FNV-1a 32-bit of the top mip, BGRA, first 16384 bytes, seed 2166136261 ^ w ^ (h << 12)). A new Pal.tga
+changes the hash, so after the import the other chat updates U2Shaders.ini (not edited here). The formula was
+checked against the old values first (old Pal.tga d9fc7585, Pal2.tga dfb15985: both reproduced exactly):
+
+| texture | path | hash in the ini now | expected after import |
+|---|---|---|---|
+| AvalonSM.Pal.Pal | `U2Avalon\Models\ase\Pal.tga` (this change) | d9fc7585 | **f1ce1185** (expected: verify in the fork's log; the game may convert the TGA on import. The layout is vertically symmetric, so the hash is the same whichever way the rows are stored) |
+| AvalonSM2 Pal2 | `U2AvalonCards\Models\round2_ase\Pal2.tga` (unchanged) | dfb15985 | dfb15985 |
+| Pal3 | not written by this change | de2e5f85 | de2e5f85 |
+
+Scratch formula (for the next palette change): read the 64 x 64 x 32-bit TGA, rows top-down, BGRA as stored;
+h = 2166136261 ^ 64 ^ (64 << 12); for each byte: h ^= byte; h = (h * 16777619) & 0xffffffff.
+
 **Pivot:** glb_to_ase recentres XY on the bounds centre; `zero=` keeps the model's z = 0 as the pivot Z (slabs
 whose TOP is z = 0, the culvert's invert at z = 0). The emitters place every part by its AUTHORED origin, using
 `Models/glb/kit_pivots.json` (dx, dy = the origin's offset from the bounds centre, metres, in the part's own frame).
