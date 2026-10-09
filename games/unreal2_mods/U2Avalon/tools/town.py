@@ -89,7 +89,7 @@ for ki in range(ISLANDS):
                                                                           "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png", "vis=" + ib_ + "_vis.npz"]))
         # a layout made before binder 1940260 (reuse=1) lacks the rule-placed story buildings: place them now
         _Lc = json.load(open(cand))
-        if anchors.PARTI_HERO not in _Lc["buildings"] or "drain" not in _Lc:
+        if anchors.PARTI_HERO not in _Lc["buildings"] or "drain" not in _Lc or ("mine_portal" in binder.load()[1] and "mine_portal" not in _Lc["buildings"]):
             print("  anchors (late, an older layout):", ", ".join(anchors.apply(_Lc, anchors.load_heights(ib_ + "_e.bmp"))), flush=True)
             json.dump(_Lc, open(cand, "w"), indent=0)
         elif "occluders" not in _Lc:              # a round-2 layout: beat 1's occluder (round 3) only
@@ -182,6 +182,11 @@ def story_extras():
             A["guest_house"]["host"], A["guest_house"]["side"], A["guest_house"]["fuel_m"], "ok" if A["guest_house"]["e16_ok"] else "SHORT"))
     if "occluder" in A:
         lines.append("occluder: %s" % A["occluder"]["note"])
+    if "chain" in A:
+        ch = A["chain"]
+        lines.append("process chain: " + "; ".join("%s %s" % (b, ch[b].get("note", "-")) for b in anchors.CHAIN if b in ch))
+        if "belts" in ch:
+            lines.append("belts: " + ", ".join("%s->%s %d m %.0f deg %s" % (b["from"], b["to"], b["m"], b["deg"], "ok" if b["ok"] else "BAD") for b in ch["belts"]["stretches"]))
     for aid, ar in L_.get("arenas", {}).items():
         lines.append("arena %s %s: %s" % (aid, ar["name"], ("P on the %s at (%.0f, %.0f), origin (%.0f, %.0f) yaw %.0f, floor z %.0f, ground range %.0f m%s" % (
             ar["anchor"], ar["stop"][0], ar["stop"][1], ar["origin"][0], ar["origin"][1], ar["yaw"], ar["z"], ar["ground_range_m"],

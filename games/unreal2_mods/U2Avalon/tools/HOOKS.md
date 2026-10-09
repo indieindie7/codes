@@ -125,9 +125,33 @@ squatter guard.
   `B_culvert` part (artist s. 5).
 - `rooms.json` is input for the hollow-shell kit (engineer s. 2.0), which doesn't exist yet.
 
-## Round 3, unfinished (stopped 2026-10-09: the PC was powering off)
+## Round 3 (done 2026-10-09; the plan below was followed, with these notes)
 
-No code changed in round 3; these items are the plan, not done:
+- 1 anchors.summit: edge-only spots get no bonus; `edge_u`, `over_works_m` (works_z) are reported. compose.EDGE_U:
+  the parti hero is the window hero only when inner, else `second`; `parti_hero` in compose's dict says which.
+- 2 water_tower_site: head per candidate (`head_map`), the LOWEST with >= HEAD_M (28) wins, else the most head;
+  `pick`, `head_in_target` (28-50 m), `candidates_with_head` in the site dict.
+- 3 anchors.dock_occluder -> L["occluders"]; layout_spine calls it at the output (natural ground), town.py's late path
+  adds it to round-2 layouts, and story_extras RE-FITS it on isl_ec.bmp (the quay pad lifts the stations by metres).
+  clutter.py 2e builds the stack; codirect._boxes counts it; beat 1 = 1 / WARN 0.5 (no fit) / 0 (shows past it).
+  LD2: BEAT_HARD_S = 90 scores, gaps over 60 s are a note. LD7: the drain's grate -> gallery time counts, credit qs/25
+  under 25 s (UU_QUIET 3600 = 14 s, so it is partial until the level designer lengthens the quiet stretch).
+- 4 pathlinks.py wraps pathnodes.py (read-only) + GenStory PathNodes on the drain invert and the truck road;
+  town.py runs it in story_extras (empty clutter T3D) and again after the clutter. Town7: 8 parts, the truck road
+  joins 2 of them (-> 7), the drain's grate has no walkable cell within 20 m.
+- 5 codirect.marks_review (M1-M4 + needs-in-game), `R["marks"]`, printed by report(); score_runs root= + marks.
+  liandri_tower.md: `model: PyramidTower` (Q83).
+- 6 anchors.arenas: arenas.json's E1-E4 by origin + yaw at the route stops (E1 the dock, E2 the drain's grate, E3 the
+  drain's outfall facing the cooling towers, E4 the truck road's foot facing the hero) -> L["arenas"] (world UU);
+  LD5 counts their P as a junction and their cover as boxes.
+- 7 anchors.process_chain (binder 10829b6): the nine chain sheets placed in order after the plots (layout_spine,
+  RULED); systems STAGES ore = portal | crusher | transfer | silos | halls | hall_b, + tailings thickener -> outfall,
+  thickener as an optional conc stage; rooms.py reads room sheets' `size:` and plans control_room on hall_b's uphill
+  gable stair tower (B["hall_b"]["low_gable"] from the thickener placement tells export which end to mirror).
+  Open: one transfer tower cannot bring a 100 m drop over 300 m under 12 deg (Town7's island, seed 907: the
+  crusher -> transfer leg is 18 deg); the silos' "uphill" side is sometimes lower than hall_a.
+
+The plan as it was written:
 1. **An edge-only hero counts as outside the frame** (u < 0.1 or > 0.9).
    - anchors.summit: drop the half bonus for edge spots, and break ties among inner spots by height over the works.
    - compose.py: the parti hero counts as the window hero only when it is inner. Otherwise the cooling towers stay

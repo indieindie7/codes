@@ -35,19 +35,24 @@ RES = {
     "comms":   ("line", 1500),
     "supply":  ("road", 500),
     "conc":    ("pipe", 600),    # concentrate slurry, hall_b -> tank_farm (-> the dock's conc shed when it has a sheet)
+    "tailings": ("pipe", 900),   # the thickener's underflow to the sea outfall (anchors.process_chain puts it within reach)
 }
 # the process order (engineer 2026-10-09, s. 1 and E12'/E22): ore falls through the plant one stage at a time,
 # mine/wellhead/rig -> silos -> hall_a (crushing + grinding; hall_c, the old mill, beside it) -> hall_b (flotation)
-# -> tank_farm (concentrate). A consumer in a chain takes its resource only from the stage above it - the nearest
+# -> tank_farm (concentrate); the crusher house is a stage of its own after the portal (round 3). A consumer in a chain takes its resource only from the stage above it - the nearest
 # stage above that exists in this town - never from any provider that happens to be nearest. Ids not listed here
 # (or resources without a chain) take the nearest provider as before. mine_portal/crusher_house/transfer_tower/
 # conc_shed have no sheets yet; they are listed so the chain holds once the binder gains them.
 STAGES = {
-    "ore": [{"mine_portal", "crusher_house", "wellhead_a", "wellhead_b", "new_rig"}, {"transfer_tower"}, {"silos"},
+    # round 3 (binder 10829b6): the crusher house is its own stage after the portal, so the portal -> crusher belt is
+    # drawn and the crusher can need ore (both were stage 0 before)
+    "ore": [{"mine_portal", "wellhead_a", "wellhead_b", "new_rig"}, {"crusher_house"}, {"transfer_tower"}, {"silos"},
             {"hall_a", "hall_c"}, {"hall_b"}],
+    # the tailings: the thickener's underflow to the sea outfall (engineer s. 1); the outfall is placed by anchors.process_chain
+    "tailings": [{"thickener"}, {"tailings_outfall"}],
     # binder 1940260: tank_farm and pump_station carry concentrate slurry; pump_station is the line's terminal pump at
     # the shore, the dock ships it (a conc_shed would stand there once it has a sheet)
-    "conc": [{"hall_b"}, {"tank_farm"}, {"pump_station"}, {"conc_shed", "dock"}],
+    "conc": [{"hall_b"}, {"thickener"}, {"tank_farm"}, {"pump_station"}, {"conc_shed", "dock"}],
 }
 
 

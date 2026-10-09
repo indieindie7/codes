@@ -480,7 +480,7 @@ for bid, b in buildings.items():
 # town's land, with a truck road down to the spine (tools/anchors.py; the sheet's `at:` is a placeholder). The
 # rule-placed story buildings (guest_house, water_tower, drain) are placed after the plots, below.
 import anchors  # noqa
-RULED = {"guest_house", "water_tower", "drain"}
+RULED = {"guest_house", "water_tower", "drain"} | set(anchors.CHAIN)      # + the process chain (binder 10829b6, D9)
 SUMMIT = None
 if PARTI_HERO in buildings and PARTI_HERO != "tower" and PARTI_HERO not in placed and o.get("summit", "1") != "0":
     SUMMIT = anchors.summit(Z, SPINE.pts, buildings[PARTI_HERO], MAIN,
@@ -770,6 +770,20 @@ if "guest_house" in buildings and "directors_house" in placed:   # beside the di
         place("guest_house", GUEST["x"], GUEST["y"], GUEST["yaw"])
         print("  guest house: %s of directors_house (+%.0f m), %d m from the fuel (E16 %s)" % (
             GUEST["side"], GUEST["extra_m"], GUEST["fuel_m"], "ok" if GUEST["e16_ok"] else "SHORT"))
+# the process chain along the ore line (tools/anchors.py process_chain: mine_portal -> crusher -> [transfer tower] ->
+# silos -> ... -> thickener -> tailings outfall; conc_shed + shiploader on the quay; sewage_works downwind)
+CHAIN_REP = {}
+if "mine_portal" in buildings and o.get("chain", "1") != "0":
+    CHAIN_REP = anchors.process_chain(Z, placed, buildings, {"dock": DOCK, "mine": MINE}, MAIN)
+    for _bid in anchors.CHAIN:                     # anchors wrote B entries; redo them with place() so plots/cells match
+        if _bid in placed and _bid in CHAIN_REP and "x" in CHAIN_REP[_bid]:
+            _st = CHAIN_REP[_bid]
+            place(_bid, _st["x"], _st["y"], _st["yaw"])
+            placed[_bid].update({k: v for k, v in _st.items() if k not in ("x", "y", "z", "yaw", "note")})
+    if "belts" in CHAIN_REP:
+        print("  belts: straight crusher -> silos %d m at %.0f deg (bend %s); %s" % (
+            CHAIN_REP["belts"].get("straight_m", 0), CHAIN_REP["belts"].get("straight_deg", 0), "needed" if CHAIN_REP["belts"].get("bend_needed") else "not needed",
+            ", ".join("%s->%s %d m %.0f deg %s" % (b["from"], b["to"], b["m"], b["deg"], "ok" if b["ok"] else "BAD") for b in CHAIN_REP["belts"]["stretches"])))
 WATER_TOWER = None
 if "water_tower" in buildings:
     WATER_TOWER = anchors.water_tower_site(Z, placed, buildings, main=MAIN)
@@ -935,7 +949,8 @@ out["occluders"] = OCC["placed"]
 print("  occluder:", OCC["note"])
 out["anchors"] = {k: v for k, v in (("summit", SUMMIT and {kk: vv for kk, vv in SUMMIT.items() if kk != "road"}),
                                      ("water_tower", WATER_TOWER and {kk: vv for kk, vv in WATER_TOWER.items() if kk != "served"}),
-                                     ("guest_house", GUEST), ("occluder", {kk: vv for kk, vv in OCC.items() if kk != "placed"} | {"n": len(OCC["placed"])})) if v}
+                                     ("guest_house", GUEST), ("occluder", {kk: vv for kk, vv in OCC.items() if kk != "placed"} | {"n": len(OCC["placed"])}),
+                                     ("chain", CHAIN_REP)) if v}
 json.dump(out, open(dst, "w"), indent=0)
 print(f"spine {SPINE.length / M:.0f} m, {sum(r.cls == 'branch' for r in ROADS)} branches, {N_LANES} back lanes, {N_CONN} connectors, {len(PLOTS)} plots, {len(placed)} buildings placed, {len(FENCES)} fence runs -> {dst}")
 

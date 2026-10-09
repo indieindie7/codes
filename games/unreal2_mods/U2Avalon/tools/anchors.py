@@ -16,6 +16,8 @@ The rules (redesign/2026-10-09: writer s. 1 + 3.10, engineer E14', level designe
   * arenas: the greybox plans E1-E4 (tools/arenas.py, redesign/2026-10-09/greybox/arenas.json) placed by origin + yaw
     at the level designer's route stops (E1 the dock, E2 the dorm square = the drain's grate, E3 the drain's outfall
     facing the cooling towers, E4 the truck road's foot facing the hero) -> L['arenas'] in world UU, for export.
+  * the process chain (binder 10829b6, D9): mine_portal, crusher_house, silos, transfer_tower, thickener, conc_shed,
+    shiploader, sewage_works, tailings_outfall placed in chain order along the ore line (process_chain()).
   * drain: an UNDERGROUND culvert from the dorm square, under the spine, to a sea outfall (by the pump house, >= 150 m
     from the intake, E24). Section 384 x 320 UU with a dry ledge, the junction room 768 x 768 and the sluice gallery
     1536 x 768 x 448 UU (level designer I3); the invert falls >= 0.5 % to the sea. It counts as a walkable path for
@@ -898,6 +900,297 @@ def arenas(Z, L, sheets, plans=None):
     return out
 
 
+# --- 7. the process chain along the ore line (binder 10829b6, plan D9; engineer s. 1, E12'/E22) ------------------
+# Eight sheets with placeholder `at:` values are placed by rule, in chain order, each from the one before:
+#   mine_portal (the highest inland ground by the mine site) -> crusher_house (just below it) -> [transfer_tower at
+#   the belt's one bend] -> silos (the top of the plant terrace, uphill of hall_a) -> hall_a -> hall_b -> thickener
+#   (hall_b's low gable) -> tailings line -> tailings_outfall (at sea, >= 150 m from the intake, downwind);
+#   conc_shed and shiploader on the quay; sewage_works on the lowest land downwind (WIND) of the company housing.
+# A belt stretch must stay <= BELT_MAX_DEG and within the conveyor's reach (systems.RES ore, 220 m); when the straight
+# crusher -> silos belt breaks either, the transfer tower is the bend that fixes it (it is placed either way: the
+# sheet has users; `needed` says whether the belt wanted it).
+CHAIN = ("mine_portal", "crusher_house", "silos", "transfer_tower", "thickener", "conc_shed", "shiploader", "sewage_works", "tailings_outfall")
+BELT_MAX_DEG = 12.0
+BELT_REACH_M = 220.0
+WIND = (0.83, -0.55)
+COMPANY_HOUSING = ("dorm", "dorm_b", "dorm_c", "staff_houses", "directors_house", "guest_house")
+
+
+def _grade_deg(Z, a, b):
+    d = math.hypot(b[0] - a[0], b[1] - a[1])
+    return math.degrees(math.atan(abs(zat(Z, *a) - zat(Z, *b)) / max(d, 1.0)))
+
+
+def _occupied(B, sheets, exclude=()):
+    occ = np.zeros((N, N), bool)
+    for bid, p in B.items():
+        if bid in exclude or bid not in sheets or "size" not in sheets[bid] or p.get("underground"):
+            continue
+        for i, j in cells_of(p["x"], p["y"], sheets[bid]["size"]):
+            occ[j, i] = True
+    return occ
+
+
+def _clash(B, sheets, bid, x, y, extra_m=4.0):
+    """does a building of bid's size at (x, y) overlap another's footprint (centre distance under the two half sizes)?"""
+    rg = max(sheets[bid]["size"][0], sheets[bid]["size"][1]) / 2
+    for oid, p in B.items():
+        if oid == bid or oid not in sheets or "size" not in sheets[oid] or p.get("underground"):
+            continue
+        ro = max(sheets[oid]["size"][0], sheets[oid]["size"][1]) / 2
+        if math.hypot(p["x"] - x, p["y"] - y) / M < rg + ro + extra_m:
+            return oid
+    return None
+
+
+def _best_cell(cand, score):
+    if not cand.any():
+        return None
+    sc = np.where(cand, score, -1e18)
+    j, i = np.unravel_index(int(sc.argmax()), sc.shape)
+    return c2w(i, j), float(cand[j, i])
+
+
+def _site(x, y, z, yaw, **kw):
+    return dict({"x": round(float(x), 1), "y": round(float(y), 1), "z": round(float(z), 1), "yaw": round(float(yaw), 1)}, **kw)
+
+
+def _yaw_to(x, y, tgt):
+    return math.degrees(math.atan2(tgt[1] - y, tgt[0] - x))
+
+
+def process_chain(Z, B, sheets, sites, main=None, log=print):
+    """place CHAIN's sheets into B (in place, via place_entry) in chain order. sites: {"dock": (x, y), "mine": (x, y)}
+    (the layout's L["sites"]). Returns the report {bid: site dict | note}; the belt report under "belts"."""
+    main = main_land(Z) if main is None else main
+    land = main & (Z > SEA_Z)
+    S = slope_deg(Z)
+    J, I = np.mgrid[0:N, 0:N]
+    WX, WY = c2w(I, J)
+    d_sea = dist_m(~land)
+    rep = {}
+
+    def have(bid):
+        return bid in sheets and "size" in sheets[bid]
+
+    def put(bid, site):
+        place_entry(B, bid, site, sheets[bid])
+        rep[bid] = site
+        log("  chain: %-16s at (%.0f, %.0f) %s" % (bid, site["x"], site["y"], site.get("note", "")))
+    mine = tuple(sites.get("mine") or ()) or None
+    plant = next((bid for bid in ("silos", "hall_a", "hall_b") if bid in B), None)
+    plant_xy = (B[plant]["x"], B[plant]["y"]) if plant else (TOWER_WORLD[0], TOWER_WORLD[1])
+    # 1. mine_portal: the highest buildable ground by the mine site (the top of the ore line)
+    if have("mine_portal") and mine:
+        occ = _occupied(B, sheets, exclude=("mine_portal",))
+        for reach in (150.0, 300.0, 600.0):
+            cand = land & (d_sea >= 30) & (S <= 20) & ~occ & (np.hypot(WX - mine[0], WY - mine[1]) / M <= reach)
+            r = _best_cell(cand, Z)
+            if r:
+                break
+        if r:
+            (x, y), _ = r
+            put("mine_portal", _site(x, y, zat(Z, x, y), _yaw_to(x, y, plant_xy), ground_m=round((zat(Z, x, y) - SEA_Z) / M, 1),
+                                     note="highest inland by the mine site (%.0f m over the sea)" % ((zat(Z, x, y) - SEA_Z) / M)))
+        else:
+            rep["mine_portal"] = {"note": "no buildable ground by the mine site"}
+    # 2. crusher_house: just below the portal, 30-80 m down the line toward the plant
+    if have("crusher_house") and "mine_portal" in B:
+        mp = B["mine_portal"]
+        occ = _occupied(B, sheets, exclude=("crusher_house",))
+        dm = np.hypot(WX - mp["x"], WY - mp["y"]) / M
+        zp = zat(Z, mp["x"], mp["y"])
+        cand = land & (d_sea >= 30) & (S <= 15) & ~occ & (dm >= 30) & (dm <= 80) & (Z < zp - 1.0 * M)
+        dplant = np.hypot(WX - plant_xy[0], WY - plant_xy[1]) / M
+        gdeg = np.degrees(np.arctan((zp - Z) / (dm * M + 1)))          # the portal -> crusher belt's grade
+        r = _best_cell(cand, -np.abs(dm - 50) - 0.1 * dplant - np.where(gdeg > BELT_MAX_DEG, 10 * (gdeg - BELT_MAX_DEG), 0.0))
+        if r is None:
+            cand = land & (S <= 17) & ~occ & (dm >= 20) & (dm <= 120) & (Z < zp)
+            r = _best_cell(cand, -np.abs(dm - 50) - 0.1 * dplant)
+        if r:
+            (x, y), _ = r
+            put("crusher_house", _site(x, y, zat(Z, x, y), _yaw_to(x, y, plant_xy), drop_m=round((zp - zat(Z, x, y)) / M, 1),
+                                       note="%.0f m from the portal, %.1f m below it" % (math.hypot(x - mp["x"], y - mp["y"]) / M, (zp - zat(Z, x, y)) / M)))
+        else:
+            rep["crusher_house"] = {"note": "no ground just below the portal"}
+    # 3. silos: the top of the plant terrace - the uphill side of hall_a (never its front, the bays)
+    if have("silos") and "hall_a" in B:
+        h = B["hall_a"]
+        a = math.radians(h["yaw"])
+        fx, fy = math.cos(a), math.sin(a)
+        lx, ly = -math.sin(a), math.cos(a)
+        W_, D_ = sheets["hall_a"]["size"][0], sheets["hall_a"]["size"][1]
+        sz = max(sheets["silos"]["size"][0] * (3 if "across" in sheets["silos"].get("count", "") else 1), sheets["silos"]["size"][1])
+        best = None
+        for side, (ux, uy, half) in (("back", (-fx, -fy, D_ / 2)), ("left", (lx, ly, W_ / 2)), ("right", (-lx, -ly, W_ / 2))):
+            for extra in (8.0, 16.0, 26.0):
+                x = h["x"] + ux * (half + sz / 2 + extra) * M
+                y = h["y"] + uy * (half + sz / 2 + extra) * M
+                z = zat(Z, x, y)
+                if z <= SEA_Z + 2 * M or _clash(B, sheets, "silos", x, y):
+                    continue
+                key = (z - extra * M * 0.3, side == "back")
+                if best is None or key > best[0]:
+                    best = (key, x, y, z, side)
+                break
+        if best:
+            _, x, y, z, side = best
+            put("silos", _site(x, y, z, h["yaw"], side=side, note="uphill of hall_a (%s side), %.1f m over it" % (side, (z - zat(Z, h["x"], h["y"])) / M)))
+        elif "silos" not in B:
+            rep["silos"] = {"note": "no free side of hall_a"}
+    # 4. transfer_tower: the belt's one bend between the crusher and the silos
+    belts = []
+    if "crusher_house" in B and "silos" in B:
+        a_ = (B["crusher_house"]["x"], B["crusher_house"]["y"])
+        b_ = (B["silos"]["x"], B["silos"]["y"])
+        straight_m, straight_deg = math.hypot(b_[0] - a_[0], b_[1] - a_[1]) / M, _grade_deg(Z, a_, b_)
+        needed = straight_m > BELT_REACH_M or straight_deg > BELT_MAX_DEG
+        if have("transfer_tower"):
+            occ = _occupied(B, sheets, exclude=("transfer_tower",))
+            da = np.hypot(WX - a_[0], WY - a_[1]) / M
+            db = np.hypot(WX - b_[0], WY - b_[1]) / M
+            za, zb_ = zat(Z, *a_), zat(Z, *b_)
+            cand = land & (d_sea >= 20) & (S <= 20) & ~occ & (da >= 25) & (db >= 25) & (da + db <= max(1.6 * straight_m, straight_m + 120))
+            if cand.any():
+                ga = np.degrees(np.arctan(np.abs(Z - za) / (da * M + 1)))
+                gb = np.degrees(np.arctan(np.abs(Z - zb_) / (db * M + 1)))
+                worst = np.maximum(ga, gb)
+                pen = np.where((da > BELT_REACH_M) | (db > BELT_REACH_M), 100.0, 0.0)       # over the belt's reach
+                pen += np.where(Z > za + 0.5 * M, 30.0, 0.0) + np.where(Z < zb_ - 0.5 * M, 10.0, 0.0)   # ore falls: between the two
+                r = _best_cell(cand, -(worst + pen + 0.02 * (da + db)))
+                if r:
+                    (x, y), _ = r
+                    legs = [(_grade_deg(Z, a_, (x, y)), math.hypot(x - a_[0], y - a_[1]) / M), (_grade_deg(Z, (x, y), b_), math.hypot(b_[0] - x, b_[1] - y) / M)]
+                    put("transfer_tower", _site(x, y, zat(Z, x, y), _yaw_to(x, y, b_), needed=needed,
+                                                legs=[{"deg": round(g, 1), "m": round(m_)} for g, m_ in legs],
+                                                note="the belt's bend (%s): legs %.0f m at %.0f deg, %.0f m at %.0f deg" % (
+                                                    "needed" if needed else "the straight belt was fine", legs[0][1], legs[0][0], legs[1][1], legs[1][0])))
+                    belts.append({"from": "crusher_house", "to": "transfer_tower", "m": round(legs[0][1]), "deg": round(legs[0][0], 1),
+                                  "ok": legs[0][1] <= BELT_REACH_M and legs[0][0] <= BELT_MAX_DEG})
+                    belts.append({"from": "transfer_tower", "to": "silos", "m": round(legs[1][1]), "deg": round(legs[1][0], 1),
+                                  "ok": legs[1][1] <= BELT_REACH_M and legs[1][0] <= BELT_MAX_DEG})
+            if "transfer_tower" not in B:
+                rep["transfer_tower"] = {"note": "no ground for a bend between the crusher and the silos"}
+        if not belts:
+            belts.append({"from": "crusher_house", "to": "silos", "m": round(straight_m), "deg": round(straight_deg, 1),
+                          "ok": straight_m <= BELT_REACH_M and straight_deg <= BELT_MAX_DEG})
+        rep["belts"] = {"straight_m": round(straight_m), "straight_deg": round(straight_deg, 1), "bend_needed": needed, "stretches": belts}
+    if "mine_portal" in B and "crusher_house" in B:
+        a_, b_ = (B["mine_portal"]["x"], B["mine_portal"]["y"]), (B["crusher_house"]["x"], B["crusher_house"]["y"])
+        rep.setdefault("belts", {}).setdefault("stretches", []).insert(0, {"from": "mine_portal", "to": "crusher_house", "m": round(math.hypot(b_[0] - a_[0], b_[1] - a_[1]) / M),
+                                                                          "deg": round(_grade_deg(Z, a_, b_), 1), "ok": _grade_deg(Z, a_, b_) <= BELT_MAX_DEG})
+    # 5. thickener: outside hall_b's LOW gable (the slurry leaves the hall there; the tailings line leaves it for the sea)
+    if have("thickener") and "hall_b" in B:
+        h = B["hall_b"]
+        a = math.radians(h["yaw"])
+        lx, ly = -math.sin(a), math.cos(a)                    # the width axis (size[0]): the gables are its two ends
+        W_ = sheets["hall_b"]["size"][0]
+        tw = max(sheets["thickener"]["size"][0], sheets["thickener"]["size"][1])
+        ends = sorted(((zat(Z, h["x"] + s * lx * W_ / 2 * M, h["y"] + s * ly * W_ / 2 * M), s) for s in (1, -1)))
+        done = False
+        for zg, s in ends:                                     # the low gable first; the other if that one is taken
+            for extra in (6.0, 14.0, 24.0):
+                x = h["x"] + s * lx * (W_ / 2 + tw / 2 + extra) * M
+                y = h["y"] + s * ly * (W_ / 2 + tw / 2 + extra) * M
+                if zat(Z, x, y) > SEA_Z + 2 * M and not _clash(B, sheets, "thickener", x, y):
+                    B["hall_b"]["low_gable"] = "+x" if ends[0][1] == 1 else "-x"
+                    put("thickener", _site(x, y, zat(Z, x, y), h["yaw"], gable="+x" if s == 1 else "-x", low_gable=s == ends[0][1],
+                                           note="at hall_b's %s gable%s" % ("+x" if s == 1 else "-x", "" if s == ends[0][1] else " (the low one was taken)")))
+                    done = True
+                    break
+            if done:
+                break
+        if not done:
+            rep["thickener"] = {"note": "no room at either gable of hall_b"}
+    # 6. conc_shed on the quay (land by the dock site), 7. shiploader beside the dock, over the water
+    dock = tuple(sites.get("dock") or ()) or None
+    if dock and "dock" in B:
+        dyaw = B["dock"]["yaw"]
+        dx_, dy_ = math.cos(math.radians(dyaw)), math.sin(math.radians(dyaw))
+        if have("conc_shed"):
+            occ = _occupied(B, sheets, exclude=("conc_shed",))
+            dd = np.hypot(WX - dock[0], WY - dock[1]) / M
+            for reach in (120.0, 220.0, 400.0):
+                cand = land & (d_sea >= 12) & (S <= 12) & ~occ & (dd <= reach)
+                r = _best_cell(cand, -dd)
+                if r:
+                    break
+            if r:
+                (x, y), _ = r
+                put("conc_shed", _site(x, y, zat(Z, x, y), dyaw, note="on the quay, %.0f m from the dock site" % (math.hypot(x - dock[0], y - dock[1]) / M)))
+            else:
+                rep["conc_shed"] = {"note": "no flat land by the dock"}
+        if have("shiploader"):
+            dk = B["dock"]
+            off = (sheets["dock"]["size"][1] / 2 + sheets["shiploader"]["size"][1] / 2 + 10.0) * M
+            px, py = -dy_, dx_                                 # across the dock
+            best = None
+            for s in (1, -1):
+                x, y = dk["x"] + s * px * off, dk["y"] + s * py * off
+                over_water = zat(Z, x, y) <= SEA_Z
+                cl = _clash(B, sheets, "shiploader", x, y, extra_m=0.0)
+                key = (over_water, cl is None)
+                if best is None or key > best[0]:
+                    best = (key, x, y, s)
+            _, x, y, s = best
+            put("shiploader", _site(x, y, SEA_Z if zat(Z, x, y) <= SEA_Z else zat(Z, x, y), dyaw, side=s, over_water=best[0][0],
+                                    note="beside the dock (%s side)%s" % ("left" if s == 1 else "right", "" if best[0][0] else ", NOT over the water")))
+    elif have("conc_shed") or have("shiploader"):
+        rep["conc_shed"] = rep["shiploader"] = {"note": "no dock in the layout"}
+    # 8. sewage_works: the lowest land cell downwind (WIND) of the company housing, off every footprint
+    if have("sewage_works"):
+        hs = [B[b] for b in COMPANY_HOUSING if b in B]
+        if hs:
+            hx, hy = np.mean([h["x"] for h in hs]), np.mean([h["y"] for h in hs])
+            occ = _occupied(B, sheets, exclude=("sewage_works",))
+            from scipy.ndimage import binary_dilation
+            occ = binary_dilation(occ, iterations=3)           # >= ~30 m off every footprint
+            down = ((WX - hx) * WIND[0] + (WY - hy) * WIND[1]) / M
+            dh = np.hypot(WX - hx, WY - hy) / M
+            for reach in (400.0, 700.0, 1200.0):
+                cand = land & (d_sea >= 20) & (S <= 15) & ~occ & (down > 30) & (dh <= reach)
+                r = _best_cell(cand, -Z)
+                if r:
+                    break
+            if r:
+                (x, y), _ = r
+                put("sewage_works", _site(x, y, zat(Z, x, y), _yaw_to(x, y, (hx, hy)), downwind_m=round(float(((x - hx) * WIND[0] + (y - hy) * WIND[1]) / M)),
+                                          note="lowest land %.0f m downwind of the company housing (%.0f m over the sea)" % (
+                                              ((x - hx) * WIND[0] + (y - hy) * WIND[1]) / M, (zat(Z, x, y) - SEA_Z) / M)))
+            else:
+                rep["sewage_works"] = {"note": "no low land downwind of the housing"}
+        else:
+            rep["sewage_works"] = {"note": "no company housing placed"}
+    # 9. tailings_outfall: at sea, >= 150 m from the intake, off the dock, downwind of the town, nearest the thickener
+    if have("tailings_outfall"):
+        src = B.get("thickener") or B.get("hall_b")
+        if src:
+            allb = [p for bid, p in B.items() if bid in sheets and sheets[bid].get("kind") not in ("rig", "islet", "barge", "wreck") and bid != "far_islands"]
+            cx, cy = np.mean([p["x"] for p in allb]), np.mean([p["y"] for p in allb])
+            sea = (Z <= SEA_Z - 3 * M) & (dist_m(land) >= 60)
+            if "intake" in B:
+                sea &= np.hypot(WX - B["intake"]["x"], WY - B["intake"]["y"]) / M >= 150
+            if "dock" in B:
+                sea &= np.hypot(WX - B["dock"]["x"], WY - B["dock"]["y"]) / M >= 100
+            ds = np.hypot(WX - src["x"], WY - src["y"]) / M
+            down = ((WX - cx) * WIND[0] + (WY - cy) * WIND[1]) / M
+            for reach in (800.0, 1400.0, 3000.0):
+                cand = sea & (ds <= reach)
+                r = _best_cell(cand, -ds - np.where(down > 0, 0.0, 300.0))
+                if r:
+                    break
+            if r:
+                (x, y), _ = r
+                put("tailings_outfall", _site(x, y, SEA_Z, 0.0, underground=True, depth_m=round((SEA_Z - zat(Z, x, y)) / M, 1), line_m=round(math.hypot(x - src["x"], y - src["y"]) / M),
+                                              downwind=bool(((x - cx) * WIND[0] + (y - cy) * WIND[1]) > 0),
+                                              note="at sea, %.0f m of tailings line from the thickener, %.0f m deep%s" % (
+                                                  math.hypot(x - src["x"], y - src["y"]) / M, (SEA_Z - zat(Z, x, y)) / M,
+                                                  "" if ((x - cx) * WIND[0] + (y - cy) * WIND[1]) > 0 else ", NOT downwind")))
+            else:
+                rep["tailings_outfall"] = {"note": "no sea cell clear of the intake and the dock"}
+    return rep
+
+
 def walk_edges(dr, to_fine, nearest_free, NF, cost_k=1.0):
     """walks.py: the drain as a walkable path - one tunnel edge each way between its two mouths (the grate and the
     outfall), weighted by its length (metres x cost_k). Returns [(u, v, w)] for walks.graph(extra=...)"""
@@ -977,6 +1270,8 @@ def apply(L, Z, sheets=None, hero=None):
         if wt:
             place_entry(B, "water_tower", wt, sheets["water_tower"])
             rep["water_tower"] = {k: v for k, v in wt.items() if k != "served"} | {"served_n": len(wt["served"])}
+    if any(bid in sheets for bid in CHAIN) and "mine_portal" in sheets:
+        rep["chain"] = process_chain(Z, B, sheets, L.get("sites", {}), main, log=lambda *a: None)
     if "drain" in sheets:
         dr = drain(Z, L, sheets, main)
         if dr:

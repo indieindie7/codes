@@ -157,6 +157,29 @@ def liandri(sheet, W, D, H):
     return 1, rooms, []
 
 
+def control_room(rs, sheet, W, D, H):
+    """D10 (engineer s. 2.3, binder/rooms/control_room.md): the plant control room on hall_b's UPHILL gable, on a stair
+    tower, 14 x 8 x 3.6 m (the sheet's size:). The plant-facing wall is glass from a 0.6 m sill to 3.2 m, mullions
+    every 2 m, sloped OUT 15 deg; a raised floor one step up; four consoles 2.4 m wide in a shallow arc 3 m back from the
+    glass, in plant-bearing order; the mimic board on the back wall; two ways out, the stair and the bridge to the
+    hall's catwalk. Local +x is the uphill gable here; export mirrors it when the layout says the low gable is +x
+    (anchors.process_chain writes B['hall_b']['low_gable'])."""
+    w, d, h = (tuple(rs.get("size") or ()) + (14.0, 8.0, 3.6))[:3]
+    x = W / 2 - w / 2                                     # on the gable end, outside the hall's roof line
+    arc = []
+    for k in range(4):
+        ang = math.radians(-24 + 16 * k)                  # a shallow arc, 2.4 m wide each, facing the glass (+x)
+        arc.append({"x": round(x + w / 2 - 3.0 - 1.2 * (1 - math.cos(ang)), 2), "y": round(-3.6 + 2.4 * k, 2), "w": 2.4, "facing": "+x",
+                    "order": "plant bearing from this room, left to right (no mirror imaging)"})
+    r = room("control_room", rs.get("name", "the plant control room"), x, 0, w, d, h, 1, H,
+             on="gable stair tower (uphill gable)", floor="raised one step (+0.2 m)",
+             glass={"side": "+x (the plant)", "sill_m": 0.6, "top_m": 3.2, "mullion_m": 2.0, "slope_out_deg": 15.0},
+             consoles=arc, back_wall="mimic board; MCC closet; kitchenette",
+             exits=["stair tower to the ground", "bridge to the hall's high catwalk"], never_faces="the Authority tower")
+    return r
+
+
+BY_ROOM = {"control_room": control_room}
 BY_ID = {"tower": authority_tower, "liandri_tower": liandri, "mess": mess, "drain": culvert,
          "pump_house": pump, "pump_station": pump}
 BY_KIND = {"dorm": dorm, "hall": hall, "house": house, "pump": pump, "culvert": culvert, "office": house}
@@ -175,13 +198,25 @@ def plan(bid, sheet, room_sheets, drain=None):
     for rid, rs in room_sheets.items():                # the binder's room sheets: merge their story keys, add the missing
         if rid in have:
             r = next(r for r in rooms if r["id"] == rid)
+            if rs.get("size"):                             # the room sheet's own size wins (round 3)
+                r.update(w=rs["size"][0], d=rs["size"][1], h=rs["size"][2] if len(rs["size"]) > 2 else r["h"])
+                r["uu"] = [uu(r["w"]), uu(r["d"]), uu(r["h"])]
+        elif rid in BY_ROOM:
+            r = BY_ROOM[rid](rs, sheet, W, D, H)
+            rooms.append(r)
         else:
             beds = int(rs.get("beds") or 0)
             area = max(24.0, beds * 4.0 / 3 * 1.2) if beds else 24.0     # bunk rooms at 3 beds / 4.8 m2 + circulation
-            w = round(min(W, max(6.0, math.sqrt(area * 2))), 1)
-            r = room(rid, rs.get("name", rid), 0, 0, w, round(area / w, 1), STOREY_M - 0.3, 1, 0.0)
+            if rs.get("size"):                             # `size: w d h` on the room sheet (round 3)
+                w, d, hh = (tuple(rs["size"]) + (STOREY_M - 0.3,))[:3]
+            else:
+                w = round(min(W, max(6.0, math.sqrt(area * 2))), 1)
+                d, hh = round(area / w, 1), STOREY_M - 0.3
+            r = room(rid, rs.get("name", rid), 0, 0, w, d, hh, 1, 0.0)
             rooms.append(r)
         r.update(sheet_name=rs.get("name"), users=rs["users"], lit=rs["lit"], wear=rs["wear"], **({"beds": int(rs["beds"])} if rs.get("beds") else {}))
+    if any(r["id"] == "control_room" for r in rooms):     # the gable stair tower up to the control room's floor
+        stairs.append(dict(stair(W / 2 - 2.0, D / 2 - 2.0, 0.0, H, width=1.2), to="control_room", tower="gable stair tower"))
     doors = shell_doors(sheet, W, D) if sheet.get("kind") != "culvert" else [door("grate", "personnel", 0, 0), door("outfall", "personnel", 0, 0)]
     if any(r.get("lift") for r in rooms):           # the lift and the catwalk deck are the tower's second way out
         doors += [door("lift", "personnel", 0, 0, to="lift"), door("deck", "personnel", 0, -D / 2, to="catwalk")]
