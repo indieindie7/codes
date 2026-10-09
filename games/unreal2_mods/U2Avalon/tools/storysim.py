@@ -3,7 +3,7 @@ into a drama manager (user 2026-10-09: "lets do the drama manager that makes a s
 lets have for important characters bigger agents. lets evolve the writer").
 
     py tools/storysim.py [days=3] [out=<dir>] [small=URL] [big=URL|claude] [dm=claude|URL] [step=60] [only=a,b]
-                         [backend=live|dry] [model_dm=opus]
+                         [backend=live|dry] [model_dm=opus] [think_big=0|1]
 
 Three tiers (research_notes/Local models for character writing):
   SMALL  the minor citizens and the groups (dock gang, Tin Row families ...): a local model, fast and parallel
@@ -116,8 +116,13 @@ def sheet(c):
 
 
 # ---- backends -------------------------------------------------------------------------------------------------
-def chat(url, messages, temp=0.8, schema=None, max_tokens=500):
-    body = {"model": "local", "messages": messages, "temperature": temp, "max_tokens": max_tokens}
+THINK_BIG = o.get("think_big", "0") == "1"      # Pantheon's reasoning: better turns, ~7 tok/s on the CPU, so off by default
+
+
+def chat(url, messages, temp=0.8, schema=None, max_tokens=500, think=False):
+    body = {"model": "local", "messages": messages, "temperature": temp, "max_tokens": max_tokens,
+            # both local models think by default and can spend the whole budget on it (an empty answer)
+            "chat_template_kwargs": {"enable_thinking": bool(think)}}
     if schema:
         body["response_format"] = {"type": "json_schema", "json_schema": {"name": "turn", "schema": schema}}
     req = urllib.request.Request(url.rstrip("/") + "/chat/completions", data=json.dumps(body).encode(),
@@ -143,6 +148,12 @@ def first_json(text):
 
 
 # ---- one agent turn + the per-turn safety net -------------------------------------------------------------------
+def reason_of(d):
+    """the off-routine reason, '' when the model wrote a placeholder ('None', 'n/a', 'none; on schedule' ...)"""
+    r = str(d.get("off_routine_reason", "") or "").strip()
+    return "" if re.match(r"(?i)^(none|n/?a|no|null|-|nothing)", r) else r
+
+
 def check_turn(cid, c, t, d):
     """problems with a turn (empty list = accepted)"""
     bad = []
@@ -154,13 +165,14 @@ def check_turn(cid, c, t, d):
     place = str(d.get("place", "")).strip().lower()
     if place and place not in PLACES and not any(place.startswith(p) for p in PLACES):
         bad.append("unknown place '%s'" % place)
-    if place and place != routine_place(c, t) and not str(d.get("off_routine_reason", "")).strip():
+    if place and place != routine_place(c, t) and not reason_of(d):
         bad.append("left the routine (%s) without a reason" % routine_place(c, t))
     if len(str(d.get("line", "")).split()) > 40:
         bad.append("line too long")
-    caps = set(re.findall(r"\b([A-Z][a-z]{3,})\b", str(d.get("line", "")) + " " + str(d.get("doing", ""))))
+    # capitalised words NOT at the start of a sentence (a sentence-initial "Keep" or "Stoking" is not a name)
+    caps = set(re.findall(r"(?<=[a-z,;:] )([A-Z][a-z]{3,})\b", str(d.get("line", "")) + " " + str(d.get("doing", ""))))
     common = {"Liandri", "Authority", "Avalon", "Tin", "Row", "Ship", "Hawkins", "Commander", "Sector", "Colonial",
-              "Skaarj", "Izarian", "The", "They", "There", "This", "That", "When", "What", "Then", "Just", "Some"}
+              "Skaarj", "Izarian", "Company", "Thursday", "Monday", "Tuesday", "Wednesday", "Friday", "Saturday", "Sunday", "The", "They", "There", "This", "That", "When", "What", "Then", "Just", "Some"}
     stray = [w for w in caps if w.lower() not in NAMES and w not in common and w.lower() not in PLACES]
     if len(stray) > 2:
         bad.append("possibly invented names: %s" % ", ".join(sorted(stray)[:4]))
@@ -193,7 +205,8 @@ def agent_turn(cid, c, t, day, state):
             if url == "claude":
                 d = first_json(claude(prompt, "sonnet"))
             else:
-                d = first_json(chat(url, [{"role": "user", "content": prompt}], temp, TURN, 700 if tier(cid) == "big" else 400))
+                d = first_json(chat(url, [{"role": "user", "content": prompt}], temp, TURN,
+                                    (1200 if THINK_BIG else 400) if tier(cid) == "big" else 300, think=THINK_BIG and tier(cid) == "big"))
         except Exception as e:
             d, tries = None, tries + ["error: %s" % e]
         bad = check_turn(cid, c, t, d)
@@ -241,7 +254,7 @@ def main():
                 eid += 1
                 e = {"id": eid, "day": day, "time": hm(t), "who": cid, "tier": how, "place": str(d.get("place", "")),
                      "doing": str(d.get("doing", "")), "line": str(d.get("line", "")), "with": d.get("with", []),
-                     "memory": str(d.get("memory", "")), "reason": str(d.get("off_routine_reason", "")), "retries": tries}
+                     "memory": str(d.get("memory", "")), "reason": reason_of(d), "retries": tries}
                 events.append(e)
                 logf.write(json.dumps(e, ensure_ascii=False) + "\n")
                 logf.flush()
