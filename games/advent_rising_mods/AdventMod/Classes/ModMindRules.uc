@@ -20,7 +20,11 @@ function ScoreKill(Controller Killer, Controller Killed)
 	if (NextGameRules != None)
 		NextGameRules.ScoreKill(Killer, Killed);
 	if (Minds != None && Killed != None && Killed.Pawn != None)
+	{
+		if (Minds.Needs != None)
+			Minds.Needs.PostCorpse(Killed.Pawn, Killed.Pawn.Location);   // a corpse: hounds feed on it (ModNeeds)
 		Minds.Death(Killed.Pawn, Killed.Pawn.bHidden);
+	}
 }
 
 defaultproperties

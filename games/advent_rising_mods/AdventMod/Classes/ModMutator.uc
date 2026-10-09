@@ -17,6 +17,7 @@ var ModTargeting Targeting;
 var ModGore Gore;
 var ModPlayerBlood PlayerBlood;
 var ModMinds Minds;
+var ModNeeds Needs;
 
 // ticks while the game is paused too (bAlwaysTick), so the FOV slider in the pause menu
 // shows its effect at once
@@ -98,6 +99,10 @@ function Every()
 		PlayerBlood = Spawn(class'ModPlayerBlood');   // blood on the player's hands/weapon, lens drops
 	if (!class'ModSettings'.default.bGraphicsOnly && Minds == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Minds = Spawn(class'ModMinds');   // the creatures' psychology: suppression, cover, morale, flanking, packs
+	if (!class'ModSettings'.default.bGraphicsOnly && Needs == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
+		Needs = Spawn(class'ModNeeds');   // their needs and the world's advertisements (bNeeds off = it does nothing)
+	if (Needs != None && Minds != None && Minds.Needs == None)
+		Minds.Needs = Needs;
 	if (Live == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Live = Spawn(class'ModLive');      // live sessions: "mutate live reload" and the place it puts the player back
 	if (class'ModSettings'.default.bD3DTrace)
@@ -211,6 +216,9 @@ function Mutate(string MutateString, PlayerController Sender)
 {
 	if (Caps(Left(MutateString, 5)) == "LIVE " && Live != None)
 		Live.Command(Mid(MutateString, 5), Sender);
+	// "mutate needs list|on|off|log on|hunger V|fatigue V|curiosity V|noise" (ModNeeds)
+	if (Caps(Left(MutateString, 6)) == "NEEDS " && Needs != None)
+		class'ModSettings'.static.Note("needs: " $ Needs.Command(Mid(MutateString, 6)));
 	Super.Mutate(MutateString, Sender);
 }
 

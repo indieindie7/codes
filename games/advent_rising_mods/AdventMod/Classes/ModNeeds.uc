@@ -802,14 +802,15 @@ function float NeedOf(Pawn P, int N)
 }
 
 // the pack's hunting drive from hunger: 0.2 (just fed: it stalks, holds long, commits only from
-// the side) to 1 (starved: it commits early, from in front). Anyone but a hound: 1.
+// the side) to 1 (starved: it commits early, from in front). No record (needs off, not a hound):
+// 0.6, which leaves the pack's cone and hold as they were.
 function float HuntDrive(Pawn P)
 {
 	local int i;
 
 	i = RecordOf(P);
 	if (i < 0 || Recs[i].Species != 3/*S_Hound*/)
-		return 1;
+		return 0.6;
 	return 0.2 + 0.8 * Recs[i].V[N_Hunger];
 }
 

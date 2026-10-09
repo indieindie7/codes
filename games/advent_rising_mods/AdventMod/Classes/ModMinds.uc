@@ -99,6 +99,7 @@ var int KicksGone, KicksPlantedGone, KickLeapsGone, KickBitesGone, LinkUsesGone;
 
 var array<ModMind> Minds;
 var ModMindRules Rules;
+var ModNeeds Needs;                 // the needs layer (section 11; ModMutator sets it, or Adopt finds it): wants, HuntDrive, the tell
 var float AdoptWait, FlankWait, TokenWait;
 var int ShotsAtPlayer, ShotsUntokened, PlayerHits, PlayerDamage;
 
@@ -197,7 +198,17 @@ function Adopt()
 	local ModMind M;
 	local int i;
 	local bool bKnown;
+	local ModNeeds N;
 
+	if (Needs == None || Needs.bDeleteMe)
+	{
+		Needs = None;
+		foreach DynamicActors(class'ModNeeds', N)
+		{
+			Needs = N;
+			break;
+		}
+	}
 	// forget the gone; a pawn the game recycled for its spawners is a new creature
 	for (i = Minds.Length - 1; i >= 0; i--)
 	{
@@ -1009,8 +1020,10 @@ function bool Going(ModMind M)
 function Decide(ModMind M, float DeltaTime)
 {
 	local Pawn Enemy;
-	local vector Spot, Away;
+	local vector Spot, Away, At;
 	local float Now;
+	local int W;
+	local Actor Target;
 
 	if (M.Kick != 0)
 	{
@@ -1021,13 +1034,16 @@ function Decide(ModMind M, float DeltaTime)
 	Enemy = M.B.EnemyInfo.Enemy;
 	M.TaskTime += DeltaTime;
 
-	// tasks running out or done
+	// tasks running out or done (a want ends with its time, a hit, an enemy appearing for anyone but a
+	// hound, and for a hound the prey close or the melee token in its mouth: the fight is on again)
 	if (M.Task != 0/*T_None*/)
 	{
-		if (M.TaskTime > M.TaskLimit || Enemy == None
+		if (M.TaskTime > M.TaskLimit || (Enemy == None && M.Task != 10/*T_Want*/)
 			|| (M.Task == 1/*T_Pinned*/ && M.Pressure < FreePressure)
 			|| (M.Task == 3/*T_FallBack*/ && M.Fear < FleeFear - 0.25)
-			|| (M.Task == 5/*T_Charge*/ && M.Anger < ChargeAnger - 0.3 && M.Role != 3/*R_Closer*/))
+			|| (M.Task == 5/*T_Charge*/ && M.Anger < ChargeAnger - 0.3 && M.Role != 3/*R_Closer*/)
+			|| (M.Task == 10/*T_Want*/ && (Now - M.LastHit < 1.0 || M.Pressure > FreePressure
+				|| (Enemy != None && (M.Species != 3/*S_Hound*/ || M.bMeleeToken || VSize(Enemy.Location - M.P.Location) < 900)))))
 		{
 			Log2(M.P.Name $ " done with " $ M.TaskName(M.Task) $ " after " $ int(M.TaskTime) $ " s");
 			if (M.Task == 4/*T_Flank*/)
@@ -1036,12 +1052,16 @@ function Decide(ModMind M, float DeltaTime)
 				Crouch(M, false);
 			if (M.Task == 1/*T_Pinned*/)
 				M.NextPin = Now + 3 + 3 * M.Courage;   // up again to fight before it can be pinned again
+			if (M.Task == 10/*T_Want*/ && Needs != None)
+				Needs.GiveUp(M.P, "task over");
 			HoldFire(M, false);
 			M.Task = 0/*T_None*/;
 			M.NextDecision = Now + 0.5;
 		}
 	}
-	if (Enemy == None || Busy(M))
+	if (Busy(M))
+		return;
+	if (Enemy == None && M.Task != 10/*T_Want*/ && Needs == None)
 		return;
 
 	// keep tasks going: re-issue a move the game's AI dropped
@@ -1076,6 +1096,7 @@ function Decide(ModMind M, float DeltaTime)
 		case 4/*T_Flank*/:
 		case 8/*T_Advance*/:
 		case 6/*T_Circle*/:
+		case 10/*T_Want*/:
 			if (VSize((M.P.Location - M.TaskDest) * vect(1,1,0)) < 140)
 			{
 				if (M.Task == 6/*T_Circle*/)
@@ -1085,6 +1106,8 @@ function Decide(ModMind M, float DeltaTime)
 					M.B.DoCharge('Mind_PackCharge', Enemy);
 					return;
 				}
+				if (M.Task == 10/*T_Want*/ && Needs != None)
+					Needs.Satisfied(M.P);    // there: ModNeeds meets the need (it feeds, looks, rests)
 				Log2(M.P.Name $ " reached its " $ M.TaskName(M.Task) $ " spot");
 				if (M.Task == 4/*T_Flank*/)
 					M.LastFlank = Level.TimeSeconds;
@@ -1119,6 +1142,28 @@ function Decide(ModMind M, float DeltaTime)
 	if (Now < M.NextDecision)
 		return;
 	M.NextDecision = Now + 0.4 + FRand() * 0.4;
+
+	// needs (ModNeeds, section 11): a calm creature with nothing to do acts on its want; a hound may feed or
+	// regroup in a lull (the prey far, no melee token), never while it commits or charges
+	if (Needs != None && M.Task == 0/*T_None*/ && M.Role != 3/*R_Closer*/
+		&& M.Pressure < FreePressure && M.Fear < FleeFear && M.Anger < ChargeAnger
+		&& (Enemy == None || (M.Species == 3/*S_Hound*/ && !M.bMeleeToken && VSize(Enemy.Location - M.P.Location) > 900)))
+	{
+		W = Needs.Want(M.P, At, Target);
+		if (W != 0)
+		{
+			M.TaskDest = At;
+			SetTask(M, 10/*T_Want*/, 8, "wants to " $ Needs.WantName(W) $ " " $ int(VSize(At - M.P.Location)) $ " away");
+			HoldFire(M, false);
+			if (W == 2/*W_Rest*/ && VSize((At - M.P.Location) * vect(1,1,0)) < 140)
+				M.B.DoWait('Mind_Rest', 2.0);
+			else
+				M.B.DoMoveToDestination('Mind_Want', NextLeg(M, At));
+			return;
+		}
+	}
+	if (Enemy == None)
+		return;
 
 	// broken: run
 	if (M.Fear > PanicFear && M.Courage < 0.45 && M.Species != 4/*S_Construct*/)
@@ -1677,7 +1722,7 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 	local int j, Pk, Side, Behind, Closers, Pack;
 	local ModMind O, Holder, Pick;
 	local array<ModMind> Members;
-	local float Now, B, Best, D, Hold, Front, AngerMax;
+	local float Now, B, Best, D, Hold, Front, AngerMax, Drive;
 	local vector Facing, Moving, Want, Back, HitLoc, HitNorm;
 	local bool bHurt, bPinned, bCommit, bNewRoles;
 	local string Why;
@@ -1688,16 +1733,26 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 		O = Minds[j];
 		if (O.B.Squad != S || O.Species != 3/*S_Hound*/ || O.P.Health <= 0 || O.B.EnemyInfo.Enemy == None)
 			continue;
+		if (O.Task == 10/*T_Want*/)
+			continue;               // feeding or regrouping in a lull (ModNeeds): out of the roles until it is done
 		Members[Members.Length] = O;
 		if ((Now - O.LastHit < 1.0 && O.Role != 3/*R_Closer*/) || O.Role == 0)
 			bHurt = true;           // deal roles now: one is hurt, or one has none (its charge just ended)
 		if (O.Task == 5/*T_Charge*/ && O.Role == 3/*R_Closer*/)
 			Closers++;
 		AngerMax = FMax(AngerMax, O.Anger);
+		if (Needs != None)
+			Drive += Needs.HuntDrive(O.P);
 	}
 	Pack = Members.Length;
 	if (Pack == 0)
 		return;
+	// the hunting drive (ModNeeds: hunger): 1 without the needs layer; a fed pack (0.2) holds longer and
+	// commits only from well round the side, a starved one (1) commits early and from nearer the front
+	if (Needs != None)
+		Drive = Drive / Pack;
+	else
+		Drive = 0.6;                // half hungry: the stock cone and hold
 	Pk = PackOf(S);
 	PreyFrame(Prey, Facing, Moving);
 
@@ -1807,8 +1862,8 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 
 	// commit? a flanker outside the prey's front cone (narrower the angrier the pack), or the prey pinned,
 	// or the hold has run too long (shorter the angrier)
-	Front = HoundCommitFront * 0.5 * (1 - 0.3 * AngerMax);
-	Hold = HoundHoldMax * (1 - 0.6 * AngerMax);
+	Front = HoundCommitFront * 0.5 * (1 - 0.3 * AngerMax) * (1.3 - 0.5 * Drive);   // drive 0.2: x1.2, 0.6: x1, 1: x0.8
+	Hold = HoundHoldMax * (1 - 0.6 * AngerMax) * (1.6 - Drive);                     // drive 0.2: x1.4, 0.6: x1, 1: x0.6
 	Best = 0;
 	for (j = 0; j < Pack; j++)
 	{
@@ -1885,6 +1940,12 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 		case 4/*R_Skirmisher*/:
 			// the front: a ring round the prey at HoundHold, feinting in (even legs) and out (odd)
 			Want = Prey.Location + Normal((O.P.Location - Prey.Location) * vect(1,1,0)) * (HoundHold + 70 - 140 * (O.SkipCount % 2));
+			// the stalk tell (ModNeeds): a hungry holder croons before the pack commits (the sound comes later)
+			if (Needs != None && Now - O.TellAt > 4 && Needs.WantsTell(O.P))
+			{
+				O.TellAt = Now;
+				HoundLog(O.P.Name $ " croons (hunger " $ int(Needs.NeedOf(O.P, 0) * 100) $ ", drive " $ int(Drive * 100) $ ")");
+			}
 			if (D > 600)
 			{
 				O.TaskDest = Want;
@@ -1937,7 +1998,7 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 			O = Members[j];
 			Why = Why $ " " $ O.P.Name $ " " $ O.RoleName(O.Role) $ "/" $ O.TaskName(O.Task) $ " " $ int(VSize(O.P.Location - Prey.Location)) $ "@" $ int(Bearing(Prey, Facing, O.P.Location));
 		}
-		HoundLog("pack of " $ Pack $ ", " $ Behind $ " behind the front cone, pinned " $ bPinned $ ", held " $ int(Now - Packs[Pk].HoldSince) $ " s:" $ Why);
+		HoundLog("pack of " $ Pack $ ", " $ Behind $ " behind the front cone, pinned " $ bPinned $ ", held " $ int(Now - Packs[Pk].HoldSince) $ " of " $ int(Hold) $ " s, drive " $ int(Drive * 100) $ ":" $ Why);
 	}
 }
 

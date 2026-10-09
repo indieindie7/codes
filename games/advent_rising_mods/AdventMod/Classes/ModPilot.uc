@@ -22,6 +22,8 @@
 //   spawnpack [n] [ahead] [spread]   n hounds ahead of the player in a squad of their own (for the pack tests)
 //   houndtest [SECONDS]      every hound's role, distance and bearing round the player's view twice a
 //                            second, and the pack's measures (ModMinds.HoundStats) every 5 s and at the end
+//   needslist                every creature's needs and want, and the ads in the world (ModNeeds.List)
+//   needs <cmd>              ModNeeds.Command: list|on|off|log on|hunger V|fatigue V|curiosity V|noise
 //   leaplinks                the level's wall-kick links (ModMinds.BuildLinks): ends, straight and route lengths, the wall
 //   wallkick                 the hound nearest the player kicks off a wall at it now, if one fits (ModMinds.ForceKick)
 //=============================================================================
@@ -354,6 +356,19 @@ function MindList()
 		return;
 	}
 	Note("mindlist: no ModMinds in this level");
+}
+
+// NEEDSLIST / NEEDS <cmd>: the creatures' needs (ModNeeds)
+function NeedsCommand(string Cmd)
+{
+	local ModNeeds N;
+
+	foreach DynamicActors(class'ModNeeds', N)
+	{
+		Note("needs: " $ N.Command(Cmd));
+		return;
+	}
+	Note("needs: no ModNeeds in this level");
 }
 
 // HOUNDTEST: the hounds now, and (bStats) the pack's measures so far
@@ -1379,6 +1394,14 @@ function StartStep()
 	case "MINDLIST":
 		// the creatures' minds (ModMinds): feelings, task, shots past and hits
 		MindList();
+		break;
+	case "NEEDSLIST":
+		// the creatures' needs and wants, and the ads in the world (ModNeeds)
+		NeedsCommand("list");
+		break;
+	case "NEEDS":
+		// NEEDS list|on|off|log on|hunger V|fatigue V|curiosity V|noise (ModNeeds.Command)
+		NeedsCommand(RestOf(1));
 		break;
 	case "LEAPLINKS":
 		// the level's wall-kick links (see the header)

@@ -32,6 +32,7 @@ const T_Circle = 6;         // a hound taking its place in the pack around the p
 const T_Panic = 7;          // broken: running
 const T_Advance = 8;        // ordered to push: closer to the enemy along paths
 const T_Skip = 9;           // a hound's zig-zag leg (ModMinds.SkipLeg)
+const T_Want = 10;          // acting on a need (ModNeeds: feeding, resting, investigating, regrouping)
 
 // hound pack roles (ModMinds.HoundPack, AI-MINDS-DESIGN.md section 9)
 const R_None = 0;           // not in a pack (or packs off)
@@ -87,6 +88,7 @@ var int Kicks, KicksPlanted, KickLeaps, KickBites;
 var ModLeapLink Link;               // the leap link its current leg takes (walk to one end, kick via the wall to the other)
 var bool bLinkReverse;              // ... from B to A
 var int LinkUses;
+var float TellAt;                   // when it last crooned (ModNeeds.WantsTell: a hungry holder's stalk tell)
 
 // the abilities: ours (a copy only this pawn uses) and the game's values the feelings start from
 var AdventPawnAbilities Own;
@@ -153,6 +155,7 @@ static function string TaskName(int T)
 		case T_Panic: return "panic";
 		case T_Advance: return "advance";
 		case T_Skip: return "skip";
+		case T_Want: return "want";
 	}
 	return "?";
 }
