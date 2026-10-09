@@ -19,6 +19,10 @@ import island_batch as ib  # noqa  (helpers: run, pilot_script, populate, enable
 import systems  # noqa
 import compose  # noqa
 import codirect  # noqa  (the five co-directors; the final review runs on the graded ground for every style)
+import anchors  # noqa  (the story buildings' placement rules: the hero's summit, guest house, water tower, the drain)
+import takes  # noqa  (the informal taps: binder takes:)
+import rooms  # noqa  (interior plans for the shell build -> <run>/rooms.json)
+import binder  # noqa
 
 args = [a for a in sys.argv[1:] if "=" not in a]
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
@@ -82,6 +86,11 @@ for ki in range(ISLANDS):
         if not made(cand):
             step("layout %s (seed %d)" % (METHOD, lseed), lambda: ib.run(["py", os.path.join(TOOLS, tool), ib_ + "_e.bmp", cand,
                                                                           "seed=%d" % lseed, "shift=" + SHIFT, "png=" + cand[:-5] + ".png", "vis=" + ib_ + "_vis.npz"]))
+        # a layout made before binder 1940260 (reuse=1) lacks the rule-placed story buildings: place them now
+        _Lc = json.load(open(cand))
+        if anchors.PARTI_HERO not in _Lc["buildings"] or "drain" not in _Lc:
+            print("  anchors (late, an older layout):", ", ".join(anchors.apply(_Lc, anchors.load_heights(ib_ + "_e.bmp"))), flush=True)
+            json.dump(_Lc, open(cand, "w"), indent=0)
         Lc, core_unmet = systems.run(cand, report=True)
         frame = compose.score(ib_ + "_e.bmp", cand) if COMPOSE else {"total": 0.0}
         if CODIRECT:
@@ -128,6 +137,39 @@ ib.island_png(base + "_ec.bmp", base + "_map.png")
 step("viewshed (final ground)", lambda: ib.run(["py", os.path.join(TOOLS, "viewshed.py"), base + "_ec.bmp", NAV, layout, base]))
 # the citizens' routines walked on the graded ground: desire lines, door wants, travel-time checks
 step("walks", lambda: ib.run(["py", os.path.join(TOOLS, "walks.py"), base + "_ec.bmp", layout, "png=" + base + "_walks.png"]))
+
+
+def story_extras():
+    """the informal taps (binder takes:) into the layout for clutter, the interior plans into <run>/rooms.json"""
+    L_ = json.load(open(layout))
+    _, sh = binder.load()
+    L_["taps"] = takes.taps(L_, anchors.load_heights(base + "_ec.bmp"), sh)
+    json.dump(L_, open(layout, "w"), indent=0)
+    takes.overlay(anchors.load_heights(base + "_ec.bmp"), L_, L_["taps"], base + "_taps.png")
+    P = rooms.build(sh, binder.load_rooms(), L_)
+    json.dump(P, open(os.path.join(RUN, "rooms.json"), "w"), indent=1)
+    rooms.overlay(P, base + "_rooms.png")
+    C = takes.conc_report(L_)
+    A = L_.get("anchors", {})
+    lines = ["taps: %d (%d ok), %d props: %s" % (len(L_["taps"]), sum(t["ok"] for t in L_["taps"]), len(takes.clutter_items(L_["taps"])),
+                                                 ", ".join("%s %s %.0f m" % (t["taker"], t["resource"], t.get("metres", 0)) for t in L_["taps"])),
+             "conc slurry line: %s, route %d m" % (" -> ".join(C["chain"]) or "none", C["route_m"]),
+             "interiors: %d plans, %d rooms, %d check notes (rooms.json)" % (len(P), sum(len(p["rooms"]) for p in P.values()), sum(len(p["checks"]) for p in P.values()))]
+    if "summit" in A:
+        lines.append("hero %s on the summit: ground %.0f m, plinth %.0f m, truck road %d m (steepest %.0f %%), %s" % (
+            anchors.PARTI_HERO, A["summit"]["ground_mean_m"], A["summit"]["plinth_used_m"], A["summit"]["road_m"], 100 * A["summit"]["road_grade"],
+            "in the window" if A["summit"]["in_window"] else "%.0f deg off the window" % A["summit"]["window_deg_off"]))
+    if "water_tower" in A:
+        lines.append("water tower (E14'): head %.0f m (%s)" % (A["water_tower"]["head_m"], "ok" if A["water_tower"]["e14_ok"] else "short"))
+    if L_.get("drain"):
+        D = L_["drain"]
+        lines.append("drain: %.0f m (%d UU, %.0f s), %.0f %% under the spine, %.1f-%.1f m deep" % (
+            D["length_m"], D["length_uu"], D["walk_s"], 100 * D["under_spine"], D["min_depth_m"], D["max_depth_m"]))
+    open(os.path.join(RUN, "story.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    print("\n".join("  " + x for x in lines), flush=True)
+
+
+step("taps, interiors (story keys)", story_extras)
 # the architect's thinking drawings (Q36): figure-ground, Nolli plan, sections A/B/C at true scale
 step("drawings", lambda: ib.run(["py", os.path.join(TOOLS, "drawings.py"), base + "_ec.bmp", layout, base]))
 # the architectural set (parti, site analysis, framework, figure-ground, sections, codes, serial vision): <run>\plans
@@ -202,6 +244,8 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
        "on the graded ground: score %.2f, %s buildings, hero %s" % (FRAME_G.get("total", 0), FRAME_G.get("in_frame"), FRAME_G.get("hero")) if FRAME_G else "", "",
        "## Co-direction (final = graded ground, isl_ec.bmp; codirection_final.txt)", "```", codirect.report(FINAL, "FINAL (graded)"), "```",
        "before grading (isl_e.bmp), for comparison: total %.3f, %s" % (PRE["total"], ", ".join("%s %.2f" % (k, PRE[k]["score"]) for k in ("writer", "director", "engineer", "level", "artist"))), "",
+       "## Story keys (story.txt: summit, water tower, drain, taps, conc, interiors)",
+       open(os.path.join(RUN, "story.txt"), encoding="utf-8").read().strip() if os.path.exists(os.path.join(RUN, "story.txt")) else "-", "",
        "## Walks", "%d trips a day, %.1f km on foot; checks:" % (
            sum(1 for w in L.get("walks", []) if w.get("path")), sum((w.get("m") or 0) * w.get("n", 1) for w in L.get("walks", [])) / 1000),
        *("- " + c for c in L.get("walk_checks", [])), "- (none)" if not L.get("walk_checks") else "", "",

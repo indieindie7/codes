@@ -4,9 +4,10 @@ r"""The money shot: how a layout reads through the command room's window, scored
     (as a library: score(heightmap, layout) -> dict)
 
 The player starts in the tower's command room (TutA's PlayerStart) and looks out of one window that faces
-yaw 300 +- 34 degrees. That view is projected here (a pinhole camera at eye height, 68 degrees wide, looking 9 degrees
-down: the sea horizon on the upper third, the plant about 19 degrees below the eye on the lower third; it was 28 down,
-which cut the horizon out of the frame - the director, redesign 2026-10-09 s. 0.2): every building that the terrain does not hide is placed on the frame
+yaw 300 +- 34 degrees. That view is projected here (a pinhole camera at eye height, 68 degrees wide, looking 15 degrees
+down: the sea horizon in the upper part, the plant about 19 degrees below the eye in the lower half; it was 28 down,
+which cut the horizon out of the frame (the director, redesign 2026-10-09 s. 0.2), then 9, which left too few
+buildings in frame; -15 is the coordinator's pick): every building that the terrain does not hide is placed on the frame
 by the top of its silhouette. Rules from games/reports/Cinematography and concept art for the Avalon
 town.md:
   * the hero (the cooling towers, else the tallest building in frame) on a vertical third, not centred;
@@ -31,10 +32,10 @@ except (OSError, ValueError):
 LOC = (-14487.546875, 4835.837891, -131.845703)
 CELL, N, SEA_Z = 512.0, 128, -4967.0
 EYE = (-349.7, 1388.3, 4238.0 + 64)            # the command room's PlayerStart, eye height
-LOOK_YAW, HALF_W, PITCH = 300.0, 34.0, -9.0    # the window: centre yaw, half width, the gaze tilt (horizon on the upper third)
-HALF_H = 26.0                                   # half height of the view (degrees): -35 .. +17 with the tilt
-# The map must match: the command room's PlayerStart should face Pitch -9 deg (= -1638 rotation units, 63898 as an
-# unsigned word) so the first frame the player sees is this one; island_batch.pilot_script's window shots still turn
+LOOK_YAW, HALF_W, PITCH = 300.0, 34.0, -15.0   # the window: centre yaw, half width, the gaze tilt (horizon in the upper part)
+HALF_H = 26.0                                   # half height of the view (degrees): -41 .. +11 with the tilt
+# The map must match: the command room's PlayerStart should face Pitch -15 deg (= -2731 rotation units, 62805 as an
+# unsigned word; the coordinator's pick 2026-10-09, was -9: 8-13 buildings in frame, the horizon in the upper part) so the first frame the player sees is this one; island_batch.pilot_script's window shots still turn
 # to -18..-22 (they look at the plant, not at this frame).
 PITCH_RU = int(round(PITCH * 65536 / 360.0)) % 65536
 

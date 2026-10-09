@@ -54,7 +54,7 @@ Systems keys (optional, read by tools/systems.py; defaults by id/kind live in th
     needs: power water workers  resources it must get from a provider within reach (ore 220 m conveyor, power 350 m cable,
                                 water 300 m pipe, fuel 180 m, cooling 160 m, workers/goods/supply by road 450-500 m, comms 1500 m)
 
-Story keys (2026-10-08; tools/binder.py ignores them, no tool reads them yet):
+Story keys (2026-10-08; read by tools/binder.py, anchors.py, takes.py, rooms.py since 973ebda: see tools/HOOKS.md):
 
     takes: power water          (shanties) an informal tap, no legal supply: to be drawn as sagging cables and a drum path
     rooms: command_room catwalk (buildings) the room sheets inside it, in binder/rooms/
@@ -62,7 +62,9 @@ Story keys (2026-10-08; tools/binder.py ignores them, no tool reads them yet):
     model: CraneTower           (buildings) the model it is built from when the generator does not place a mesh
     kind: culvert               an underground run (the drain): no surface mesh
 
-Room sheets (binder/rooms/*.md): same header format plus `in: <building id>`. binder.py does not read them yet.
+Room sheets (binder/rooms/*.md): same header format plus `in: <building id>`. binder.load_rooms() reads them; tools/rooms.py
+turns them (with defaults per building kind) into interior plans, <run>/rooms.json. A routine stop may also name a room
+directly, `1930 tower:catwalk`; every building check sees the building.
 
 A layout is a town only when every core need (ore, power, water, workers) is met; systems.py routes the
 connections and writes them into the layout JSON for the build step.

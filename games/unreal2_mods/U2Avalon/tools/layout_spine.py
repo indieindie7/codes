@@ -476,6 +476,24 @@ for bid, b in buildings.items():
                   (along - buildings["tower"]["at"][0]) * math.sin(a) + (across - buildings["tower"]["at"][1]) * math.cos(a))
         place(bid, tx + ox, ty + oy, deg)
 
+# the parti's hero (binder/parti.json, liandri_tower since 1940260) on the SUMMIT, the highest buildable ground of the
+# town's land, with a truck road down to the spine (tools/anchors.py; the sheet's `at:` is a placeholder). The
+# rule-placed story buildings (guest_house, water_tower, drain) are placed after the plots, below.
+import anchors  # noqa
+RULED = {"guest_house", "water_tower", "drain"}
+SUMMIT = None
+if PARTI_HERO in buildings and PARTI_HERO != "tower" and PARTI_HERO not in placed and o.get("summit", "1") != "0":
+    SUMMIT = anchors.summit(Z, SPINE.pts, buildings[PARTI_HERO], MAIN,
+                            avoid=[(placed[k]["x"], placed[k]["y"], m) for k, m in anchors.AVOID.items() if k in placed]
+                            + [(DOCK[0], DOCK[1], anchors.AVOID["dock"]), (MINE[0], MINE[1], 150.0)])
+    if SUMMIT:
+        place(PARTI_HERO, SUMMIT["x"], SUMMIT["y"], SUMMIT["yaw"])
+        if len(SUMMIT["road"]) > 1:
+            ROADS.append(Road([tuple(p) for p in SUMMIT["road"][::-1]], "branch_summit"))   # spine -> the plinth's foot
+        print("  summit: %s at %.0f m ground (plinth %.0f m), truck road %d m, steepest %.0f %%, %s the window" % (
+            PARTI_HERO, SUMMIT["ground_mean_m"], SUMMIT["plinth_used_m"], SUMMIT["road_m"], 100 * SUMMIT["road_grade"],
+            "in" if SUMMIT["in_window"] else "%.0f deg off" % SUMMIT["window_deg_off"]))
+
 # the dock: at the dock site, reaching into the sea (yaw = toward the water)
 gyw, gxw = np.gradient(D_WATER)
 dock_yaw = math.degrees(math.atan2(-at(gyw, *DOCK), -at(gxw, *DOCK)))
@@ -520,7 +538,7 @@ for bid, b in buildings.items():
 # --- 4. plots along the roads, in binder layer order, providers before consumers --------------------------------
 LAYERS = {"core": 0, "boom": 1, "decline": 2}
 PRIORITY = ["plant_office", "hall_a", "hall_b", "hall_c", "silos", "generator_house", "tank_farm", "dorm", "cooling_towers"]
-order = [bid for bid in buildings if "at" in buildings[bid] and bid not in placed]
+order = [bid for bid in buildings if "at" in buildings[bid] and bid not in placed and bid not in RULED]
 order.sort(key=lambda i: (0 if (VIS is not None and i == HERO) else 1,      # the camera: the hero is placed first
                           LAYERS.get(buildings[i].get("layer", "boom"), 1), PRIORITY.index(i) if i in PRIORITY else 99, i))
 ordered, pending = [], list(order)
@@ -743,6 +761,20 @@ for bid in ordered:
     if not ok:
         print("  no plot for", bid, file=sys.stderr)
 
+# the rule-placed story buildings (tools/anchors.py): the guest house beside the director's, the water tower on the
+# high point that still reaches the water consumers (E14'); the drain is laid at the output, once the roads are final
+if "guest_house" in buildings and "directors_house" in placed:
+    _g = anchors.beside(placed, buildings, "directors_house", "guest_house", Z)
+    if _g:
+        place("guest_house", _g["x"], _g["y"], _g["yaw"])
+WATER_TOWER = None
+if "water_tower" in buildings:
+    WATER_TOWER = anchors.water_tower_site(Z, placed, buildings, main=MAIN)
+    if WATER_TOWER:
+        place("water_tower", WATER_TOWER["x"], WATER_TOWER["y"], WATER_TOWER["yaw"])
+        print("  water tower (E14'): ground %.0f m, head %.0f m over the highest served floor (%s), serves %d of %d" % (
+            WATER_TOWER["ground_m"], WATER_TOWER["head_m"], "ok" if WATER_TOWER["e14_ok"] else "SHORT", len(WATER_TOWER["served"]), WATER_TOWER["consumers"]))
+
 # --- pass 4 (light): back lanes behind rows of yarded plots, connectors that close loops (research s. 2a, 1a) ----
 LANE_W_CELLS = 0.6
 
@@ -881,6 +913,21 @@ out = {"seed": SEED, "shift": -5300, "heightmap": os.path.abspath(src), "method"
        "roads": roads_out, "spine": roads_out[0], "plots": PLOTS, "fences": FENCES,
        "road_class": [r.cls for r in ROADS], "road_w": [{"spine": 1.3, "branch": 1.1, "lane": LANE_W_CELLS}[r.cls] for r in ROADS],
        "sites": {"dock": [round(v) for v in DOCK], "mine": [round(v) for v in MINE], "tower": list(TOWER_WORLD)}}
+# the drain (binder `drain`, kind culvert): underground from the dorm square under the spine to a sea outfall
+# (tools/anchors.py: culvert 384 x 320 UU, junction room, sluice gallery 1536 x 768 UU); walks.py walks it
+if "drain" in buildings and o.get("drain", "1") != "0":
+    DRAIN = anchors.drain(Z, out, buildings, MAIN)
+    if DRAIN:
+        out["drain"] = DRAIN
+        gx_, gy_ = DRAIN["grate"]
+        out["buildings"]["drain"] = {"x": gx_, "y": gy_, "yaw": 0.0, "z": round(zb(gx_, gy_), 1), "interest": 1.0, "cells": [],
+                                     "layer": buildings["drain"].get("layer", "core"), "age": 0, "underground": True,
+                                     **({"additions": 0, "abandoned": False} if PASSES >= 3 else {})}
+        print("  drain: %.0f m (%d UU, %.0f s walk), %.0f %% under the spine, %.1f-%.1f m deep, outfall invert %+.1f m over the sea" % (
+            DRAIN["length_m"], DRAIN["length_uu"], DRAIN["walk_s"], 100 * DRAIN["under_spine"], DRAIN["min_depth_m"], DRAIN["max_depth_m"],
+            DRAIN["outfall_invert_vs_sea_m"]))
+out["anchors"] = {k: v for k, v in (("summit", SUMMIT and {kk: vv for kk, vv in SUMMIT.items() if kk != "road"}),
+                                     ("water_tower", WATER_TOWER and {kk: vv for kk, vv in WATER_TOWER.items() if kk != "served"})) if v}
 json.dump(out, open(dst, "w"), indent=0)
 print(f"spine {SPINE.length / M:.0f} m, {sum(r.cls == 'branch' for r in ROADS)} branches, {N_LANES} back lanes, {N_CONN} connectors, {len(PLOTS)} plots, {len(placed)} buildings placed, {len(FENCES)} fence runs -> {dst}")
 

@@ -297,6 +297,16 @@ for (x0, y0), (x1, y1), _res in L.get("racks", []):
         actor(RACK, x - uy * 420, y + ux * 420, math.degrees(math.atan2(uy, ux)) - 90, 1.0)   # beside the road, not on it
         n_rack += 1
 
+# 2d. the informal taps (binder `takes:`, tools/takes.py -> L["taps"]): improvised poles of the sagging cables and the
+#     water drums along the hoses - the theft the player should see
+n_tap = 0
+if L.get("taps"):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import takes  # noqa
+    for mesh, x, y, yaw, scale, lift in takes.clutter_items(L["taps"]):
+        actor(mesh, x, y, yaw, scale, lift)
+        n_tap += 1
+
 # 3. fence runs: the spine layout gives the gaps between plots; otherwise along each core building's front
 n_fence = 0
 for f in L.get("fences", []):
@@ -383,4 +393,4 @@ if WALL and BEFORE and os.path.exists(BEFORE):
                                   % (WALL, x, y, min(Z[j, i], Z[nj, ni]) - 10, int(yawd * 65536 / 360), max(0.6, hgt / 110.0), cull_of(WALL)))
                     n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
-print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_spots} gathering spots, {n_junk} junk, {n_add} lean-tos, {n_rack} rack pieces, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
+print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_spots} gathering spots, {n_junk} junk, {n_add} lean-tos, {n_rack} rack pieces, {n_tap} tap props, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")

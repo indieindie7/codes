@@ -47,7 +47,7 @@ WEAR_T = 24.0                           # trip weight at which ground is fully w
 DECAY = float(o.get("decay", 0.3))
 PATH_T = float(o.get("path_t", 10.0))   # trips a day over a cell (after the last pass) that make it a path
 PROMOTE = o.get("promote", "1") != "0"
-NOT_WALLED = ("pad", "dock", "jetty", "wellhead", "rig", "islet", "barge", "wreck", "memorial", "mast")
+NOT_WALLED = ("pad", "dock", "jetty", "wellhead", "rig", "islet", "barge", "wreck", "memorial", "mast", "culvert")
 SHORE = ("dock", "boat_landing", "jetty")
 
 raw = open(src, "rb").read()
@@ -230,6 +230,13 @@ def landing_for(bid):
     return best[1] if best else None
 
 
+# the drain (layout "drain", tools/anchors.py) is walkable underground: a tunnel edge each way between its grate and
+# its outfall, priced by its length (the writer: Rook reaches Tin Row by it without passing the checkpoint)
+import anchors  # noqa
+TUNNELS = anchors.walk_edges(L.get("drain"), to_fine, nearest_free, NF)
+if TUNNELS:
+    print("drain: a %.0f m tunnel between its grate and its outfall" % L["drain"]["length_m"])
+
 wear = np.zeros((NF, NF))
 results = []
 for p in range(PASSES):
@@ -248,7 +255,7 @@ for p in range(PASSES):
             results.append(res)
             continue
         ea, eb = exits(a), exits(b)
-        G = graph(wear, [(S, k, pen) for _, k, pen in ea])
+        G = graph(wear, [(S, k, pen) for _, k, pen in ea] + TUNNELS)
         dist, pred = dijkstra(G, directed=True, indices=S, return_predecessors=True)
         best = min(((dist[k] + pen, side, k) for side, k, pen in eb), default=None)
         if best is None or not np.isfinite(best[0]):
