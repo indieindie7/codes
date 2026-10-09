@@ -32,8 +32,8 @@ manages the drama around them.
    | Okafor | the plant director, the company's power |
    | Marau | the Tin Row teacher, the town's voice |
 
-   They run on a bigger reasoning role-play model that thinks about the character before it acts
-   (Pantheon-Reasoning 26B-A4B), or on Claude (`big=claude`).
+   They run on Claude (`big=claude`, the default). The local Pantheon-Reasoning 26B-A4B was deleted on
+   2026-10-09 for disk space; `big=<llama-server URL>` still works for any local model.
 3. **The drama manager:** the writer, once per in-game day, on a frontier model (Claude CLI, opus). It reads the
    whole day.
 

@@ -9,8 +9,8 @@ Three tiers (research_notes/Local models for character writing):
   SMALL  the minor citizens and the groups (dock gang, Tin Row families ...): a local model, fast and parallel
          (llama-server on `small`, default http://127.0.0.1:8081/v1, Gemma 4 12B)
   BIG    the characters the story turns on (BIG below: Hawkins, Rook, Oduya, Nkemelu, Okafor, Marau): a bigger,
-         reasoning role-play model (llama-server on `big`, default http://127.0.0.1:8082/v1, Pantheon-Reasoning
-         26B-A4B), or big=claude (the Claude CLI, `claude -p`)
+         model: Claude through the CLI (`claude -p`, big=claude, the default since 2026-10-09: the local
+         Pantheon-Reasoning 26B-A4B was deleted for disk space), or big=URL for any llama-server
   DRAMA MANAGER  the writer, once per in-game day, through the Claude CLI (dm=claude, default): reads the day's log
          and is the safety net (see DRAMA_MANAGER below)
 
