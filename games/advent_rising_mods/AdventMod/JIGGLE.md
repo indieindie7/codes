@@ -108,11 +108,22 @@ Files outside the repo (game-derived): `Documents\AdventRising_meshes\jiggle\`.
    but a body lean, not jiggle); the fallback would be springs on spine1/Neck02/the thighs with
    small amplitudes, to be built only if needed.
 
-## B. Texture (waits for "GPU free, go")
+## B. Texture: inpaint pending (GPU shared)
 
-Inpaint `plate_mask.png`'s texels of the Seeker skin with skin (flux-kontext or any installed
-inpainting model, no downloads over 2 GB), outputs in `Documents\AdventRising_meshes\jiggle\`
-(never git), a before/after sheet. The stripped mesh is the model for it.
+The Seeker skin (`seekercharacters_tx` -> `seeker_infantry`, 512x512, exported with
+tools/utx_tex.py into `Documents\AdventRising_meshes\jiggle	ex\`, never git) goes through
+FLUX Kontext (`Documents\Toolslux-kontext\kontext_edit.py`, the sana venv in
+Downloads\sana-diffusers) with the instruction "replace the grey metal armour plates and the
+gauntlet pieces with the same purple-grey alien skin ... keep everything else" at 512x512, 28
+steps, guidance 2.5, seed 7; the result is then composited over the stock skin inside
+`plate_mask.png` only (Kontext has no mask input: everything outside the plate islands stays the
+stock texel), and a before/after sheet is made. **Not finished on 2026-10-09**: the first run sat
+20 minutes without touching the GPU (a duplicate process from a mangled taskkill then loaded a
+second copy), and the live run shares the 12 GB GPU with another chat's two llama-servers
+(9-11 GB): after 25 minutes it was still in the transformer stage at 100 % GPU. It was left
+running (output `tex\kontext_skin_raw.png` when it lands); the composite and the sheet are the
+next step (`plate_mask.png` x raw + (1 - mask) x stock, then stock | result side by side). Nothing
+of B is in the game yet; the jiggle mesh wears the stock skin.
 
 ## C. Live springs (built, CPU; game test waits)
 
@@ -176,7 +187,8 @@ turn goes wild on the few loose points of a violent clip (the centroid is the ma
 
 ## Results (2026-10-09, hidden runs on level14sectiond, build of master c07dd2b + the two fixes below)
 
-Harness: `scratchpad\jiggleun_jiggle_test.ps1` (`-On`, `-Fight`), on `test_run.ps1`. Four runs:
+Harness: `scratchpad\jiggle
+un_jiggle_test.ps1` (`-On`, `-Fight`), on `test_run.ps1`. Four runs:
 bJiggle off (baseline), on, on again after the first fix, and a 3-minute fight with three spawned
 Seeker infantry (`-Fight`: 12 fire/capture cycles). The game ran to the end of every run; 0
 `exception`, 0 `crash:` lines, 0 callback faults.
