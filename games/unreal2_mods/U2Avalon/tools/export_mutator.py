@@ -2,7 +2,7 @@
 the Props[] / Cards[] lines of System\\U2AvalonCards.ini from the building sheets. The mutator stands every
 prop on whatever TutA has under it (land or its sea surface) at map load; the original map is untouched.
 
-    python tools/export_mutator.py [<U2AvalonCards.ini>] [shift=-5300]
+    python tools/export_mutator.py [<U2AvalonCards.ini>] [shift=-5300] [cards=auto|all|none]
 
 shift = how far to move everything back along the look (the generated map pushed the plant 5300 units out
 to suit its own lower tower; TutA's shore is nearer). Meshes come from StaticMeshes\\AvalonSM.usx (world
@@ -22,6 +22,11 @@ SHIFT = float(o.get("shift", -5300))
 T3D = o.get("t3d")                 # also write the buildings as StaticMeshActors in a T3D for MAP IMPORTADD
 HEIGHTMAP = o.get("heightmap")     # the map's final G16 BMP: ground Z for the T3D actors (TutA frame)
 WRITE_PROPS = o.get("props", "1") != "0"   # props=0: only Cards[] go to the ini (the map holds the buildings)
+CARDS = o.get("cards", "auto")         # auto: no card for a building that gets a real mesh here (or in the shells): on a remake map
+                                       #   the card stood twice over the mesh (DockCraneHY over the Quay, CargoDropshipHY over B_cargo_pad);
+                                       #   cards with no mesh (rigs, cooling towers, islets, beacon, water tower) stay. all: every card. none: no Cards[]
+if CARDS not in ("auto", "all", "none"):
+    raise SystemExit("cards=auto|all|none")
 STORY = o.get("story", "0") == "1"         # story=1: the drain culverts and the taps' poles/cables/drums (story_export.py) into the T3D
 HOLLOW = set()                             # hollow=<hollow.json from shells.py>: buildings whose solid mesh the shells replace
 if o.get("hollow"):
@@ -89,7 +94,7 @@ if HEIGHTMAP:
         return LOC_[2] + (hv - 32768) * 0.5
 
 citizens, buildings = binder.load()
-props, cards = [], []
+props, cards, dropped_cards = [], [], []
 actors = []
 
 
@@ -101,13 +106,19 @@ for bid, b in buildings.items():
     if "at" not in b or bid == "tower":
         continue
     kind = b["kind"]
+    card_only = kind in ("rig", "cooling", "islet") or b.get("mesh", "").lower() == "none"
+    mesh = b.get("mesh") or (f"B_{bid}" if kind in ASSEMBLED else SCRIPTED.get(bid, SCRIPTED.get(kind)))
+    # a real mesh stands here when the loop below places one (wreck / dock / a named mesh) or the shells hold it
+    has_mesh = not card_only and (kind in ("wreck", "dock") or bid in HOLLOW or (mesh is not None and mesh.lower() != "none"))
+    if b.get("card") and CARDS == "auto" and has_mesh:
+        dropped_cards.append("%s (%s -> %s)" % (b["card"].split()[0], bid, "shells" if bid in HOLLOW else {"dock": "Quay", "wreck": "Crashed_Transport"}.get(kind, mesh)))
     for x, y, deg in instances(b):
-        if b.get("card"):
+        if b.get("card") and CARDS != "none" and not (CARDS == "auto" and has_mesh):
             cw = b["card"].split()
             csize = float(cw[1]) if len(cw) > 1 else b["size"][2] * M / 0.92
             cards.append("AvalonSM.Cards.%s %.0f %.0f %.0f %.0f 8 0" % (cw[0], x, y, deg, csize))
-            if kind in ("rig", "cooling", "islet") or b.get("mesh", "").lower() == "none":
-                continue
+        if b.get("card") and card_only:
+            continue
         if kind in ("wreck",):
             props.append("Mission_05M.debris_sheet_003.Crashed_Transport %.0f %.0f %.0f 2.6 -60 0 0 -74" % (x, y, deg))
             actor("Mission_05M.debris_sheet_003.Crashed_Transport", x, y, deg, 2.6, -60)
@@ -116,7 +127,6 @@ for bid, b in buildings.items():
             props.append("AvalonSM.Liandri.Quay %.0f %.0f %.0f 1.0 -80 0 0 0" % (x, y, deg))
             actor("AvalonSM.Liandri.Quay", x, y, deg, 1.0, -80)
             continue
-        mesh = b.get("mesh") or (f"B_{bid}" if kind in ASSEMBLED else SCRIPTED.get(bid, SCRIPTED.get(kind)))
         if mesh is None or mesh.lower() == "none" or bid in HOLLOW:
             continue                      # mesh: none without a card = nothing to place; hollow = shells.py's T3D holds it
         lift = -0.9 * M if kind == "barge" else 0
@@ -129,6 +139,8 @@ avalon_ini.edit(INI, o.get("family"), ("Props", "Blocks", "Cards"),
                 ["Props[%d]=%s" % (k, p) for k, p in enumerate(props[:64] if WRITE_PROPS else [])]
                 + ["Cards[%d]=%s" % (k, c) for k, c in enumerate(cards[:64])])
 print(len(props) if WRITE_PROPS else 0, "props,", len(cards), "cards ->", INI, "(shift %.0f)" % SHIFT)
+for dc in dropped_cards:
+    print("  no card for", dc, "(cards=auto: a real mesh stands there)")
 if LAYOUT:
     _L = _json.load(open(o["layout"]))
     npyl = 0

@@ -1,6 +1,6 @@
 r"""Motion for the command room's view: plumes, trucks and the staged reveal, written as U2AvalonCards.ini keys.
 
-    py tools/motion.py <layout.json> [ini=<U2AvalonCards.ini>] [trucks=2] [reveal=1]
+    py tools/motion.py <layout.json> [ini=<U2AvalonCards.ini>] [trucks=2] [reveal=1] [cards=auto|all|none]
 
 The cinematography report (games/reports/Cinematography and concept art for the Avalon town.md): motion pulls
 the eye and makes a still view read as a living place; a truck beside a hall tells its size. All of it runs in
@@ -79,6 +79,64 @@ if dock and o.get("reveal", "1") != "0":
 #    over the backwater post);
 #  * a row of blue A-frame huts along the cliff edge in the window view (the Sana huts, staff housing);
 #  * dorm pods by dorm C, Tin Row shacks round the Tin Bar
+# cards=auto (default): an Extra is left out when the run has a real mesh for its sheet - the export placed a
+#   StaticMeshActor for it (<run>\isl_actors.t3d, or hollow.json: the shells hold it) or the sheet's mesh:/model:
+#   names a mesh (the hero's `model: PyramidTower`, Q83) - on a remake map the card would stand twice over the
+#   building. cards=all writes every Extra (the old behaviour, TutA's own map with no meshes); cards=none writes no Extras.
+CARDS = o.get("cards", "auto")
+if CARDS not in ("auto", "all", "none"):
+    raise SystemExit("cards=auto|all|none")
+CARD_NAMES = ("CraneTower", "AFrameHut", "DormPod", "TinShack")
+EXTRA_SHEET = {"CraneTower": None, "AFrameHut": "staff_houses", "DormPod": "dorm_c", "TinShack": "tin_bar"}   # None: the parti's hero
+
+
+def placed_meshes(run):
+    """(x, y) of every StaticMeshActor the export wrote for this run (isl_actors.t3d), or None when there is no T3D"""
+    t3d = os.path.join(run, "isl_actors.t3d")
+    if not os.path.exists(t3d):
+        return None
+    return [(float(x), float(y)) for x, y in re.findall(r"Class=StaticMeshActor[^E]*?Location=\(X=([-\d.]+),Y=([-\d.]+)", open(t3d).read())]
+
+
+def has_mesh(bid, placed, hollow):
+    """the run has a real mesh for the sheet: the export placed one within 6 m of its layout point (or of a counted
+    copy: the block's half extent is added), the shells hold it, or its sheet names a mesh (not a card name, not none)"""
+    b, sh = L["buildings"].get(bid), sheets.get(bid, {})
+    if not b:
+        return False
+    if bid in hollow:
+        return True
+    if placed:
+        w, d = (sh.get("size") or [0, 0, 0])[:2]
+        n = max([int(v) for v in re.findall(r"\d+", sh.get("count", "1"))] + [1])
+        rad = 300 + max(w, d) * 50.0 * 1.5 * (n - 1) / 2
+        if any(math.hypot(px - b["x"], py - b["y"]) < rad for px, py in placed):
+            return True
+    m = (sh.get("mesh") or sh.get("model") or "").split()
+    return bool(m) and m[0].lower() != "none" and m[0] not in CARD_NAMES
+
+
+def extra_sheet(card):
+    if EXTRA_SHEET[card] is not None:
+        return EXTRA_SHEET[card]
+    try:
+        return json.load(open(os.path.join(os.path.dirname(HERE), "binder", "parti.json"))).get("hero") or "liandri_tower"
+    except Exception:
+        return "liandri_tower"
+
+
+def keep_extra(card, placed, hollow, dropped):
+    if CARDS == "all":
+        return True
+    if CARDS == "none":
+        return False
+    bid = extra_sheet(card)
+    if has_mesh(bid, placed, hollow):
+        dropped.setdefault(card, bid)
+        return False
+    return True
+
+
 import numpy as np
 import compose  # noqa  (the heightmap reader and the window frame)
 Z = compose._heights(L["heightmap"])
@@ -93,7 +151,13 @@ def face(x, y):
 
 
 extras = []
-if o.get("extras", "1") != "0":
+dropped = {}
+if o.get("extras", "1") != "0" and CARDS != "none":
+    RUN_ = os.path.dirname(os.path.abspath(layout_path))
+    placed = placed_meshes(RUN_)
+    hollow = set()
+    if os.path.exists(os.path.join(RUN_, "hollow.json")):
+        hollow = set(json.load(open(os.path.join(RUN_, "hollow.json"))).get("hollow", []))
     best = None
     for r in range(15000, 46000, 250):         # beyond the town: the mountain behind it, not in front of the glass
         for a in range(int(compose.LOOK_YAW - 17), int(compose.LOOK_YAW - 8), 1):   # the left third (the hero cooling towers hold the right)
@@ -101,11 +165,11 @@ if o.get("extras", "1") != "0":
             g = ground(x, y)
             if g > compose.SEA_Z + 50 and (best is None or g > best[0]):
                 best = (g, x, y)
-    if best:
+    if best and keep_extra("CraneTower", placed, hollow, dropped):
         g, x, y = best
         size = max(3500.0, (DECK_Z + 2600 - g) / 0.92)     # top ~50 m over the Authority's command deck
         extras.append("CraneTower %.0f %.0f %.0f %.0f 8" % (x, y, face(x, y), size))
-    for a in range(int(compose.LOOK_YAW - 26), int(compose.LOOK_YAW + 27), 6):   # the cliff-edge row
+    for a in (range(int(compose.LOOK_YAW - 26), int(compose.LOOK_YAW + 27), 6) if keep_extra("AFrameHut", placed, hollow, dropped) else ()):   # the cliff-edge row
         ca, sa = math.cos(math.radians(a)), math.sin(math.radians(a))
         r = 1500
         while r < 20000 and ground(TOWER[0] + r * ca, TOWER[1] + r * sa) > compose.SEA_Z + 30:
@@ -116,7 +180,7 @@ if o.get("extras", "1") != "0":
             extras.append("AFrameHut %.0f %.0f %.0f 420 8" % (x, y, face(x, y)))
     for bid, card, size, n, rad in (("dorm_c", "DormPod", 380, 4, 1100), ("tin_bar", "TinShack", 260, 3, 700)):
         b = L["buildings"].get(bid)
-        if not b:
+        if not b or not keep_extra(card, placed, hollow, dropped):
             continue
         for k in range(n):
             a = 2 * math.pi * (k + 0.5) / n
@@ -142,3 +206,5 @@ for p in plumes:
     print("  plume", p)
 for e in extras:
     print("  card", e)
+for card, bid in dropped.items():
+    print("  no %s cards: the run has a real mesh for %s (cards=%s)" % (card, bid, CARDS))

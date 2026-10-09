@@ -3,10 +3,11 @@ taps (takes.taps -> L["taps"]) built from the crooked poles, sagging cables, hos
 kit_parts.py's, imported as AvalonSM.Liandri.B_* at scale 50 (world units) with zero=<name> and their MCDCX_ hulls.
 
     py tools/story_export.py <isl_layout.json> [out=<run>\isl_story.t3d] [pkg=AvalonSM.Liandri] [entry=stair|hatch]
-                             [drain=1] [taps=1] [heightmap=<final bmp>]
+                             [drain=1] [taps=1] [heightmap=<final bmp>] [start=dock]
 
 As a library (export_mutator.py story=1): drain_actors(L) and tap_actors(L, ground) return T3D actor strings;
 hole_notes(L) the terrain-hole rectangle the entrance needs.
+dock_start(L, ground) the dock PlayerStart on the graded ground (start=dock writes <run>\remake_start.t3d + .json).
 
 The drain: the polyline (x, y, z_ground, z_invert per point, every ~half cell) is simplified (Douglas-Peucker, 1.2 m)
 with the special spans kept as vertices: the junction room (768 long, centred on segments[2].s_uu), the sluice
@@ -328,6 +329,52 @@ def ground_fn(heightmap):
         return LOC_[2] + (hv - 32768) * 0.5
     return ground
 
+SEA_Z = -4967.0              # TutA's sea surface (compose.SEA_Z); ground_fn gives it outside the heightmap too
+PAWN_HALF = 54.0             # the player pawn's CollisionHeight (PathSizes 54/28)
+START_MARGIN = 30.0          # over the ground: the spawn trace must not start inside the terrain
+
+
+def dock_start(L, ground, notes=None, sea=SEA_Z, margin=START_MARGIN):
+    """the generated map's PlayerStart (plan D6 (b): the player starts at the dock and walks the spine).
+    NEVER the dock's layout z (the quay stands in the sea: TutA_Remake907 put it at -5518 and no pawn spawned,
+    'AddDefaultInventory: Assertion failed'): the spine's ground point nearest the dock, Z from the graded ground
+    (isl_ec.bmp) + the pawn's half height + a margin; while that point is below the sea (+40 UU, the arena rule)
+    walk along the spine inland until it isn't. Yaw along the spine. Returns (x, y, z, yaw_ru, index) or None."""
+    sp = [tuple(p[:2]) for p in (L.get("spine") or (L.get("roads") or [[]])[0] or [])]
+    if len(sp) < 2:
+        return None
+    dock = L["buildings"].get("dock") or L["buildings"].get("cargo_pad")
+    if dock and math.hypot(sp[-1][0] - dock["x"], sp[-1][1] - dock["y"]) < math.hypot(sp[0][0] - dock["x"], sp[0][1] - dock["y"]):
+        sp = sp[::-1]                       # the spine runs dock -> town either way
+    k = next((i for i, (x, y) in enumerate(sp) if ground(x, y) > sea + 40), None)
+    if k is None:
+        if notes is not None:
+            notes.append("PlayerStart: no spine point above the sea - left where it was")
+        return None
+    x, y = sp[k]
+    gz = ground(x, y)
+    gz = float(gz)
+    z = gz + PAWN_HALF + margin
+    x1, y1 = sp[min(k + 3, len(sp) - 1)]
+    yaw = int(round(math.degrees(math.atan2(y1 - y, x1 - x)) * 65536 / 360)) % 65536
+    line = ("PlayerStart: dock spine point %d of %d at (%.0f, %.0f), ground %.1f -> Z %.1f (= ground + %d + %d), yaw %d"
+            % (k, len(sp), x, y, gz, z, PAWN_HALF, margin, yaw))
+    if dock:
+        line += "; the dock's layout z %.0f %s" % (dock.get("z", 0), "(under the sea) NOT used" if dock.get("z", 0) < sea else "not used")
+    if k:
+        line += "; walked %d points inland past the sea" % k
+    if notes is None:
+        print(line)
+    else:
+        notes.append(line)
+    return x, y, z, yaw, k
+
+
+def start_actor(x, y, z, yaw):
+    return ("Begin Actor Class=PlayerStart Name=PlayerStart0\n    Location=(X=%.1f,Y=%.1f,Z=%.1f)\n    Rotation=(Pitch=0,Yaw=%d,Roll=0)\n"
+            "End Actor" % (x, y, z, yaw))
+
+
 
 if __name__ == "__main__":
     pos = [a for a in sys.argv[1:] if "=" not in a]
@@ -344,6 +391,18 @@ if __name__ == "__main__":
         A += drain_actors(L, o.get("entry", "stair"), o.get("pkg"), notes)
     if o.get("taps", "1") != "0":
         A += tap_actors(L, g, o.get("pkg"), notes)
+    if o.get("start") == "dock":
+        # the dock PlayerStart (plan D6 (b)): its own T3D + JSON next to out=, never inside the story T3D (the map
+        # has TutA's PlayerStart already: the editor build MOVES that one to these numbers, remake_build start=dock)
+        if g is None:
+            raise SystemExit("start=dock needs heightmap=<isl_ec.bmp>: the Z comes from the graded ground, never the layout")
+        st = dock_start(L, g, notes)
+        if st:
+            x, y, z, yaw, k = st
+            sp_ = os.path.join(os.path.dirname(os.path.abspath(out)), "remake_start")
+            open(sp_ + ".t3d", "w").write("Begin Map\n" + start_actor(x, y, z, yaw) + "\nEnd Map\n")
+            json.dump({"X": x, "Y": y, "Z": z, "Yaw": yaw, "Pitch": 0, "Roll": 0, "spine_index": k}, open(sp_ + ".json", "w"), indent=1)
+            print("PlayerStart ->", sp_ + ".t3d / .json")
     open(out, "w").write("Begin Map\n" + "\n".join(A) + "\nEnd Map\n")
     json.dump(notes, open(out[:-4] + "_notes.json", "w"), indent=1)
     for n in notes:
