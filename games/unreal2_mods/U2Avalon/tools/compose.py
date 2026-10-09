@@ -4,8 +4,9 @@ r"""The money shot: how a layout reads through the command room's window, scored
     (as a library: score(heightmap, layout) -> dict)
 
 The player starts in the tower's command room (TutA's PlayerStart) and looks out of one window that faces
-yaw 300 +- 34 degrees. That view is projected here (a pinhole camera at eye height, 68 degrees wide, looking down
-along the window 28 degrees down at the plant): every building that the terrain does not hide is placed on the frame
+yaw 300 +- 34 degrees. That view is projected here (a pinhole camera at eye height, 68 degrees wide, looking 9 degrees
+down: the sea horizon on the upper third, the plant about 19 degrees below the eye on the lower third; it was 28 down,
+which cut the horizon out of the frame - the director, redesign 2026-10-09 s. 0.2): every building that the terrain does not hide is placed on the frame
 by the top of its silhouette. Rules from games/reports/Cinematography and concept art for the Avalon
 town.md:
   * the hero (the cooling towers, else the tallest building in frame) on a vertical third, not centred;
@@ -22,11 +23,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import binder  # noqa
 
+try:
+    PARTI = json.load(open(os.path.join(os.path.dirname(HERE), "binder", "parti.json")))
+except (OSError, ValueError):
+    PARTI = {}
+
 LOC = (-14487.546875, 4835.837891, -131.845703)
 CELL, N, SEA_Z = 512.0, 128, -4967.0
 EYE = (-349.7, 1388.3, 4238.0 + 64)            # the command room's PlayerStart, eye height
-LOOK_YAW, HALF_W, PITCH = 300.0, 34.0, -28.0   # the window: centre yaw, half width, the gaze tilt (looking down at the plant)
-HALF_H = 26.0                                   # half height of the view (degrees): -54 .. -2 with the tilt
+LOOK_YAW, HALF_W, PITCH = 300.0, 34.0, -9.0    # the window: centre yaw, half width, the gaze tilt (horizon on the upper third)
+HALF_H = 26.0                                   # half height of the view (degrees): -35 .. +17 with the tilt
+# The map must match: the command room's PlayerStart should face Pitch -9 deg (= -1638 rotation units, 63898 as an
+# unsigned word) so the first frame the player sees is this one; island_batch.pilot_script's window shots still turn
+# to -18..-22 (they look at the plant, not at this frame).
+PITCH_RU = int(round(PITCH * 65536 / 360.0)) % 65536
 
 
 def _heights(bmp):
@@ -88,7 +98,10 @@ def score(heightmap, layout_path, png=None):
     if not inframe:
         out.update(total=0.0, hero=None)
         return out
-    hero = next((x for x in inframe if x["id"] == "cooling_towers"), None) or max(inframe, key=lambda x: x["hgt"])
+    # the hero: the parti's (binder/parti.json, liandri_tower since binder 1940260) when it is in the window, else its
+    # "second" (the cooling towers), else the tallest building in frame
+    hero = (next((x for x in inframe if x["id"] == PARTI.get("hero")), None) or
+            next((x for x in inframe if x["id"] == PARTI.get("second", "cooling_towers")), None) or max(inframe, key=lambda x: x["hgt"]))
     thirds = max(0.0, 1 - min(abs(hero["u"] - 1 / 3), abs(hero["u"] - 2 / 3)) / 0.17)
     us = [x["u"] for x in inframe]
     span = max(us) - min(us)

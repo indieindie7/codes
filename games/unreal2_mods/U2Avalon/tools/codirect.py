@@ -56,7 +56,29 @@ import metrics  # noqa
 LOC = (-14487.546875, 4835.837891, -131.845703)
 CELL, N, M, SEA_Z = 512.0, 128, 50.0, -4967.0
 LOOK = 300.0
-SUN_AZ = 136.0
+SUN_AZ = 136.0            # where the sun IS (lowsun.py's az): the light travels toward SUN_AZ + 180
+SUN_EL = 10.0             # the baked dusk sun's height (town.py passes this to lowsun.py; the director wants 6-9)
+# the views the director scores the light in (redesign 2026-10-09, director s. 0.1, F1/F4/F5): each has a job.
+#   window  - F1, the command room (yaw 300): ownership; the sun is behind the viewer (front light) and the job is
+#             the tower's shadow lying over the housing while the hero stays lit
+#   deck    - F4, the overhang deck (yaw ~171): back light, silhouettes and rim edges
+#   catwalk - F5, the peak frame (yaw ~136-171): back light
+VIEWS = (("window", LOOK, "shadow"), ("deck", 171.0, "back"), ("catwalk", 153.0, "back"))
+
+
+def _cutfill_grade():
+    """the one road-grade cap: terrain_cutfill.py's MAX_GRADE default (the grade it actually builds). It is read from
+    that file's source because terrain_cutfill runs on import; fall back to its current value"""
+    import re
+    try:
+        src = open(os.path.join(HERE, "terrain_cutfill.py"), encoding="utf-8").read()
+        return float(re.search(r'MAX_GRADE\s*=\s*float\(o\.get\("max_grade",\s*([0-9.]+)\)\)', src).group(1))
+    except (OSError, AttributeError, ValueError):
+        return 0.12
+
+
+MAX_GRADE = _cutfill_grade()
+ROAD_GRADE = {"spine": MAX_GRADE, "branch": MAX_GRADE, "lane": 0.15}   # rise/run per class (paths: not checked)
 PARTI = json.load(open(os.path.join(os.path.dirname(HERE), "binder", "parti.json")))
 
 
@@ -78,11 +100,18 @@ def _g(Z, x, y):
     return (Z[j0, i0] * (1 - tx) * (1 - ty) + Z[j0, i0 + 1] * tx * (1 - ty) + Z[j0 + 1, i0] * (1 - tx) * ty + Z[j0 + 1, i0 + 1] * tx * ty)
 
 
-def _boxes(L, sheets):
+def hero_id(B, sheets):
+    """the parti's hero (binder/parti.json "hero"; liandri_tower since binder 1940260) when the layout placed it and its
+    sheet has a size, else the Authority "tower" (its placement is a placeholder: a missing hero never vetoes)"""
+    h = PARTI.get("hero", "tower")
+    return h if (h in B and len(sheets.get(h, {}).get("size") or ()) > 2) else "tower"
+
+
+def _boxes(L, sheets, skip=()):
     out = []
     for bid, b in L["buildings"].items():
         s = sheets.get(bid)
-        if not s or "size" not in s or bid == "tower" or s["kind"] in ("pad", "dock", "jetty", "rig", "islet", "barge", "wreck"):
+        if not s or "size" not in s or bid == "tower" or bid in skip or s["kind"] in ("pad", "dock", "jetty", "rig", "islet", "barge", "wreck"):
             continue
         r = max(s["size"][0], s["size"][1]) * M * 0.5
         out.append((b["x"], b["y"], r, b.get("z", 0) + (s["size"][2] if len(s["size"]) > 2 else 6) * M))
@@ -90,14 +119,17 @@ def _boxes(L, sheets):
 
 
 def serial(Z, L, sheets, step_m=35.0):
-    """the walk dock -> tower: per station, is the tower's top seen (terrain + buildings as round prisms)?"""
+    """the walk dock -> tower: per station, is the hero's top seen (terrain + buildings as round prisms)? The walk
+    runs along the spine to the Authority tower; the target is the parti's hero (hero_id)"""
     sp = L.get("spine") or []
-    T = L["buildings"].get("tower")
-    if not sp or not T:
+    T0 = L["buildings"].get("tower")
+    if not sp or not T0:
         return []
-    tz = T.get("z", _g(Z, T["x"], T["y"])) + sheets["tower"]["size"][2] * M
-    boxes = _boxes(L, sheets)
-    acc, k_t = [0.0], min(range(len(sp)), key=lambda k: math.dist(sp[k], (T["x"], T["y"])))
+    hid = hero_id(L["buildings"], sheets)
+    T = L["buildings"][hid]
+    tz = T.get("z", _g(Z, T["x"], T["y"])) + sheets[hid]["size"][2] * M
+    boxes = _boxes(L, sheets, skip=(hid,))
+    acc, k_t = [0.0], min(range(len(sp)), key=lambda k: math.dist(sp[k], (T0["x"], T0["y"])))
     for a, b in zip(sp[:-1], sp[1:]):
         acc.append(acc[-1] + math.dist(a, b))
     out, s = [], 0.0
@@ -220,6 +252,9 @@ def level_designer(Z, L, sheets, walk):
             if lay not in marks or hts[bid] > hts[marks[lay]]:
                 marks[lay] = bid
     targets = [(T["x"], T["y"], T.get("z", _g(Z, T["x"], T["y"])) + _height("tower", T, sheets) * M)]
+    hid = hero_id(B, sheets)
+    if hid != "tower":                        # the parti's hero is a weenie too (liandri_tower)
+        targets.append((B[hid]["x"], B[hid]["y"], _g(Z, B[hid]["x"], B[hid]["y"]) + _height(hid, B[hid], sheets) * M))
     targets += [(B[m]["x"], B[m]["y"], _g(Z, B[m]["x"], B[m]["y"]) + hts[m] * M) for m in marks.values()]
     seen = n = 0
     s_ = 0.0
@@ -295,8 +330,54 @@ def level_designer(Z, L, sheets, walk):
             "checks": {k: round(v, 2) for k, v in checks.items()}}
 
 
-def review(heightmap, layout_path):
+def light_off(view_yaw):
+    """the angle between a view's direction and the sun's position: 0-60 back light (silhouettes, rim), 60-120 side
+    light (form), 120-180 front light (flat; everything shown, nothing hidden)"""
+    return abs((SUN_AZ - view_yaw + 180) % 360 - 180)
+
+
+def light_kind(off):
+    return "back light" if off <= 60 else ("side light" if off <= 120 else "front light")
+
+
+def back_score(off):
+    """1 for back light, 0.5 for side light at 120, 0 for the sun straight behind the viewer"""
+    return 1.0 if off <= 60 else (1.0 - 0.5 * (off - 60) / 60.0 if off <= 120 else max(0.0, 0.5 - 0.5 * (off - 120) / 60.0))
+
+
+def in_tower_shadow(Z, T, sheets, x, y, z, tid="tower"):
+    """is the point (x, y, z) in the tower's shadow? march toward the sun (SUN_AZ, SUN_EL) and see if the ray passes
+    through the tower tid (a round prism of its sheet's footprint) under its top"""
+    tsz = sheets[tid]["size"]
+    tr = max(tsz[0], tsz[1]) * M * 0.5
+    tz = T.get("z", _g(Z, T["x"], T["y"])) + tsz[2] * M
+    a, e = math.radians(SUN_AZ), math.tan(math.radians(SUN_EL))
+    ux, uy = math.cos(a), math.sin(a)
+    # the ray's closest approach to the tower axis
+    t = (T["x"] - x) * ux + (T["y"] - y) * uy
+    if t <= 0:
+        return False
+    if math.hypot(x + ux * t - T["x"], y + uy * t - T["y"]) > tr:
+        return False
+    return z + e * max(0.0, t - tr) < tz
+
+
+def lit_by_sun(Z, x, y, z, max_r=60000.0):
+    """no terrain between the point and the low sun"""
+    a, e = math.radians(SUN_AZ), math.tan(math.radians(SUN_EL))
+    for r in np.arange(4 * CELL, max_r, CELL):
+        if _g(Z, x + r * math.cos(a), y + r * math.sin(a)) > z + e * r:
+            return False
+    return True
+
+
+def review(heightmap, layout_path, graded=None):
+    """graded: the cut-and-filled heightmap (isl_ec.bmp) when there is one; the engineer's road grades, ore line
+    and quay are read on it (what ships). A heightmap named *_ec.bmp is taken as graded itself."""
     Z = _Z(heightmap)
+    if graded is None and os.path.basename(heightmap).lower().endswith("_ec.bmp"):
+        graded = heightmap
+    ZG = _Z(graded) if graded else None
     L = json.load(open(layout_path))
     _, sheets = binder.load()
     B = L["buildings"]
@@ -310,11 +391,12 @@ def review(heightmap, layout_path):
     if core_unmet:
         veto = "the town doesn't work: %s" % "; ".join("%s needs %s" % (u[0], u[1]) for u in core_unmet)
     notes.append("systems %.2f" % sys_s)
-    tower_g = _g(Z, B["tower"]["x"], B["tower"]["y"]) if "tower" in B else 0
+    hid = hero_id(B, sheets)                  # "the company holds the high ground": the parti's hero
+    tower_g = _g(Z, B[hid]["x"], B[hid]["y"]) if hid in B else 0
     works = [b for bid, b in B.items() if sheets.get(bid, {}).get("kind") in ("hall", "tank", "silo", "cooling")]
     works_g = np.mean([_g(Z, b["x"], b["y"]) for b in works]) if works else tower_g
     high = float(np.clip((tower_g - works_g) / M / 20.0, 0, 1))          # 20 m over the works = full marks
-    notes.append("high ground: the tower stands %.0f m over the works" % ((tower_g - works_g) / M))
+    notes.append("high ground: %s stands %.0f m over the works" % (hid, (tower_g - works_g) / M))
     poor = [b.get("nuisance", 0.0) for bid, b in B.items() if bid.startswith(("shanty", "old_camp"))]
     smoke = float(np.clip(np.mean(poor) / 0.5, 0, 1)) if poor else 0.0
     notes.append("smoke over the shanty: mean nuisance %.2f" % (np.mean(poor) if poor else 0))
@@ -339,11 +421,41 @@ def review(heightmap, layout_path):
     mg = any(l for r, l in prof if 150 <= r <= 400)
     gap_r = next((r for r, l in prof if r > 200 and not l), None)
     gap = gap_r is not None and any(l for r, l in prof if 150 <= r < gap_r)
-    layers = (0.4 if mg else 0) + (0.4 if gap else 0) + 0.2                # the background: the sea horizon is always there
-    notes.append("layers: midground land %s, gap of air %s" % ("yes" if mg else "NO", ("at %d m" % gap_r) if gap else "NO"))
-    off = abs((SUN_AZ - LOOK + 180) % 360 - 180)
-    light = 1.0 if 90 <= off <= 180 else off / 90.0
-    notes.append("light: the sun %.0f deg off the view (%s)" % (off, "back/side light" if off >= 90 else "front light - flat"))
+    # the background: the sea horizon counts only when the frame shows it, best on the upper third (director s. 0.2)
+    hv = 0.5 - 0.5 * math.tan(math.radians(-compose.PITCH)) / math.tan(math.radians(compose.HALF_H))
+    bg = float(np.clip(1 - abs(hv - 1 / 3) / 0.17, 0, 1)) if 0 <= hv <= 1 else 0.0
+    layers = (0.4 if mg else 0) + (0.4 if gap else 0) + 0.2 * bg
+    notes.append("layers: midground land %s, gap of air %s, horizon %s" % (
+        "yes" if mg else "NO", ("at %d m" % gap_r) if gap else "NO", ("at v=%.2f" % hv) if 0 <= hv <= 1 else "OUT OF FRAME"))
+    # the light, per view (director s. 0.1): the decks and the catwalk want back light; the window is front-lit by
+    # design (the sun behind the viewer), and its job is the tower's shadow over the housing with the hero lit
+    lparts = []
+    for vname, vyaw, job in VIEWS:
+        off = light_off(vyaw)
+        if job == "back":
+            lparts.append(back_score(off))
+            notes.append("light %s (yaw %.0f): the sun %.0f deg off, %s" % (vname, vyaw, off, light_kind(off)))
+            continue
+        tid = hero_id(B, sheets)              # "the town lives in its shadow": the company's tower
+        T = B.get(tid)
+        housing = [(bid, b) for bid, b in B.items() if not b.get("abandoned") and (
+            sheets.get(bid, {}).get("kind") == "dorm" or bid.startswith(("shanty", "old_camp")))]
+        hero = fr.get("hero")
+        if not T or tid not in sheets:
+            lparts.append(0.5)
+            continue
+        shad = [bid for bid, b in housing if in_tower_shadow(Z, T, sheets, b["x"], b["y"], max(_g(Z, b["x"], b["y"]), SEA_Z) + 3 * M, tid)]
+        frac = len(shad) / max(1, len(housing))
+        hero_lit = 0.5
+        if hero and hero in B:
+            h = B[hero]
+            hz = max(_g(Z, h["x"], h["y"]), SEA_Z) + 0.75 * sheets[hero]["size"][2] * M
+            hero_lit = 1.0 if ((hero == tid or not in_tower_shadow(Z, T, sheets, h["x"], h["y"], hz, tid)) and lit_by_sun(Z, h["x"], h["y"], hz)) else 0.0
+        lparts.append(0.5 * min(1.0, frac / 0.3) + 0.5 * hero_lit)
+        notes.append("light %s (yaw %.0f): the sun %.0f deg off, %s; %s's shadow (el %.0f) over %d of %d homes%s, hero %s" % (
+            vname, vyaw, off, light_kind(off), tid, SUN_EL, len(shad), len(housing), (" (" + ", ".join(shad[:4]) + ")") if shad else "",
+            "lit" if hero_lit == 1.0 else ("in shadow" if hero_lit == 0.0 else "-")))
+    light = float(np.mean(lparts)) if lparts else 0.5
     reveal = 0.0
     if walk:
         runs = []
@@ -375,23 +487,26 @@ def review(heightmap, layout_path):
                      "notes": notes, "veto": veto}
 
     # ---------------------------------------------------------------- the ENGINEER
-    notes, checks = [], {}
+    notes, checks, warns = [], {}, []
     WIND = (0.83, -0.55)
+    ZE = ZG if ZG is not None else Z          # the ground that ships (cut and filled) when there is one
+    gname = "graded" if ZG is not None else "natural (not graded yet)"
     cls = L.get("road_class") or (["spine"] + ["branch"] * (len(L.get("roads", [])) - 1))
     over = tot = 0.0
     for r, c in zip(L.get("roads", []), cls):
         if c == "path":
             continue
-        cap = 0.10 if c in ("spine", "branch") else 0.15
+        cap = ROAD_GRADE.get(c, ROAD_GRADE["lane"])     # one cap table, shared with terrain_cutfill's MAX_GRADE
         for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
             d = math.hypot(bx - ax, by - ay)
             if d < 1:
                 continue
-            g = abs(max(_g(Z, bx, by), SEA_Z) - max(_g(Z, ax, ay), SEA_Z)) / d
+            g = abs(max(_g(ZE, bx, by), SEA_Z) - max(_g(ZE, ax, ay), SEA_Z)) / d
             tot += d
             over += d if g > cap else 0.0
     checks["E1 road grades"] = 1.0 - (over / tot if tot else 0.0)
-    notes.append("E1: %.0f %% of the road length climbs over its class's grade cap" % (100 * (1 - checks["E1 road grades"])))
+    notes.append("E1: %.0f %% of the road length climbs over its class's grade cap (%.0f %% spine/branch, %.0f %% lane; %s ground)" % (
+        100 * (1 - checks["E1 road grades"]), 100 * ROAD_GRADE["spine"], 100 * ROAD_GRADE["lane"], gname))
     gy, gx = np.gradient(Z / M, CELL / M)
     slope = np.degrees(np.arctan(np.hypot(gx, gy)))
 
@@ -423,24 +538,46 @@ def review(heightmap, layout_path):
         head = (tz_ - max(served)) / M if served else 99
         checks["E14 water head"] = float(np.clip(head / 28.0, 0, 1))
         notes.append("E14: the water tank stands %.0f m over the highest house it serves (want 28)" % head)
-    ore = [c for c in L.get("connections", []) if c.get("carrier") == "conveyor"]
+    # E12 the ore line: each run must FALL along its direction (provider -> consumer, the process order of systems.py)
+    # and stay within 15 deg; an uphill run fails however gentle (the engineer: Cine8's silos -> halls rose 8 m)
+    ore = [c for c in L.get("connections", []) if c.get("carrier") == "conveyor" and c.get("from") in B and c.get("to") in B]
     if ore:
-        ok = 0
+        ok, up = 0, []
         for c in ore:
-            (ax, ay), (bx, by) = c["path"][0], c["path"][-1]
-            za, zb_ = _g(Z, ax, ay), _g(Z, bx, by)
-            inc = math.degrees(math.atan(abs(za - zb_) / max(1.0, math.hypot(bx - ax, by - ay))))
-            ok += 1 if inc <= 15 else 0
-        checks["E12 conveyor incline"] = ok / len(ore)
-        notes.append("E12: %d of %d ore runs within 15 deg" % (ok, len(ore)))
-    fuel = [b for bid, b in B.items() if bid in ("tank_farm", "fuel_depot")]
-    homes = [b for bid, b in B.items() if sheets.get(bid, {}).get("kind") in ("house", "dorm")]
+            fa, tb = B[c["from"]], B[c["to"]]
+            za, zb_ = max(_g(ZE, fa["x"], fa["y"]), SEA_Z), max(_g(ZE, tb["x"], tb["y"]), SEA_Z)
+            inc = math.degrees(math.atan(abs(za - zb_) / max(1.0, math.hypot(tb["x"] - fa["x"], tb["y"] - fa["y"]))))
+            falls = zb_ <= za + 0.5 * M
+            ok += 1 if (falls and inc <= 15) else 0
+            if not falls:
+                up.append("%s->%s +%.1f m" % (c["from"], c["to"], (zb_ - za) / M))
+        checks["E12 ore downhill"] = ok / len(ore)
+        notes.append("E12: %d of %d ore runs fall toward the port within 15 deg%s" % (ok, len(ore), ("; uphill: " + ", ".join(up[:4])) if up else ""))
+    # E16 fuel: only real fuel stores (fuel_depot, any sheet of kind fuel) - the tank farm holds concentrate; homes are
+    # dwellings (kind house/dorm) minus the social places and the altar, plus the shanty and the old camp (engineer E16')
+    fuel = [b for bid, b in B.items() if bid == "fuel_depot" or sheets.get(bid, {}).get("kind") == "fuel"]
+    homes = [(bid, b) for bid, b in B.items() if not b.get("abandoned") and (
+        bid.startswith(("shanty", "old_camp")) or (sheets.get(bid, {}).get("kind") in ("house", "dorm") and
+                                                   sheets.get(bid, {}).get("function") not in ("social", "altar", "clinic")))]
     if fuel and homes:
-        dmin = min(math.hypot(f_["x"] - h_["x"], f_["y"] - h_["y"]) for f_ in fuel for h_ in homes) / M
+        dmin, near = min((math.hypot(f_["x"] - h_["x"], f_["y"] - h_["y"]) / M, hid) for f_ in fuel for hid, h_ in homes)
         checks["E16 fuel set-back"] = float(np.clip(dmin / 100.0, 0, 1))
-        notes.append("E16: fuel tanks %.0f m from the nearest home (want 100)" % dmin)
+        notes.append("E16: the fuel store %.0f m from the nearest home, %s (want 100)" % (dmin, near))
+    # warnings (not scored yet, never a veto): the engineer's cheap new checks that need only the layout
+    dk = B.get("dock")
+    if dk:                                    # E23 the quay deck 1.5-4 m over the sea
+        qh = (max(_g(ZE, dk["x"], dk["y"]), SEA_Z) - SEA_Z) / M
+        if not 1.5 <= qh <= 4.0:
+            warns.append("E23 quay deck %.1f m over the sea (want 1.5-4)" % qh)
+    for bid, b in B.items():                  # E25 a rig is supplied by boat from the dock or the boat landing (3 km)
+        if sheets.get(bid, {}).get("kind") == "rig" and not bid.startswith("wellhead") and not b.get("abandoned") and bid != "dead_rig":
+            ports = [B[p] for p in ("dock", "boat_landing") if p in B]
+            dm = min((math.hypot(p["x"] - b["x"], p["y"] - b["y"]) / M for p in ports), default=None)
+            if dm is None or dm > 3000:
+                warns.append("E25 %s: no dock or landing within 3 km by sea%s" % (bid, (" (%.0f m)" % dm) if dm else ""))
+    notes += ["WARN " + w for w in warns]
     R["engineer"] = {"score": round(float(np.mean(list(checks.values()))) if checks else 0.5, 3), "notes": notes, "veto": None,
-                     "checks": {k: round(v, 2) for k, v in checks.items()}}
+                     "checks": {k: round(v, 2) for k, v in checks.items()}, "warnings": warns}
 
     # ---------------------------------------------------------------- the LEVEL DESIGNER
     R["level"] = level_designer(Z, L, sheets, walk)

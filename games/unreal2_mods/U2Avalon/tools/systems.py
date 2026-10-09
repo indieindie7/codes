@@ -7,7 +7,7 @@ building exists because of the ones around it, and the lines between them are vi
 
 Reads the binder (sheet keys `provides:` / `needs:`, e.g. `needs: ore power water workers`, with defaults by
 id/kind below) and the layout's positions; for each need finds the nearest provider within the resource's
-reach, routes a connection (L-shaped for pipes/cables/conveyors, the road network for goods and workers) and
+reach (in a process chain, STAGES below, only the stage above may provide), routes a connection (L-shaped for pipes/cables/conveyors, the road network for goods and workers) and
 writes everything back into the layout JSON as "connections" plus a "systems" report. Exit code 1 if any
 core need is unmet (so a batch can stop and re-roll).
 """
@@ -34,15 +34,53 @@ RES = {
     "goods":   ("road", 450),
     "comms":   ("line", 1500),
     "supply":  ("road", 500),
+    "conc":    ("pipe", 600),    # concentrate slurry, hall_b -> tank_farm (-> the dock's conc shed when it has a sheet)
 }
+# the process order (engineer 2026-10-09, s. 1 and E12'/E22): ore falls through the plant one stage at a time,
+# mine/wellhead/rig -> silos -> hall_a (crushing + grinding; hall_c, the old mill, beside it) -> hall_b (flotation)
+# -> tank_farm (concentrate). A consumer in a chain takes its resource only from the stage above it - the nearest
+# stage above that exists in this town - never from any provider that happens to be nearest. Ids not listed here
+# (or resources without a chain) take the nearest provider as before. mine_portal/crusher_house/transfer_tower/
+# conc_shed have no sheets yet; they are listed so the chain holds once the binder gains them.
+STAGES = {
+    "ore": [{"mine_portal", "crusher_house", "wellhead_a", "wellhead_b", "new_rig"}, {"transfer_tower"}, {"silos"},
+            {"hall_a", "hall_c"}, {"hall_b"}],
+    # binder 1940260: tank_farm and pump_station carry concentrate slurry; pump_station is the line's terminal pump at
+    # the shore, the dock ships it (a conc_shed would stand there once it has a sheet)
+    "conc": [{"hall_b"}, {"tank_farm"}, {"pump_station"}, {"conc_shed", "dock"}],
+}
+
+
+def stage(bid, res):
+    for k, ids in enumerate(STAGES.get(res, [])):
+        if bid in ids:
+            return k
+    return None
+
+
+def upstream(bid, res, providers):
+    """the providers of res that may feed bid: the nearest stage above bid's own in the process order that has a
+    provider in this town (so a missing optional stage, e.g. no transfer tower, is skipped); all of them if bid or
+    res has no chain"""
+    providers = [p for p in providers if p != bid]
+    k = stage(bid, res)
+    if k is None:
+        return providers
+    for kk in range(k - 1, -1, -1):
+        up = [p for p in providers if p in STAGES[res][kk]]
+        if up:
+            return up
+    return []
 # defaults by id, then by kind; sheets may override with `provides:` / `needs:` lines
 BY_ID = {
     "wellhead_a": ({"ore"}, {"power"}), "wellhead_b": ({"ore"}, {"power"}), "wellhead_old": (set(), set()),
     "new_rig": ({"ore"}, {"power", "supply"}), "dead_rig": (set(), set()),
-    "hall_a": ({"goods"}, {"ore", "power", "water", "workers", "cooling"}),
-    "hall_b": ({"goods"}, {"ore", "power", "water", "workers"}),
+    "hall_a": ({"goods", "ore"}, {"ore", "power", "water", "workers", "cooling"}),     # crushing + grinding -> hall_b
+    "hall_b": ({"goods", "conc"}, {"ore", "power", "water", "workers"}),              # flotation + filters -> tank_farm
     "hall_c": ({"goods"}, {"ore", "power", "workers"}),
-    "silos": ({"ore"}, {"ore"}), "tank_farm": ({"fuel"}, {"fuel"}), "fuel_depot": ({"fuel"}, {"supply"}),
+    "silos": ({"ore"}, {"ore"}), "fuel_depot": ({"fuel"}, {"supply"}),
+    # the tank farm holds concentrate slurry, not fuel (engineer 2026-10-09 s. 1; its sheet says so since 1940260)
+    "tank_farm": ({"conc"}, {"power"}),
     "generator_house": ({"power"}, {"fuel"}), "pump_house": ({"water"}, {"power"}),
     "pump_station": ({"water"}, {"power"}), "intake": ({"water"}, {"power"}), "water_tanks": ({"water"}, {"water"}),
     "cooling_towers": ({"cooling"}, {"water", "power"}),
@@ -63,6 +101,16 @@ def spec_of(bid, b):
         prov = set(b["provides"].split())
     if b.get("needs"):
         need = set(b["needs"].split())
+    # the process chains are links, not sheet keys: a stage takes its resource from the stage above and passes it on
+    # (so a sheet that says only `provides: conc` / `needs: power` still sits in the chain)
+    for res, chain in STAGES.items():
+        k = stage(bid, res)
+        if k is None:
+            continue
+        if k > 0:
+            need.add(res)
+        if k < len(chain) - 1:
+            prov.add(res)
     if b.get("abandoned"):
         prov, need = set(), set()
     return prov, need
@@ -176,15 +224,15 @@ def run(layout_path, out_path=None, report=True):
         for res in sorted(need):
             carrier, reach = RES[res]
             best = None
-            for pid, (pp, _) in specs.items():
-                if pid == bid or res not in pp:
-                    continue
+            have = [pid for pid, (pp, _) in specs.items() if pid != bid and res in pp]
+            for pid in upstream(bid, res, have):        # the process order: only the stage above may feed this one
                 d = math.hypot(B[pid]["x"] - B[bid]["x"], B[pid]["y"] - B[bid]["y"]) / M
                 if best is None or d < best[0]:
                     best = (d, pid)
             if best is None:
-                unmet.append((bid, res, "no provider in the town"))
-                lines.append("  %-16s needs %-7s : NO PROVIDER" % (bid, res))
+                why = "no provider in the town" if not have else "no upstream stage in the town (process order)"
+                unmet.append((bid, res, why))
+                lines.append("  %-16s needs %-7s : NO PROVIDER%s" % (bid, res, "" if not have else " (upstream)"))
                 continue
             d, pid = best
             ok = d <= reach
@@ -197,8 +245,7 @@ def run(layout_path, out_path=None, report=True):
                 if rt is not None:
                     path, nm = rt
                     new_m[carrier] = new_m.get(carrier, 0.0) + nm
-            if carrier == "conveyor":
-                ok = ok or d <= 900
+            if carrier == "conveyor":                   # the belt's own reach holds (the old 900 m override is gone)
                 seg = d
                 n = int(seg // CONVEYOR_M)
                 for k in range(1, n + 1):

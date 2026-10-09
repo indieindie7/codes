@@ -5,7 +5,10 @@ r"""Concept to believable town, one command (see ../PIPELINE.md):
 island (terrain tool sketch, formed + eroded) -> layout (interest maps, roads, Voronoi drift) -> systems
 (provides/needs, connections; an unmet core need re-rolls the layout with the next seed) -> pads -> TutA
 terrain -> buildings as StaticMeshActors + lighting -> editor pictures -> pilot run -> report.md.
-Everything lands in Documents\U2_research\towns\<name><seed>\.
+Everything lands in Documents\U2_research\towns\<name><seed>\ (root=<dir> puts it elsewhere).
+The co-directors' FINAL review runs on the graded heightmap (isl_ec.bmp) after the walks; the pre-grading review is
+kept for comparison (codirection_final.txt, report.md). stop=score ends there: the CPU-only part, no editor or game
+(with reuse=1 it re-scores an existing run folder's islands and layouts).
 """
 import json, os, re, shutil, subprocess, sys, time
 
@@ -15,6 +18,7 @@ sys.path.insert(0, TOOLS)
 import island_batch as ib  # noqa  (helpers: run, pilot_script, populate, enable_map, island_png, TEMPLATE, PILOT, GAME)
 import systems  # noqa
 import compose  # noqa
+import codirect  # noqa  (the five co-directors; the final review runs on the graded ground for every style)
 
 args = [a for a in sys.argv[1:] if "=" not in a]
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
@@ -28,7 +32,7 @@ REROLLS = int(o.get("rerolls", 6 if COMPOSE else 3))
 SUN = o.get("sun", "low")              # low = re-aim the baked sun at the sky's painted one (lowsun.py); stock = leave it
 METHOD = o.get("method", "spine")      # spine = street first, plots along it (layout_spine.py); interest = layout.py
 name = "%s%d" % (NAME, seed)
-RUN = os.path.join(r"C:\Users\john\Documents\U2_research\towns", name)
+RUN = os.path.join(o.get("root", r"C:\Users\john\Documents\U2_research\towns"), name)   # root=<dir>: a test copy elsewhere
 os.makedirs(RUN, exist_ok=True)
 base = os.path.join(RUN, "isl")
 t0 = time.time()
@@ -58,7 +62,6 @@ def made(path):
 ISLANDS = int(o.get("islands", 4 if CODIRECT else 1))
 if CODIRECT:
     REROLLS = int(o.get("rerolls", 2))
-    import codirect
 layout = base + "_layout.json"
 best = None
 reviews = []
@@ -115,6 +118,9 @@ print("  using", os.path.basename(best[1]), "score %.2f, %d core unmet, window f
 open(os.path.join(RUN, "systems.txt"), "w").write(
     "needs %d unmet %d score %.2f\n" % (L["systems"]["needs"], len(L["systems"]["unmet"]), L["systems"]["score"])
     + "".join("  %s needs %s: %s\n" % tuple(u) for u in L["systems"]["unmet"]))
+# the co-directors on the natural ground, before cut/fill: kept only for comparison with the final review below
+# (the level designer, 2026-10-09: grading flattened Cine8's cover and high spots, LEVEL 0.93 -> 0.69)
+PRE = codirect.review(base + "_e.bmp", layout)
 
 # 4. pads, 5. terrain into TutA, 6. the buildings as actors + lighting + editor pictures
 step("pads + roads", lambda: ib.run(["py", os.path.join(TOOLS, "terrain_cutfill.py"), base + "_e.bmp", base + "_ec.bmp", "shift=" + SHIFT, "layout=" + layout]))
@@ -134,6 +140,16 @@ try:                                     # believability (Q35, tools/metrics.py)
         "IMP %.2f HIER %.2f\n%s\n" % (MET["IMP"], MET["HIER"], ", ".join("%s %s" % (k, v) for k, v in MET.items() if k not in ("IMP", "HIER"))))
 except Exception as e:
     print("  metrics failed:", e)
+# the final co-direction review on the GRADED ground (isl_ec.bmp, what ships), after the walks' paths joined the
+# network; the pre-grading review is kept beside it for comparison (the level designer, redesign 2026-10-09)
+FINAL = codirect.review(base + "_ec.bmp", layout)
+FRAME_G = compose.score(base + "_ec.bmp", layout, png=base + "_frame.png") if COMPOSE else {}
+open(os.path.join(RUN, "codirection_final.txt"), "w", encoding="utf-8").write(
+    codirect.report(FINAL, "FINAL, graded ground (isl_ec.bmp)") + "\n\n" + codirect.report(PRE, "before grading (isl_e.bmp), for comparison") + "\n")
+print(codirect.report(FINAL, "FINAL, graded ground"), flush=True)
+print("  before grading: total %.3f, LEVEL %.2f -> graded: total %.3f, LEVEL %.2f" % (PRE["total"], PRE["level"]["score"], FINAL["total"], FINAL["level"]["score"]), flush=True)
+if o.get("stop") == "score":            # stop=score: the CPU-only part (layouts, grading, walks, drawings, scores); no editor, no game
+    sys.exit(0)
 L = json.load(open(layout))
 # the ground paint: rock base, sand on roads / yards / beach, plant life on gentle ground (TutA's three layers)
 ALPHA_TPL = os.path.join(r"C:\Users\john\Documents\U2_research\terrain", "alphas")
@@ -151,7 +167,8 @@ with open(t3d, "a") as f:                      # one import: the clutter actors 
 step("populate", lambda: ib.populate(name, t3d, layout, base))
 ib.enable_map(name)
 if SUN == "low":
-    step("low sun", lambda: ib.run(["py", os.path.join(TOOLS, "lowsun.py"), name, "out=" + name, "el=10", "az=136", "hue=24", "sat=100", "bright=150"], retries=1))
+    step("low sun", lambda: ib.run(["py", os.path.join(TOOLS, "lowsun.py"), name, "out=" + name, "el=%g" % codirect.SUN_EL, "az=%g" % codirect.SUN_AZ,
+                                    "hue=24", "sat=100", "bright=150"], retries=1))       # the sun the director scored
 # motion in the view: plumes from the sheets' motion: keys, trucks on the spine, the reveal pass (U2AvalonCards.ini)
 step("motion", lambda: ib.run(["py", os.path.join(TOOLS, "motion.py"), layout, "family=" + name]))
 
@@ -181,7 +198,10 @@ rep = ["# %s (seed %d, style %s)" % (name, seed, STYLE), "",
            S["needs"], len(S["unmet"]), S["score"], S["pipes_m"], S["cables_m"], S["conveyors_m"]),
        *("- %s needs %s: %s" % tuple(u) for u in S["unmet"]), "",
        "## The window frame", "score %.2f: %s buildings in frame, hero %s at u=%s (thirds %s), town span %s, depth %s, leading line %s (isl_frame.png)" % (
-           FRAME.get("total", 0), FRAME.get("in_frame"), FRAME.get("hero"), FRAME.get("hero_u"), FRAME.get("thirds"), FRAME.get("span"), FRAME.get("depth"), FRAME.get("lead")), "",
+           FRAME.get("total", 0), FRAME.get("in_frame"), FRAME.get("hero"), FRAME.get("hero_u"), FRAME.get("thirds"), FRAME.get("span"), FRAME.get("depth"), FRAME.get("lead")),
+       "on the graded ground: score %.2f, %s buildings, hero %s" % (FRAME_G.get("total", 0), FRAME_G.get("in_frame"), FRAME_G.get("hero")) if FRAME_G else "", "",
+       "## Co-direction (final = graded ground, isl_ec.bmp; codirection_final.txt)", "```", codirect.report(FINAL, "FINAL (graded)"), "```",
+       "before grading (isl_e.bmp), for comparison: total %.3f, %s" % (PRE["total"], ", ".join("%s %.2f" % (k, PRE[k]["score"]) for k in ("writer", "director", "engineer", "level", "artist"))), "",
        "## Walks", "%d trips a day, %.1f km on foot; checks:" % (
            sum(1 for w in L.get("walks", []) if w.get("path")), sum((w.get("m") or 0) * w.get("n", 1) for w in L.get("walks", [])) / 1000),
        *("- " + c for c in L.get("walk_checks", [])), "- (none)" if not L.get("walk_checks") else "", "",

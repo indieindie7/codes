@@ -28,7 +28,7 @@ SEED = int(o.get("seed", 1))
 PNG = o.get("png")
 CAMERA_K = float(o.get("camera", 2.0))     # how strongly the camera term counts against systems/ring pulls
 WINDOW_K = float(o.get("window", 4.0))   # how strongly the hero and the story want the command-room window
-HERO = o.get("hero", "cooling_towers")
+HERO = o.get("hero", "cooling_towers")   # the WINDOW frame's subject (the parti's "second"); the parti's hero is below
 # Q35 (2026-10-08, games/research_notes/Believable city simulation): pass 1 value fields + bid-rent, pass 2 imperfect
 # plots. passes=0 gives the old constant plots (for before/after metrics: tools/metrics.py)
 PASSES = int(o.get("passes", 4))      # 1 value fields, 2 imperfect plots, 3 epochs (old core at the dock), 4 back lanes + connectors
@@ -41,6 +41,8 @@ except (OSError, ValueError):
     PARTI = {}
 SMOKE_K = float(o.get("smoke_k", 1.6 if PARTI.get("downwind") == "shanty" else 0.0))
 HIDE_K = float(o.get("hide_k", 3.0 if any(b.get("at") == "dock" and "hidden" in b.get("move", "") for b in PARTI.get("beats", [])) else 0.0))
+CHAIN_K = float(o.get("chain_k", 4.0))  # how hard a process-chain link (systems.STAGES) pulls toward the stage above
+PARTI_HERO = PARTI.get("hero", "tower")   # what beat 1 hides at the dock; "tower" until the hero sheet is placed
 DBG = []
 VIS = None                            # vis=<viewshed npz>: how much the player sees each cell (viewshed.py)
 if o.get("vis"):
@@ -385,8 +387,9 @@ def hides_tower(x, y, b):
     from the dock station (the spine 40 m in, eye height) to the tower's top, fading to 0 as it moves off the line or
     falls short of the angle"""
     ex, ey, _, _ = SPINE.point(40 * M)
-    tx_, ty_ = placed["tower"]["x"], placed["tower"]["y"]
-    th = buildings["tower"]["size"][2] if len(buildings["tower"]["size"]) > 2 else 110.0
+    hid = PARTI_HERO if PARTI_HERO in placed else "tower"     # the parti's hero (binder 1940260: liandri_tower)
+    tx_, ty_ = placed[hid]["x"], placed[hid]["y"]
+    th = buildings[hid]["size"][2] if len(buildings[hid]["size"]) > 2 else 110.0
     dx, dy = tx_ - ex, ty_ - ey
     D = math.hypot(dx, dy) / M
     if D < 1:
@@ -400,7 +403,7 @@ def hides_tower(x, y, b):
     hb = b["size"][2] if len(b["size"]) > 2 else 8.0
     z_e = zb(ex, ey) / M + 1.6
     z_b = zb(x, y) / M + hb
-    z_t = placed["tower"]["z"] / M + th
+    z_t = placed[hid]["z"] / M + th
     blocks = (z_b - z_e) / along >= (z_t - z_e) / D                     # its top rises over the tower's top
     lateral = max(0.0, 1.0 - max(0.0, off - half) / 25.0)               # on the line (within its half width + 25 m)
     return lateral * (1.0 if blocks else 0.35 * min(1.0, ((z_b - z_e) / along) / max(1e-6, (z_t - z_e) / D)))
@@ -528,9 +531,11 @@ while pending:
     prog = False
     for i in list(pending):
         need = SPEC[i][1]
-        prov = [j for j in pending if j != i and any(r in SPEC[j][0] for r in need)
+        # wait for a provider still pending; in a process chain (systems.STAGES) only the stage above counts, and a
+        # chain link is never treated as a cycle (silos provide AND need ore, yet come before the halls)
+        prov = [j for j in pending if j != i and any(r in SPEC[j][0] and j in systems.upstream(i, r, [j]) for r in need)
                 and LAYERS.get(buildings[j].get("layer", "boom"), 1) <= LAYERS.get(buildings[i].get("layer", "boom"), 1)
-                and not any(r in SPEC[i][0] for r in SPEC[j][1])]
+                and not any(r in SPEC[i][0] and systems.stage(i, r) is None for r in SPEC[j][1])]
         if not prov:
             ordered.append(i); pending.remove(i); prog = True
     if not prog:
@@ -637,10 +642,14 @@ def try_place(bid, b):
                 # systems: every need pulls toward a placed provider within reach
                 for res in sorted(SPEC[bid][1]):
                     reach = systems.RES[res][1]
-                    pts = [(p["x"], p["y"]) for pid, p in placed.items() if res in SPEC[pid][0]]
+                    ups = systems.upstream(bid, res, [pid for pid in placed if res in SPEC[pid][0]])   # the process order
+                    pts = [(placed[pid]["x"], placed[pid]["y"]) for pid in ups]
                     if pts:
                         dm = min(math.hypot(px - cx, py - cy) for px, py in pts) / M
-                        score += (1.0 if res in systems.CORE else 0.5) * (1.2 - min(dm / reach, 1.5))
+                        w = 1.0 if res in systems.CORE else 0.5
+                        if systems.stage(bid, res) is not None:
+                            w *= CHAIN_K          # a process-chain link: its reach is a hard limit in systems.py
+                        score += w * (1.2 - min(dm / reach, 1.5))
                 # avoid: dorms and houses away from cooling/tanks; everything away from the dock's own stretch
                 if PASSES >= 1:
                     score += 1.2 * bid_rent(bid, b, cx, cy)
@@ -694,7 +703,12 @@ def try_place(bid, b):
 
 
 def add_branch(bid):
-    """no plot left on the spine: a side road from the roomiest free spine point on the works stretch"""
+    """no plot left on the spine: a side road from the roomiest free spine point on the works stretch.
+    The choice depends only on the ground, so without the check below every later call picked the SAME spine point
+    and laid an identical 140 m (7000 UU) branch on top of the last one (the level designer's duplicate branch, Q39;
+    Cine8 had 2, Town6 3). A new branch must start away from the existing branch mouths and run away from every
+    other branch, otherwise there is no new road to make (the building simply finds no plot)."""
+    other = [r for r in ROADS if r is not SPINE]
     best = None
     for s in np.arange(0.1 * S_TOWER, 0.9 * S_TOWER, 5 * M):
         x, y, ux, uy = SPINE.point(s)
@@ -703,6 +717,9 @@ def add_branch(bid):
             end = (x + nx * 140 * M, y + ny * 140 * M)
             if at(WATER, *end, 1) or not at(MAIN, *end, 0):
                 continue
+            mid = (x + nx * 70 * M, y + ny * 70 * M)
+            if any(min(math.hypot(p[0] - q[0], p[1] - q[1]) for q in r.pts) < 40 * M for r in other for p in (mid, end)):
+                continue                  # on top of (or alongside) a road already there
             r = at(ROOM, end[0] - nx * 70 * M, end[1] - ny * 70 * M)
             if best is None or r > best[0]:
                 best = (r, s, side, x, y, nx, ny)
@@ -809,6 +826,10 @@ def connectors(max_m=160.0, ratio=1.4):
 # pass 3: what time did to each building - additions (lean-tos, annexes, a storey) pile up on the old and the
 # valuable; in the decline the cheapest boom plots stand abandoned (research 1d/1e). Data for the dressing passes.
 ADDITIONS, ABANDONED = {}, set()
+# never abandon a home the binder gives named residents (a citizen sheet's `lives:`): the writer, 2026-10-09 / Q37 -
+# Town7 abandoned staff_houses and made its 20 plant staff homeless
+RESIDED = {c["lives"] for c in citizens.values() if c.get("lives")}
+RESIDED |= {bid for bid, b in buildings.items() if b.get("users")}   # kept for named people (guest_house)
 if PASSES >= 3 and PASSES >= 1:
     boom = []
     for bid, p in placed.items():
@@ -818,9 +839,9 @@ if PASSES >= 3 and PASSES >= 1:
             continue
         ADDITIONS[bid] = int(rng.poisson(age_k * (0.6 + value(p["x"], p["y"], bid))))
         if (lay == "boom" and p["kind"] in ("house", "dorm") and not (SPEC[bid][0] - {"workers"}) and not buildings[bid].get("function")
-                and bid != "directors_house"):            # plain dwellings only: never a provider, a social place or the director
-            boom.append((value(p["x"], p["y"], bid), bid))
-    for v, bid in sorted(boom)[:max(1, len(boom) // 6)]:
+                and bid != "directors_house" and bid not in RESIDED):   # plain, empty dwellings only: never a provider,
+            boom.append((value(p["x"], p["y"], bid), bid))               # a social place, the director or anyone's home
+    for v, bid in sorted(boom)[:max(1, len(boom) // 6) if boom else 0]:
         ABANDONED.add(bid)
 
 N_LANES = N_CONN = 0
