@@ -410,8 +410,9 @@ def review(heightmap, layout_path, graded=None):
     fr = compose.score(heightmap, layout_path)
     if not fr.get("hero"):
         veto = "no hero in the window"
-    notes.append("frame %.2f: hero %s at u=%s (thirds %s), span %s, %s buildings, depth %s, lead %s" % (
-        fr.get("total", 0), fr.get("hero"), fr.get("hero_u"), fr.get("thirds"), fr.get("span"), fr.get("in_frame"), fr.get("depth"), fr.get("lead")))
+    notes.append("frame %.2f: hero %s at u=%s (thirds %s; the parti's %s %s), span %s, %s buildings, depth %s, lead %s" % (
+        fr.get("total", 0), fr.get("hero"), fr.get("hero_u"), fr.get("thirds"), PARTI.get("hero"), fr.get("parti_hero", "-"),
+        fr.get("span"), fr.get("in_frame"), fr.get("depth"), fr.get("lead")))
     # three layers along the view axis: land 150-400 m, then a gap, then something beyond (far shore / sea horizon)
     ex, ey = compose.EYE[0], compose.EYE[1]
     prof = []

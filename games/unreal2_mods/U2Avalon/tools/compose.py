@@ -34,6 +34,7 @@ CELL, N, SEA_Z = 512.0, 128, -4967.0
 EYE = (-349.7, 1388.3, 4238.0 + 64)            # the command room's PlayerStart, eye height
 LOOK_YAW, HALF_W, PITCH = 300.0, 34.0, -15.0   # the window: centre yaw, half width, the gaze tilt (horizon in the upper part)
 HALF_H = 26.0                                   # half height of the view (degrees): -41 .. +11 with the tilt
+EDGE_U = 0.1                                    # a hero this close to a side edge is NOT the window's hero (round 3; anchors.EDGE_U)
 # The map must match: the command room's PlayerStart should face Pitch -15 deg (= -2731 rotation units, 62805 as an
 # unsigned word; the coordinator's pick 2026-10-09, was -9: 8-13 buildings in frame, the horizon in the upper part) so the first frame the player sees is this one; island_batch.pilot_script's window shots still turn
 # to -18..-22 (they look at the plant, not at this frame).
@@ -99,9 +100,11 @@ def score(heightmap, layout_path, png=None):
     if not inframe:
         out.update(total=0.0, hero=None)
         return out
-    # the hero: the parti's (binder/parti.json, liandri_tower since binder 1940260) when it is in the window, else its
-    # "second" (the cooling towers), else the tallest building in frame
-    hero = (next((x for x in inframe if x["id"] == PARTI.get("hero")), None) or
+    # the hero: the parti's (binder/parti.json, liandri_tower since binder 1940260) when it is in the window AND off
+    # its side edges (EDGE_U <= u <= 1 - EDGE_U; an edge-only temple counts as outside, round 3), else its "second"
+    # (the cooling towers: plan D1 fallback c - the temple stays the hero of the walk, the gate and the decks), else
+    # the tallest building in frame
+    hero = (next((x for x in inframe if x["id"] == PARTI.get("hero") and EDGE_U <= x["u"] <= 1 - EDGE_U), None) or
             next((x for x in inframe if x["id"] == PARTI.get("second", "cooling_towers")), None) or max(inframe, key=lambda x: x["hgt"]))
     thirds = max(0.0, 1 - min(abs(hero["u"] - 1 / 3), abs(hero["u"] - 2 / 3)) / 0.17)
     us = [x["u"] for x in inframe]
@@ -122,6 +125,8 @@ def score(heightmap, layout_path, png=None):
         if n1 > 1e-3 and n2 > 1e-3:
             lead = 0.5 + 0.5 * abs(d_line[0] * d_hero[0] + d_line[1] * d_hero[1]) / (n1 * n2)
     total = 0.3 * thirds + 0.25 * cover + 0.2 * count + 0.15 * depth + 0.1 * lead
+    ph = next((x for x in inframe if x["id"] == PARTI.get("hero")), None)
+    out["parti_hero"] = (("inner" if hero["id"] == ph["id"] else "edge-only, u=%.2f" % ph["u"]) if ph else "out of frame")
     out.update(hero=hero["id"], hero_u=round(hero["u"], 2), thirds=round(thirds, 2), span=round(span, 2), cover=round(cover, 2),
                count=round(count, 2), depth=round(depth, 2), lead=round(lead, 2), total=round(total, 3))
     if png:

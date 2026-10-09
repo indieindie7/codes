@@ -43,7 +43,7 @@ FUEL_CLEAR_M = 100.0                     # E16: a dwelling stands >= 100 m from 
 BESIDE_MAX_M = 60.0                      # how much further than "next door" the guest house may move to clear E16
 WINDOW_BONUS = 1000.0                   # metres of "height": any summit in the window frame beats any outside it
 WINDOW_THIRDS_M = 25.0                   # inside the frame, a vertical third is worth this many metres of height
-EDGE_U = 0.1                             # a hero this close to the frame's side edge counts half
+EDGE_U = 0.1                             # a hero this close to the frame's side edge counts as OUTSIDE it (round 3; compose.EDGE_U)
 WIDE_M = 600.0                           # the frame search widens to this far from the town's spine before falling back
 BEHIND_DEG = 100.0                       # the town's land: within this of the window bearing (yaw 300) from the tower
 SHORE_M = 40.0                           # ... and this far off the sea
@@ -274,7 +274,7 @@ def truck_road(Z, a, spine, main, max_grade=MAX_GRADE, start_r_m=0.0):
     return [[round(x, 1), round(y, 1)] for x, y in pts], plen(pts) / M, grade, cap_used
 
 
-def summit(Z, spine, sheet, main=None, avoid=(), occupied=None, town_m=TOWN_M, plinth_m=PLINTH_M):
+def summit(Z, spine, sheet, main=None, avoid=(), occupied=None, town_m=TOWN_M, plinth_m=PLINTH_M, works_z=None):
     """the hero on the highest buildable ground inside the town's land.
     spine: [(x, y)] world; sheet: the binder sheet (size); avoid: [(x, y, metres)]; occupied: bool[N, N] cells already
     built on. Returns {x, y, z, yaw, ground_lo/hi/mean (m), plinth_used_m, road, road_m, road_grade, in_window, ...}"""
@@ -311,42 +311,49 @@ def summit(Z, spine, sheet, main=None, avoid=(), occupied=None, town_m=TOWN_M, p
     ok = within(town)
     # the window: the parti wants the temple as the command room's hero. A candidate whose top is in compose's frame
     # (yaw 300 +- HALF_W, pitch -15 +- HALF_H) and not hidden by the terrain beats any candidate outside it; inside,
-    # height wins, with a pull to a vertical third (WINDOW_THIRDS_M metres of height per unit of thirds score), and a
-    # spot at the frame's very edge (u < EDGE_U or > 1 - EDGE_U) counts only half the bonus. When the town's strip has
-    # no such spot, the frame is searched on wider land (WIDE_M from the town's spine) before falling back.
+    # height wins, with a pull to a vertical third (WINDOW_THIRDS_M metres of height per unit of thirds score). When
+    # the town's strip has no such spot, the frame is searched on wider land (WIDE_M from the town's spine) before
+    # falling back.
     top_m = sheet["size"][2] if len(sheet["size"]) > 2 else 60.0
+
+    # round 3: an EDGE-ONLY spot (u < EDGE_U or > 1 - EDGE_U) counts as OUTSIDE the frame - no bonus at all (it was
+    # half); the cooling towers then stay the window's hero (compose.py, plan D1 fallback c). Among the inner spots the
+    # tiebreak is the height over the works (works_z: the works' mean ground, world units; a constant shift, so the
+    # order is the height order - it is reported as over_works_m).
+    works_m = (works_z / M) if works_z is not None else None
 
     def frame_scores(cand):
         sc = np.where(cand, mean, -1e9)
-        fr = {}
+        fr, edge = {}, {}
         for j_, i_ in zip(*np.nonzero(cand)):
             x_, y_ = c2w(i_, j_)
             u = in_frame(Z, x_, y_, hi[j_, i_] * M + top_m * M)
-            if u is not None:
-                fr[(j_, i_)] = u
-                thirds = max(0.0, 1 - min(abs(u - 1 / 3), abs(u - 2 / 3)) / 0.17)
-                edge = 0.5 if (u < EDGE_U or u > 1 - EDGE_U) else 1.0
-                sc[j_, i_] = edge * WINDOW_BONUS + mean[j_, i_] + WINDOW_THIRDS_M * thirds
-        return sc, fr
-    # tiers: the town's strip with a spot well inside the frame; wider land with one; the strip with an edge spot only;
-    # wider land with an edge spot; else the fallback (the highest in the strip, outside the frame)
-    score, frame = frame_scores(ok)
+            if u is None:
+                continue
+            if u < EDGE_U or u > 1 - EDGE_U:
+                edge[(j_, i_)] = u            # on the frame's side edge: outside, for the choice
+                continue
+            fr[(j_, i_)] = u
+            thirds = max(0.0, 1 - min(abs(u - 1 / 3), abs(u - 2 / 3)) / 0.17)
+            sc[j_, i_] = WINDOW_BONUS + (mean[j_, i_] - (works_m or 0.0)) + WINDOW_THIRDS_M * thirds
+        return sc, fr, edge
+    # tiers: the town's strip with a spot inside the frame; wider land with one; else the fallback (the highest in the
+    # strip, outside the frame - edge-only spots included)
+    score, frame, edge_spots = frame_scores(ok)
     widened = False
-
-    def inner(fr):
-        return any(EDGE_U <= u <= 1 - EDGE_U for u in fr.values())
-    if not inner(frame):
+    if not frame:
         wide = within(land & (d_spine <= WIDE_M) & (d_sea >= SHORE_M))
-        sc2, fr2 = frame_scores(wide)
-        if (inner(fr2) or not frame) and fr2:
-            score, frame, ok, widened = sc2, fr2, wide, True
+        sc2, fr2, ed2 = frame_scores(wide)
+        if fr2:
+            score, frame, edge_spots, ok, widened = sc2, fr2, ed2, wide, True
     if not ok.any():
         return None
     j, i = np.unravel_index(int(score.argmax()), score.shape)
     x, y = c2w(i, j)
     fallback = (j, i) not in frame
     if fallback:
-        print("  summit: no buildable spot in the window frame; the highest outside it (%d candidates)" % int(ok.sum()), file=sys.stderr)
+        print("  summit: no buildable spot inside the window frame (%d edge-only); the highest outside it (%d candidates)" % (
+            len(edge_spots), int(ok.sum())), file=sys.stderr)
     road, road_m, grade, cap = truck_road(Z, (x, y), spine, main, start_r_m=r * CELL_M + 5)
     gate = road[0] if road else min(spine, key=lambda p: math.hypot(p[0] - x, p[1] - y))
     yaw = math.degrees(math.atan2(gate[1] - y, gate[0] - x))              # the front (the ceremonial stair) to the road
@@ -359,7 +366,9 @@ def summit(Z, spine, sheet, main=None, avoid=(), occupied=None, town_m=TOWN_M, p
             "road": road, "road_m": round(road_m), "road_grade": round(grade, 3), "road_cap": round(cap, 3),
             "dist_tower_m": round(math.hypot(x - TOWER_WORLD[0], y - TOWER_WORLD[1]) / M),
             "window_deg_off": round(dw, 1), "in_window": not fallback, "frame_u": round(frame[(j, i)], 2) if not fallback else None,
-            "window_candidates": len(frame), "fallback": fallback, "widened": widened}
+            "edge_u": round(edge_spots[(j, i)], 2) if (j, i) in edge_spots else None,
+            "over_works_m": round(float(mean[j, i] - works_m), 1) if works_m is not None else None,
+            "window_candidates": len(frame), "edge_only_candidates": len(edge_spots), "fallback": fallback, "widened": widened}
 
 
 def in_frame(Z, x, y, top_z):
@@ -699,9 +708,11 @@ def apply(L, Z, sheets=None, hero=None):
         avoid = [(B[k]["x"], B[k]["y"], m) for k, m in AVOID.items() if k in B]
         if "sites" in L and "mine" in L["sites"]:
             avoid.append((L["sites"]["mine"][0], L["sites"]["mine"][1], 150.0))
-        site = summit(Z, L.get("spine") or L["roads"][0], sheets[hero], main, avoid, occupied=occ)
+        works = [zat(Z, p["x"], p["y"]) for bid, p in B.items() if sheets.get(bid, {}).get("kind") in ("hall", "tank", "silo", "cooling")]
+        wz = float(np.mean(works)) if works else None
+        site = summit(Z, L.get("spine") or L["roads"][0], sheets[hero], main, avoid, occupied=occ, works_z=wz)
         if site is None:                                             # nothing free: relax the occupancy
-            site = summit(Z, L.get("spine") or L["roads"][0], sheets[hero], main, avoid)
+            site = summit(Z, L.get("spine") or L["roads"][0], sheets[hero], main, avoid, works_z=wz)
             if site:
                 site["note"] = "every free summit site taken; placed over other buildings"
         if site:

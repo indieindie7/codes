@@ -160,6 +160,7 @@ def story_extras():
         lines.append("hero %s on the summit: ground %.0f m, plinth %.0f m, truck road %d m (steepest %.0f %%, cap %.0f %%), %s" % (
             anchors.PARTI_HERO, S_["ground_mean_m"], S_["plinth_used_m"], S_["road_m"], 100 * S_["road_grade"], 100 * S_.get("road_cap", 0.12),
             ("in the window frame at u=%.2f%s" % (S_["frame_u"], ", searched wider" if S_.get("widened") else "")) if S_["in_window"]
+            else ("on the frame's edge only (u=%.2f): the cooling towers keep the window" % S_["edge_u"]) if S_.get("edge_u") is not None
             else "NOT in the window (%.0f deg off; no buildable spot in the frame)" % S_["window_deg_off"]))
     if "guest_house" in A:
         lines.append("guest house beside %s (%s): %d m from the fuel (E16 %s)" % (
