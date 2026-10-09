@@ -153,8 +153,8 @@ def part_culvert_drop():
         ubox(L1 + 1.0, hw - 0.12, z, 0.6, 0.05, 0.05, "grey")
     for dy in (-0.3, 0.3):
         ubox(L1 + 1.0 + dy, hw - 0.12, CHAN_D - 1.5, 0.05, 0.05, 4.4, "grey")
-    ubox(L1 + 0.5, hw - 0.3, CHAN_D + 0.05, 1.0, 0.6, 0.08, "orange")        # the hazard edge at the drop
-    ubox(L1 + 0.5, -0.3, CHAN_D - 0.2, 1.0, 5.0, 0.08, "orange")
+    ubox(L1 + 0.5, hw - 0.3, CHAN_D + 0.05, 1.0, 0.6, 0.08, "hazard")        # the hazard edge at the drop
+    ubox(L1 + 0.5, -0.3, CHAN_D - 0.2, 1.0, 5.0, 0.08, "hazard")
 
 
 def part_shaft_slab():
@@ -170,14 +170,14 @@ def part_junction():
     room_openings(L, W, H, ((0.0, True), (L, True)), floor_z=0.0, mat="steel")
     hole = 1.0
     ubox(L / 2, 0, H + 1.5, 2.0 + 2 * WALL, 2.0 + 2 * WALL, 3.0, "steel")
-    ubox(L / 2, 0, H + 1.5, 2.0, 2.0, 3.2, "charcoal")                      # the shaft's dark inside
-    ubox(L / 2, 0, H + 3.0, 2.2, 2.2, 0.12, "orange")                       # the grate frame above
+    ubox(L / 2, 0, H + 1.5, 2.0, 2.0, 3.2, "soot")                          # the shaft's dark inside
+    ubox(L / 2, 0, H + 3.0, 2.2, 2.2, 0.12, "hazard")                       # the grate frame above (a rim)
     for k in range(5):
         ubox(L / 2, -0.8 + 0.4 * k, H + 3.0, 2.0, 0.08, 0.06, "charcoal")
     for s in (-1, 1):                                                       # pipes along one wall, a valve stand
         ubox(L * 0.6, s * (hw - 0.5), 2.2, L * 0.5, 0.3, 0.3, "brown")
     ubox(L * 0.3, hw - 0.9, 0.6, 1.2, 1.2, 1.2, "steel")
-    ubox(L * 0.3, hw - 0.9, 1.3, 0.6, 0.6, 0.2, "orange")
+    ubox(L * 0.3, hw - 0.9, 1.3, 0.6, 0.6, 0.2, "hazard")                   # the valve wheel (a moving machine)
 
 
 def room_openings(L, W, H, ends, floor_z=0.0, mat="steel", end_w=CW, end_h=CHAN_D + CH):
@@ -199,7 +199,7 @@ def room_openings(L, W, H, ends, floor_z=0.0, mat="steel", end_w=CW, end_h=CHAN_
         both(prism, x0, x1, -hw - WALL, -ow, floor_z - WALL, floor_z + H + WALL, mat)
         both(prism, x0, x1, ow, hw + WALL, floor_z - WALL, floor_z + H + WALL, mat)
         both(prism, x0, x1, -ow, ow, floor_z + end_h, floor_z + H + WALL, mat)
-        prism(x0 - 0.05 if x > 0 else x1 - 0.1, x0 + 0.1 if x > 0 else x1 + 0.05, -ow - 0.2, ow + 0.2, floor_z + end_h, floor_z + end_h + 0.3, "orange")
+        prism(x0 - 0.05 if x > 0 else x1 - 0.1, x0 + 0.1 if x > 0 else x1 + 0.05, -ow - 0.2, ow + 0.2, floor_z + end_h, floor_z + end_h + 0.3, "hazard")   # the opening's head edge
 
 
 def part_gallery():
@@ -215,7 +215,7 @@ def part_gallery():
         ubox(x, W / 2 - 0.35, 4.85, 0.5, 0.25, 0.12, "glow")
     for s in (-1, 1):                                                           # hazard stripes at the sluice end
         for k in range(4):
-            ubox(L - 0.02, s * (CW / 2 + 0.35), CHAN_D + 0.5 + k * 1.5, 0.05, 0.5, 0.75, "orange" if k % 2 else "charcoal")
+            ubox(L - 0.02, s * (CW / 2 + 0.35), CHAN_D + 0.5 + k * 1.5, 0.05, 0.5, 0.75, "hazard" if k % 2 else "charcoal")
     ubox(L - 0.3, 0, CHAN_D + CH + 0.9, 0.3, 1.0, 0.5, "rustred")                # the beacon housing over the gate
 
 
@@ -260,7 +260,7 @@ def part_drain_stair(depth=7.4):
         x = -2.0 - (k + 0.5) * tread
         z = (k + 1) * riser
         both(ubox, x, 0, z / 2, tread, w, z, "grey")
-        ubox(x + tread / 2 - 0.05, 0, z - 0.02, 0.1, w, 0.04, "orange")           # hazard nosing
+        ubox(x + tread / 2 - 0.05, 0, z - 0.02, 0.1, w, 0.04, "hazard")           # hazard nosing
     run = 2.0 + n * tread
     both(ubox, -run - 0.75, 0, depth - 0.15, 1.5, w, 0.3, "grey")                 # the top landing at ground
     for s in (-1, 1):                                                            # trench walls, full height
@@ -268,7 +268,7 @@ def part_drain_stair(depth=7.4):
     both(ubox, -run - 1.5 - 0.15, 0, depth / 2 + 0.3, 0.3, w + 0.6, depth + 0.6, "steel")   # the end wall
     ubox(-(run + 1.5) / 2, 0, depth + 0.5, run + 1.5, w + 0.6, 0.2, "grey")        # the kerb at ground level
     for z in (0.55, 1.1):                                                         # a rail on the right cheek
-        ubox(-run / 2 - 1.0, w / 2 - 0.1, depth + z, run, 0.06, 0.06, "orange")
+        ubox(-run / 2 - 1.0, w / 2 - 0.1, depth + z, run, 0.06, 0.06, "hazard")
     return {"run": run + 1.5, "depth": depth}
 
 
@@ -282,7 +282,7 @@ def part_drain_hatch(depth=7.4):
     for z in [0.5 + 0.3 * k for k in range(int(depth / 0.3))]:
         ubox(-w / 2 + 0.15, 0, z, 0.05, 0.6, 0.05, "grey")
     ubox(0, 0, depth + 0.15, w + 0.9, w + 0.9, 0.3, "grey")
-    ubox(0, 0, depth + 0.35, w, w, 0.1, "orange")
+    ubox(0, 0, depth + 0.35, w, w, 0.1, "hazard")                                # the hatch rim
 
 
 # --- the taps ----------------------------------------------------------------------------------------------------
@@ -307,8 +307,8 @@ def part_pole(variant):
         h = 6.0
         ubox(h / 2 * math.sin(math.radians(lean)), 0, h / 2, 0.16, 0.16, h, "steel", pitch=-lean)
         ubox(h * math.sin(math.radians(lean)) + 0.4, 0, 6.0, 0.9, 0.14, 0.14, "steel", pitch=15)
-        ubox(h * math.sin(math.radians(lean)) + 0.8, 0, 5.85, 0.3, 0.3, 0.25, "charcoal")   # the dead head
-        ubox(5.5 * math.sin(math.radians(lean)) + 0.1, 0, 5.5, 0.4, 0.08, 0.08, "orange")     # the hook bracket
+        ubox(h * math.sin(math.radians(lean)) + 0.8, 0, 5.85, 0.3, 0.3, 0.25, "soot")       # the dead (burnt-out) head
+        ubox(5.5 * math.sin(math.radians(lean)) + 0.1, 0, 5.5, 0.4, 0.08, 0.08, "hazard")     # the hook bracket
         ubox(0, 0, 0.2, 0.6, 0.6, 0.4, "grey")
 
 
@@ -387,11 +387,15 @@ def panel_window(w=4.0, h=STOREY, ww=3.2, z0=2.0, z1=2.9, m="charcoal"):
 
 
 def part_frame(dw, dh, m="orange"):
-    """a door frame round a dw x dh opening: 0.15 members, 0.4 deep, standing on the floor at the wall line"""
+    """a door frame round a dw x dh opening: 0.15 members, 0.4 deep, standing on the floor at the wall line.
+    orange = the company's frame colour; slate = the Authority's, with its one cold (cyan) indicator strip over
+    the lintel (artist s. 1.1: a single cyan window strip is the Authority's motif)"""
     for s in (-1, 1):
         ubox(s * (dw / 2 + 0.075), 0, dh / 2, 0.15, 0.4, dh, m)
     ubox(0, 0, dh + 0.075, dw + 0.3, 0.4, 0.15, m)
     ubox(0, -0.25, 0.02, dw, 0.1, 0.04, "grey")                                 # the threshold
+    if m == "slate":
+        ubox(0, -0.21, dh + 0.075, 0.6, 0.02, 0.08, "cyan")
 
 
 def part_column():
@@ -412,9 +416,9 @@ def part_rail(L=4.0):
     hazard; one thin hull so the player can't walk off"""
     for x in (-L / 2 + 0.05, 0, L / 2 - 0.05):
         ubox(x, 0, 0.55, 0.06, 0.06, 1.1, "steel")
-    ubox(0, 0, 1.1, L, 0.06, 0.06, "orange")
+    ubox(0, 0, 1.1, L, 0.06, 0.06, "hazard")
     ubox(0, 0, 0.55, L, 0.05, 0.05, "steel")
-    ubox(0, 0, 0.075, L, 0.04, 0.15, "orange")
+    ubox(0, 0, 0.075, L, 0.04, 0.15, "hazard")
     ubox(0, 0, 0.55, L, 0.06, 1.1, "steel", hull=True)
 
 
@@ -427,9 +431,9 @@ def part_catwalk(L=4.0, w=1.6):
     for s in (-1, 1):
         for x in (-L / 2 + 0.05, 0, L / 2 - 0.05):
             ubox(x, s * (w / 2 - 0.03), 0.55, 0.06, 0.06, 1.1, "steel")
-        ubox(0, s * (w / 2 - 0.03), 1.1, L, 0.06, 0.06, "orange")
+        ubox(0, s * (w / 2 - 0.03), 1.1, L, 0.06, 0.06, "hazard")
         ubox(0, s * (w / 2 - 0.03), 0.55, L, 0.05, 0.05, "steel")
-        ubox(0, s * (w / 2 - 0.03), 0.075, L, 0.04, 0.15, "orange")
+        ubox(0, s * (w / 2 - 0.03), 0.075, L, 0.04, 0.15, "hazard")
         ubox(0, s * (w / 2 - 0.03), 0.55, L, 0.06, 1.1, "steel", hull=True)
 
 
@@ -437,7 +441,7 @@ def part_step():
     """one stair step: tread 0.56 (X) x 1.6 wide (Y) x 0.68 high (34 UU) block, origin at its bottom back... the
     bottom centre; shells.py places N of them with DrawScale3D Z = riser / 0.68 and Y = width / 1.6"""
     both(ubox, 0, 0, 0.34, 0.56, 1.6, 0.68, "grey")
-    ubox(-0.24, 0, 0.67, 0.08, 1.6, 0.03, "orange")
+    ubox(-0.24, 0, 0.67, 0.08, 1.6, 0.03, "hazard")                            # the nosing
 
 
 def part_ladder(h=STOREY):
@@ -469,9 +473,9 @@ def part_headframe():
     for s in (-1, 1):
         both(ubox, 0, s * 3.0, 4.0, 3.0, 2.0, 8.0, "steel")                         # piers
         for k in range(4):
-            ubox(1.52, s * 3.0, 0.6 + k * 1.2, 0.05, 2.0, 0.6, "orange" if k % 2 else "charcoal")
+            ubox(1.52, s * 3.0, 0.6 + k * 1.2, 0.05, 2.0, 0.6, "hazard" if k % 2 else "charcoal")
     both(ubox, 0, 0, 8.75, 3.0, 8.0, 1.5, "steel")                                   # lintel
-    ubox(-1.4, 0, 4.0, 0.2, 4.0, 8.0, "charcoal")                                     # the dark inside
+    ubox(-1.4, 0, 4.0, 0.2, 4.0, 8.0, "soot")                                         # the dark inside
     ubox(-1.5, 0, 9.5, 2.6, 8.4, 0.3, "grey")
     for s in (-1, 1):                                                                # the A-frame legs, leaning in
         ubox(s * 1.6, 0, 12.0, 0.5, 0.5, 24.5, "charcoal", pitch=s * 8.0)
@@ -498,13 +502,13 @@ def part_transfer_tower():
         ubox(s * 3.01, 0, 0.5, 0.02, 6.0, 1.0, "brown")
     both(ubox, 0, 0, 11.85, 6.0, 6.0, 0.3, "grey")                                   # the deck at 12 m
     for s in (-1, 1):
-        ubox(s * 2.9, 0, 12.55, 0.06, 6.0, 0.06, "orange")
-        ubox(0, s * 2.9, 12.55, 6.0, 0.06, 0.06, "orange")
+        ubox(s * 2.9, 0, 12.55, 0.06, 6.0, 0.06, "hazard")
+        ubox(0, s * 2.9, 12.55, 6.0, 0.06, 0.06, "hazard")
         ubox(s * 2.9, 0, 12.0, 0.06, 6.0, 1.1, "steel", hull=True)
         ubox(0, s * 2.9, 12.0, 6.0, 0.06, 1.1, "steel", hull=True)
     ubox(-1.0, 0, 13.0, 3.0, 3.0, 2.0, "rustred")                                     # the head house
     ubox(4.5, 0, 6.5, 6.5, 1.2, 1.0, "rustred", pitch=-50)                            # the chute, down the +X face
-    ubox(3.4, 0, 1.5, 1.2, 1.2, 3.0, "charcoal")
+    ubox(3.4, 0, 1.5, 1.2, 1.2, 3.0, "soot")                                         # the chute mouth, sooted
     ubox(0, 0, 0.3, 6.6, 6.6, 0.6, "grey")                                           # the footing
 
 
@@ -517,7 +521,7 @@ def part_thickener():
     _cyl_u(0, 0, 2.5, 0.5, 5.0, "steel", 12)
     both(ubox, 0, 0, 4.45, 17.0, 1.2, 0.3, "grey")                                    # the bridge, hull = walkable
     for s in (-1, 1):
-        ubox(0, s * 0.55, 5.15, 17.0, 0.06, 0.06, "orange")
+        ubox(0, s * 0.55, 5.15, 17.0, 0.06, 0.06, "hazard")
         ubox(0, s * 0.55, 4.6, 17.0, 0.06, 1.1, "steel", hull=True)
     for k in range(8):                                                               # the wall as 8 hull pieces
         a = k * math.pi / 4
@@ -536,7 +540,7 @@ def part_shiploader():
         for s in (-1, 1):
             _cyl_u(2.5 + k * 5.0, s * 2.4, 1.4, 0.3, 2.9, "charcoal", 8)
     for s in (-1, 1):
-        ubox(15.0, s * 2.9, 3.55, 30.0, 0.06, 0.06, "orange")
+        ubox(15.0, s * 2.9, 3.55, 30.0, 0.06, 0.06, "hazard")
         ubox(15.0, s * 2.9, 3.0, 30.0, 0.06, 1.1, "steel", hull=True)
     ubox(15.0, -1.5, 3.6, 30.0, 1.2, 0.5, "charcoal")                                 # the conveyor
     for s in (-1, 1):                                                                # the gantry at the sea end
@@ -564,7 +568,7 @@ PARTS = {
     "B_k_slab": lambda: part_slab(), "B_k_grating": lambda: part_slab(0.1, "charcoal", True),
     "B_k_rail": part_rail, "B_k_catwalk": part_catwalk, "B_k_step": part_step, "B_k_ladder": part_ladder,
     "B_k_frame_p": lambda: part_frame(*DOOR_P), "B_k_frame_m": lambda: part_frame(*DOOR_M),
-    "B_k_frame_p_auth": lambda: part_frame(*DOOR_P, "steel"), "B_k_plinth": part_plinth,
+    "B_k_frame_p_auth": lambda: part_frame(*DOOR_P, "slate"), "B_k_plinth": part_plinth,
     # the process parts (binder D7-D10)
     "B_headframe": part_headframe, "B_transfer_tower": part_transfer_tower, "B_thickener": part_thickener, "B_shiploader": part_shiploader,
 }

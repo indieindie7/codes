@@ -45,8 +45,8 @@ def mat(name):
         m.use_nodes = True
         bsdf = m.node_tree.nodes["Principled BSDF"]
         bsdf.inputs["Base Color"].default_value = palette.colour(name) + (1,)
-        bsdf.inputs["Roughness"].default_value = 0.85 if name != "glow" else 0.4
-        if name == "glow":
+        bsdf.inputs["Roughness"].default_value = 0.85 if name not in palette.EMISSIVE else 0.4
+        if name in palette.EMISSIVE:                    # glow (warm, company) and cyan (cold, Authority / screens)
             bsdf.inputs["Emission Color"].default_value = COLOURS[name] + (1,)
             bsdf.inputs["Emission Strength"].default_value = 4
         MATS[name] = m

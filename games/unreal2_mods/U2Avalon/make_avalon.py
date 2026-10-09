@@ -298,8 +298,8 @@ def box(verts, uvs, tris, cx, cy, cz, sx, sy, sz, yaw=0.0, uv=(0.5, 0.5), skip=(
         tris.append(tri_facing(verts, (base, base + 2, base + 3), nw))
 
 
-# palette swatches: tools\glb_to_ase.py's Pal.tga is 8 column stripes, palette.json lists their colours in order;
-# look a stripe up by the colour name the buildings use (build_parts.py's COLOURS)
+# palette swatches: tools\palette.py's Pal.tga layout (8 column stripes + the 4-colour cap band); palette.json lists
+# the stripe colours in order; look a stripe up by the colour name the buildings use (build_parts.py's COLOURS)
 import palette  # noqa
 SW_COLOURS = palette.COLOURS
 _PAL = None
@@ -311,7 +311,7 @@ def sw(name):
         _PAL = json.load(open(os.path.join(HERE, "Models", "ase", "palette.json")))
     want = palette.colour(name)
     best = min(range(len(_PAL)), key=lambda i: sum((a - b) ** 2 for a, b in zip(_PAL[i], want)))
-    return ((best + 0.5) / 8.0, 0.5)
+    return palette.uv(best)
 
 
 def tower():

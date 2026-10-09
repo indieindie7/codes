@@ -14,9 +14,32 @@ Built by `tools/kit_parts.py` through build_parts.py (`ids=kit` = all of them, o
 
 **Conversion path used (the importer's safe path):** part_to_ase.py now passes `scale=50`, `zero=<name>` and
 `hulls=1` through to glb_to_ase.py and writes NO material block (the palette skin is set on the actor / in the ini
-as for every other Liandri mesh). The UVs are remapped onto the shared 8-stripe Pal.tga as before (glb_to_ase was
-never rerun over the old B_*.glb). So these ASEs are in WORLD UNITS on disk, unlike the older B_wall / B_cable /
+as for every other Liandri mesh). The UVs are remapped onto the shared Pal.tga (12 stripes since D5, see s. 1.1;
+glb_to_ase was never rerun over the old B_*.glb). So these ASEs are in WORLD UNITS on disk, unlike the older B_wall / B_cable /
 B_ctower / B_road ASEs, which are in metres and got their x50 at import. Import these at scale 1.
+
+### 1.1 The palette texture (D5, 2026-10-09): Pal.tga has 12 stripes
+
+`tools/palette.py` is the one source: 12 colours in stripe order, LINEAR values, the value roles (body 55 % /
+trim 25 % / accent 10 % / signal < 3 % / light < 2 % / stain), `uv(name)` for the UV a colour samples and
+`write_tga()` for the texture. The first 8 stripes are unchanged (charcoal, steel, grey, pale, rustred, brown,
+orange, glow); the four new ones are slate (the Authority), cyan (cold emissive light: screens, the Authority's
+one lit strip), hazard (yellow: edges, hooks, nosings, grate rims, rails, moving machines; orange is no longer the
+hazard colour, it stays the company's door-frame / signal colour) and soot (stains and dark holes only).
+
+Layout: U is normalised, so 12 full-height columns would have put every existing mesh on the wrong stripe. The 8 old
+columns keep their U ranges in the middle rows (16..47) of the 64 x 64 texture, exactly where V = 0.5 samples them;
+the 4 new stripes are 16-px columns in a 16-row cap band written identically at the top AND the bottom, sampled at
+V = 1/8 (= 7/8 mirrored, so the TGA's row order still cannot matter). The 12-stripe Pal.tga is a SUPERSET of the
+8-stripe one: every old ASE samples the same colour it did; no mesh needs re-import for the texture change.
+
+**Import:** re-import `Models\ase\Pal.tga` OVER the old texture name, `AvalonSM.Pal.Pal` (`TEXTURE IMPORT
+FILE="...\Models\ase\Pal.tga" NAME="Pal" PACKAGE="AvalonSM" GROUP="Pal" MIPS=0`, as build_avalon.py does; MIPS=0
+matters: a mip would average the cap band into the columns), save the package, and every mesh skinned with it picks
+up the new stripes. The header is the one UnrealEd accepted before (64 x 64, 32-bit, uncompressed type 2, bottom-up
+origin flag). Then re-import the 39 kit ASEs (s. 1: the drain, the taps, the hollow-shell kit, the four process
+parts), which were rebuilt on the new stripes; the older Liandri meshes (B_wall, B_ctower, B_cable, B_road, the
+buildings, make_avalon's own meshes) are untouched and need no re-import.
 
 **Pivot:** glb_to_ase recentres XY on the bounds centre; `zero=` keeps the model's z = 0 as the pivot Z (slabs
 whose TOP is z = 0, the culvert's invert at z = 0). The emitters place every part by its AUTHORED origin, using
@@ -120,13 +143,14 @@ Frame: every part is authored in Unreal's local frame, X = along / forward at ya
 - `B_k_column` 0.4 sq x 3.4 (Z-scaled to the building height); `B_k_slab` 4 x 4 x 0.3 with its TOP at z = 0 (a floor
   at level z has its walk surface at the actor Z; the roof slab actor sits at H + 15 UU so its underside is at H;
   NoRain boxes and the roof trace meet the slab's top at H + 15); `B_k_grating` 4 x 4 x 0.1 (top at z = 0).
-- `B_k_rail` 4 m: posts, a 1.1 m (55 UU) orange top rail, a 0.55 mid rail, a 0.15 hazard toe board, one thin hull;
+- `B_k_rail` 4 m: posts, a 1.1 m (55 UU) hazard-yellow top rail, a 0.55 mid rail, a 0.15 hazard toe board, one thin hull;
   `B_k_catwalk` 4 x 1.6 grating with rails on both sides (walk surface at z = 0).
 - `B_k_step`: one step 0.56 deep (28 UU tread) x 1.6 wide x 0.68 (34 UU) high with a hazard nosing; shells.py
   places one per riser with Z = riser / 34 UU (rooms.py keeps risers <= 35) and Y = width / 1.6.
 - `B_k_ladder` 0.6 wide, 3.4 tall (Z-scaled), caged from 2.2 m; decoration until LadderVolume is confirmed.
 - `B_k_frame_p` / `B_k_frame_m`: orange frames round the personnel / main openings (company buildings only);
-  `B_k_frame_p_auth`: the same in steel for Authority buildings; nobody's buildings get no frame.
+  `B_k_frame_p_auth`: the same in slate for Authority buildings, with a 0.6 m cyan indicator strip over the lintel
+  (the Authority's one cold light); nobody's buildings get no frame.
 - `B_k_plinth`: 4 m of battered plinth 1.2 m high (0.8 thick at the foot, 0.4 at the top), TOP at z = 0 on the wall
   line, outside = -Y; Z-scaled (`plinth_m=`) to reach the lowest ground.
 
@@ -230,8 +254,11 @@ hollow=, 204 actors: buildings minus the five hollow ones, conveyors, pylons, dr
 - Elbows: the residual turn (up to 11 degrees) is overlapped, so a small outer-corner gap can show where a chain
   under-turns; the straight after each chain re-aims at the next vertex. A 90-degree corner = 4 elbows.
 - Two of Town7's drop shafts overrun their straights (noted in the json): the following piece overlaps the shaft.
-- Palette: 8 stripes only; the artist's slate / cyan / hazard yellow (12 stripes, D5) are not in; hazard reads as
-  orange, the Authority's frames as steel.
+- Palette: D5 is in (12 stripes, s. 1.1). The older Pal meshes (B_wall, B_ctower, B_road, B_cable) still use
+  orange where they meant hazard (the road dash is a real signal, the rest were never re-striped: they would need
+  their GLBs rebuilt); the soot stripe is used only for dark holes so far, not yet for drip stains.
+- Older GLB builders (build_parts' buildings, U2AvalonCards' build_buildings) know nothing of the four new colours;
+  they get them when the artist's patch mode / stack soot tops are written (artist s. 6).
 - The tower lobby overlaps TutA's own tower BSP; it is in a separate T3D.
 - The taps' hoses lie on the simplified ground (pitched per 10 m piece); on rough ground they clip.
 - The four process parts have no emitter / sheet yet.

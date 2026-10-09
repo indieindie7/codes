@@ -2,9 +2,10 @@
 
     blender -b --python glb_to_ase.py -- <glb_dir> <out_dir> [pattern=*_script.glb]
 
-Every GLB material's base colour becomes one 8x8 swatch of <out_dir>/Pal.tga (64x64, up to 64 colours),
-and every triangle's UVs point at the middle of its material's swatch, so all the buildings share a
-single flat-coloured texture (Skins(0) on the actor). Each mesh is recentred (XY = bounds centre,
+Every GLB material's base colour becomes one stripe of <out_dir>/Pal.tga (64x64; the shared layout of
+tools/palette.py: 8 column stripes + a 4-colour cap band = 12 colours), and every triangle's UVs point at the
+middle of its material's stripe, so all the buildings share a single flat-coloured texture (Skins(0) on the
+actor). stripes=<n> instead keeps the old n full-height column layout (AvalonSM2's own 16-stripe Pal2). Each mesh is recentred (XY = bounds centre,
 Z = its bottom) and turned so the glTF front (-Y) faces Unreal's +X (yaw 0). Written with the
 U2Hover ASE conventions (X negated for the importer's mirror, winding fixed from Blender's normals).
 <out_dir>/bounds.json: name -> {"w","d","h"} in the GLB's units, for DrawScale.
@@ -15,6 +16,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ase import write_ase, tri_facing  # noqa
+import palette as _pal  # noqa
 
 a = sys.argv[sys.argv.index("--") + 1:]
 src, out = a[0], os.path.abspath(a[1])
@@ -26,7 +28,8 @@ VFLIP = o.get("vflip", "0") == "1"
 # a package of its own (AvalonSM2, 2026-10-07) keeps its own palette: pal= the texture's name (and the ASE's
 # material, so the importer binds it by name), stripes= 16 for up to 16 colours (4 px columns)
 PAL = o.get("pal", "Pal")
-STRIPES = int(o.get("stripes", 8))
+STRIPES = int(o["stripes"]) if "stripes" in o else _pal.N     # no stripes= -> the shared Pal.tga layout (palette.py)
+COLUMNS = "stripes" in o                                        # stripes= -> n plain full-height columns
 ZERO = set(o.get("zero", "CraneTower").split(","))   # meshes whose pivot stays at the model's z=0 (CraneTower: its plinth, Q33)
 MATERIAL = o.get("material", "0") == "1"            # 1 = write 1-V (if the ASE importer does not flip V itself)
 HULLS = o.get("hulls", "0") == "1"                  # 1 = Blender objects named MCDCX_* become collision GEOMOBJECTs (kit_parts.py)
@@ -40,9 +43,9 @@ def swatch(rgb):
     i = palette.index(key)
     if i >= STRIPES:
         raise SystemExit("more than %d palette colours: stripes=16" % STRIPES)
-    # 8 full-height column stripes on a 64px texture, so the TGA's row order (Blender writes bottom-up and
-    # UnrealEd does not flip) cannot matter; UV = the stripe's middle
-    return ((i + 0.5) / STRIPES, 0.5)
+    # full-height column stripes (or palette.py's row-symmetric layout), so the TGA's row order (Blender writes
+    # bottom-up and UnrealEd does not flip) cannot matter; UV = the stripe's middle
+    return ((i + 0.5) / STRIPES, 0.5) if COLUMNS else _pal.uv(i)
 
 
 def mat_colour(m):
@@ -125,20 +128,22 @@ for f in sorted(glob.glob(os.path.join(src, o.get("pattern", "*_script.glb")))):
 
 # the palette texture (row 0 at the top = V 0)
 if MESH_UVS and not palette:
-    # the baked meshes carry textures, not swatches: still write the 8 stripes (make_avalon's own meshes,
+    # the baked meshes carry textures, not swatches: still write the shared stripes (make_avalon's own meshes,
     # tower/room/quay/fence/pipeline, pick their colours from palette.json)
-    import palette as _pal
     palette = [tuple(round(v, 3) for v in c) for c in _pal.COLOURS.values()]
-img = np.zeros((64, 64, 4), np.float32)
-img[..., 3] = 1
-sw = 64 // STRIPES
-for i, c in enumerate(palette):
-    img[:, i * sw:(i + 1) * sw, :3] = c
-tex = bpy.data.images.new(PAL, 64, 64, alpha=True)
-tex.pixels = img[::-1].ravel()
-tex.filepath_raw = os.path.join(out, PAL + ".tga")
-tex.file_format = "TARGA_RAW"   # UnrealEd rejects RLE-compressed TGA ("Bad image format")
-tex.save()
+if COLUMNS:
+    img = np.zeros((64, 64, 4), np.float32)
+    img[..., 3] = 1
+    sw = 64 // STRIPES
+    for i, c in enumerate(palette):
+        img[:, i * sw:(i + 1) * sw, :3] = c
+    tex = bpy.data.images.new(PAL, 64, 64, alpha=True)
+    tex.pixels = img[::-1].ravel()
+    tex.filepath_raw = os.path.join(out, PAL + ".tga")
+    tex.file_format = "TARGA_RAW"   # UnrealEd rejects RLE-compressed TGA ("Bad image format")
+    tex.save()
+else:
+    _pal.write_tga(os.path.join(out, PAL + ".tga"), palette)   # the shared layout, uncompressed, linear values
 json.dump(bounds, open(os.path.join(out, "bounds.json"), "w"), indent=1)
 json.dump([list(c) for c in palette], open(os.path.join(out, "palette.json"), "w"))   # stripe i = colour i
 print("PALETTE", len(palette), "colours;", len(bounds), "meshes ->", out)
