@@ -114,7 +114,8 @@ const WatchBase = 1073741824;
 
 var PlayerController PC;
 var bool bOn;
-var bool bSetFlush;                 // a replayed "set" changed lighting: FLUSH once after the replay
+var bool bSetFlush;
+var bool bInPanelLine, bKeyCon;     // a panel line runs now; the fork tracks the console from its keys (Q72c)                 // a replayed "set" changed lighting: FLUSH once after the replay
 var bool bWasGod;
 var Actor Picked;
 var string PickedName;              // the journal's name: a map actor's name or "mesh#K"
@@ -1598,8 +1599,10 @@ function RunOne(string Args)
 			PanelSeq = K;
 		}
 		Rest = After(Args, 3);
+		bInPanelLine = S < WatchBase;
 		if (Locs(Word(Rest, 0)) != "q")
 			RunOne(Rest);
+		bInPanelLine = false;
 		return;
 	}
 	DoCommand(Args);
@@ -1644,7 +1647,13 @@ function DoCommand(string Args)
 		DrawCmd(Args);
 	else if (Cmd == "con")
 	{
-		// Console.ui's triggers (tools/sketch_console_ui.py): silent, only PanelState's con= changes
+		// Console.ui's triggers (tools/sketch_console_ui.py): silent, only PanelState's con= changes. They reach us
+		// only when the console closes, so once the fork has sent the console's state from its keys (a panel line),
+		// the triggers are ignored (Q72c)
+		if (bInPanelLine)
+			bKeyCon = true;
+		else if (bKeyCon)
+			return;
 		if (A1 ~= "big")
 			bConBig = Word(Args, 2) == "1";
 		else if (A1 ~= "quick")
