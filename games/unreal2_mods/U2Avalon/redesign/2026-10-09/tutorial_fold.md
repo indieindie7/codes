@@ -143,18 +143,18 @@ The request asked about these. The tutorial doesn't cover them; they come up in 
    keeps that stand-in script, the player fights with no shields.
    - The redesign must give the suit back, as `RaffTutB.u2s` does with `giveitemtoplayer U2.PowerSuitPhoenix`.
    - The cleaner fix is not to run the stock cine scripts on the walk map at all.
-3. **The stock voice is a man; the binder's Hawkins is a woman.** The stock Commander lines (`Tutorial_01_003..014`)
+3. **RESOLVED 2026-10-08: Hawkins is male (stock voice reused; binder already updated). Old note:** The stock voice is a man; the binder's Hawkins was a woman. The stock Commander lines (`Tutorial_01_003..014`)
    are a male voice, and Dalton calls him "Sir". `binder/citizens/hawkins.md` is **Cmdr. Ruth Hawkins**, 51, and
    the writer makes her the catwalk figure.
    - Reusing the stock cutscene audio means a male Hawkins.
    - New lines "in her voice style" need a voice: Piper female, or VoiceSplice of a bank that does not exist yet.
-   - This is open question Q1. Until it is answered, new Hawkins lines below are written for **her character**
-     (dry, straight-faced, short, she warns by understatement) and marked for either voice.
+   - This is open question Q1. Until it is answered, new Hawkins lines below are written for **his character** (Q1 answered: male)
+     (dry, straight-faced, short, he warns by understatement) and marked for either voice.
 4. **Route order versus the stock flow.** The level designer's route runs dock -> ... -> lift -> command deck ->
    catwalk. The stock flow (and the writer's intro cine) starts in the command room.
    - Recommendation, used below: the opening cine is the writer's 6 shots *without the conversation*. It ends on
      the jetty (F7), and Dalton arrives by the rig shuttle.
-   - Hawkins' stock conversation plays when the player reaches her: on the command deck, then she walks out to the
+   - Hawkins' stock conversation plays when the player reaches him: on the command deck, then he walks out to the
      catwalk, or at the catwalk rail **after** F5 has been seen.
    - The other order is Q2.
 5. **Protected frames.** F1 (command window) and F5 (catwalk) get **no combat, no prompts, no hints and no new
@@ -504,13 +504,13 @@ nothing.
 
 ### 4.4 The ending: the stock conversation where it belongs
 
-- **Command deck (F1, refuge).** Hawkins is not at the window: her binoculars are on the sill, and her coffee tin is
-  gone from the desk. Oduya says [O01]: "She's on the catwalk. She'll want you out there."
+- **Command deck (F1, refuge).** Hawkins is not at the window: his binoculars are on the sill, and his coffee tin is
+  gone from the desk. Oduya says [O01]: "He's on the catwalk. He'll want you out there."
   - The deck itself has no prompt, no fight and no new mechanic. The player just looks out of the window (the
     director's hero frame).
 - **Catwalk (F5, melancholy).** The frame first, untouched: the dark slab, the grating, the rain, Hawkins as the lone
   figure at the rail 40-100 m out.
-  - When the player is within talk range, use her (L8 again, no help).
+  - When the player is within talk range, use him (L8 again, no help).
   - The **stock** conversation plays: `CommanderTutACutscene1 .. 9` (reinstatement denied, Drexler, Ne'Ban, "the
     quietest patrol", "Stow it, Dalton"), then the **stock** choice `CommanderTutAWelcome` (Tutorial / Return to
     ship).
@@ -568,7 +568,7 @@ Commander`), plus `matchset`.
 | C03 | clerk | "What men?" | Piper john |
 | C04-C05 | Dalton's 3 choices | text only, as ShortText/LongText (the user's rule: the protagonist stays silent in new content; stock Dalton lines stay voiced) | none |
 | D01 | dockhand | "Rook's lot won't be needing those." | Piper en_GB-northern_english_male-medium (the dock voice in r08) |
-| O01 | Oduya | "She's on the catwalk. She'll want you out there." | Piper (Oduya has no voice yet; pick one voice for her and keep it: Q8) |
+| O01 | Oduya | "He's on the catwalk. He'll want you out there." | Piper (Oduya has no voice yet; pick one voice for her and keep it: Q8) |
 | pa16 | Liandri PA | "Hall A roller door is jammed at half height. Personnel will mind their heads. Production continues." | Piper en_US-amy-medium (the PA voice) |
 | pa17 | Liandri PA | "The Authority lift is on the reduced supply schedule. Thank you for your patience." | Piper amy (plays in the lobby before the hold: sets up the 20 s wait) |
 
@@ -578,13 +578,13 @@ Commander`), plus `matchset`.
 - No line plays in I3 or the sluice: silence is the build-up (level designer, writer).
 - None plays on the command deck or the catwalk except O01 and the stock conversation the player starts.
 
-**Hawkins' voice style for H01-H07.** She is 51, 26 years in the Authority, says "the quietest patrol" "with a
-straight face. She means it as a warning." So:
+**Hawkins' voice style for H01-H07.** He is 51, 26 years in the Authority, says "the quietest patrol" "with a
+straight face. He means it as a warning." So:
 - short sentences;
 - no exclamation marks;
 - understatement;
-- she names the problem, never the solution;
-- she is never chatty: at most one line per lesson, and only H01, H05 and H06 play unconditionally. The rest are
+- he names the problem, never the solution;
+- he is never chatty: at most one line per lesson, and only H01, H05 and H06 play unconditionally. The rest are
   tier 1 hints.
 
 ---
@@ -726,7 +726,10 @@ Notes:
 
 ## 8. Open questions for the user
 
-1. **Hawkins' voice.** The stock Commander is a man ("Sir", male voice), and the binder made her Ruth Hawkins.
+1. **Hawkins' voice. ANSWERED (user 2026-10-08): (a), male.** Rule: remade characters keep the stock
+   character's gender, so the stock voice can be reused (spliced, never AI). Hawkins is male; new lines are
+   VoiceSplice from the Commander bank. Original question kept below.
+   **Hawkins' voice.** The stock Commander is a man ("Sir", male voice), and the binder made her Ruth Hawkins.
    Options:
    - (a) keep the stock male voice and drop "Ruth": VoiceSplice from a Commander bank, about 45 min CPU, no
      download;
