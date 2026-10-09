@@ -174,7 +174,13 @@ def check_turn(cid, c, t, d):
     common = {"Liandri", "Authority", "Avalon", "Tin", "Row", "Ship", "Hawkins", "Commander", "Sector", "Colonial",
               "Skaarj", "Izarian", "Company", "Thursday", "Monday", "Tuesday", "Wednesday", "Friday", "Saturday", "Sunday", "The", "They", "There", "This", "That", "When", "What", "Then", "Just", "Some"}
     stray = [w for w in caps if w.lower() not in NAMES and w not in common and w.lower() not in PLACES]
-    if len(stray) > 2:
+    # a title + an unknown name is an invented person ('Foreman Peterson' cost 5 drama-manager vetoes on day 1)
+    titled = [m for m in re.findall(r"\b(?:Foreman|Sergeant|Sgt|Doctor|Dr|Mr|Mrs|Ms|Commander|Cmdr|Captain|Capt|"
+                                    r"Private|Pvt|Chief|Director|Lieutenant|Lt|Officer|Supervisor|Manager)\.? ([A-Z][a-z]+)",
+                                    str(d.get("line", "")) + " " + str(d.get("doing", ""))) if m.lower() not in NAMES]
+    if titled:
+        bad.append("invented person: %s (not in the binder)" % ", ".join(titled[:3]))
+    elif len(stray) >= 2:
         bad.append("possibly invented names: %s" % ", ".join(sorted(stray)[:4]))
     return bad
 
@@ -188,13 +194,14 @@ def agent_turn(cid, c, t, day, state):
     prompt = (
         "%s\n\nYOU ARE: %s\n\nDay %d, %s. Your routine puts you at: %s. Also there: %s.\n"
         "What you remember: %s\nWhat is happening in town today: %s\n%s\n"
-        "Places on the island: %s.\n\n"
+        "Places on the island: %s.\nPeople you may name (no one else exists by name): %s.\n\n"
         "Decide what you do this hour, in character, from your own wants and fears. You may leave your routine if you "
         "have a reason (then say it). Keep 'line' to one short spoken line or \"\"; 'memory' is one short note worth "
         "keeping. Answer with one JSON object with keys place, doing, with, line, memory, off_routine_reason."
         % (WORLD, sheet(c), day, hm(t), here, ", ".join(citizens[x]["name"] for x in others) or "nobody you know",
            "; ".join(mem) or "nothing yet", "; ".join(n["event"] + " (" + n.get("place", "") + ")" for n in nudges) or "nothing unusual",
-           ("A private urge today: " + directive) if directive else "", ", ".join(PLACES)))
+           ("A private urge today: " + directive) if directive else "", ", ".join(PLACES),
+           ", ".join(v["name"] for v in citizens.values())))
     if BACKEND == "dry":
         return {"place": here, "doing": "follows the routine", "with": others[:2], "line": "", "memory": "",
                 "off_routine_reason": ""}, "dry", []
