@@ -109,6 +109,11 @@ var ModNeeds Needs;                 // the needs layer (section 11; ModMutator s
 var config bool bWantReplan;        // a want leg that makes no progress for 1.5 s re-plans once via a node toward the ad, then gives up
 var config bool bHoundRest;         // a tired hound (Fatigue over HoundRestFatigue) rests 1-2 s at the pack's rear while no closer commits
 var config float HoundRestFatigue;
+var config bool bCroon;             // the stalk tell is heard: a hungry holder growls (ModNeeds.WantsTell) every 4 s
+var config string CroonSound;       // the sound it plays (the hound's own stock growl); "" or not found: the hound's SS_Growl
+var config float CroonVolume;       // low: a tell, not a bark
+var Sound CroonSnd;
+var bool bCroonLooked;
 var float AdoptWait, FlankWait, TokenWait;
 var int ShotsAtPlayer, ShotsUntokened, PlayerHits, PlayerDamage;
 
@@ -1790,6 +1795,35 @@ function vector HoundFlankSpot(ModMind M, vector Want, Pawn Prey, vector Facing)
 	return Want;
 }
 
+// the croon itself: the hound's stock growl (character.sdog.growl, its SS_Growl, which the game's own clips fire from
+// pawnSoundEvent; not its attack bark or charge call), low, in the talk slot, a little off-pitch each time. The sound is
+// loaded once by name (CroonSound), or taken from the hound's own set when that fails
+function bool Croon(ModMind M)
+{
+	local Seeker S;
+
+	if (!bCroonLooked)
+	{
+		bCroonLooked = true;
+		if (CroonSound != "")
+			CroonSnd = Sound(DynamicLoadObject(CroonSound, class'Sound', true));
+		if (CroonSnd == None)
+		{
+			S = Seeker(M.P);
+			if (S != None)
+				CroonSnd = S.SS_Growl;
+		}
+		if (CroonSnd == None)
+			HoundLog("croon: no sound (" $ CroonSound $ " not found, and the hound has no SS_Growl): the tell stays a log line");
+		else
+			HoundLog("croon: " $ CroonSnd $ IfText(CroonSound != "" && string(CroonSnd) ~= CroonSound, "", " (the hound's own SS_Growl)"));
+	}
+	if (CroonSnd == None)
+		return false;
+	M.P.PlaySound(CroonSnd, SLOT_Talk, CroonVolume, false, 1200, 0.9 + 0.2 * FRand());
+	return true;
+}
+
 // the closer: takes the pack's melee token and goes
 function HoundCommit(ModMind M, Pawn Prey, string Why)
 {
@@ -2060,11 +2094,11 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 		case 4/*R_Skirmisher*/:
 			// the front: a ring round the prey at HoundHold, feinting in (even legs) and out (odd)
 			Want = Prey.Location + Normal((O.P.Location - Prey.Location) * vect(1,1,0)) * (HoundHold + 70 - 140 * (O.SkipCount % 2));
-			// the stalk tell (ModNeeds): a hungry holder croons before the pack commits (the sound comes later)
+			// the stalk tell (ModNeeds): a hungry holder croons before the pack commits
 			if (Needs != None && Now - O.TellAt > 4 && Needs.WantsTell(O.P))
 			{
 				O.TellAt = Now;
-				HoundLog(O.P.Name $ " croons (hunger " $ int(Needs.NeedOf(O.P, 0) * 100) $ ", drive " $ int(Drive * 100) $ ")");
+				HoundLog(O.P.Name $ " croons (hunger " $ int(Needs.NeedOf(O.P, 0) * 100) $ ", drive " $ int(Drive * 100) $ ")" $ IfText(bCroon && Croon(O), "", " (silent)"));
 			}
 			if (D > 600)
 			{
@@ -3323,6 +3357,9 @@ defaultproperties
 	bWantReplan=True
 	bHoundRest=False
 	HoundRestFatigue=0.7
+	bCroon=True
+	CroonSound="character.sdog.growl"
+	CroonVolume=0.5
 	LeapLinksMax=40
 	RangedTokens=2
 	RangedPer=4
