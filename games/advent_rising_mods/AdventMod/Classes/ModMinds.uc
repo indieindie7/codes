@@ -63,6 +63,7 @@ var config float WallKickChance;    // chance a commit kicks when a wall fits (a
 var config float WallKickPlant;     // seconds planted on the wall before the leap off
 var config float WallKickCool;      // seconds between one hound's kicks
 var config bool bWallKickLog;       // every kick, plant, leap off and miss in AdventNative.log
+var config bool bWallKickBackOff;   // a hound against a wall (every wall found "too near") backs off it a body's length first, then kicks
 var config bool bLeapLinks;         // wall-kick links built from the path graph at level start (ModLeapLink)
 var config int LeapLinksMax;        // at most this many per level (the best savings kept)
 var array<ModLeapLink> Links;
@@ -77,6 +78,11 @@ var array<float> CandRoute, CandRatio;
 var array<int> CandTwo;
 var float LinkRadius, LinkHeight, LinkSpeed;   // a hound's body and leap speed, for the arcs at build time
 var string ArcBlock;                           // what the last ArcClear hit (for the log)
+var int KickTooNear, KickOtherWalls;           // the last FindKickWall: walls answered "too near", walls refused for another reason
+var vector KickNearHit, KickNearNorm;          // ... and the nearest "too near" wall
+var float KickNearD;
+var ModReact React;                            // the hit reactions (ModReact.IsFlinching: no kick starts in one)
+var float ReactLookAt;
 struct PackInfo
 {
 	var SquadAI S;
@@ -1057,6 +1063,11 @@ function Decide(ModMind M, float DeltaTime)
 			HoldFire(M, false);
 			M.Task = 0/*T_None*/;
 			M.NextDecision = Now + 0.5;
+			if (M.bKickBackOff)
+			{
+				KickBackOffDone(M);     // the back-off leg ran out: the kick now, or on as it was
+				return;
+			}
 		}
 	}
 	if (Busy(M))
@@ -1087,6 +1098,11 @@ function Decide(ModMind M, float DeltaTime)
 			{
 				M.Task = 0/*T_None*/;
 				M.LegAt = Now + 0.1 + 0.2 * FRand();
+				if (M.bKickBackOff)
+				{
+					KickBackOffDone(M);     // it backed off its wall for a kick: the kick now
+					return;
+				}
 				M.B.DoWait('Mind_SkipDwell', 0.25);
 			}
 			else if (!M.bSkipDodge && !Going(M))
@@ -1739,8 +1755,8 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 		Members[Members.Length] = O;
 		if ((Now - O.LastHit < 1.0 && O.Role != 3/*R_Closer*/) || O.Role == 0)
 			bHurt = true;           // deal roles now: one is hurt, or one has none (its charge just ended)
-		if (O.Task == 5/*T_Charge*/ && O.Role == 3/*R_Closer*/)
-			Closers++;
+		if (O.Role == 3/*R_Closer*/ && (O.Task == 5/*T_Charge*/ || (O.Task == 9/*T_Skip*/ && O.bKickBackOff)))
+			Closers++;              // (a closer backing off a wall for its kick is still committing)
 		AngerMax = FMax(AngerMax, O.Anger);
 		if (Needs != None)
 			Drive += Needs.HuntDrive(O.P);
@@ -1762,7 +1778,7 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 	{
 		Packs[Pk].RoleAt = Now;
 		for (j = 0; j < Pack; j++)
-			if (Members[j].Role == 3/*R_Closer*/ && Members[j].Task != 5/*T_Charge*/)
+			if (Members[j].Role == 3/*R_Closer*/ && Members[j].Task != 5/*T_Charge*/ && !(Members[j].Task == 9/*T_Skip*/ && Members[j].bKickBackOff))
 				Members[j].Role = 0;
 		if (Pack == 1)
 		{
@@ -1977,9 +1993,12 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 			}
 			else if (FRand() < WallKickChance * 0.5 && TryKick(O, O.P.Location + Normal((O.P.Location - Prey.Location) * vect(1,1,0)) * 300, Want, false, "flank"))
 			{
-				// off a wall on its outer side, landing at its flank spot
-				O.TaskDest = Want;
-				SetTask(O, 4/*T_Flank*/, 3, "flank kick");
+				// off a wall on its outer side, landing at its flank spot (or backing off a wall first: then its skip leg stands)
+				if (!O.bKickBackOff)
+				{
+					O.TaskDest = Want;
+					SetTask(O, 4/*T_Flank*/, 3, "flank kick");
+				}
 			}
 			else
 				SkipLeg(O, Want, Prey);
@@ -2105,7 +2124,10 @@ static function vector BodyExtent(float Radius, float Height)
 // a wall to kick off: within WallKickRange, 45 then 70 degrees either side of the line from M toward
 // Toward (the line pitched up 16 degrees, as the stock TryLeapToWall aims, so the plant is above the
 // hound), world geometry, its normal in the band the stock WallJumpBegin takes (-0.17..0.5) and facing
-// the target, with the arc to the plant point and the arc off it to Target both clear for the body
+// the target, with the arc to the plant point and the arc off it to Target both clear for the body.
+// The four pairs failing, every 45 degrees round the hound (pitched up; the pairs' +-45 not again):
+// the hounds fight in the middle of rooms, where the wall that fits is often behind or beside them.
+// KickTooNear / KickOtherWalls / KickNear* say afterwards what the walls answered (TryKick backs off).
 function bool FindKickWall(ModMind M, vector Toward, vector Target, out vector Wall, out vector Norm, out vector V1, out float Flight1)
 {
 	local vector Dir, Aim, HitLoc, HitNorm, Plant, V2, Extent;
@@ -2114,6 +2136,9 @@ function bool FindKickWall(ModMind M, vector Toward, vector Target, out vector W
 	local Actor A;
 	local string Why;
 
+	KickTooNear = 0;
+	KickOtherWalls = 0;
+	KickNearD = 100000;
 	Dir = Normal((Toward - M.P.Location) * vect(1,1,0));
 	if (Dir == vect(0,0,0))
 		return false;
@@ -2122,19 +2147,33 @@ function bool FindKickWall(ModMind M, vector Toward, vector Target, out vector W
 	Side = 1;
 	if (FRand() < 0.5)
 		Side = -1;
-	for (Try = 0; Try < 8; Try++)
+	for (Try = 0; Try < 16; Try++)
 	{
-		// 45 then 70 degrees, each pitched up 16 degrees then flat
-		Angle = 45;
-		if (Try % 4 >= 2)
-			Angle = 70;
-		if (Try % 2 == 1)
-			Side = -Side;
-		Aim = Turned(Dir, Angle * Side);
-		if (Try < 4)
-			Aim = Normal(Aim + vect(0,0,1) * 0.3);
+		if (Try < 8)
+		{
+			// 45 then 70 degrees, each pitched up 16 degrees then flat
+			Angle = 45;
+			if (Try % 4 >= 2)
+				Angle = 70;
+			if (Try % 2 == 1)
+				Side = -Side;
+			Aim = Turned(Dir, Angle * Side);
+			if (Try < 4)
+				Aim = Normal(Aim + vect(0,0,1) * 0.3);
+			Why = Why $ " " $ int(Angle * Side) $ IfText(Try < 4, "up", "flat") $ ":";
+		}
+		else
+		{
+			// the pairs failed: all round, every 45 degrees, pitched up
+			Angle = (Try - 8) * 45;
+			if (Angle == 45 || Angle == 315)
+				continue;
+			if (Try == 8)
+				Why = Why $ " | 8-dir:";
+			Aim = Normal(Turned(Dir, Angle) + vect(0,0,1) * 0.3);
+			Why = Why $ " " $ int(Angle) $ "up:";
+		}
 		A = Trace(HitLoc, HitNorm, M.P.Location + Aim * WallKickRange, M.P.Location, false);
-		Why = Why $ " " $ int(Angle * Side) $ IfText(Try < 4, "up", "flat") $ ":";
 		if (A == None)
 		{
 			Why = Why $ "nothing";
@@ -2149,13 +2188,22 @@ function bool FindKickWall(ModMind M, vector Toward, vector Target, out vector W
 		if (HitNorm.Z < -0.17 || HitNorm.Z > 0.5)
 		{
 			Why = Why $ "slope " $ (int(HitNorm.Z * 100) / 100.0) $ " at " $ int(D);
+			KickOtherWalls++;
 			continue;
 		}
 		if (D < 250)
 		{
 			Why = Why $ "too near " $ int(D);     // (the hound is 60 wide: nearer than this is a hop, not a leap)
+			KickTooNear++;
+			if (D < KickNearD)
+			{
+				KickNearD = D;
+				KickNearHit = HitLoc;
+				KickNearNorm = HitNorm;
+			}
 			continue;
 		}
+		KickOtherWalls++;       // (a wall far enough: whatever refuses it below, backing off would not help)
 		Plant = HitLoc + HitNorm * (M.P.CollisionRadius + 8);
 		if ((HitNorm dot Normal(Target - Plant)) <= 0)
 		{
@@ -2256,10 +2304,14 @@ function bool StartKick(ModMind M, vector Wall, vector Norm, vector V1, float Fl
 	return true;
 }
 
-// a kick at the prey (a closer) or to a spot (a flanker): the wall is found first; bForce (the pilot) ignores the switch and cooldown
-function bool TryKick(ModMind M, vector Toward, vector Target, bool bAttack, string Why, optional bool bForce)
+// a kick at the prey (a closer) or to a spot (a flanker): the wall is found first; bForce (the pilot) ignores the switch and cooldown.
+// No kick starts in a hit reaction (ModReact's flinch: the engine's clip took a hound's body mid-flight once). Every wall found
+// "too near" (the hound stands against it, where the pack's skipping puts it) and bWallKickBackOff: a short leg away from
+// that wall to 300 from it (T_Skip, bKickBackOff), and the same kick is tried again when the leg ends (KickBackOffDone);
+// true then too, the hound is taken (bNoBackOff: the retry, which doesn't back off again)
+function bool TryKick(ModMind M, vector Toward, vector Target, bool bAttack, string Why, optional bool bForce, optional bool bNoBackOff)
 {
-	local vector Wall, Norm, V1;
+	local vector Wall, Norm, V1, Away, Dest;
 	local float Flight1, Now;
 
 	Now = Level.TimeSeconds;
@@ -2267,13 +2319,75 @@ function bool TryKick(ModMind M, vector Toward, vector Target, bool bAttack, str
 		return false;
 	if (!bForce && (!bHoundWallKick || Now - M.KickAt < WallKickCool))
 		return false;
+	if (React == None && Now > ReactLookAt)
+	{
+		ReactLookAt = Now + 5;
+		foreach DynamicActors(class'ModReact', React)
+			break;
+	}
+	if (React != None && React.IsFlinching(M.P))
+	{
+		M.KickAt = Now - WallKickCool + 0.5;     // after the flinch
+		KickLog(M.P.Name $ " no kick while flinching (" $ Why $ ")");
+		return false;
+	}
 	if (!FindKickWall(M, Toward, Target, Wall, Norm, V1, Flight1))
 	{
 		M.KickAt = Now - WallKickCool + 1.0;     // another look in a second
-		KickLog(M.P.Name $ " no wall (" $ Why $ ")");
+		if (bWallKickBackOff && !bNoBackOff && KickTooNear > 0 && KickOtherWalls == 0 && M.P.Physics == PHYS_Walking)
+		{
+			// against a wall and nothing else refused: back off it to 300 (flat, along its normal) and kick from there
+			Away = Normal(KickNearNorm * vect(1,1,0));
+			Dest = M.P.Location + Away * (300 - KickNearD + 40);
+			if (Away != vect(0,0,0) && FastTrace(Dest, M.P.Location) && FloorUnder(M, Dest)
+				&& (!bAttack || VSize((Dest - Target) * vect(1,1,0)) > 230))
+			{
+				M.bKickBackOff = true;
+				M.KickBackToward = Toward;
+				M.KickBackTarget = Target;
+				M.bKickBackAttack = bAttack;
+				M.KickBackWhy = Why;
+				M.TaskDest = Dest;
+				M.bSkipDodge = false;
+				SetTask(M, 9/*T_Skip*/, 1.5, "backs off a wall " $ int(KickNearD) $ " away to kick");
+				M.ReissueAt = Now;
+				Go(M, 'Mind_KickBackOff', Dest);
+				KickLog(M.P.Name $ " backs off a wall " $ int(KickNearD) $ " away (" $ Why $ "): " $ int(VSize(Dest - M.P.Location)) $ " to go");
+				return true;
+			}
+			KickLog(M.P.Name $ " no wall (" $ Why $ "), and no room to back off the one " $ int(KickNearD) $ " away");
+			return false;
+		}
+		KickLog(M.P.Name $ " no wall (" $ Why $ ")" $ IfText(KickTooNear > 0 && KickOtherWalls == 0, ", against one " $ int(KickNearD) $ " away", ""));
 		return false;
 	}
 	return StartKick(M, Wall, Norm, V1, Flight1, Target, bAttack, Why);
+}
+
+// the back-off leg has ended (arrived, stalled or timed out): the kick it was for, once more; no wall now
+// either and the hound goes on as it was (a closer charges, a flanker takes its next leg)
+function KickBackOffDone(ModMind M)
+{
+	local Pawn Enemy;
+
+	M.bKickBackOff = false;
+	M.Task = 0/*T_None*/;
+	if (M.P.Health <= 0 || M.Kick != 0)
+		return;
+	if (TryKick(M, M.KickBackToward, M.KickBackTarget, M.bKickBackAttack, M.KickBackWhy $ ", backed off", true, true))
+		return;
+	Enemy = M.B.EnemyInfo.Enemy;
+	if (M.Role == 3/*R_Closer*/ && M.bKickBackAttack && Enemy != None)
+	{
+		SetTask(M, 5/*T_Charge*/, 4, "commit without the kick");
+		M.ReissueAt = Level.TimeSeconds + 0.5;
+		M.B.DoCharge('Mind_PackCommit', Enemy);
+	}
+	else
+	{
+		M.LegAt = Level.TimeSeconds + 0.1;
+		M.B.DoWait('Mind_SkipDwell', 0.25);
+	}
 }
 
 // the kick, tick by tick (Decide hands over while M.Kick != 0)
@@ -3101,6 +3215,7 @@ defaultproperties
 	WallKickPlant=0.15
 	WallKickCool=4
 	bWallKickLog=False
+	bWallKickBackOff=False
 	bLeapLinks=True
 	LeapLinksMax=40
 	RangedTokens=2

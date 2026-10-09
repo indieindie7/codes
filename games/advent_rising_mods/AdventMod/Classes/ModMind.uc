@@ -89,6 +89,10 @@ var ModLeapLink Link;               // the leap link its current leg takes (walk
 var bool bLinkReverse;              // ... from B to A
 var int LinkUses;
 var float TellAt;                   // when it last crooned (ModNeeds.WantsTell: a hungry holder's stalk tell)
+var bool bKickBackOff;              // its skip leg backs off a wall it stood against, to kick from further out (ModMinds.TryKick)
+var vector KickBackToward, KickBackTarget;   // ... and the kick to try again when the leg ends
+var bool bKickBackAttack;
+var string KickBackWhy;
 
 // the abilities: ours (a copy only this pawn uses) and the game's values the feelings start from
 var AdventPawnAbilities Own;
