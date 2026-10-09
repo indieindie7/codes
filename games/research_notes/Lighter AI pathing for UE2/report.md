@@ -224,3 +224,15 @@ Possible; readers exist (e.g. [UELib](https://github.com/EliotVU/Unreal-Library)
   | 1000000 | Core.dll | runaway-loop limit |
 
 - **Script:** ReachSpec / NavigationPoint / Scout source in `System\Engine.u`; `u2_export\full_Engine\Classes\LevelInfo.uc` lines 250 and 582-590 (PathSizes); `Controller.uc` 366-556; `U2NPCControllerShared.uc` 2060-2475.
+
+## Addendum (2026-10-09, found while building TutA_Remake)
+- **Moving a NavigationPoint after PATHS DEFINE blocks the map from loading.** Moving one (here the PlayerStart) marks
+  the level's paths as stale. The game then stops at load behind a hidden modal box, "Warning: Paths in '<map>'
+  should be rebuilt (level changed)! Press OK to exit", using ~0 CPU, with the log ending at `Browse:`. It looks like
+  a hang.
+  - Rule: after any move of a NavigationPoint, run PATHS DEFINE or DEFINECHANGED before saving.
+  - `gm_commit.py` already does this for `place` lines (3d72fc5).
+  - In-game GM moves of nav points should be blocked, or followed by a DEFINECHANGED commit.
+  - To diagnose: list the process's windows and look for a `#32770` dialog.
+- **Measured:** the 610-node staggered layout plus 75 of TutA's own nodes built in 7-14 s, against 45+ minutes
+  (stopped) for 1,799 nodes.
