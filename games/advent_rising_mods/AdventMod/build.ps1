@@ -53,6 +53,11 @@ Copy-Item "$Here\Meshes\plate_*.ase" "$Game\AdventMod\Gibs" -Force
 Copy-Item "$Here\Meshes\gib_card.ase" "$Game\AdventMod\Gibs" -Force
 # the stump cap (ModStump), our own mesh
 Copy-Item "$Here\Meshes\stump.ase" "$Game\AdventMod\Gibs\stump.ase" -Force
+# armour sections (ModArmor's per-hit test, ARMOUR.md): the enemies' triangles with their armour
+# flag, from the game's own meshes and masks, so they live in the game folder, not the repo
+New-Item -ItemType Directory -Force "$Game\AdventMod\Armour" | Out-Null
+& py -I (Join-Path (Split-Path -Parent $Here) 'tools\make_armour_data.py') "$env:USERPROFILE\Documents\AdventRising_meshes" "$Game\Textures" "$Game\AdventMod\Armour" | Select-String 'armour faces|refused|no psk'
+if ($LASTEXITCODE -ne 0) { throw 'make_armour_data failed' }
 # ragdoll skeletons (tools/make_ka.py): the engine reads <game>\KarmaData\*.ka
 New-Item -ItemType Directory -Force "$Game\KarmaData" | Out-Null
 Copy-Item "$Here\KarmaData\*.ka" "$Game\KarmaData" -Force
@@ -79,7 +84,7 @@ $bat = "$env:TEMP\adventnative_build.bat"
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsamd64_x86.bat" >nul 2>nul
 cd /d "$Here"
 if not exist obj mkdir obj
-cl /nologo /O1 /W3 /MT /D_CRT_SECURE_NO_WARNINGS /Foobj\ /LD native\adventnative.c native\d3dtrace.c native\shadowfix.c native\karmafix.c native\shadowalpha.c native\capture.c native\footik.c /FeSystem\AdventNative.dll /link /NOLOGO user32.lib || exit /b 1
+cl /nologo /O1 /W3 /MT /D_CRT_SECURE_NO_WARNINGS /Foobj\ /LD native\adventnative.c native\d3dtrace.c native\shadowfix.c native\karmafix.c native\shadowalpha.c native\capture.c native\footik.c native\armour.c /FeSystem\AdventNative.dll /link /NOLOGO user32.lib || exit /b 1
 "@ | Set-Content $bat -Encoding ascii
 cmd /c $bat | Select-String 'error|warning'
 if ($LASTEXITCODE -ne 0) { throw 'native build failed' }

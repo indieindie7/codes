@@ -66,10 +66,171 @@ var array<ModRubble> Pieces;
 var ModGore Gore;
 var float Sweep;
 
+// --- where the plates are (ARMOUR.md): armour or flesh, per hit, from the skin itself ---
+// Every enemy mesh is one material section; its triangles are split into armour and flesh
+// by the game's own chrome mask (tools/make_armour_data.py). The native test (AdventNative
+// "ArmourHit": the ray of the shot against the mesh skinned with the pose the engine holds)
+// says which triangle a shot met; when it has no data for the mesh, the bone table
+// (ModArmourMap: each bone's armour share) decides from the nearest bone.
+var config bool bArmourHits;        // classify every hit (log line "armour hit: ...")
+var config float ArmourFactor;      // damage x this when the shot lands on armour (1.0: no change)
+var config bool bArmourSparks;      // sparks instead of blood where a shot meets armour
+var config float RayBack;           // the ray starts this far back along the shot (outside the body)
+var config float TableLevel;        // bone table: a bone with this armour share or more counts as armour
+var int LastClass;                  // the last hit: 0 not classified, 1 flesh, 2 armour
+var int LastSource;                 // 1 the native ray test, 2 the bone table, 0 nothing could tell
+var name LastHitBone;               // (bone table) the bone the hit was nearest
+var int Classified, ArmourHits, TableHits;
+var class<Emitter> SparkFx;
+var config string GridTest;         // the test harness: "cols rows damage delay" spawns ModArmourGrid (empty in play)
+var ModArmourMap Map;               // the bone table (an instance: see ModArmourMap)
+
+function ModArmourMap Table()
+{
+	if (Map == None)
+		Map = new class'ModArmourMap';
+	return Map;
+}
+
+// the damage after the armour factor; LastClass/LastSource say what was hit
+function int Classify(int Damage, Pawn Injured, vector HitLocation, vector Dir)
+{
+	LastClass = 0;
+	LastSource = 0;
+	if (!bArmourHits || Injured == None || Injured.IsHumanControlled() || Injured.Mesh == None || VSize(Dir) < 0.5)
+		return Damage;
+	Classified++;
+	if (!Probe(Injured, HitLocation - Dir * RayBack, Dir))
+		TableClass(Injured, HitLocation);
+	if (LastClass == 2)
+		ArmourHits++;
+	if (LastClass == 2 && ArmourFactor != 1.0)
+		Damage = Max(1, int(Damage * ArmourFactor));
+	return Damage;
+}
+
+// the native ray test: true when it could tell (LastClass set), false when it has no data
+// for this mesh or the ray misses the body
+function bool Probe(Pawn P, vector Origin, vector Dir)
+{
+	local bool bArmour;
+
+	LastClass = 0;
+	LastSource = 0;
+	bArmour = class'ModSettings'.static.NativeCall("ArmourHit " $ P.Name $ " " $ P.Class.Name $ " " $ Origin.X $ " " $ Origin.Y $ " " $ Origin.Z $ " " $ Dir.X $ " " $ Dir.Y $ " " $ Dir.Z);
+	if (!bArmour && !class'ModSettings'.static.NativeCall("ArmourLast"))
+		return false;
+	LastSource = 1;
+	if (bArmour)
+		LastClass = 2;
+	else
+		LastClass = 1;
+	return true;
+}
+
+// the bone table: the share of the nearest bone (of the mesh's main bones)
+function int TableClass(Pawn P, vector HitLocation)
+{
+	local int e, i, Best;
+	local float D, BestD;
+	local coords C;
+
+	e = Table().Find(P.Mesh);
+	if (e < 0)
+		return 0;
+	BestD = 1000000;
+	Best = -1;
+	for (i = 0; i < 16; i++)
+	{
+		if (Map.BoneOf(e, i) == '')
+			break;
+		C = P.GetBoneCoords(Map.BoneOf(e, i));
+		if (C.Origin == vect(0,0,0))
+			continue;
+		D = VSize(C.Origin - HitLocation);
+		if (D < BestD)
+		{
+			BestD = D;
+			Best = i;
+		}
+	}
+	if (Best < 0)
+		return 0;
+	TableHits++;
+	LastSource = 2;
+	LastHitBone = Map.BoneOf(e, Best);
+	if (Map.ShareOf(e, Best) >= TableLevel)
+		LastClass = 2;
+	else
+		LastClass = 1;
+	if (bArmorLog || class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("armour hit: " $ P $ " " $ LastHitBone $ " armour=" $ Eval(LastClass == 2, "yes", "no") $ " share=" $ Map.ShareOf(e, Best) $ " (bone table)");
+	return LastClass;
+}
+
+// sparks where a shot meets a plate (the game's own spark emitter, as the blade's strikes use)
+function Sparks(vector Spot, vector Dir)
+{
+	local Emitter E;
+
+	if (SparkFx == None)
+		SparkFx = class<Emitter>(DynamicLoadObject("EonEffects.fx_Default_Sparks", class'Class', true));
+	if (SparkFx == None)
+		return;
+	E = Spawn(SparkFx,,, Spot - Dir * 6, rotator(-Dir));
+	if (E != None)
+		E.LifeSpan = 1.5;
+}
+
+// which side of the body carries more armour, from the bone table: +1 its right, -1 its left,
+// 0 even or unknown (for a later "present the plates" behaviour in ModMinds: a mind M asks
+// Gore.Armor.ArmourSide(M.P))
+function int ArmourSide(Pawn P)
+{
+	local int e, i;
+	local float L, R;
+	local string N;
+
+	e = Table().Find(P.Mesh);
+	if (e < 0)
+		return 0;
+	for (i = 0; i < 16; i++)
+	{
+		N = Caps(string(Map.BoneOf(e, i)));
+		if (Left(N, 4) == "LEFT")
+			L += Map.ShareOf(e, i);
+		else if (Left(N, 5) == "RIGHT")
+			R += Map.ShareOf(e, i);
+	}
+	if (R > L + 0.05)
+		return 1;
+	if (L > R + 0.05)
+		return -1;
+	return 0;
+}
+
 event PostBeginPlay()
 {
+	local ModArmourGrid G;
+	local string S;
+	local int Sp;
+
 	Super.PostBeginPlay();
-	class'ModSettings'.static.Note("armor: ready (on " $ bArmor $ ", log " $ bArmorLog $ ", " $ Armored.Length $ " armoured classes, absorb " $ Absorb $ ")");
+	class'ModSettings'.static.Note("armor: ready (on " $ bArmor $ ", log " $ bArmorLog $ ", " $ Armored.Length $ " armoured classes, absorb " $ Absorb $ "; hits classified " $ bArmourHits $ ", factor " $ ArmourFactor $ ", sparks " $ bArmourSparks $ ", native " $ class'ModSettings'.static.NativeCall("ArmourReady") $ ")");
+	if (GridTest != "")
+	{
+		// "cols rows damage delay" (a missing word keeps the class default)
+		G = Spawn(class'ModArmourGrid');
+		G.Armor = self;
+		S = GridTest;
+		Sp = InStr(S, " ");
+		if (Sp > 0) { G.Cols = int(Left(S, Sp)); S = Mid(S, Sp + 1); Sp = InStr(S, " "); }
+		if (Sp > 0) { G.Rows = int(Left(S, Sp)); S = Mid(S, Sp + 1); Sp = InStr(S, " "); }
+		if (Sp > 0) { G.Damage = int(Left(S, Sp)); S = Mid(S, Sp + 1); }
+		if (S != "")
+			G.Delay = float(S);
+		class'ModSettings'.static.Note("armourgrid: " $ G.Cols $ "x" $ G.Rows $ " rays, damage " $ G.Damage $ ", in " $ G.Delay $ " s");
+	}
 }
 
 function bool Wears(Pawn P)
@@ -513,6 +674,11 @@ defaultproperties
 {
      bArmor=True
      bPlateActors=True
+     bArmourHits=True
+     ArmourFactor=1.0
+     bArmourSparks=True
+     RayBack=150.0
+     TableLevel=0.5
      WearBone(0)=head
      WearBone(1)=spine2
      WearBone(2)=leftArm

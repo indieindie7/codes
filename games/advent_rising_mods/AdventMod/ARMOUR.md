@@ -92,3 +92,147 @@ repaint `bExpose` and the gib-piece throw `bPlates` are off).
 - Verified in the harness: all six plates spawn on placed and spawned Seekers, the helmet and chest
   plate read clearly, breaks detach and throw, bare regions take the bonus. Not yet seen in motion
   by the user; the shoulders and thighs may still want tuning.
+
+---
+
+# Where the plates are (2026-10-09): armour or flesh, per hit, from the skin itself
+
+The user's idea: use the enemies' texture layout ("sprite bounding") to know, for any hit,
+whether it struck armour or flesh, so damage, gore (sparks against blood) and the AI
+(presenting the plated side) can react per spot. Built offline on 2026-10-09; compiles (0
+errors); the offline check passes; **not yet run in the game** (the GPU was taken by another
+run). The test list is at the end.
+
+## Inventory: what the enemies are made of
+
+Every enemy mesh in Advent is **one material section** (one `HWSkinShader*` material, one
+skin sheet), so there are no "armour sections" to read off the mesh; the only mesh with an armour
+section of its own is the Aurelian `infantry` (`InfantryArmor_HSH`), an ally. The split therefore
+comes from the texture, and the game itself says which parts are hard: the `HWSkinShader`
+materials carry a **chrome mask** (`SpecularMaskMaterial`, the Red channel of the `*_rgb` /
+`*_rg` texture; the skin shader is `out = lerp(v0*(t0 + t1*dot(t2,c1))..., ...)` with t1 the
+chrome environment map and t2 the mask) that the renderer uses to put the metal reflection on
+plates, guards and gear and not on skin or leather. A triangle whose UV triangle is mostly
+chrome-masked (7-sample grid over the triangle, texel level 0.35, face level 0.5) is **armour**;
+the rest is flesh (skin and the leather harness alike).
+
+| mesh | pawn classes | material sections | faces | armour faces | armour surface | mask (Red) |
+|---|---|---|---|---|---|---|
+| seekerinfantry | SeekerInfantry | 1: infantry_hsh | 3135 | 112 | 8% | seekerelite_rgb (borrowed) |
+| SeekerElite | SeekerElite | 1: eliteu_hsh | 3156 | 78 | 3% | seekerelite_rgb |
+| SeekerCommander | SeekerCommander, SeekerRanhor | 1: comanderu_hsh | 3234 | 64 | 3% | seeker_commander_rgb |
+| seekerpilot | SeekerPilot (+ _Brute) | 1: skrspace_hsh | 3673 | 259 | 4% | seekerspace_rg |
+| SeekerScanner | SeekerScanner, SeekerClayPigeon | 1: seekerscanner_hsh | 2949 | 393 | 9% | seeker_scanner_rgb |
+| seekerhound | SeekerDog | 1: seekerhound_hsh | 2212 | 0 | 0% | seekerhound_rg |
+| seekershocktrooper | ShockTrooper | 1: shocktrooper_hsh | 2931 | 14 | 0% | shocktrooper_rg |
+| kchell | SeekerKchell | 1: Ambassador_HSH | 3308 | 0 | 0% | ambassador_rgb |
+| specops | SpecOpsSoldier | 1: specops_hsh | 3319 | 161 | 2% | specops_rg |
+
+- The Seeker infantry's material (`seekerinfantry_hsh`) has **no mask** (its `Specular` slot
+  is a flat white texture); its sheet shares the elite's UV islands (2856 of 3135 faces have the
+  same UV triangle within a texel), so the elite's mask serves it.
+- What counts as armour by the game's own mask is **small**: the pilot's helmet (head 43 %),
+  forearm and gauntlet guards (infantry leftArm 47 %, leftForeArm 41 %; scanner leftForeArm
+  71 %), knee guards, the spec-ops' vest bits. The Seeker body is skin and a leather harness,
+  neither chrome-masked. The hound and the Kchell have none. The shock trooper's whole suit
+  is a dark, low-chrome material: 14 faces. If the leather harness should count as a third
+  class (thud, no blood), it would need a colour split of the diffuse per species; the
+  per-triangle flag byte has room for it.
+- Per-bone armour shares (area-weighted, by dominant bone) are in `ModArmourMap.uc` (numbers
+  only); the full tables and the mask/face sheets are in the scratchpad
+  (`scratchpad\armour\data\*_faces.png`, `*_mask.png`, `armour_faces_3d.png`).
+- Masks: the derived 1-bit masks (armour faces rasterised in UV space, no texture pixels) and the
+  per-triangle data are **generated at build time** into `<game>\AdventMod\Armour\<mesh>.amesh`
+  by `tools/make_armour_data.py` (from `Documents\AdventRising_meshes\*.psk` and the game's
+  `.utx`), like the gib parts; nothing from the game's textures or meshes is in the repo. The
+  1-bit masks could be committed (no pixels), but they are regenerated anyway.
+- Reading the `.utx`: `tools/utx_tex.py` (tagged properties with int32 name refs, UE2 info byte;
+  a bool tag is `info size` with the value in bit 7; DXT1/3/5 mips through a DDS header; the
+  `HWSkinShader*` material graph).
+
+## The lookup: a ray against the skinned mesh (native), the bone table as the fallback
+
+**Chosen: (a) native ray-vs-skinned-mesh**, `native/armour.c`, since every mesh is one section
+and the engine only reports where a hit met the collision cylinder.
+
+- Data: `.amesh` v1 = the reference skeleton (name, parent, local position, mesh-space
+  rotation and origin), vertices with up to 4 weights, triangles with UVs, armour flag and
+  section. The ref pose is composed from the psk with the root as-is and every child's
+  quaternion conjugated (ActorX; the shock trooper, whose ref rotations aren't near identity,
+  decides it: 7.0 against 15.9 units of bone-to-vertex-centroid error).
+- Pose: the mesh instance's per-bone `FCoords` at `+0xB4/+0xB8` (mesh space, the ones
+  `GetBoneCoords` reads), the actor's instance at `+0xF8` and mesh at `+0xD4`, `MeshToWorld`
+  for the world transform (all as `footik.c` uses them). Whether the `FCoords` rows are the
+  bone's basis vectors or the rotation's rows is learnt on the first posed query from the ref
+  skeleton's local positions (a near-reference pose is a tie and is asked again). The engine's
+  ref skeleton (`Mesh+0x1DC`, `FMeshBone` 0x40: name +0, parent +0x34) is checked name by name
+  against the data before anything is trusted.
+- Skinning `v = O_b + R_b * RefInv_b * (p - RefO_b)` over the weights, then Moller-Trumbore
+  over every triangle, nearest hit. The ray is the shot's: from `HitLocation - Dir * RayBack`
+  (150 units back, outside the body) along `Dir`.
+- Offline check (`scratchpad\armour\test\armour_test.c`, the DLL's code posed with its own ref
+  skeleton): skinned vertices reproduce the reference exactly (0.0000 units); rays at face
+  centroids answer the face's flag (spec-ops 21/21 armour, 448/454 flesh; Seekers 10/15 armour
+  with the rest hitting a neighbouring face first); **a cast costs 240-280 us** (1.6-2 k
+  vertices, 3.1-3.7 k triangles, /O1). Hits are a few per second: no budget concern. (Could be
+  cut to ~50 us by skinning once per pawn per frame and a bounding test per bone; not needed.)
+- Live mesh data: not used. The `USkeletalMesh` object's vertex/wedge/face arrays were not
+  located in memory (no offsets with evidence); the exported psk is the same data.
+- Script protocol (`AdventNative`, bool answers only): `ArmourHit <pawn> <class> ox oy oz dx dy dz`
+  answers true on an armour triangle; `ArmourLast` whether the ray met the mesh at all;
+  `ArmourLog 0|1`; `ArmourReady`. Each hit is noted in `AdventNative.log`:
+  `armour hit: <pawn> <bone> armour=yes/no uv=u,v tri=N section=<material> at X Y Z mesh x y z dist=D (us)`.
+- **(b) bone table** (`ModArmourMap`, `ModArmor.TableClass`): the hit's nearest of the mesh's
+  16 main bones; its armour share at or over `TableLevel` (0.5) means armour. Used when the
+  native has no data for the mesh or the ray misses the body. (The compiler refuses elements
+  of a 144-entry static array through a context expression, so the table is read through an
+  instance's own accessors.)
+- (c) the d3d8 fork's per-pixel pick (texedit) is the renderer's view, not the shot's ray: noted
+  only.
+
+## Use
+
+`ModArmor` (config `[AdventMod.ModArmor]`):
+
+| key | default | meaning |
+|---|---|---|
+| `bArmourHits` | True | classify every hit on a non-player pawn (`Classify`, from `ModGoreRules.NetDamage` before the plates) |
+| `ArmourFactor` | 1.0 | damage x this on an armour hit (1.0 = no gameplay change until the user decides) |
+| `bArmourSparks` | True | `ModGore.Hit`: sparks (`EonEffects.fx_Default_Sparks`, as the blade's strikes) instead of blood on an armour hit; a kill still bleeds and dies as before |
+| `RayBack` | 150 | the ray starts this far back along the shot |
+| `TableLevel` | 0.5 | bone table: the share that counts as armour |
+| `GridTest` | "" | the test harness only: `"cols rows damage delay"` (all four) spawns `ModArmourGrid` |
+
+`ModArmor.ArmourSide(Pawn)` returns +1 (its right), -1 (its left) or 0 from the table's
+left*/right* bone shares, for a later "present the plates" behaviour: a mind `M` asks
+`Gore.Armor.ArmourSide(M.P)` (ModMinds was being edited by another session, so the one-line
+call isn't in yet; the behaviour itself is not built).
+
+The log lines: the native's `armour hit: ...` (above), the table's
+`armour hit: <pawn> <bone> armour=yes/no share=S (bone table)`, and `gore: the hit on <pawn>
+met armour: sparks, no blood`.
+
+## Test list (not run yet; the harness is in the scratchpad)
+
+1. `scratchpad\armour\run_armour_test.ps1`: level14sectiond (Seeker infantry), the pilot spawns
+   a `SeekerInfantry` 450 units ahead, then `ModArmourGrid` (ini `GridTest=5 8 5 45`) fires a
+   5x8 grid of rays from the camera across the body, each a real pistol-sized hit (sparks on
+   armour, blood on flesh), then `SHOTP`/`SHOT`. Expected: `armour: seekerinfantry loaded`,
+   `bone coords convention N` logged once, most rays `armour=no`, the arm guards `armour=yes`,
+   casts under 1 ms, no `exception` lines.
+2. `scratchpad\armour\armour_sheet.py <log> seekerinfantry <shot.png> out.png`: the hit points
+   (orange armour, blue flesh) over the ref-pose render (front and side, from the logged
+   mesh-space point) and over the screenshot (world point projected with the logged
+   `armourcam:` camera, UE2 projection; roll ignored).
+3. The same on a SeekerPilot (helmet: head 43 %) and a SpecOpsSoldier; the hound should log
+   `armour=no` everywhere and never spark.
+4. A real fight with `bArmorLog=True`: the `armour hit:` lines per shot, the sparks on guards.
+5. The fallback: delete `<game>\AdventMod\Armour\seekerinfantry.amesh` for one run: every hit
+   must come from the bone table (`(bone table)` lines), no crash.
+
+Gotchas met on the way: the compiler's "Context expression: Variable is too large (576 bytes,
+255 max)" on `class'X'.default.Array[i]` for big static arrays (instance accessors instead);
+static arrays inside a struct literal in `defaultproperties` were refused ("Bad termination")
+for three of nine entries (flat arrays instead); heredocs through the shell lose tabs, so
+`.uc` edits went through the editor; `python` on this PC has no numpy/Pillow, `py` does
+(`build.ps1` calls `py -I` for the generator, which is numpy-free).

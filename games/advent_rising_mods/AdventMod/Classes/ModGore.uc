@@ -801,6 +801,16 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 		Dir = Normal(HitLocation - Instigator.Location);
 	else
 		Dir = vector(Victim.Rotation) * -1;
+	// a shot that met a plate (ModArmor.Classify, ARMOUR.md) sparks and doesn't bleed (a kill
+	// goes on below: the death, its gibs and its pool are the body's, not the plate's)
+	if (Armor != None && Armor.bArmourSparks && Armor.LastClass == 2)
+	{
+		Armor.Sparks(HitLocation, Dir);
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: the hit on " $ Victim $ " met armour: sparks, no blood");
+		if (Victim.Health > 0 && Damage < Victim.Health)
+			return;
+	}
 	if (VSize(HitLocation - Victim.Location) > Victim.CollisionRadius * 3)
 		HitLocation = Victim.Location;
 	// the bigger the hit, the bigger the mark (a pistol ~10-20, a launcher ~100)

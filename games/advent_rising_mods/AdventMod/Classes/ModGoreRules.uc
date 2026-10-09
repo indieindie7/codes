@@ -17,6 +17,15 @@ function int NetDamage(int OriginalDamage, int Damage, Pawn Injured, Pawn Instig
 	// (the hit as it landed, before any plate took part of it: what knocks a body down)
 	if (Gore != None && Gore.React != None)
 		Gore.React.Impact = Damage;
+	// (where on the skin the shot landed: armour or flesh, from the mesh's own triangles; the
+	// damage x ArmourFactor on armour. ModGore.Hit then sparks instead of bleeding.)
+	if (Gore != None && Gore.Armor != None && Injured != None)
+	{
+		if (InstigatedBy != None)
+			Damage = Gore.Armor.Classify(Damage, Injured, HitLocation, Normal(HitLocation - InstigatedBy.Location));
+		else
+			Damage = Gore.Armor.Classify(Damage, Injured, HitLocation, Normal(Momentum));
+	}
 	// (a plate takes part of a hit on it until it breaks; a bare region takes more)
 	if (Gore != None && Gore.Armor != None)
 	{
