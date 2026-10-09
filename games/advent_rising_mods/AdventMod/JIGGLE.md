@@ -108,32 +108,45 @@ Files outside the repo (game-derived): `Documents\AdventRising_meshes\jiggle\`.
    but a body lean, not jiggle); the fallback would be springs on spine1/Neck02/the thighs with
    small amplitudes, to be built only if needed.
 
-## B. Texture: done once, judged bad (2026-10-09)
+## B. Texture: the plates filled from the skin, no AI (2026-10-09, route 1)
 
-The Seeker skin (`seekercharacters_tx` -> `seeker_infantry`, 512x512, exported with tools/utx_tex.py
-into `Documents\AdventRising_meshes\jiggle	ex\`, never git) went through FLUX Kontext
-(`Documents\Toolslux-kontext\kontext_edit.py`, the sana venv in Downloads\sana-diffusers;
-"replace the grey metal armour plates and the gauntlet pieces with the same purple-grey alien
-skin ... keep everything else", 512x512, 28 steps, guidance 2.5, seed 7). It took 80 minutes:
-the GPU was shared with another chat's two llama-servers (9-11 GB), and a duplicate process
-from a mangled taskkill loaded a second copy for a while. The raw edit was then composited over
-the stock skin inside `plate_mask.png` only (feathered 2 px; Kontext has no mask input):
-`tex\seeker_infantry_skinned.png`, sheet `skin_sheet.png` (stock | raw | composite).
+`tools/jiggle_fill.py <jiggle dir> <seekerinfantry.psk> <seekerinfantry.amesh>`: exemplar synthesis in
+blocks, CPU only (8 s). The mask is `plate_mask.png` (39 338 texels). The source is NOT the atlas
+ring around an island (the plate islands are packed among other plate islands and padding, so a
+ring fill regrew metal: first attempt), nor the arm bones' flesh faces (those are the dark leather
+sleeves, plus the black between islands: second attempt), but the blue skin as the mesh sees it:
+the amesh's non-armour triangles rasterised in UV space, kept to light blue-dominant texels (53k
+texels, `tex/skin_source.png`). 500 random 12x12 windows of it are the candidates; the islands are
+filled edge-inward in 8 px blocks, each block taking the candidate whose context agrees best with
+what the fill itself has already laid down (the atlas around an island is no guide), chosen at
+random among the best 4 so the grain doesn't repeat, soft-pasted, 2-3 px feathered. The same pass
+fills the channel files (`seekerinfantry_opacity*.png`). Outputs in `jiggle	ex\` (never git):
+`seeker_infantry_filled.png/.tga`, `*_filled.png` channels; sheet **`jiggle\skin_fill_sheet.png`**
+(stock | filled | zooms on the two guard islands | the stripped mesh rendered with each skin |
+the in-game pair). Verdict from the sheet: the islands read as the blue mottled skin with the
+neighbours' grain (a little blocky at 512); only the chrome-masked triangles are filled, so slivers
+of orange plate remain where the game's own mask said "flesh" (the per-triangle rule, ARMOUR.md).
+The side renders in the sheet came out black (camera roll): the front render shows the change.
+The Kontext attempt before it (80 min on a shared GPU, a flat lavender repaint keeping the
+plates) is kept in `tex/kontext_skin_raw.png` for the record only.
 
-**Verdict: bad.** Kontext recoloured the whole sheet a flat lavender (mean change 97/255 outside
-the mask too) and kept the plates as plates (panel lines, rivets, the gun pieces), so inside the
-mask the result is flat purple patches with metal detail, nothing like the blue mottled skin
-beside them. A UV atlas isn't a picture Kontext understands; what would work is a real
-mask-inpainting model, or painting the islands by hand from the neighbouring skin texels (clone
-from the mask's ring, which a 30-line numpy pass could do: a patch-match fill of the islands from
-the flesh ring). Not retried (the GPU was handed back).
+**Into the game, behind a build flag**: `build.ps1 -JiggleSkin` copies the .tga to
+`<game>\AdventMod\Textures` and patches the GAME-FOLDER copy of `Classes/ModJiggleSkinBase.uc`
+(the repo file has `var Texture Skin` and nothing else) with `#exec TEXTURE IMPORT NAME=SeekerSkinJ
+... GROUP=Skins` and `Skin=Texture'AdventMod.Skins.SeekerSkinJ'`; ModJiggle reads
+`class'ModJiggleSkinBase'.default.Skin` and, with `bJiggleSkin=True` (default False), puts it on
+every re-linked Seeker's `Skins[0]`. Compile-time on purpose: `DynamicLoadObject` of ANYTHING inside
+AdventMod at run time (the texture by either name, even a class) answers nothing in this engine
+("load failed without a reason" from the hook; a known wall, hence every other mod reference is
+compile-time too). Without the switch the texture is not in AdventMod.u (the release package.py
+builds without it); game pixels never in git.
 
-How it would go into the game, if a good one existed: the regenerated 512x512 PNG -> .tga in
-`<game>\AdventMod\Textures` (outside the repo, like the gib parts), `#exec TEXTURE IMPORT
-NAME=SeekerSkinJ FILE=Textures\seeker_infantry_skinned.tga` in ModJiggleMesh, and ModJiggle puts
-that texture (or a Shader wrapping it) on the re-linked pawn's `Skins[0]` instead of the stock
-material. Game pixels: never shipped, never committed; the stock skin is what the jiggle mesh
-wears now.
+**Run (hidden, level14sectiond, bJiggle + bJiggleSkin + log)**: "<pawn> wears the filled skin" for
+the four placed Seekers and the spawned one, 0 exceptions, 0 crash lines, the game to the end.
+The ShotP frames caught the Seeker only at the frame's edge (it walked off while the pilot aimed;
+the camera is Gideon's third person), so the in-game pair in the sheet is weak evidence of the
+look; the sheet's mesh render carries it. A next run should put `NEARENEMY`/`FACETO` before each
+SHOTP.
 
 ## C. Live springs (built, CPU; game test waits)
 
@@ -159,6 +172,7 @@ wears now.
   | MaxAccel | 30000 | units/s^2 the driver is clamped to (a teleport never reads as a shove) |
   | Range | 3500 | AI within this of the player |
   | bRelink | True | Seeker infantry in range get LinkMesh to the jiggle mesh, once each |
+  | bJiggleSkin | False | the filled skin (phase B) on Skins[0]; needs a `build.ps1 -JiggleSkin` build |
   | OverK[i] / OverD[i] / OverGain[i] / OverMaxDeg[i] | 0 | per bone (the table's order), 0 = keep |
   | bJiggleLog | False | the DLL's 5-s lines: callbacks, us each, amplitude mean/max per bone |
 

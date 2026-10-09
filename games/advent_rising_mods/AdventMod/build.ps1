@@ -1,6 +1,6 @@
 ﻿# Builds AdventMod: compiles Classes\*.uc with AdventUCC, builds AdventNative.dll,
 # and installs AdventMod.u / AdventMod.int / AdventNative.dll into the game's System folder.
-param([string]$Game = 'H:\SteamLibrary\steamapps\common\Advent Rising', [switch]$GraphicsOnly)
+param([string]$Game = 'H:\SteamLibrary\steamapps\common\Advent Rising', [switch]$GraphicsOnly, [switch]$JiggleSkin)
 $ErrorActionPreference = 'Stop'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Ucc = Join-Path (Split-Path -Parent $Here) 'AdventUCC'
@@ -27,6 +27,23 @@ Copy-Item "$Here\Classes\*.uc" "$Game\AdventMod\Classes"
 if ($GraphicsOnly) {
   $ms = "$Game\AdventMod\Classes\ModSettings.uc"
   (Get-Content $ms -Raw) -replace 'bGraphicsOnly=False', 'bGraphicsOnly=True' | Set-Content $ms -NoNewline -Encoding ascii
+}
+# -JiggleSkin: the Seeker skin with the plates filled from the flesh (tools/jiggle_fill.py, JIGGLE.md
+# phase B) goes into THIS build only: the .tga is copied beside the game's textures and the GAME-FOLDER
+# copy of ModJiggleSkinBase.uc (not the repo) gets the #exec TEXTURE IMPORT and the Skin default, so the
+# texture lands in the local AdventMod.u and ModJiggle can put it on the Seekers' Skins[0] (bJiggleSkin;
+# a run-time load by name of anything inside AdventMod answers nothing, hence compile time). Game pixels:
+# never in git, never in the release package (package.py builds without the switch)
+if ($JiggleSkin) {
+  $tga = "$env:USERPROFILE\Documents\AdventRising_meshes\jiggle\tex\seeker_infantry_filled.tga"
+  if (-not (Test-Path $tga)) { throw "jiggle skin missing: $tga (run tools/jiggle_fill.py, see JIGGLE.md)" }
+  New-Item -ItemType Directory -Force "$Game\AdventMod\Textures" | Out-Null
+  Copy-Item $tga "$Game\AdventMod\Textures\seeker_infantry_filled.tga" -Force
+  $sb = "$Game\AdventMod\Classes\ModJiggleSkinBase.uc"
+  $t = Get-Content $sb -Raw
+  $t = $t -replace 'class ModJiggleSkinBase extends Object;', "class ModJiggleSkinBase extends Object;`r`n`r`n#exec TEXTURE IMPORT NAME=SeekerSkinJ FILE=Textures\seeker_infantry_filled.tga GROUP=Skins MIPS=1"
+  $t = $t -replace 'defaultproperties\s*\{', "defaultproperties`r`n{`r`n     Skin=Texture'AdventMod.Skins.SeekerSkinJ'"
+  Set-Content $sb $t -NoNewline -Encoding ascii
 }
 # textures the classes import with #exec (paths relative to <game>\AdventMod)
 New-Item -ItemType Directory -Force "$Game\AdventMod\Textures" | Out-Null

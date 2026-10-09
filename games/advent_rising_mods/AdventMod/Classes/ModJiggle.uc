@@ -11,7 +11,8 @@
 // Config [AdventMod.ModJiggle]: bJiggle (on since the 2026-10-09 runs, JIGGLE.md), Gain, Range, bJiggleLog
 // (the DLL's 5-s amplitude lines), StiffScale, DampScale, HitStrength (rad/s of swing per hit at
 // 20 damage), MaxAccel (units/s^2 the driver is clamped to), bRelink (Seeker infantry in range
-// get LinkMesh to the jiggle mesh, once each), the Over* arrays.
+// get LinkMesh to the jiggle mesh, once each), bJiggleSkin (the filled skin on Skins[0] when the
+// build carried it), the Over* arrays.
 //=============================================================================
 class ModJiggle extends Info
 	config(AdventMod);
@@ -25,6 +26,7 @@ var config float DampScale;
 var config float HitStrength;
 var config float MaxAccel;
 var config bool bRelink;
+var config bool bJiggleSkin;        // the plates painted as skin (JIGGLE.md phase B): AdventMod.SeekerSkinJ, present only in a build.ps1 -JiggleSkin build
 var config float OverK[16];
 var config float OverD[16];
 var config float OverGain[16];
@@ -41,6 +43,8 @@ var float SweepWait;
 var bool bConfigSent, bNativeOk;
 var SkeletalMesh JMesh;
 var Material Skin;
+var Texture FilledSkin;
+
 var MeshAnimation Sets[4];
 var int Relinked;
 
@@ -56,6 +60,14 @@ function PostBeginPlay()
 		return;
 	}
 	Skin = Material(DynamicLoadObject("seekercharacters_tx.Main.infantry_hsh", class'Material', true));
+	if (bJiggleSkin)
+	{
+		// a compile-time reference: build.ps1 -JiggleSkin adds the texture import and the default to
+		// the game-folder copy of ModJiggleSkinBase (a load by name fails for anything in AdventMod at run time)
+		FilledSkin = class'ModJiggleSkinBase'.default.Skin;
+		if (FilledSkin == None)
+			class'ModSettings'.static.Note("jiggle: bJiggleSkin but no AdventMod.SeekerSkinJ in the package (build.ps1 -JiggleSkin): the stock skin stays");
+	}
 	Sets[0] = MeshAnimation(DynamicLoadObject("Seekers.Base", class'MeshAnimation', true));
 	Sets[1] = MeshAnimation(DynamicLoadObject("Seekers.Reactions", class'MeshAnimation', true));
 	Sets[2] = MeshAnimation(DynamicLoadObject("Seekers.Targeting", class'MeshAnimation', true));
@@ -146,7 +158,14 @@ function bool Hook(int i)
 	local string Cmd;
 
 	P = Hooks[i].P;
-	if (P.Skins.Length == 0 && Skin != None)
+	if (FilledSkin != None)
+	{
+		P.Skins.Length = Max(P.Skins.Length, 1);
+		P.Skins[0] = FilledSkin;
+		if (bJiggleLog)
+			class'ModSettings'.static.Note("jiggle: " $ P.Name $ " wears the filled skin");
+	}
+	else if (P.Skins.Length == 0 && Skin != None)
 	{
 		P.Skins.Length = 1;
 		P.Skins[0] = Skin;
@@ -273,4 +292,5 @@ defaultproperties
      HitStrength=2.000000
      MaxAccel=30000.000000
      bRelink=True
+     bJiggleSkin=False
 }
