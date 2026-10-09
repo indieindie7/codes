@@ -86,6 +86,35 @@ Already done in 24a454b: `parti.json "hero"` with a `"tower"` fallback.
 The ids that still read `"tower"` mean the Authority tower on purpose: the window's eye, the walk's end, the 150 m
 squatter guard.
 
+## The rules, round 2 (the coordinator, 2026-10-09)
+
+- **The hero in the window.** The summit candidates are scored in compose's frame: yaw 300 ± 34, pitch −15 ± 26,
+  with the top not hidden by the terrain.
+  - Any spot in the frame beats any spot outside it, so a lower summit inside the cone wins over a higher one
+    outside.
+  - Inside the frame, height wins, plus 25 m of "height" for a vertical third. A spot at the frame's side edge
+    (u < 0.1 or u > 0.9) gets half the bonus.
+  - If the town's strip has no spot in the frame, the search widens to 600 m from the town's spine. Only then does
+    it fall back to the highest spot outside the frame, logged on stderr and marked `fallback`.
+  - The hero's dock clearance is 100 m (it was 150 m, which emptied Cine8's frame).
+- **The truck road** is grade-capped. A step over `MAX_GRADE` (12 %) is closed, the routing uses 16 headings
+  (knight moves), and the road switchbacks. The cap is relaxed only when no capped road exists (×1.25, ×1.5, ×2,
+  then soft), and `road_cap` records it.
+- **E16 for rule-placed dwellings.** The guest house stays ≥ 100 m from every fuel store (`systems.spec_of`
+  providers of fuel). It walks up to 60 m further out, or behind the host, to manage it. If it can't, it is
+  flagged `e16_ok: false`.
+- **The drain profile** is laid from the outfall upstream:
+  - The invert is +0.5 m over the sea at the outfall (a free outfall). Going upstream it rises by the 0.5 % fall,
+    and the cover over the roof never exceeds 12 m.
+  - Where the invert then drops faster than the fall, the step is a drop shaft (`drop_shafts`).
+  - Where the cover is under 1 m (outside the last 15 m, the headwall), the run is a covered cut at grade
+    (`shallow_m`).
+  - The route avoids ground more than 12 m over the grate, and the outfall prefers a bank high enough for the
+    culvert.
+- **Splices.** When a company line already passes the shanty block (a run under 4 m), the tap becomes a splice:
+  sagging leads (power) or hoses with drums (water) from the line to the nearest 3 shacks, each at least 3 m long.
+  The styles are `splice_cable` and `splice_hose`.
+
 ## Still open
 
 - No sagging-cable mesh exists. The spans and drops are in `L["taps"]` as lines with `sag_m`, and the poles use

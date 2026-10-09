@@ -39,11 +39,17 @@ LOOK, HALF_W = 300.0, 34.0              # the command room's window (compose.py)
 PLINTH_M = 30.0                          # the hero's battered plinth (artist s. 3.1): the ground range it can take up
 TOWN_M = 300.0                           # the town's land: main island within this of the town's spine stretch
 TOWN_PAST_M = 0.0                        # the town's spine stretch: dock -> tower, and this far on toward the mine
+FUEL_CLEAR_M = 100.0                     # E16: a dwelling stands >= 100 m from a fuel store
+BESIDE_MAX_M = 60.0                      # how much further than "next door" the guest house may move to clear E16
+WINDOW_BONUS = 1000.0                   # metres of "height": any summit in the window frame beats any outside it
+WINDOW_THIRDS_M = 25.0                   # inside the frame, a vertical third is worth this many metres of height
+EDGE_U = 0.1                             # a hero this close to the frame's side edge counts half
+WIDE_M = 600.0                           # the frame search widens to this far from the town's spine before falling back
 BEHIND_DEG = 100.0                       # the town's land: within this of the window bearing (yaw 300) from the tower
 SHORE_M = 40.0                           # ... and this far off the sea
 HERO_SLOPE = 24.0                        # mean slope under the footprint, degrees
 MAX_GRADE = 0.12                         # truck roads (terrain_cutfill's MAX_GRADE; engineer E1)
-AVOID = {"tower": 150.0, "authority_pad": 120.0, "dock": 150.0}   # metres kept clear around these (security, the quay)
+AVOID = {"tower": 150.0, "authority_pad": 120.0, "dock": 100.0}   # metres kept clear round these (security; the quay's yard: 100 m, so a Cine8-like dock in the window still leaves the frame its hero)
 
 try:                                     # the parti's hero (liandri_tower since binder 1940260), "tower" as the fallback
     PARTI_HERO = json.load(open(os.path.join(HERE, "binder", "parti.json"))).get("hero", "tower")
@@ -57,6 +63,10 @@ UU_GALLERY = (1536, 768, 448)            # l, w, h: the sluice gallery, the reve
 UU_QUIET = 3600                          # the LD7 quiet stretch before the gallery
 COVER_M = 1.0                            # earth over the culvert's roof
 MIN_FALL = 0.005                         # invert grade toward the outfall
+OUTFALL_M = 0.5                          # the outfall invert over the sea (a free outfall: +0.5..2 m)
+MAX_COVER_M = 12.0                       # buildable: no more earth than this over the culvert's roof
+DROP_M = 2.0                             # a step down steeper than the fall by this much is a drop shaft
+HEADWALL_M = 15.0                        # the last metres to the outfall may run at grade (the headwall)
 WATER_REACH_M = 300.0                    # systems.RES water
 HEAD_M = 20.0                            # E14': tank base >= highest served floor + 20 m
 NO_FLOORS = ("cooling", "tank", "silo", "mast", "pump", "wellhead", "rig", "pad", "dock", "jetty")
@@ -158,9 +168,13 @@ def plen(pts):
     return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts[:-1], pts[1:]))
 
 
-def grid_path(cost_fn, start, goals, allowed):
-    """8-connected Dijkstra on cells from start (i, j) to the cheapest of goals (set of (i, j)); cost_fn(i, j, ni, nj)
-    -> step cost (inf = closed). Returns the cell list start..goal, or []"""
+MOVES8 = [(di, dj) for di in (-1, 0, 1) for dj in (-1, 0, 1) if di or dj]
+MOVES16 = MOVES8 + [(a * s, b * t) for a, b in ((1, 2), (2, 1)) for s in (-1, 1) for t in (-1, 1)]   # + knight moves
+
+
+def grid_path(cost_fn, start, goals, allowed, moves=MOVES8):
+    """Dijkstra on cells (8-connected, or 16 with knight moves for finer headings) from start (i, j) to the cheapest of
+    goals (set of (i, j)); cost_fn(i, j, ni, nj) -> step cost (inf = closed). Returns the cell list start..goal, or []"""
     dist = {start: 0.0}
     prev = {}
     pq = [(0.0, start)]
@@ -174,21 +188,18 @@ def grid_path(cost_fn, start, goals, allowed):
             return out[::-1]
         if d > dist.get((i, j), np.inf):
             continue
-        for di in (-1, 0, 1):
-            for dj in (-1, 0, 1):
-                if di == 0 and dj == 0:
-                    continue
-                ni, nj = i + di, j + dj
-                if not (0 <= ni < N and 0 <= nj < N) or not allowed[nj, ni]:
-                    continue
-                c = cost_fn(i, j, ni, nj)
-                if not np.isfinite(c):
-                    continue
-                nd = d + c
-                if nd < dist.get((ni, nj), np.inf):
-                    dist[(ni, nj)] = nd
-                    prev[(ni, nj)] = (i, j)
-                    heapq.heappush(pq, (nd, (ni, nj)))
+        for di, dj in moves:
+            ni, nj = i + di, j + dj
+            if not (0 <= ni < N and 0 <= nj < N) or not allowed[nj, ni]:
+                continue
+            c = cost_fn(i, j, ni, nj)
+            if not np.isfinite(c):
+                continue
+            nd = d + c
+            if nd < dist.get((ni, nj), np.inf):
+                dist[(ni, nj)] = nd
+                prev[(ni, nj)] = (i, j)
+                heapq.heappush(pq, (nd, (ni, nj)))
     return []
 
 
@@ -209,21 +220,43 @@ def town_spine(spine, past_m=TOWN_PAST_M):
     return out
 
 def truck_road(Z, a, spine, main, max_grade=MAX_GRADE, start_r_m=0.0):
-    """least-cost road from a (world) down to the nearest spine cell; grades over max_grade cost 25x (switchbacks
-    win). Returns (points, metres, steepest grade on the natural ground)"""
+    """least-cost road from a (world) down to the nearest spine cell, GRADE-CAPPED: a step steeper than the cap is
+    closed, so the road switchbacks across the contours (16 headings: knight moves give the gentle diagonals). The cap
+    is the branch class limit (MAX_GRADE); only when no capped road exists is it relaxed (x1.25, x1.5, x2, then soft),
+    and the result says so. Inside the plinth (start_r_m) the ground is built, so it is free of the cap.
+    Returns (points, metres, steepest grade on the natural ground, the cap used)"""
     goals = {(int(round(w2c(x, y)[0])), int(round(w2c(x, y)[1]))) for x, y in spine}
     goals = {g for g in goals if 0 <= g[0] < N and 0 <= g[1] < N}
     Zm = Z / M
-
-    def cost(i, j, ni, nj):
-        d = math.hypot(ni - i, nj - j) * CELL_M
-        g = abs(Zm[nj, ni] - Zm[j, i]) / d
-        return d * (1 + 20 * g * g) * (25.0 if g > max_grade else 1.0)
     fi, fj = w2c(*a)
-    cells = grid_path(cost, (int(round(fi)), int(round(fj))), goals, main)
+    s0 = (int(round(fi)), int(round(fj)))
+    plinth_c = start_r_m / CELL_M
+
+    def make_cost(cap, soft=False):
+        def cost(i, j, ni, nj):
+            d = math.hypot(ni - i, nj - j) * CELL_M
+            if math.hypot(ni - s0[0], nj - s0[1]) <= plinth_c:
+                return d
+            g = abs(Zm[nj, ni] - Zm[j, i]) / d
+            if g > cap:
+                return d * 25.0 * (1 + 20 * g * g) if soft else np.inf
+            return d * (1 + 20 * g * g)
+        return cost
+    cells, cap_used = [], max_grade
+    for k, f in enumerate((1.0, 1.25, 1.5, 2.0, None)):
+        cap_used = max_grade * (f or 2.0)
+        cells = grid_path(make_cost(cap_used, soft=f is None), s0, goals, main, MOVES16)
+        if cells:
+            break
     if not cells:
-        return [], 0.0, 0.0
-    pts = chaikin([c2w(i, j) for i, j in cells], 2)
+        return [], 0.0, 0.0, cap_used
+    # knight moves jump a cell: fill in the cell between so the road has no gaps
+    full = [cells[0]]
+    for (i, j), (ni, nj) in zip(cells[:-1], cells[1:]):
+        if max(abs(ni - i), abs(nj - j)) == 2:
+            full.append(((i + ni) / 2.0, (j + nj) / 2.0))
+        full.append((ni, nj))
+    pts = chaikin([c2w(i, j) for i, j in full], 1)
     pts[0] = tuple(a)
     if start_r_m > 0:                     # the road starts at the plinth's foot, not under the tower
         keep = [p for p in pts if math.hypot(p[0] - a[0], p[1] - a[1]) >= start_r_m * M]
@@ -238,7 +271,7 @@ def truck_road(Z, a, spine, main, max_grade=MAX_GRADE, start_r_m=0.0):
         if math.hypot(*(np.subtract(c2w(i, j), a))) < start_r_m * M:
             continue
         grade = max(grade, abs(Zm[nj, ni] - Zm[j, i]) / (math.hypot(ni - i, nj - j) * CELL_M))
-    return [[round(x, 1), round(y, 1)] for x, y in pts], plen(pts) / M, grade
+    return [[round(x, 1), round(y, 1)] for x, y in pts], plen(pts) / M, grade, cap_used
 
 
 def summit(Z, spine, sheet, main=None, avoid=(), occupied=None, town_m=TOWN_M, plinth_m=PLINTH_M):
@@ -262,23 +295,59 @@ def summit(Z, spine, sheet, main=None, avoid=(), occupied=None, town_m=TOWN_M, p
     fp = disc(max(1.0, r))
     hi = maximum_filter(Zm, footprint=fp, mode="nearest")
     lo = minimum_filter(Zm, footprint=fp, mode="nearest")
-    allin = minimum_filter(town.astype(np.uint8), footprint=fp, mode="constant", cval=0).astype(bool)
     k = fp.shape[0]
     mean = uniform_filter(Zm, size=k, mode="nearest")
     slope = uniform_filter(slope_deg(Z), size=k, mode="nearest")
-    ok = allin & (hi - lo <= plinth_m) & (slope <= HERO_SLOPE)
     J, I = np.mgrid[0:N, 0:N]
     WX, WY = c2w(I, J)
+    site_ok = (hi - lo <= plinth_m) & (slope <= HERO_SLOPE)
     for (ax, ay, am) in avoid:
-        ok &= np.hypot(WX - ax, WY - ay) / M >= am + r * CELL_M
+        site_ok &= np.hypot(WX - ax, WY - ay) / M >= am + r * CELL_M
     if occupied is not None:
-        ok &= ~maximum_filter(occupied.astype(np.uint8), footprint=disc(r + 1), mode="constant").astype(bool)
+        site_ok &= ~maximum_filter(occupied.astype(np.uint8), footprint=disc(r + 1), mode="constant").astype(bool)
+
+    def within(mask):
+        return minimum_filter(mask.astype(np.uint8), footprint=fp, mode="constant", cval=0).astype(bool) & site_ok
+    ok = within(town)
+    # the window: the parti wants the temple as the command room's hero. A candidate whose top is in compose's frame
+    # (yaw 300 +- HALF_W, pitch -15 +- HALF_H) and not hidden by the terrain beats any candidate outside it; inside,
+    # height wins, with a pull to a vertical third (WINDOW_THIRDS_M metres of height per unit of thirds score), and a
+    # spot at the frame's very edge (u < EDGE_U or > 1 - EDGE_U) counts only half the bonus. When the town's strip has
+    # no such spot, the frame is searched on wider land (WIDE_M from the town's spine) before falling back.
+    top_m = sheet["size"][2] if len(sheet["size"]) > 2 else 60.0
+
+    def frame_scores(cand):
+        sc = np.where(cand, mean, -1e9)
+        fr = {}
+        for j_, i_ in zip(*np.nonzero(cand)):
+            x_, y_ = c2w(i_, j_)
+            u = in_frame(Z, x_, y_, hi[j_, i_] * M + top_m * M)
+            if u is not None:
+                fr[(j_, i_)] = u
+                thirds = max(0.0, 1 - min(abs(u - 1 / 3), abs(u - 2 / 3)) / 0.17)
+                edge = 0.5 if (u < EDGE_U or u > 1 - EDGE_U) else 1.0
+                sc[j_, i_] = edge * WINDOW_BONUS + mean[j_, i_] + WINDOW_THIRDS_M * thirds
+        return sc, fr
+    # tiers: the town's strip with a spot well inside the frame; wider land with one; the strip with an edge spot only;
+    # wider land with an edge spot; else the fallback (the highest in the strip, outside the frame)
+    score, frame = frame_scores(ok)
+    widened = False
+
+    def inner(fr):
+        return any(EDGE_U <= u <= 1 - EDGE_U for u in fr.values())
+    if not inner(frame):
+        wide = within(land & (d_spine <= WIDE_M) & (d_sea >= SHORE_M))
+        sc2, fr2 = frame_scores(wide)
+        if (inner(fr2) or not frame) and fr2:
+            score, frame, ok, widened = sc2, fr2, wide, True
     if not ok.any():
         return None
-    score = np.where(ok, mean, -1e9)
     j, i = np.unravel_index(int(score.argmax()), score.shape)
     x, y = c2w(i, j)
-    road, road_m, grade = truck_road(Z, (x, y), spine, main, start_r_m=r * CELL_M + 5)
+    fallback = (j, i) not in frame
+    if fallback:
+        print("  summit: no buildable spot in the window frame; the highest outside it (%d candidates)" % int(ok.sum()), file=sys.stderr)
+    road, road_m, grade, cap = truck_road(Z, (x, y), spine, main, start_r_m=r * CELL_M + 5)
     gate = road[0] if road else min(spine, key=lambda p: math.hypot(p[0] - x, p[1] - y))
     yaw = math.degrees(math.atan2(gate[1] - y, gate[0] - x))              # the front (the ceremonial stair) to the road
     ang = math.degrees(math.atan2(y - TOWER_WORLD[1], x - TOWER_WORLD[0]))
@@ -287,29 +356,60 @@ def summit(Z, spine, sheet, main=None, avoid=(), occupied=None, town_m=TOWN_M, p
             "ground_mean_m": round(float(mean[j, i] - SEA_Z / M), 1), "ground_lo_m": round(float(lo[j, i] - SEA_Z / M), 1),
             "ground_hi_m": round(float(hi[j, i] - SEA_Z / M), 1), "plinth_used_m": round(float(hi[j, i] - lo[j, i]), 1),
             "town_top_m": round(float(Zm[town].max() - SEA_Z / M), 1) if town.any() else None,
-            "road": road, "road_m": round(road_m), "road_grade": round(grade, 3),
+            "road": road, "road_m": round(road_m), "road_grade": round(grade, 3), "road_cap": round(cap, 3),
             "dist_tower_m": round(math.hypot(x - TOWER_WORLD[0], y - TOWER_WORLD[1]) / M),
-            "window_deg_off": round(dw, 1), "in_window": dw <= HALF_W}
+            "window_deg_off": round(dw, 1), "in_window": not fallback, "frame_u": round(frame[(j, i)], 2) if not fallback else None,
+            "window_candidates": len(frame), "fallback": fallback, "widened": widened}
+
+
+def in_frame(Z, x, y, top_z):
+    """compose's window frame: u (0..1) of the point (x, y, top_z) when it is in the frame and the terrain does not
+    hide it from the command room's eye, else None"""
+    import compose
+    p = compose.project(x, y, top_z)
+    if p is None:
+        return None
+    ex, ey, ez = compose.EYE
+    for t in np.linspace(0.02, 0.95, 60):
+        if zat(Z, ex + (x - ex) * t, ey + (y - ey) * t) > ez + (top_z - ez) * t + 1.0:
+            return None
+    return p[0]
 
 
 # --- 2. beside: guest_house next to directors_house -------------------------------------------------------------
-def beside(B, sheets, host, guest, Z, gap_m=6.0):
-    """the guest beside the host: same yaw, one side of the host's frontage (local Y), the flatter free side"""
+def fuel_stores(B, sheets):
+    """the buildings that store fuel (E16's fire set-back sources): providers of fuel by systems.spec_of"""
+    import systems
+    return [bid for bid in B if bid in sheets and not B[bid].get("abandoned") and "fuel" in systems.spec_of(bid, sheets[bid])[0]]
+
+
+def fuel_clear_m(B, sheets, x, y):
+    fs = fuel_stores(B, sheets)
+    return min((math.hypot(B[f]["x"] - x, B[f]["y"] - y) / M for f in fs), default=1e9)
+
+
+def beside(B, sheets, host, guest, Z, gap_m=6.0, fuel_m=FUEL_CLEAR_M):
+    """the guest beside the host: same yaw, on a side of the host's frontage (local Y) or behind it, the flatter free
+    spot, nearest the host - but never within fuel_m of a fuel store (E16, a dwelling). When every spot near the host
+    breaks E16 it walks further out (up to BESIDE_MAX_M); if still none, the spot farthest from the fuel, flagged"""
     if host not in B or guest not in sheets:
         return None
     h = B[host]
     wh, wg = sheets[host]["size"][0], sheets[guest]["size"][0]
-    dg = max(sheets[guest]["size"][0], sheets[guest]["size"][1])
+    dh, dg = sheets[host]["size"][1], max(sheets[guest]["size"][0], sheets[guest]["size"][1])
     a = math.radians(h["yaw"])
     lx, ly = -math.sin(a), math.cos(a)                                  # the host's local Y (its width)
-    fx, fy = math.cos(a), math.sin(a)
+    fx, fy = math.cos(a), math.sin(a)                                   # its front
     zh = zat(Z, h["x"], h["y"])
     best = None
-    for side in (+1, -1):
-        for back in (0.0, -0.5, 0.5):                                  # stagger a little if the side is taken
-            off = (wh / 2 + gap_m + wg / 2) * M
-            x = h["x"] + side * lx * off + fx * back * dg * M
-            y = h["y"] + side * ly * off + fy * back * dg * M
+    for extra in np.arange(0.0, BESIDE_MAX_M + 1, 6.0):
+        for side, back in ((+1, 0.0), (-1, 0.0), (+1, -0.5), (-1, -0.5), (+1, 0.5), (-1, 0.5), (0, -1.0)):
+            if side:
+                off_l, off_f = side * (wh / 2 + gap_m + wg / 2 + extra), back * dg
+            else:                                                   # behind the host
+                off_l, off_f = 0.0, -(dh / 2 + gap_m + dg / 2 + extra)
+            x = h["x"] + (lx * off_l + fx * off_f) * M
+            y = h["y"] + (ly * off_l + fy * off_f) * M
             z = zat(Z, x, y)
             if z <= SEA_Z + 20:
                 continue
@@ -320,14 +420,19 @@ def beside(B, sheets, host, guest, Z, gap_m=6.0):
                 rr = (max(sheets[bid]["size"][0], sheets[bid]["size"][1]) / 2 + dg / 2) * M
                 if math.hypot(p["x"] - x, p["y"] - y) < rr:
                     clash += 1
-            cost = clash * 100 + abs(z - zh) / M + abs(back) * 3
+            fuel = fuel_clear_m(B, sheets, x, y)
+            e16 = fuel >= fuel_m
+            cost = (0 if e16 else 1000 + (fuel_m - fuel) * 10) + clash * 100 + abs(z - zh) / M + abs(back) * 3 + extra * 0.5 + (4 if not side else 0)
             if best is None or cost < best[0]:
-                best = (cost, x, y, z, side, back, clash)
+                best = (cost, x, y, z, side, back, clash, fuel, e16, extra)
     if best is None:
         return None
-    _, x, y, z, side, back, clash = best
+    _, x, y, z, side, back, clash, fuel, e16, extra = best
+    if not e16:
+        print("  %s: no spot near %s is %d m from the fuel (best %.0f m)" % (guest, host, fuel_m, fuel), file=sys.stderr)
     return {"x": round(x, 1), "y": round(y, 1), "z": round(z, 1), "yaw": round(h["yaw"], 1), "host": host,
-            "side": "left" if side > 0 else "right", "step_m": round(abs(z - zh) / M, 1), "clashes": clash}
+            "side": {1: "left", -1: "right", 0: "behind"}[side], "extra_m": float(extra), "step_m": round(abs(z - zh) / M, 1),
+            "clashes": clash, "fuel_m": round(fuel), "e16_ok": e16}
 
 
 # --- 3. the water tower on the high point (E14') ----------------------------------------------------------------
@@ -342,7 +447,7 @@ def water_consumers(B, sheets, exclude=("water_tower",)):
     return out
 
 
-def water_tower_site(Z, B, sheets, wid="water_tower", main=None, reach_m=WATER_REACH_M, head_m=HEAD_M):
+def water_tower_site(Z, B, sheets, wid="water_tower", main=None, reach_m=WATER_REACH_M, head_m=HEAD_M, must=(PARTI_HERO,)):
     """E14': the reservoir on the highest buildable ground that still reaches (most of) the water consumers.
     Candidates must reach >= 75 % of the best coverage; of those, the highest ground wins."""
     if wid not in sheets:
@@ -367,6 +472,15 @@ def water_tower_site(Z, B, sheets, wid="water_tower", main=None, reach_m=WATER_R
     if cover.max() <= 0:
         return None
     cand = cover >= 0.75 * cover.max()
+    # the rule-placed company buildings (the hero on its summit) have no plot pull toward a provider: the tower must
+    # reach them (with a margin), when any candidate can
+    for bid in must:
+        if bid in cons:
+            near = (np.hypot(WX - B[bid]["x"], WY - B[bid]["y"]) / M <= 0.9 * reach_m) & ok
+            if (cand & near).any():
+                cand &= near
+            elif near.any():
+                cand = near
     score = np.where(cand, Z, -1e12)
     j, i = np.unravel_index(int(score.argmax()), score.shape)
     x, y = c2w(i, j)
@@ -432,8 +546,10 @@ def drain(Z, L, sheets, main=None, start=None):
         if under[nj, ni]:
             k += 0.8                                          # under a foundation: avoid
         rise = max(0.0, Zm[nj, ni] - Zm[j, i]) / d            # against the fall: dig deeper
-        return d * k * (1 + 4 * rise)
+        over = max(0.0, Zm[nj, ni] - z_grate - MAX_COVER_M)   # ground the culvert can't reach under at MAX_COVER_M: go round
+        return d * k * (1 + 4 * rise) + d * 2.0 * over
     fi, fj = w2c(*start)
+    z_grate = zat(Z, *start) / M
     s0 = (int(round(fi)), int(round(fj)))
     # Dijkstra to every shore cell, then the outfall = least (path cost + 0.5 x metres from the pump house)
     dist = {s0: 0.0}
@@ -455,7 +571,9 @@ def drain(Z, L, sheets, main=None, start=None):
                     dist[(ni, nj)] = nd
                     prev[(ni, nj)] = (i, j)
                     heapq.heappush(pq, (nd, (ni, nj)))
-    ends = [(dist[(i, j)] + 0.5 * pull[j, i], (i, j)) for (i, j) in dist if shore[j, i]]
+    # a free outfall needs the culvert's height + cover over the sea at the shore: prefer a bank high enough
+    need = (UU_CULVERT[1] / M + COVER_M + OUTFALL_M)
+    ends = [(dist[(i, j)] + 0.5 * pull[j, i] + 8.0 * max(0.0, need - (Zm[j, i] - SEA_Z / M)), (i, j)) for (i, j) in dist if shore[j, i]]
     if not ends:
         return None
     _, (i, j) = min(ends)
@@ -481,12 +599,35 @@ def drain(Z, L, sheets, main=None, start=None):
     def height_at(sv):
         return UU_GALLERY[2] if g0 <= sv <= g1 else (UU_JUNCTION[2] if abs(sv - jn) <= UU_JUNCTION[0] / 2 else UU_CULVERT[1])
     ground = [zat(Z, x, y) for x, y in dense]
-    inv = []
-    for k, (gz, sv) in enumerate(zip(ground, s)):
-        want = gz - height_at(sv) - COVER_M * M
-        inv.append(want if k == 0 else min(want, inv[-1] - MIN_FALL * (s[k] - s[k - 1])))
+    # the invert, laid from the OUTFALL upstream: at the sea it sits OUTFALL_M over the water (a free outfall, never
+    # drowned); going upstream it rises by the minimum fall, and never lies deeper than MAX_COVER_M of cover - where the
+    # ground climbs, the invert climbs with it (gravity still holds: it only ever falls toward the sea). Where it then
+    # drops faster than the fall going downstream, that step is a DROP SHAFT; where the cover would be < COVER_M the
+    # culvert is shallow (cut-and-cover, or the headwall at the outfall).
+    n = len(dense)
+    inv = [0.0] * n
+    inv[-1] = SEA_Z + OUTFALL_M * M
+    for k in range(n - 2, -1, -1):
+        lo = ground[k] - height_at(s[k]) - MAX_COVER_M * M
+        inv[k] = max(inv[k + 1] + MIN_FALL * (s[k + 1] - s[k]), lo)
+    drops, shallow = [], 0
+    for k in range(n - 1):
+        dz = inv[k] - inv[k + 1] - MIN_FALL * (s[k + 1] - s[k])
+        if dz > DROP_M * M:
+            drops.append({"s_uu": round(s[k]), "x": round(dense[k][0], 1), "y": round(dense[k][1], 1), "drop_m": round(dz / M, 1)})
+    for k in range(n):
+        if ground[k] - inv[k] - height_at(s[k]) < COVER_M * M and s[k] < total - HEADWALL_M * M:
+            shallow += s[k + 1] - s[k] if k + 1 < n else 0.0
+    # merge drops within 20 m into one shaft
+    shafts = []
+    for d_ in drops:
+        if shafts and d_["s_uu"] - shafts[-1]["s_uu"] < 20 * M:
+            shafts[-1]["drop_m"] = round(shafts[-1]["drop_m"] + d_["drop_m"], 1)
+        else:
+            shafts.append(d_)
     path = [[round(x, 1), round(y, 1), round(gz, 1), round(iv, 1)] for (x, y), gz, iv in zip(dense, ground, inv)]
     depth = [(gz - iv) / M for gz, iv in zip(ground, inv)]
+    cover = [(gz - iv - height_at(sv)) / M for gz, iv, sv in zip(ground, inv, s)]
     under_spine = sum(1 for x, y in dense if on_spine[int(round(w2c(x, y)[1])) % N, int(round(w2c(x, y)[0])) % N]) / len(dense)
     segs = [{"kind": "grate", "s_uu": 0, "w": UU_CULVERT[0], "h": UU_CULVERT[1]},
             {"kind": "culvert", "s0_uu": 0, "s1_uu": round(g0), "w": UU_CULVERT[0], "h": UU_CULVERT[1], "ledge": UU_LEDGE},
@@ -501,6 +642,7 @@ def drain(Z, L, sheets, main=None, start=None):
             "grate": path[0][:2], "outfall": path[-1][:2], "segments": segs,
             "section_uu": {"culvert": list(UU_CULVERT), "ledge": UU_LEDGE, "junction": list(UU_JUNCTION), "gallery": list(UU_GALLERY)},
             "max_depth_m": round(max(depth), 1), "min_depth_m": round(min(depth), 1),
+            "max_cover_m": round(max(cover), 1), "drop_shafts": shafts, "shallow_m": round(shallow / M),
             "outfall_invert_vs_sea_m": round((inv[-1] - SEA_Z) / M, 1), "under_spine": round(under_spine, 2),
             "dorm_square": dorms[0] if dorms else None}
 
@@ -571,6 +713,7 @@ def apply(L, Z, sheets=None, hero=None):
                 if "road_w" in L:
                     L["road_w"].append(1.1)
             rep[hero] = {k: v for k, v in site.items() if k != "road"}
+            rep["summit"] = rep[hero]
     if "guest_house" in sheets and "directors_house" in B:
         g = beside(B, sheets, "directors_house", "guest_house", Z)
         if g:

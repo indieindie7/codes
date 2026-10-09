@@ -15,7 +15,7 @@ As a library: taps(L, Z, sheets) -> list of tap dicts (L['taps'] in the pipeline
 (mesh, x, y, yaw, scale, lift) for clutter.py's actor(); conc_report(L) -> the slurry pipeline's hops and length
 (the route itself is systems.py's process chain, 24a454b). Needs systems.py to have run (L['connections']).
 """
-import json, math, os, sys
+import json, math, os, sys, zlib
 
 import numpy as np
 
@@ -32,6 +32,15 @@ DRUM_M = 25.0
 POLE_MESH = "AvalonSM.Liandri.Pylon"           # at POLE_SCALE until a crooked-pole part exists (build_parts)
 POLE_SCALE = 0.45
 DRUM_MESH = "Terran_DecoM.Barrels.Metal_Barrel_01"
+
+
+SPLICE_UNDER_M = 4.0     # a tap shorter than this is a splice on a line that already passes the block
+SPLICE_SHACKS = 3        # the splice feeds the nearest few shacks
+SPLICE_MIN_M = 3.0       # each splice lead is at least this long (a lead of 0 m isn't visible theft)
+
+
+def rng_angle(bid, res):
+    return (zlib.crc32((bid + res).encode()) % 628) / 100.0
 
 
 def instances(bid, P, sheet):
@@ -108,11 +117,37 @@ def taps(L, Z, sheets):
             run = math.hypot(edge[0] - q[0], edge[1] - q[1])
             tap = {"taker": bid, "resource": res, "ok": True, "from_line": li, "from": src, "hook": [round(q[0], 1), round(q[1], 1)],
                    "metres": round(run / M, 1), "shacks": len(shacks)}
+            if run < SPLICE_UNDER_M * M:
+                # the company's line already runs past the block: no run to make, an illegal SPLICE - short sagging
+                # leads (power) or hoses (water) from the line straight to the nearest few shacks
+                near3 = sorted(shacks, key=lambda s_: math.hypot(s_[0] - q[0], s_[1] - q[1]))[:SPLICE_SHACKS]
+                hook_z = anchors.zat(Z, *q) + ((PYLON_H_M if (li is not None and conns[li].get("relays")) else POLE_H_M) * M if res == "power" else 5)
+                leads = []
+                for sx, sy in near3:
+                    ux, uy = sx - q[0], sy - q[1]
+                    r_ = math.hypot(ux, uy)
+                    if r_ < SPLICE_MIN_M * M:                       # the shack stands on the line: the lead goes round
+                        ang = math.atan2(uy, ux) if r_ > 1 else rng_angle(bid, res)
+                        sx, sy = q[0] + math.cos(ang) * SPLICE_MIN_M * M, q[1] + math.sin(ang) * SPLICE_MIN_M * M
+                    g = anchors.zat(Z, sx, sy)
+                    span = math.hypot(sx - q[0], sy - q[1]) / M
+                    leads.append({"a": [round(q[0], 1), round(q[1], 1), round(hook_z, 1)],
+                                  "b": [round(sx, 1), round(sy, 1), round(g + (3.0 * M if res == "power" else 5), 1)],
+                                  "span_m": round(span, 1), "sag_m": round(SAG_K * span + 0.3, 2) if res == "power" else 0.0})
+                tap["metres"] = round(sum(l_["span_m"] for l_ in leads), 1)
+                if res == "power":
+                    tap.update(style="splice_cable", poles=[[round(q[0], 1), round(q[1], 1), round(anchors.zat(Z, *q), 1), POLE_H_M]],
+                               spans=[], drops=leads)
+                else:
+                    tap.update(style="splice_hose", hose=[l_["a"] for l_ in leads[:1]] + [l_["b"] for l_ in leads[:1]],
+                               leads=leads, drums=[l_["b"][:2] for l_ in leads])
+                out.append(tap)
+                continue
             if res == "power":
                 n = max(1, int(math.ceil(run / (POLE_M * M))))
                 pts = [(q[0] + (edge[0] - q[0]) * k / n, q[1] + (edge[1] - q[1]) * k / n) for k in range(n + 1)]
                 # a little drunk: poles stand where someone could dig, never on a line
-                rng = np.random.default_rng(abs(hash((bid, res))) % (2 ** 32))
+                rng = np.random.default_rng(zlib.crc32((bid + res).encode()))
                 pts = [pts[0]] + [(x + rng.normal(0, 1.2 * M), y + rng.normal(0, 1.2 * M)) for x, y in pts[1:-1]] + [pts[-1]]
                 hook_h = PYLON_H_M if (li is not None and conns[li].get("relays")) else POLE_H_M + 1.0
                 poles, spans = sag_spans(Z, pts, hook_h)
@@ -147,7 +182,7 @@ def clutter_items(tap_list):
     for t in tap_list:
         if not t.get("ok"):
             continue
-        if t["style"] == "sag_cable":
+        if t["style"] in ("sag_cable", "splice_cable"):
             for k, (x, y, _, h) in enumerate(t["poles"]):
                 if k == 0:
                     continue                                  # the hook is on the company's own pylon/pole
@@ -187,12 +222,16 @@ def overlay(Z, L, tap_list, png, S=6):
     for t in tap_list:
         if not t.get("ok"):
             continue
-        if t["style"] == "sag_cable":
-            dr.line([P(*p[:2]) for p in t["poles"]], fill=(255, 0, 255), width=2)
+        if t["style"] in ("sag_cable", "splice_cable"):
+            if len(t["poles"]) > 1:
+                dr.line([P(*p[:2]) for p in t["poles"]], fill=(255, 0, 255), width=2)
             for dsp in t["drops"]:
                 dr.line([P(*dsp["a"][:2]), P(*dsp["b"][:2])], fill=(255, 120, 255), width=1)
         else:
-            dr.line([P(*p[:2]) for p in t["hose"]], fill=(0, 255, 200), width=2)
+            if len(t["hose"]) > 1:
+                dr.line([P(*p[:2]) for p in t["hose"]], fill=(0, 255, 200), width=2)
+            for ld in t.get("leads", []):
+                dr.line([P(*ld["a"][:2]), P(*ld["b"][:2])], fill=(0, 255, 200), width=1)
             for x, y in t["drums"]:
                 cx, cy = P(x, y)
                 dr.rectangle([cx - 1, cy - 1, cx + 1, cy + 1], fill=(0, 255, 200))
@@ -221,7 +260,7 @@ if __name__ == "__main__":
         json.dump(L, open(lp, "w"), indent=0)
     for t in T:
         print("  %-9s takes %-6s %s" % (t["taker"], t["resource"], ("%s from %s's line, %.0f m, %d shacks%s" % (
-            t["style"], t["from"], t["metres"], t["shacks"], (", %d poles" % (len(t["poles"]) - 1)) if t["style"] == "sag_cable" else ", %d drums" % len(t["drums"])))
+            t["style"], t["from"], t["metres"], t["shacks"], (", %d poles, %d leads" % (len(t["poles"]) - 1, len(t["drops"]))) if "cable" in t["style"] else ", %d drums" % len(t["drums"])))
             if t["ok"] else "NONE: " + t["why"]))
     print("taps: %d (%d ok), %d clutter props; conc: %s, route %d m" % (len(T), sum(t["ok"] for t in T), len(clutter_items(T)), C["hops"], C["route_m"]))
     print("->", out)

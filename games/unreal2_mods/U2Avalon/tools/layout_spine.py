@@ -763,10 +763,13 @@ for bid in ordered:
 
 # the rule-placed story buildings (tools/anchors.py): the guest house beside the director's, the water tower on the
 # high point that still reaches the water consumers (E14'); the drain is laid at the output, once the roads are final
-if "guest_house" in buildings and "directors_house" in placed:
-    _g = anchors.beside(placed, buildings, "directors_house", "guest_house", Z)
-    if _g:
-        place("guest_house", _g["x"], _g["y"], _g["yaw"])
+GUEST = None
+if "guest_house" in buildings and "directors_house" in placed:   # beside the director's, >= 100 m from fuel (E16)
+    GUEST = anchors.beside(placed, buildings, "directors_house", "guest_house", Z)
+    if GUEST:
+        place("guest_house", GUEST["x"], GUEST["y"], GUEST["yaw"])
+        print("  guest house: %s of directors_house (+%.0f m), %d m from the fuel (E16 %s)" % (
+            GUEST["side"], GUEST["extra_m"], GUEST["fuel_m"], "ok" if GUEST["e16_ok"] else "SHORT"))
 WATER_TOWER = None
 if "water_tower" in buildings:
     WATER_TOWER = anchors.water_tower_site(Z, placed, buildings, main=MAIN)
@@ -927,7 +930,8 @@ if "drain" in buildings and o.get("drain", "1") != "0":
             DRAIN["length_m"], DRAIN["length_uu"], DRAIN["walk_s"], 100 * DRAIN["under_spine"], DRAIN["min_depth_m"], DRAIN["max_depth_m"],
             DRAIN["outfall_invert_vs_sea_m"]))
 out["anchors"] = {k: v for k, v in (("summit", SUMMIT and {kk: vv for kk, vv in SUMMIT.items() if kk != "road"}),
-                                     ("water_tower", WATER_TOWER and {kk: vv for kk, vv in WATER_TOWER.items() if kk != "served"})) if v}
+                                     ("water_tower", WATER_TOWER and {kk: vv for kk, vv in WATER_TOWER.items() if kk != "served"}),
+                                     ("guest_house", GUEST)) if v}
 json.dump(out, open(dst, "w"), indent=0)
 print(f"spine {SPINE.length / M:.0f} m, {sum(r.cls == 'branch' for r in ROADS)} branches, {N_LANES} back lanes, {N_CONN} connectors, {len(PLOTS)} plots, {len(placed)} buildings placed, {len(FENCES)} fence runs -> {dst}")
 

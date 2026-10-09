@@ -156,15 +156,22 @@ def story_extras():
              "conc slurry line: %s, route %d m" % (" -> ".join(C["chain"]) or "none", C["route_m"]),
              "interiors: %d plans, %d rooms, %d check notes (rooms.json)" % (len(P), sum(len(p["rooms"]) for p in P.values()), sum(len(p["checks"]) for p in P.values()))]
     if "summit" in A:
-        lines.append("hero %s on the summit: ground %.0f m, plinth %.0f m, truck road %d m (steepest %.0f %%), %s" % (
-            anchors.PARTI_HERO, A["summit"]["ground_mean_m"], A["summit"]["plinth_used_m"], A["summit"]["road_m"], 100 * A["summit"]["road_grade"],
-            "in the window" if A["summit"]["in_window"] else "%.0f deg off the window" % A["summit"]["window_deg_off"]))
+        S_ = A["summit"]
+        lines.append("hero %s on the summit: ground %.0f m, plinth %.0f m, truck road %d m (steepest %.0f %%, cap %.0f %%), %s" % (
+            anchors.PARTI_HERO, S_["ground_mean_m"], S_["plinth_used_m"], S_["road_m"], 100 * S_["road_grade"], 100 * S_.get("road_cap", 0.12),
+            ("in the window frame at u=%.2f%s" % (S_["frame_u"], ", searched wider" if S_.get("widened") else "")) if S_["in_window"]
+            else "NOT in the window (%.0f deg off; no buildable spot in the frame)" % S_["window_deg_off"]))
+    if "guest_house" in A:
+        lines.append("guest house beside %s (%s): %d m from the fuel (E16 %s)" % (
+            A["guest_house"]["host"], A["guest_house"]["side"], A["guest_house"]["fuel_m"], "ok" if A["guest_house"]["e16_ok"] else "SHORT"))
     if "water_tower" in A:
         lines.append("water tower (E14'): head %.0f m (%s)" % (A["water_tower"]["head_m"], "ok" if A["water_tower"]["e14_ok"] else "short"))
     if L_.get("drain"):
         D = L_["drain"]
-        lines.append("drain: %.0f m (%d UU, %.0f s), %.0f %% under the spine, %.1f-%.1f m deep" % (
-            D["length_m"], D["length_uu"], D["walk_s"], 100 * D["under_spine"], D["min_depth_m"], D["max_depth_m"]))
+        lines.append("drain: %.0f m (%d UU, %.0f s), %.0f %% under the spine, %.1f-%.1f m deep, cover <= %.1f m, outfall invert %+.1f m over the sea, "
+                     "%d drop shafts, %d m at grade (covered cut)" % (
+            D["length_m"], D["length_uu"], D["walk_s"], 100 * D["under_spine"], D["min_depth_m"], D["max_depth_m"], D.get("max_cover_m", 0),
+            D["outfall_invert_vs_sea_m"], len(D.get("drop_shafts", [])), D.get("shallow_m", 0)))
     open(os.path.join(RUN, "story.txt"), "w", encoding="utf-8").write("\n".join(lines) + "\n")
     print("\n".join("  " + x for x in lines), flush=True)
 
