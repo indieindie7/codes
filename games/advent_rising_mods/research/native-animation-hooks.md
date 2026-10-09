@@ -478,3 +478,39 @@ Scripts:
   constants).
 
 Running headless needs `JAVA_HOME=Documents\Tools\jdk\jdk-21.0.12.1+1`.
+
+## Tested in game: foot IK (2026-10-09)
+
+Hook point 1 works as written. AdventMod/native/footik.c + Classes/ModFeet.uc (write-up with
+the numbers: AdventMod/FEET.md). What the game confirmed or corrected:
+
+- `SetBoneDirection(name, rot 0, vec 0, alpha 1, Space 99, boneIndex)` (vtbl 0x11C) then
+  `SetWorldSpacerFunction(name, fn, boneIndex)` (vtbl 0x120) on leftUpLeg/leftLeg/leftFoot and
+  the right side: the callback runs inside the hierarchy walk in bone order (thigh, calf, foot),
+  with the signature above (`FCoords* __cdecl fn(FCoords* ret, AActor*, int bone, int director,
+  USkeletalMeshInstance*)`; EonEngine's own FUN_10743290 has the same prototype). The engine
+  copies the 12 floats and keeps the bone's origin. Children follow the returned axes in the same
+  frame: the lift asked for is the lift drawn (asked z -1078.1, got -1078.1).
+- The vtable slots 0x11C/0x120/0x124/0x13C of a pawn's mesh instance are exactly the export
+  thunks (SetBoneDirection, SetWorldSpacerFunction, MatchRefBone, MeshToWorld): a strict check.
+- The per-bone FCoords (+0xB4, stride 0x30): rows are the rows of the local-to-mesh rotation
+  (mesh = R * local). Decided at run time from the ref skeleton's child position (0.00 vs 30.44).
+- `FMeshBone` (USkeletalMesh +0x1DC, count +0x1E0, stride 0x40) is not UT2004's layout: FName +0,
+  Flags +4, quat +8, position +0x18, length +0x24, ParentIndex **+0x34**, NumChildren +0x38, two
+  pointers at +0x2C and +0x3C.
+- `MeshToWorld()` (vtbl 0x13C, returns an FMatrix through a hidden pointer) is safe to call from
+  the callback; world = (x, y, z, 1) * M as row vectors. The mesh draws at Location + PrePivot
+  (0x1B4). DrawScale 0x1A4, DrawScale3D 0x1A8.
+- `ULevel::SingleLineCheck` (export 0x1030106e; `(FCheckResult&, Source, End, Start, flags,
+  FVector Extent)`, returns 1 for no hit, Hit.Location at +8) is safe from inside the pose build:
+  2 traces per pawn per pose build cost ~1 us each (whole callback 1.0-1.3 us).
+- Alpha 0 on the director plus a NULL world-spacer makes it inert (the removal path).
+- Director translation (+0x20) is a mesh-space move of one bone; a pelvis through it would detach
+  the thigh skin from the hips, so the pelvis drop is PrePivot from script. Hips stays
+  EonEngine's.
+- Sanity rules that turned out to matter: the clip stands on the collision cylinder's base, not
+  on a trace under the pawn's centre (on a step edge the cylinder is held up by the edge, 29
+  above the floor under its centre); a surface higher than MaxLift above the base (a crate, a
+  bench) must not count as ground, or a foot swung over it climbs onto it; a crouch lowers
+  Location by (78 - 55) and raises PrePivot by the same, so the base is Location + PrePivot - the
+  standing height, and anything that moves PrePivot from script must add to it, not set it.

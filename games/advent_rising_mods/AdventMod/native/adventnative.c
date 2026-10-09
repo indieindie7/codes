@@ -20,6 +20,7 @@ int KarmaFixApply(void);   /* karmafix.c */
 int ShadowAlphaApply(void); /* shadowalpha.c */
 int CaptureNext(int Mask);  /* capture.c */
 int SetMaxFps(int Fps);     /* capture.c */
+int FootIKCommand(const wchar_t* Cmd);   /* footik.c */
 extern int D3DZAlways;
 
 __declspec(dllexport) wchar_t GPackage[] = L"AdventNative";
@@ -242,6 +243,7 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsnicmp(Cmd, L"Pcss:", 5)) return SetPcss(Cmd[5] == L'1');
 	if (!_wcsnicmp(Cmd, L"U2Set:", 6)) return U2SetCommand(Cmd + 6);
 	if (!_wcsnicmp(Cmd, L"Blood:", 6)) return BloodCommand(Cmd + 6);
+	if (!_wcsnicmp(Cmd, L"FootIK", 6)) return FootIKCommand(Cmd);
 	if (!_wcsnicmp(Cmd, L"Fits:", 5))
 	{
 		/* does WxH fit on the screen the game is on? */

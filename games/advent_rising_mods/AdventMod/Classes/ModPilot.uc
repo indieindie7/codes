@@ -1078,6 +1078,18 @@ function StartStep()
 	case "WAIT":
 		StepLength = ArgF(1, 1);
 		break;
+	case "GOTO":
+		// GOTO X Y Z: the player set down there (a repeatable stand on a step or a slope; the game
+		// then drops it to the floor)
+		if (PC().Pawn != None)
+			Note("goto " $ ArgF(1, 0) $ " " $ ArgF(2, 0) $ " " $ ArgF(3, 0) $ ": " $ PC().Pawn.SetLocation(vect(1,0,0) * ArgF(1, 0) + vect(0,1,0) * ArgF(2, 0) + vect(0,0,1) * ArgF(3, 0)));
+		StepLength = 0.5;
+		break;
+	case "FLOORMAP":
+		// FLOORMAP [reach] [step]: the floor's height on a grid around the player (rows along Y, columns
+		// along X, relative to the player's floor; "." = nothing within 300 below), to find steps and slopes
+		FloorMap(ArgF(1, 600), ArgF(2, 100));
+		break;
 	case "WAITCONTROL":
 		StepLength = ArgF(1, 120);
 		break;
@@ -1407,6 +1419,35 @@ event Tick(float DeltaTime)
 	}
 	if (StepTime >= StepLength)
 		StartStep();
+}
+
+// FLOORMAP: the floor's height around the player, relative to the floor under it
+function FloorMap(float Reach, float Step)
+{
+	local Pawn P;
+	local vector HitLoc, HitNorm, Base, At;
+	local float X, Y, Floor;
+	local string Row;
+
+	P = PC().Pawn;
+	if (P == None)
+		return;
+	Base = P.Location;
+	Floor = Base.Z - P.CollisionHeight;
+	Note("floormap: around " $ Base $ " (floor " $ int(Floor) $ "), " $ int(Step) $ " units per cell, X across, Y down");
+	for (Y = -Reach; Y <= Reach; Y += Step)
+	{
+		Row = "floormap: y" $ int(Y) $ ":";
+		for (X = -Reach; X <= Reach; X += Step)
+		{
+			At = Base + vect(1,0,0) * X + vect(0,1,0) * Y;
+			if (Trace(HitLoc, HitNorm, At - vect(0,0,300), At + vect(0,0,40), false) == None)
+				Row = Row $ " .";
+			else
+				Row = Row $ " " $ int(HitLoc.Z - Floor);
+		}
+		Note(Row);
+	}
 }
 
 // RANDOMPRINTS: place, settle, capture, next
