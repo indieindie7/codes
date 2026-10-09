@@ -9,9 +9,9 @@ L="/c/Program Files (x86)/Steam/steamapps/common/Unreal II The Awakening/System/
 SK="C:\\Program Files (x86)\\Steam\\steamapps\\common\\Unreal II The Awakening\\System\\Sketch"
 T="$(cd "$(dirname "$0")" && pwd)"
 P='edit MARK|GM: SKETCH|AvalonChat|Unrecognized command|Critical:|General protection'
-n0=$(grep -aEc "$P" "$L" 2>/dev/null || echo 0)
+n0=$(grep -aEc "$P" "$L" 2>/dev/null); n0=${n0:-0}
 while true; do
-	n=$(grep -aEc "$P" "$L" 2>/dev/null || echo 0)
+	n=$(grep -aEc "$P" "$L" 2>/dev/null); n=${n:-0}
 	[ "$n" -lt "$n0" ] && n0=0
 	if [ "$n" -gt "$n0" ]; then
 		grep -aE "$P" "$L" | tail -n $((n - n0)) | while IFS= read -r line; do
