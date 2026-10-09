@@ -38,6 +38,10 @@ veto. The generator keeps the candidate they agree on best (the geometric mean o
               - LD7 the Unreal 1 first-Skaarj recipe: somewhere on the walk a quiet stretch (25-60 s, no beat) that ends in
                 a junction good enough to fight in (the space for a staged reveal); the drain's stretch before the
                 sluice gallery counts (credit qs/25 when shorter)
+  MARKS     (round 3, beside the total, no veto) the user's in-game marks as requirements (redesign/2026-10-09/
+            marks_checklist.md): M1 nothing floats (footprints on graded ground, clutter Z), M2 the horizon rigs inside
+            the visible range, M3 Q74 rich high / poor low, M4 Q83 no cranes on the pyramid hero; darkness and rain
+            roofs are listed as needs-in-game-check
   ARTIST    the drawings and the believability metrics
               - IMP (irregular, lived-in plots) and HIER (street hierarchy, loops, old core near the dock)
               - figure-ground grain: no building lost in the sea, the town compact (its built area within a radius)
@@ -348,6 +352,111 @@ def level_designer(Z, L, sheets, walk):
             "checks": {k: round(v, 2) for k, v in checks.items()}}
 
 
+# ---------------------------------------------------------------- the MARKS review (round 3)
+# redesign/2026-10-09/marks_checklist.md: the user's in-game marks on the old TutA as requirements. Scored with notes,
+# NO veto, and kept OUT of the five-role total so the scores stay comparable. What needs the game is listed, not scored.
+FLOAT_TOL_M = 2.0                          # a footprint's graded ground may vary this much (the shanty perches on stilts)
+CLUTTER_FLOAT_UU = 120.0                   # a prop more than this over the graded ground floats (Q2/Q26/Q65/Q66)
+HORIZON_MESHES = ("rig", "islet")          # + far_islands: the horizon structures (Q45/Q48/Q70)
+
+
+def marks_review(Z, ZG, L, sheets, run_dir=None):
+    import re
+    B = L["buildings"]
+    ZE = ZG if ZG is not None else Z
+    notes, checks, needs = [], {}, []
+    hid = hero_id(B, sheets)
+    # 1. nothing floats: building footprints on graded ground, clutter Z against the ground
+    bad, n = [], 0
+    for bid, b in B.items():
+        s = sheets.get(bid)
+        if not s or "size" not in s or s.get("kind") in ("rig", "islet", "barge", "wreck") or bid in ("far_islands", "tower") or b.get("underground"):
+            continue                                      # "tower" is the stock map's, not generated
+        # the footprint's own cells (half the longest side; the layout's `cells` are the 0.6x clearance disc)
+        r = max(s["size"][0], s["size"][1]) * M * 0.5 / CELL
+        fi, fj = (b["x"] - LOC[0]) / CELL + N / 2, (b["y"] - LOC[1]) / CELL + N / 2
+        zs = [ZE[j, i] for j in range(max(0, int(fj - r)), min(N, int(fj + r) + 2)) for i in range(max(0, int(fi - r)), min(N, int(fi + r) + 2))
+              if (i + 0.5 - fi) ** 2 + (j + 0.5 - fj) ** 2 <= (r + 0.5) ** 2]
+        if not zs:
+            continue
+        n += 1
+        tol = 32.0 if bid == hid else FLOAT_TOL_M        # the hero's battered plinth takes 30 m (anchors.PLINTH_M)
+        if (max(zs) - min(zs)) / M > tol:
+            bad.append("%s %.0f m" % (bid, (max(zs) - min(zs)) / M))
+    fp = 1.0 - len(bad) / max(1, n)
+    cl = None
+    clut = os.path.join(run_dir, "isl_clutter.t3d") if run_dir else None
+    if clut and os.path.exists(clut):
+        txt = open(clut, encoding="utf-8", errors="replace").read()
+        tot = fl = 0
+        for blk in re.findall(r"Begin Actor(.*?)End Actor", txt, re.S):
+            mm = re.search(r"Location=\(X=([-\d.]+),Y=([-\d.]+),Z=([-\d.]+)\)", blk)
+            if not mm or "B_shed_a" in blk and "occluders" in L and any(abs(float(mm.group(1)) - oc["x"]) < 1 for oc in L["occluders"]):
+                continue                                  # the occluder stack is lifted on purpose
+            x, y, z = (float(v) for v in mm.groups())
+            g = _g(ZE, x, y)
+            if g < SEA_Z - 200:
+                continue
+            tot += 1
+            fl += 1 if z - g > CLUTTER_FLOAT_UU else 0
+        cl = 1.0 - fl / max(1, tot)
+        notes.append("floating: %d of %d footprints break %.0f m on the graded ground%s; clutter %d of %d props over %.0f UU up" % (
+            len(bad), n, FLOAT_TOL_M, (" (" + ", ".join(bad[:4]) + ")") if bad else "", fl, tot, CLUTTER_FLOAT_UU))
+    else:
+        notes.append("floating: %d of %d footprints break %.0f m on the graded ground%s; clutter not built yet" % (
+            len(bad), n, FLOAT_TOL_M, (" (" + ", ".join(bad[:4]) + ")") if bad else ""))
+    checks["M1 nothing floats"] = fp if cl is None else 0.5 * (fp + cl)
+    # 2. horizon rigs inside the visible range: in the map's extent, and a terrain line of sight from the command room
+    ex, ey, ez = compose.EYE
+    half = N / 2 * CELL
+    hz = []
+    for bid, b in B.items():
+        s = sheets.get(bid, {})
+        if s.get("kind") not in HORIZON_MESHES and bid != "far_islands":
+            continue
+        inside = abs(b["x"] - LOC[0]) < half and abs(b["y"] - LOC[1]) < half
+        top = max(_g(Z, b["x"], b["y"]), SEA_Z) + (s["size"][2] if len(s.get("size") or ()) > 2 else 20) * M
+        seen = inside
+        if inside:
+            for u in np.linspace(0.02, 0.98, 60):
+                if _g(Z, ex + (b["x"] - ex) * u, ey + (b["y"] - ey) * u) > ez + (top - ez) * u:
+                    seen = False
+                    break
+        hz.append((bid, inside, seen, math.hypot(b["x"] - ex, b["y"] - ey) / M))
+    if hz:
+        checks["M2 horizon rigs in range"] = sum(1 for h in hz if h[2]) / len(hz)
+        notes.append("horizon: " + ", ".join("%s %s at %.0f m" % (h[0], "seen" if h[2] else ("hidden" if h[1] else "OFF THE MAP"), h[3]) for h in hz))
+    else:
+        checks["M2 horizon rigs in range"] = 0.0
+        notes.append("horizon: no rigs or islets placed (Q70 wants them)")
+    # 3. Q74 rich high, poor low: the company houses stand over the shanty, and no poor housing on the town's top 10 %
+    rich = [bid for bid in ("directors_house", "guest_house", "staff_houses") if bid in B]
+    poor = [bid for bid, b in B.items() if bid.startswith(("shanty", "old_camp")) or (b.get("layer") == "decline" and sheets.get(bid, {}).get("kind") == "house")]
+    land = [(bid, max(_g(ZE, b["x"], b["y"]), SEA_Z)) for bid, b in B.items() if sheets.get(bid, {}).get("kind") not in ("rig", "islet", "barge", "wreck") and bid != "far_islands"]
+    if rich and poor and land:
+        rz = np.mean([_g(ZE, B[b]["x"], B[b]["y"]) for b in rich])
+        pz = np.mean([_g(ZE, B[b]["x"], B[b]["y"]) for b in poor])
+        top10 = np.percentile([z for _, z in land], 90)
+        on_top = [b for b in poor if _g(ZE, B[b]["x"], B[b]["y"]) >= top10]
+        checks["M3 rich high, poor low"] = 0.5 * (1.0 if rz > pz else 0.0) + 0.5 * (1.0 - len(on_top) / len(poor))
+        notes.append("Q74: the company houses %.0f m %s the shanty's mean ground; %s on the town's top 10 %%" % (
+            abs(rz - pz) / M, "over" if rz > pz else "UNDER", ("poor housing " + ", ".join(on_top)) if on_top else "no poor housing"))
+    else:
+        checks["M3 rich high, poor low"] = 0.5
+        notes.append("Q74: not enough housing placed to judge")
+    # 4. no cranes on pyramids (Q83): the hero's sheet model is the PyramidTower, never a crane
+    model = sheets.get(hid, {}).get("model", "")
+    checks["M4 no cranes on pyramids"] = 0.0 if "crane" in model.lower() else 1.0
+    notes.append("Q83: the hero %s is built from `model: %s` (%s)" % (hid, model or "-", "no crane" if checks["M4 no cranes on pyramids"] else "A CRANE - the user removed them"))
+    # needs the game: darkness (Q5/Q47/Q49/Q80) and rain inside (Q5/Q50), with the binder's hints
+    unlit = [bid for bid in B if not sheets.get(bid, {}).get("lit", True)]
+    noroof = [bid for bid in B if sheets.get(bid, {}).get("roof", "").lower() in ("none", "open", "no")]
+    needs.append("interiors not too dark (Q5/Q47/Q49/Q80): check in game; binder lit: no -> %s" % (", ".join(unlit) if unlit else "none"))
+    needs.append("rain roofs everywhere (Q5/Q50): check in game (NoRain boxes over every interior); binder roof: none -> %s; the drain and the tower interiors too" % (", ".join(noroof) if noroof else "none"))
+    return {"score": round(float(np.mean(list(checks.values()))), 3), "notes": notes, "veto": None,
+            "checks": {k: round(v, 2) for k, v in checks.items()}, "needs_in_game": needs}
+
+
 def light_off(view_yaw):
     """the angle between a view's direction and the sun's position: 0-60 back light (silhouettes, rim), 60-120 side
     light (form), 120-180 front light (flat; everything shown, nothing hidden)"""
@@ -626,7 +735,10 @@ def review(heightmap, layout_path, graded=None):
     notes.append("figure-ground: 80 %% of the buildings within %.0f m of the centre" % spread)
     R["artist"] = {"score": round(0.4 * imp + 0.35 * hier + 0.25 * compact, 3), "notes": notes, "veto": None}
 
-    vetoes = [r["veto"] for r in R.values() if r["veto"]]
+    # ---------------------------------------------------------------- the MARKS (outside the total)
+    R["marks"] = marks_review(Z, ZG, L, sheets, run_dir=os.path.dirname(os.path.abspath(layout_path)))
+
+    vetoes = [r["veto"] for r in R.values() if isinstance(r, dict) and r.get("veto")]
     sc = [max(1e-3, R[k]["score"]) for k in ("writer", "director", "engineer", "level", "artist")]
     R["total"] = 0.0 if vetoes else round(float(np.prod(sc) ** (1 / len(sc))), 3)
     R["vetoes"] = vetoes
@@ -637,6 +749,9 @@ def report(R, label=""):
     lines = ["co-direction %s: %.3f%s" % (label, R["total"], ("  VETO: " + "; ".join(R["vetoes"])) if R["vetoes"] else "")]
     for k in ("writer", "director", "engineer", "level", "artist"):
         lines.append("  %-8s %.2f  %s" % (k.upper(), R[k]["score"], " | ".join(R[k]["notes"])))
+    if "marks" in R:                          # the user's marks: scored beside the total, never in it
+        lines.append("  %-8s %.2f  %s" % ("MARKS", R["marks"]["score"], " | ".join(R["marks"]["notes"])))
+        lines.append("           needs the game: " + " | ".join(R["marks"]["needs_in_game"]))
     return "\n".join(lines)
 
 

@@ -12,7 +12,7 @@ roof: dome
 wear: 0.05
 lit: yes
 function: bank
-model: CraneTower
+model: PyramidTower
 needs: power water comms
 motion: flare
 ref: tower

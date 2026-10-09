@@ -152,7 +152,7 @@ No code changed in round 3; these items are the plan, not done:
    - Floating props: building footprints on graded ground, and clutter Z against the ground.
    - Horizon rigs: rigs, islets and far_islands inside the map extent and visible from the eye.
    - Q74: rich high, poor low, no poor housing on the town's top 10 %.
-   - No cranes on pyramids: the hero's `model:` must not be a Crane. NOTE: liandri_tower.md says `model:
-     CraneTower`, while the checklist says the summit tower is the PyramidTower (Q83), so this check would fail
-     today.
+   - No cranes on pyramids: the hero's `model:` must not be a Crane. liandri_tower.md said `model: CraneTower`;
+     the user's mark Q83 (the summit tower is AvalonSM3.Liandri.PyramidTower) decides: the sheet now says
+     `model: PyramidTower`, and the check reads it.
    - Interiors too dark and rain roofs: list them as "needs in-game check", plus binder hints (lit: no, roof: none).
