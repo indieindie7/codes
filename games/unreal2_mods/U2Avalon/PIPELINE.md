@@ -19,6 +19,19 @@ it there, and the thing that carries that need (road, pipe, cable, conveyor) is 
 | 7 | **build** | `tools/terrain_apply.py`, `tools/export_mutator.py t3d=`, `uedlib` | the heightmap into TutA's TerrainInfo (copy, delete, re-import), the buildings as StaticMeshActors at ground height, LIGHT APPLY, save. Cards stay in the mutator ini. |
 | 8 | **verify** | `tools/binder.py` check, `U2Pilot` run, editor pictures, `terrain_score`, the systems report | routines reach real places, doors face arrival, abandoned = worn and dark; the window frames the plant; every need met; the pictures a reviewer can judge. |
 
+**Playtest swap (the user, 2026-10-09):** while the user is playing (the GPU is theirs), stage 1 and the
+Hunyuan part of stage 5 don't generate images. The creative team finds fitting images and art on the
+internet instead. For each one it records:
+- the page URL, the artist or source, and the licence;
+- what in it fits (silhouette, material, light, mood);
+- which building sheet or interior it is for.
+
+It collects them in a reference board (`redesign/<date>/references.md`). Nothing is downloaded without
+the user's OK. References inform the sheets, palette and parts, and the art itself never ships in a mod.
+Generation (Kontext paint-overs, Sana, Hunyuan) resumes when the GPU is free. Also offline during a
+playtest: no pilot runs and no editor or game launches. The binder, layout, scoring and drawings still run
+on the CPU.
+
 Feedback loops: stage 1 over stage 8's frames (concepts of the real layout), stage 4 failing back into
 stage 3 (re-roll), stage 8's checker back into stage 0 (a citizen with nowhere to go is a missing sheet).
 

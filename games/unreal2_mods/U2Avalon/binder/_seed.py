@@ -7,7 +7,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 CITIZENS = {
 "hawkins": """id: hawkins
-name: Cmdr. Ruth Hawkins
+name: Cmdr. Hawkins
 role: Authority sector commander, Avalon station
 employer: authority
 lives: tower
