@@ -43,7 +43,34 @@ var config float ChargeAnger;       // anger that makes it charge
 var config float CoverReach;        // how far it looks for cover (world units)
 var config float NearMissReach;     // how close a shot must pass to count (world units)
 var config float FlankEvery;        // seconds between flank orders per squad
-var config float HoundCircle;       // how far from the prey hounds circle (world units)
+var config float HoundCircle;       // how far from the prey hounds circle (world units; packs off)
+
+// hound packs (AI-MINDS-DESIGN.md section 9): roles (holder, flankers, closer), zig-zag legs, pinning
+var config bool bHoundPack;         // off: the old circle-then-charge pack
+var config bool bHoundLog;          // every role, leg, arrival and commit in AdventNative.log
+var config float HoundHold;         // the holder's distance from the prey (world units; it feints +-70 round it)
+var config float HoundFlankAngle;   // degrees round the prey from where it looks that flankers go to
+var config float HoundSkipLeg;      // a zig-zag leg's length (world units; 0.75..1.25 of it)
+var config float HoundSkipAngle;    // ... and its angle off the line to the goal (degrees; +-10)
+var config float HoundCommitFront;  // the prey's front cone (degrees): a flanker outside it lets the closer commit
+var config float HoundHoldMax;      // seconds a pack holds without a flanker in place before the nearest commits anyway
+var config float HoundSkipDodge;    // chance a skip leg is the engine's own dodge (Dodge_L/R), 0..1
+var config float HoundPinWall;      // a wall this close behind the prey pins it (world units)
+struct PackInfo
+{
+	var SquadAI S;
+	var float RoleAt;               // when roles were last dealt
+	var float HoldSince;            // when the current hold began (the last commit, or the engagement)
+	var bool bPinned;
+	var float LogAt;
+	var int Pins;
+};
+var array<PackInfo> Packs;
+// measures (pilot HOUNDTEST, with packs on or off): bites on the player by hounds, when the first came
+// after the first hound engaged, how far round from the player's view they came, melee contacts, the
+// time hounds stood on two or more sides of the player, legs, arrivals, commits, pins
+var float HoundEngagedAt, HoundFirstBite, HoundBiteBearing, HoundTime, TwoSideTime;
+var int HoundBites, HoundContacts, HoundDamage, HoundEngaged;
 
 var array<ModMind> Minds;
 var ModMindRules Rules;
@@ -402,6 +429,8 @@ function Hit(Pawn Injured, Pawn InstigatedBy, int Damage)
 	{
 		PlayerHits++;
 		PlayerDamage += Damage;
+		if (MindOf(InstigatedBy).Species == 3/*S_Hound*/)
+			HoundBite(MindOf(InstigatedBy), Injured, Damage);
 	}
 	M = MindOf(Injured);
 	if (M == None || Damage <= 0)
@@ -550,7 +579,8 @@ function bool Busy(ModMind M)
 		|| B.IsInState('StandingOnVehicleAttack') || B.IsInState('Talking') || B.IsInState('Listen') || B.IsInState('FinishAnimState')
 		|| B.IsInState('WaitForInputState') || B.IsInState('Nothing') || B.IsInState('RemoveStickyGrenade') || B.IsInState('OnFireFlee')
 		|| B.IsInState('Confused') || B.IsInState('BackToBackFighting') || B.IsInState('Protected') || B.IsInState('TeleportCloserToPlayer')
-		|| B.IsInState('Block') || B.IsInState('BlockingAttack') || B.IsInState('Startled') || B.IsInState('Enrage') || B.IsInState('Taunt'))
+		|| B.IsInState('Block') || B.IsInState('BlockingAttack') || B.IsInState('Startled') || B.IsInState('Enrage') || B.IsInState('Taunt')
+		|| B.IsInState('Dodge'))
 		return true;
 	return M.P.Physics == PHYS_Falling || M.P.Physics == PHYS_KarmaRagdoll;
 }
@@ -890,7 +920,7 @@ function Decide(ModMind M, float DeltaTime)
 		if (M.TaskTime > M.TaskLimit || Enemy == None
 			|| (M.Task == 1/*T_Pinned*/ && M.Pressure < FreePressure)
 			|| (M.Task == 3/*T_FallBack*/ && M.Fear < FleeFear - 0.25)
-			|| (M.Task == 5/*T_Charge*/ && M.Anger < ChargeAnger - 0.3))
+			|| (M.Task == 5/*T_Charge*/ && M.Anger < ChargeAnger - 0.3 && M.Role != 3/*R_Closer*/))
 		{
 			Log2(M.P.Name $ " done with " $ M.TaskName(M.Task) $ " after " $ int(M.TaskTime) $ " s");
 			if (M.Task == 4/*T_Flank*/)
@@ -922,6 +952,16 @@ function Decide(ModMind M, float DeltaTime)
 			}
 			else if (!M.B.IsInState('MoveToDestination'))
 				M.B.DoMoveToDestination('Mind_ToCover', NextLeg(M, M.TaskDest));
+			return;
+		case 9/*T_Skip*/:
+			// a zig-zag leg: done when it is there, or the move ended (or never started); then a short dwell
+			// and the pack gives the next one (HoundPack)
+			if (VSize((M.P.Location - M.TaskDest) * vect(1,1,0)) < 90 || (M.TaskTime > 0.25 && !M.B.IsInState('MoveToDestination')))
+			{
+				M.Task = 0/*T_None*/;
+				M.NextDecision = Now + 0.1 + 0.2 * FRand();
+				M.B.DoWait('Mind_SkipDwell', 0.25);
+			}
 			return;
 		case 3/*T_FallBack*/:
 		case 4/*T_Flank*/:
@@ -1024,6 +1064,16 @@ function Decide(ModMind M, float DeltaTime)
 			SetTask(M, 2/*T_Cover*/, 8, "afraid, cover further back");
 			M.B.DoMoveToDestination('Mind_FearCover', NextLeg(M, Spot));
 		}
+		else if (M.Species == 3/*S_Hound*/ && bHoundPack && M.Role != 0)
+		{
+			// a frightened hound breaks off to the pack's rear
+			Away = PackCentre(M);
+			Away = Away + Normal((Away - Enemy.Location) * vect(1,1,0)) * 500;
+			M.TaskDest = Away;
+			M.Role = 0;
+			SetTask(M, 3/*T_FallBack*/, 6, "afraid, to the pack's rear");
+			M.B.DoMoveToDestination('Mind_PackRear', NextLeg(M, Away));
+		}
 		else
 		{
 			Away = M.P.Location + Normal(M.P.Location - Enemy.Location) * 600;
@@ -1113,14 +1163,18 @@ function Deal()
 			RankR[j] = M;
 			ScoreR[j] = S;
 		}
-		// melee: the angry and the hounds; not the scared
-		if (bAsks && M.Fear < 0.6)
+		if (M.Species == 3/*S_Hound*/ && HoundEngagedAt == 0)
+			HoundEngagedAt = Now;
+		// melee: the angry and the hounds; not the scared; a pack hound only as its closer
+		if (bAsks && M.Fear < 0.6 && !(bHoundPack && M.Species == 3/*S_Hound*/ && M.Role != 0 && M.Role != 3/*R_Closer*/))
 		{
 			S = 100 * FMin(Now - M.LastMelee, 20) - 0.5 * D + 600 * M.Anger * M.Aggression;
 			if (bSight)
 				S += 400;
 			if (M.Species == 3/*S_Hound*/)
 				S += 300;
+			if (M.Role == 3/*R_Closer*/)
+				S += 1500;
 			for (j = 0; j < RankM.Length; j++)
 				if (S > ScoreM[j])
 					break;
@@ -1216,8 +1270,10 @@ function Squads()
 			continue;
 		Centre /= Engaged;
 
-		// hounds: a pack takes places around the prey, then closes in
-		if (Hounds >= 2)
+		// hounds: roles, zig-zag legs, pinning (packs on); or places round the prey, then a charge (off)
+		if (Hounds >= 1 && bHoundPack)
+			HoundPack(S, i, Enemy, Hounds);
+		else if (Hounds >= 2)
 		{
 			for (j = i; j < Minds.Length; j++)
 			{
@@ -1297,6 +1353,587 @@ function vector FlankSpot(ModMind M, vector Want, Pawn Enemy)
 	return vect(0,0,0);
 }
 
+// hound packs (AI-MINDS-DESIGN.md section 9) -----------------------------------------------------
+// A pack of hounds fighting the player stops beelining. Roles are facts each hound reads (Horizon's
+// group agent): the HOLDER keeps the front at HoundHold, feinting in and out, and never commits first;
+// the FLANKERS go wide to +-HoundFlankAngle round the prey (out of its view, along the paths with the
+// flank cost profile, to a scored spot); the CLOSER is the one that commits the leap: a flanker
+// outside the prey's front cone, or the holder when the prey is pinned (a wall close behind it), or
+// the nearest when the hold has run too long. Inside 600 units every move is a zig-zag of short legs
+// (SkipLeg). A lone hound is a SKIRMISHER: it holds and skips, and commits when the prey is pinned or
+// the hold runs out. Fear (Decide) breaks a hound off to the pack's rear; anger shortens the hold and
+// narrows the front cone. Only the closer holds the melee token while it commits.
+
+function HoundLog(string S)
+{
+	if (bHoundLog || bMindLog)
+		class'ModSettings'.static.Note("hounds: " $ S);
+}
+
+function int PackOf(SquadAI S)
+{
+	local int i;
+
+	for (i = 0; i < Packs.Length; i++)
+		if (Packs[i].S == S)
+			return i;
+	Packs.Length = Packs.Length + 1;
+	Packs[i].S = S;
+	Packs[i].HoldSince = Level.TimeSeconds;
+	return i;
+}
+
+// where the prey looks (its controller's view, flat) and, if it is moving, which way
+function PreyFrame(Pawn Prey, out vector Facing, out vector Moving)
+{
+	local PlayerController PC;
+
+	PC = PlayerController(Prey.Controller);
+	if (PC != None)
+		Facing = Normal(Vector(PC.Rotation) * vect(1,1,0));
+	else
+		Facing = Normal(Vector(Prey.Rotation) * vect(1,1,0));
+	Moving = vect(0,0,0);
+	if (VSize(Prey.Velocity * vect(1,1,0)) > 80)
+		Moving = Normal(Prey.Velocity * vect(1,1,0));
+}
+
+// degrees round from where the prey looks to At: 0 straight ahead, 180 behind; + to its left, - to its right
+function float Bearing(Pawn Prey, vector Facing, vector At)
+{
+	local vector To;
+	local float A;
+
+	To = Normal((At - Prey.Location) * vect(1,1,0));
+	A = Acos(FClamp(To dot Facing, -1, 1)) * 57.2958;
+	if ((Facing cross To).Z < 0)
+		A = -A;
+	return A;
+}
+
+static function vector Turned(vector V, float Degrees)
+{
+	local vector R;
+	local float C, S;
+
+	C = Cos(Degrees * 0.0174533);
+	S = Sin(Degrees * 0.0174533);
+	R.X = V.X * C - V.Y * S;
+	R.Y = V.X * S + V.Y * C;
+	R.Z = 0;
+	return R;
+}
+
+function vector PackCentre(ModMind M)
+{
+	local int i, N;
+	local vector C;
+
+	for (i = 0; i < Minds.Length; i++)
+		if (Minds[i].Species == 3/*S_Hound*/ && Minds[i].B.Squad == M.B.Squad && Minds[i].P.Health > 0)
+		{
+			C += Minds[i].P.Location;
+			N++;
+		}
+	if (N == 0)
+		return M.P.Location;
+	return C / N;
+}
+
+// solid floor under At, not a drop from where M stands
+function bool FloorUnder(ModMind M, vector At)
+{
+	local vector HitLoc, HitNorm;
+
+	if (Trace(HitLoc, HitNorm, At - vect(0,0,1) * (M.P.CollisionHeight + 120), At + vect(0,0,20), false) == None)
+		return false;
+	return HitLoc.Z > M.P.Location.Z - M.P.CollisionHeight - 70;
+}
+
+// one zig-zag leg toward Goal: HoundSkipLeg long, HoundSkipAngle off the line, left and right by turns,
+// to a point clear of walls and drops and not into the prey's teeth; now and then the engine's own
+// dodge (Dodge_L/R root motion) instead of a run. Blocked both ways: straight at the goal, never a stall.
+function SkipLeg(ModMind M, vector Goal, Pawn Prey)
+{
+	local vector To, Dir, End;
+	local float Len, A;
+	local int Try;
+
+	To = (Goal - M.P.Location) * vect(1,1,0);
+	if (VSize(To) < 50)
+		To = Normal((M.P.Location - Prey.Location) * vect(1,1,0)) cross vect(0,0,1);   // there already: sidestep
+	To = Normal(To);
+	if (M.SkipSide == 0)
+		M.SkipSide = 1;
+	M.SkipSide = -M.SkipSide;
+	M.SkipCount++;
+	for (Try = 0; Try < 2; Try++)
+	{
+		A = (HoundSkipAngle + FRand() * 20 - 10) * M.SkipSide;
+		if (Try == 1)
+			A = -A;
+		Dir = Turned(To, A);
+		Len = HoundSkipLeg * (0.75 + 0.5 * FRand());
+		End = M.P.Location + Dir * Len;
+		if (VSize((End - Prey.Location) * vect(1,1,0)) < 230)
+			continue;
+		if (!FastTrace(End, M.P.Location) || !FloorUnder(M, End))
+			continue;
+		M.TaskDest = End;
+		M.LegsSkipped++;
+		M.bSkipDodge = false;
+		SetTask(M, 9/*T_Skip*/, 1.2, "skip " $ int(A) $ " deg, " $ int(Len));
+		if (HoundSkipDodge > 0 && FRand() < HoundSkipDodge && Level.TimeSeconds - M.B.LastDodgeTime > 2 && M.B.DoDodgeDir('Mind_SkipDodge', End))
+		{
+			M.bSkipDodge = true;
+			return;
+		}
+		M.B.bShouldWalk = false;
+		M.B.DoMoveToDestination('Mind_Skip', End);
+		return;
+	}
+	M.TaskDest = Goal;
+	SetTask(M, 9/*T_Skip*/, 1.5, "skip blocked, straight");
+	M.B.bShouldWalk = false;
+	M.B.DoMoveToDestination('Mind_SkipStraight', NextLeg(M, Goal));
+}
+
+// a flanker's spot: a path node near Want, at about HoundHold from the prey, far round from where the
+// prey looks, not next to another hound (MateSpacing); the best few must have a straight run from
+// the node to the prey (so the leap can come from there)
+function vector HoundFlankSpot(ModMind M, vector Want, Pawn Prey, vector Facing)
+{
+	local NavigationPoint N;
+	local float D, S, Off;
+	local int i;
+	local array<NavigationPoint> Top;
+	local array<float> TopS;
+
+	for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+	{
+		D = VSize(N.Location - Want);
+		if (D > 800)
+			continue;
+		Off = Abs(Bearing(Prey, Facing, N.Location));
+		S = 1000 - D * 0.6 - Abs(VSize(N.Location - Prey.Location) - HoundHold * 1.1) * 0.4 - MateSpacing(M, N.Location);
+		if (Off > HoundCommitFront * 0.5)
+			S += 300;           // out of its view cone
+		S += Off * 2;
+		Keep(N, S, Top, TopS);
+	}
+	for (i = 0; i < Top.Length; i++)
+		if (FastTrace(Prey.Location, Top[i].Location + vect(0,0,30)))
+		{
+			HoundLog(M.P.Name $ " flank spot #" $ (i + 1) $ " of " $ Top.Length $ " (score " $ int(TopS[i]) $ "), " $ int(VSize(Top[i].Location - Want)) $ " from the wanted point");
+			return Top[i].Location;
+		}
+	return Want;
+}
+
+// the closer: takes the pack's melee token and goes
+function HoundCommit(ModMind M, Pawn Prey, string Why)
+{
+	local int i;
+
+	for (i = 0; i < Minds.Length; i++)
+		if (Minds[i] != M && Minds[i].Species == 3/*S_Hound*/ && Minds[i].B.Squad == M.B.Squad && Minds[i].Role != 3/*R_Closer*/)
+			Minds[i].bMeleeToken = false;
+	M.Role = 3/*R_Closer*/;
+	M.RoleSince = Level.TimeSeconds;
+	M.bMeleeToken = true;
+	M.LastMelee = Level.TimeSeconds;
+	M.Commits++;
+	Steer(M);
+	SetTask(M, 5/*T_Charge*/, 4, "commit: " $ Why);
+	HoundLog(M.P.Name $ " commits (" $ Why $ "), " $ int(VSize(M.P.Location - Prey.Location)) $ " from the prey");
+	M.B.DoCharge('Mind_PackCommit', Prey);
+}
+
+// the pack's thinking, once per squad per tick (from Squads)
+function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
+{
+	local int j, Pk, Side, Behind, Closers, Pack;
+	local ModMind O, Holder, Pick;
+	local array<ModMind> Members;
+	local float Now, B, Best, D, Hold, Front, AngerMax;
+	local vector Facing, Moving, Want, Back, HitLoc, HitNorm;
+	local bool bHurt, bPinned, bCommit, bNewRoles;
+	local string Why;
+
+	Now = Level.TimeSeconds;
+	for (j = First; j < Minds.Length; j++)
+	{
+		O = Minds[j];
+		if (O.B.Squad != S || O.Species != 3/*S_Hound*/ || O.P.Health <= 0 || O.B.EnemyInfo.Enemy == None)
+			continue;
+		Members[Members.Length] = O;
+		if ((Now - O.LastHit < 1.0 && O.Role != 3/*R_Closer*/) || O.Role == 0)
+			bHurt = true;           // deal roles now: one is hurt, or one has none (its charge just ended)
+		if (O.Task == 5/*T_Charge*/ && O.Role == 3/*R_Closer*/)
+			Closers++;
+		AngerMax = FMax(AngerMax, O.Anger);
+	}
+	Pack = Members.Length;
+	if (Pack == 0)
+		return;
+	Pk = PackOf(S);
+	PreyFrame(Prey, Facing, Moving);
+
+	// roles: every 1.5 s, or at once when one is hurt (a hurt holder drops to a flank) or has none
+	if (Now - Packs[Pk].RoleAt > 1.5 || bHurt)
+	{
+		Packs[Pk].RoleAt = Now;
+		for (j = 0; j < Pack; j++)
+			if (Members[j].Role == 3/*R_Closer*/ && Members[j].Task != 5/*T_Charge*/)
+				Members[j].Role = 0;
+		if (Pack == 1)
+		{
+			O = Members[0];
+			if (O.Role != 4/*R_Skirmisher*/ && O.Role != 3/*R_Closer*/)
+			{
+				O.Role = 4/*R_Skirmisher*/;
+				O.RoleSince = Now;
+				HoundLog(O.P.Name $ " alone: skirmisher");
+			}
+		}
+		else
+		{
+			// the holder: nearest the prey's front; the current one keeps it while it is still in front and unhurt
+			Best = 100000;
+			for (j = 0; j < Pack; j++)
+			{
+				O = Members[j];
+				if (O.Role == 3/*R_Closer*/ || O.Fear > FleeFear)
+					continue;
+				B = Abs(Bearing(Prey, Facing, O.P.Location));
+				D = B + VSize(O.P.Location - Prey.Location) * 0.05;
+				if (O.Role == 1/*R_Holder*/ && B < 60 && Now - O.LastHit > 1.0)
+					D -= 40;
+				if (D < Best)
+				{
+					Best = D;
+					Holder = O;
+				}
+			}
+			if (Holder != None && Holder.Role != 1/*R_Holder*/)
+			{
+				Holder.Role = 1/*R_Holder*/;
+				Holder.RoleSince = Now;
+				Holder.SkipCount = 0;
+				bNewRoles = true;
+			}
+			// the rest flank, sides by turns so the prey has a hound on each side when there are three
+			Side = 0;
+			for (j = 0; j < Pack; j++)
+			{
+				O = Members[j];
+				if (O == Holder || O.Role == 3/*R_Closer*/)
+					continue;
+				if (O.Role != 2/*R_Flanker*/)
+				{
+					O.Role = 2/*R_Flanker*/;
+					O.RoleSince = Now;
+					O.bInPlace = false;
+					bNewRoles = true;
+					B = Bearing(Prey, Facing, O.P.Location);
+					if (Side == 0)
+					{
+						O.FlankSide = 1;
+						if (B < 0)
+							O.FlankSide = -1;
+					}
+					else
+						O.FlankSide = -Side;
+				}
+				Side = O.FlankSide;
+			}
+		}
+		if (bNewRoles)
+		{
+			Why = "";
+			for (j = 0; j < Pack; j++)
+				Why = Why $ " " $ Members[j].P.Name $ "=" $ Members[j].RoleName(Members[j].Role);
+			HoundLog("roles (" $ Pack $ " hounds):" $ Why);
+		}
+	}
+	if (Holder == None)
+		for (j = 0; j < Pack; j++)
+			if (Members[j].Role == 1/*R_Holder*/ || Members[j].Role == 4/*R_Skirmisher*/)
+				Holder = Members[j];
+
+	// the prey pinned: a wall close behind it (behind its movement, or away from the holder)
+	Back = -Moving;
+	if (Moving == vect(0,0,0))
+	{
+		if (Holder != None)
+			Back = Normal((Prey.Location - Holder.P.Location) * vect(1,1,0));
+		else
+			Back = -Facing;
+	}
+	bPinned = Trace(HitLoc, HitNorm, Prey.Location + Back * HoundPinWall, Prey.Location, false) != None;
+	if (bPinned != Packs[Pk].bPinned)
+	{
+		Packs[Pk].bPinned = bPinned;
+		if (bPinned)
+		{
+			Packs[Pk].Pins++;
+			HoundLog("pin: a wall " $ int(VSize(HitLoc - Prey.Location)) $ " behind the prey");
+		}
+		else
+			HoundLog("pin: the prey is free again");
+	}
+
+	// commit? a flanker outside the prey's front cone (narrower the angrier the pack), or the prey pinned,
+	// or the hold has run too long (shorter the angrier)
+	Front = HoundCommitFront * 0.5 * (1 - 0.3 * AngerMax);
+	Hold = HoundHoldMax * (1 - 0.6 * AngerMax);
+	Best = 0;
+	for (j = 0; j < Pack; j++)
+	{
+		O = Members[j];
+		if (O.Role != 2/*R_Flanker*/ || Busy(O) || O.Fear > FleeFear)
+			continue;
+		B = Abs(Bearing(Prey, Facing, O.P.Location));
+		D = VSize(O.P.Location - Prey.Location);
+		if (B > Front && D < 750)
+		{
+			Behind++;
+			if (B > Best)
+			{
+				Best = B;
+				Pick = O;
+			}
+		}
+	}
+	if (Closers == 0 || (bPinned && Pack >= 3 && Closers < 2))
+	{
+		if (Pick != None)
+		{
+			bCommit = true;
+			Why = "flanker " $ int(Best) $ " deg round";
+		}
+		else if (bPinned && Holder != None && !Busy(Holder) && Holder.Fear <= FleeFear && Holder.Task != 5/*T_Charge*/)
+		{
+			Pick = Holder;
+			bCommit = true;
+			Why = "the prey is pinned";
+		}
+		else if (Now - Packs[Pk].HoldSince > Hold)
+		{
+			Best = 100000;
+			for (j = 0; j < Pack; j++)
+			{
+				O = Members[j];
+				if (O.Role == 3/*R_Closer*/ || Busy(O) || O.Fear > FleeFear)
+					continue;
+				D = VSize(O.P.Location - Prey.Location);
+				if (D < Best)
+				{
+					Best = D;
+					Pick = O;
+				}
+			}
+			if (Pick != None)
+			{
+				bCommit = true;
+				Why = "held " $ int(Now - Packs[Pk].HoldSince) $ " s";
+			}
+		}
+		if (bCommit)
+		{
+			Packs[Pk].HoldSince = Now;
+			HoundCommit(Pick, Prey, Why);
+		}
+	}
+
+	// each hound's next move
+	for (j = 0; j < Pack; j++)
+	{
+		O = Members[j];
+		if (O.Task != 0/*T_None*/ || Busy(O) || Now < O.NextDecision || O.Fear > FleeFear)
+			continue;
+		D = VSize((O.P.Location - Prey.Location) * vect(1,1,0));
+		switch (O.Role)
+		{
+		case 1/*R_Holder*/:
+		case 4/*R_Skirmisher*/:
+			// the front: a ring round the prey at HoundHold, feinting in (even legs) and out (odd)
+			Want = Prey.Location + Normal((O.P.Location - Prey.Location) * vect(1,1,0)) * (HoundHold + 70 - 140 * (O.SkipCount % 2));
+			if (D > 600)
+			{
+				O.TaskDest = Want;
+				SetTask(O, 8/*T_Advance*/, 5, "to the front");
+				O.B.bShouldWalk = false;
+				O.B.DoMoveToDestination('Mind_PackFront', NextLeg(O, Want));
+			}
+			else
+				SkipLeg(O, Want, Prey);
+			break;
+		case 2/*R_Flanker*/:
+			// round the prey to +-HoundFlankAngle from where it looks; far: a path leg to a scored spot
+			// (the flank profile keeps it out of the prey's view); near: zig-zag legs; in place: keep the
+			// angle as the prey turns and moves
+			B = Bearing(Prey, Facing, O.P.Location);
+			Want = Prey.Location + Turned(Facing, HoundFlankAngle * O.FlankSide) * HoundHold * 1.1;
+			if (!O.bInPlace && Abs(B) > HoundFlankAngle - 35 && D < 700)
+			{
+				O.bInPlace = true;
+				O.FlankArrivals++;
+				HoundLog(O.P.Name $ " in place on the prey's flank, " $ int(B) $ " deg round, " $ int(D) $ " away");
+			}
+			if (D > 600 || (!O.bInPlace && Abs(B) < 45 && D > 400))
+			{
+				Want = HoundFlankSpot(O, Want, Prey, Facing);
+				O.TaskDest = Want;
+				SetTask(O, 4/*T_Flank*/, 6, "flank leg " $ O.FlankSide);
+				O.B.bShouldWalk = false;
+				O.B.DoMoveToDestination('Mind_PackFlank', NextLeg(O, Want));
+			}
+			else
+				SkipLeg(O, Want, Prey);
+			break;
+		case 3/*R_Closer*/:
+			// its charge is over: back to the pack's roles at the next deal
+			O.Role = 0;
+			break;
+		}
+	}
+	if (bHoundLog && Now - Packs[Pk].LogAt > 2)
+	{
+		Packs[Pk].LogAt = Now;
+		Why = "";
+		for (j = 0; j < Pack; j++)
+		{
+			O = Members[j];
+			Why = Why $ " " $ O.P.Name $ " " $ O.RoleName(O.Role) $ "/" $ O.TaskName(O.Task) $ " " $ int(VSize(O.P.Location - Prey.Location)) $ "@" $ int(Bearing(Prey, Facing, O.P.Location));
+		}
+		HoundLog("pack of " $ Pack $ ", " $ Behind $ " behind the front cone, pinned " $ bPinned $ ", held " $ int(Now - Packs[Pk].HoldSince) $ " s:" $ Why);
+	}
+}
+
+// a hound bit the player (ModMindRules, through Hit)
+function HoundBite(ModMind M, Pawn Player, int Damage)
+{
+	local vector Facing, Moving;
+	local float B;
+
+	HoundBites++;
+	HoundDamage += Damage;
+	if (HoundFirstBite == 0 && HoundEngagedAt > 0)
+		HoundFirstBite = Level.TimeSeconds - HoundEngagedAt;
+	PreyFrame(Player, Facing, Moving);
+	B = Abs(Bearing(Player, Facing, M.P.Location));
+	HoundBiteBearing += B;
+	HoundLog(M.P.Name $ " bit the player for " $ Damage $ " from " $ int(B) $ " deg round (" $ M.RoleName(M.Role) $ ")");
+}
+
+// the measures: time hounds stood on two or more sides of the player (front, back, left, right, within
+// 900), and melee contacts (a hound striking or leaping within reach, whether or not it hurt)
+function SidesTick(float DeltaTime)
+{
+	local PlayerController PC;
+	local int i, Sides, Side, N;
+	local int Taken[4];
+	local float B;
+	local vector Facing, Moving;
+	local ModMind M;
+
+	PC = Level.GetLocalPlayerController();
+	if (PC == None || PC.Pawn == None)
+		return;
+	PreyFrame(PC.Pawn, Facing, Moving);
+	for (i = 0; i < Minds.Length; i++)
+	{
+		M = Minds[i];
+		if (M.Species != 3/*S_Hound*/ || !M.bTokenGated || M.P.Health <= 0)
+			continue;
+		if (VSize(M.P.Location - PC.Pawn.Location) > 900)
+			continue;
+		N++;
+		B = Bearing(PC.Pawn, Facing, M.P.Location);
+		if (Abs(B) < 45)
+			Side = 0;
+		else if (Abs(B) > 135)
+			Side = 1;
+		else if (B > 0)
+			Side = 2;
+		else
+			Side = 3;
+		Taken[Side] = 1;
+		// a contact: in a strike or leap state within reach of the player, counted once per second
+		if (VSize(M.P.Location - PC.Pawn.Location) < 200 && Level.TimeSeconds - M.LastLog > 1.0
+			&& (M.B.IsInState('MeleeAttack') || M.B.IsInState('LeapAttack') || M.B.IsInState('Leap')))
+		{
+			M.LastLog = Level.TimeSeconds;
+			HoundContacts++;
+		}
+	}
+	if (N == 0)
+		return;
+	HoundEngaged = Max(HoundEngaged, N);
+	HoundTime += DeltaTime;
+	Sides = Taken[0] + Taken[1] + Taken[2] + Taken[3];
+	if (Sides >= 2)
+		TwoSideTime += DeltaTime;
+}
+
+// pilot HOUNDTEST: every hound fighting the player, its role, distance and bearing
+function string HoundReport()
+{
+	local PlayerController PC;
+	local int i;
+	local string S;
+	local vector Facing, Moving;
+	local ModMind M;
+
+	PC = Level.GetLocalPlayerController();
+	if (PC == None || PC.Pawn == None)
+		return "no player";
+	PreyFrame(PC.Pawn, Facing, Moving);
+	for (i = 0; i < Minds.Length; i++)
+	{
+		M = Minds[i];
+		if (M.Species != 3/*S_Hound*/ || M.P.Health <= 0)
+			continue;
+		S = S $ " | " $ M.P.Name $ " " $ M.RoleName(M.Role) $ " " $ M.TaskName(M.Task) $ " dist " $ int(VSize(M.P.Location - PC.Pawn.Location))
+			$ " bearing " $ int(Bearing(PC.Pawn, Facing, M.P.Location)) $ " fear " $ M.Pct(M.Fear) $ " anger " $ M.Pct(M.Anger) $ " legs " $ M.LegsSkipped $ " arrivals " $ M.FlankArrivals $ " commits " $ M.Commits;
+		if (M.bMeleeToken)
+			S = S $ " M";
+	}
+	if (S == "")
+		return "no hounds";
+	return S;
+}
+
+function string HoundStats()
+{
+	local int i, Legs, Arrivals, Commits, Pins;
+	local string S;
+
+	for (i = 0; i < Minds.Length; i++)
+		if (Minds[i].Species == 3/*S_Hound*/)
+		{
+			Legs += Minds[i].LegsSkipped;
+			Arrivals += Minds[i].FlankArrivals;
+			Commits += Minds[i].Commits;
+		}
+	for (i = 0; i < Packs.Length; i++)
+		Pins += Packs[i].Pins;
+	S = "pack " $ bHoundPack $ ", hounds at most " $ HoundEngaged $ ", first bite ";
+	if (HoundBites == 0)
+		S = S $ "none";
+	else
+		S = S $ "at " $ (int(HoundFirstBite * 10) / 10.0) $ " s";
+	S = S $ ", bites " $ HoundBites $ " for " $ HoundDamage;
+	if (HoundBites > 0)
+		S = S $ " (mean bearing " $ int(HoundBiteBearing / HoundBites) $ " deg)";
+	S = S $ ", contacts " $ HoundContacts $ ", two sides " $ (int(TwoSideTime * 10) / 10.0) $ " of " $ (int(HoundTime * 10) / 10.0) $ " s";
+	if (HoundTime > 0)
+		S = S $ " (" $ int(100 * TwoSideTime / HoundTime) $ "%)";
+	return S $ ", legs skipped " $ Legs $ ", flank arrivals " $ Arrivals $ ", commits " $ Commits $ ", pins " $ Pins;
+}
+
+
 // a squad that lost half its number: humans fall back together, Seekers and hounds rage
 function SquadMorale(ModMind M, out float Share)
 {
@@ -1360,6 +1997,7 @@ function Tick(float DeltaTime)
 		Deal();
 	}
 	Squads();
+	SidesTick(DeltaTime);
 }
 
 // a strategy from outside: push, hidden, flank, fallback ("" or none = the creatures' own)
@@ -1439,6 +2077,16 @@ defaultproperties
 	NearMissReach=220
 	FlankEvery=10
 	HoundCircle=550
+	bHoundPack=False
+	bHoundLog=False
+	HoundHold=380
+	HoundFlankAngle=120
+	HoundSkipLeg=200
+	HoundSkipAngle=45
+	HoundCommitFront=120
+	HoundHoldMax=6
+	HoundSkipDodge=0.3
+	HoundPinWall=300
 	RangedTokens=2
 	RangedPer=4
 	MeleeTokens=2

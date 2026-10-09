@@ -118,16 +118,26 @@ function Seeker(ModMind M, int i, float DeltaTime)
 // the hound: snarl or hunch, and pitch to the ground
 function Hound(ModMind M, int i, float DeltaTime)
 {
-	local float HeadDown, Jaw, Pitch, Front, Back;
+	local float HeadDown, Jaw, Pitch, Front, Back, Slink, Lunge;
 	local vector X, Y, Z, HitLoc, HitNorm;
 	local rotator R;
 
-	HeadDown = PoseGain * (18 * M.Anger + 14 * M.Fear);
-	Jaw = PoseGain * 25 * FMax(M.Anger - 0.3, 0);
+	// the pack's roles (ModMinds.HoundPack) show too: a flanker slinks with its head lower, a closer
+	// committing drives the neck forward, a holder feinting keeps the head low and the jaw working
+	Slink = 0;
+	Lunge = 0;
+	if (M.Role == 2/*R_Flanker*/)
+		Slink = 8;
+	else if (M.Role == 3/*R_Closer*/ && M.Task == 5/*T_Charge*/)
+		Lunge = 10;
+	else if (M.Role == 1/*R_Holder*/ || M.Role == 4/*R_Skirmisher*/)
+		Slink = 4;
+	HeadDown = PoseGain * (18 * M.Anger + 14 * M.Fear + Slink);
+	Jaw = PoseGain * (25 * FMax(M.Anger - 0.3, 0) + 0.4 * Lunge);
 	SpringTo(Poses[i].A[0], Poses[i].V[0], HeadDown, Spring, DeltaTime);
 	SpringTo(Poses[i].A[1], Poses[i].V[1], Jaw, Spring * 1.5, DeltaTime);
-	// fear pulls the neck back too (a cower), anger pushes it forward
-	SpringTo(Poses[i].A[2], Poses[i].V[2], PoseGain * (10 * M.Anger - 16 * M.Fear), Spring, DeltaTime);
+	// fear pulls the neck back too (a cower), anger and a commit push it forward
+	SpringTo(Poses[i].A[2], Poses[i].V[2], PoseGain * (10 * M.Anger - 16 * M.Fear + Lunge), Spring, DeltaTime);
 	R = rot(0,0,0);
 	R.Pitch = Deg(-Poses[i].A[0]);
 	M.P.SetBoneRotation('Neck02', R, 0, 1);

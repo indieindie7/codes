@@ -31,6 +31,14 @@ const T_Charge = 5;         // angry: straight at the enemy
 const T_Circle = 6;         // a hound taking its place in the pack around the prey
 const T_Panic = 7;          // broken: running
 const T_Advance = 8;        // ordered to push: closer to the enemy along paths
+const T_Skip = 9;           // a hound's zig-zag leg (ModMinds.SkipLeg)
+
+// hound pack roles (ModMinds.HoundPack, AI-MINDS-DESIGN.md section 9)
+const R_None = 0;           // not in a pack (or packs off)
+const R_Holder = 1;         // the front: holds 300-450 from the prey, feints in and out, never commits first
+const R_Flanker = 2;        // goes wide round the prey, out of its view
+const R_Closer = 3;         // the one committing the leap
+const R_Skirmisher = 4;     // a lone hound: holds, skips, commits when the prey is pinned or the hold runs out
 
 var Bot B;
 var Pawn P;
@@ -53,6 +61,15 @@ var bool bOrderDone;                 // it has acted on the current order
 var float LastFlank;                // when it last went round the side (flankers rest after)
 var int NearMisses, Hits;
 var float CircleAngle;              // T_Circle: where around the prey (radians)
+// hound pack (ModMinds.HoundPack)
+var int Role;                       // R_*
+var int FlankSide;                  // flanker: which side of the prey it goes round (+1 / -1)
+var int SkipSide;                   // skipping: the side the next zig-zag leg goes (+1 / -1)
+var int SkipCount;                  // legs so far in this hold (the holder feints in on even, out on odd)
+var bool bInPlace;                  // flanker: it has reached the prey's side or back
+var bool bSkipDodge;                // this skip leg is the engine's dodge (Dodge_L/R), not a MoveTo
+var int LegsSkipped, FlankArrivals, Commits;
+var float RoleSince;                // when it got its role
 
 // the abilities: ours (a copy only this pawn uses) and the game's values the feelings start from
 var AdventPawnAbilities Own;
@@ -81,8 +98,23 @@ function string Describe()
 		if (!bRangedToken && !bMeleeToken)
 			T = T $ " -";
 	}
+	if (Role != R_None)
+		T = T $ " role " $ RoleName(Role);
 	return SpeciesName $ " fear " $ Pct(Fear) $ " anger " $ Pct(Anger) $ " pressure " $ Pct(Pressure)
 		$ " stress " $ Pct(Stress) $ " task " $ TaskName(Task) $ T;
+}
+
+static function string RoleName(int R)
+{
+	switch (R)
+	{
+		case R_None: return "none";
+		case R_Holder: return "holder";
+		case R_Flanker: return "flanker";
+		case R_Closer: return "closer";
+		case R_Skirmisher: return "skirmisher";
+	}
+	return "?";
 }
 
 static function string Pct(float F)
@@ -103,6 +135,7 @@ static function string TaskName(int T)
 		case T_Circle: return "circle";
 		case T_Panic: return "panic";
 		case T_Advance: return "advance";
+		case T_Skip: return "skip";
 	}
 	return "?";
 }

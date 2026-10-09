@@ -84,8 +84,8 @@ Closest wins, and the afraid prefer spots further back.
 ## 4. Settings: `AdventMod.ini`, section `[AdventMod.ModMinds]`
 
 - Switches: `bMinds` (off = stock AI), `bMindLog` (every feeling and decision in AdventNative.log).
-- Tuning: `TraitSpread`, `PinPressure`, `FreePressure`, `FleeFear`, `PanicFear`, `ChargeAnger`, `CoverReach`, `NearMissReach`, `FlankEvery`, `HoundCircle`.
-- Pilot command: `MINDLIST` (every mind's feelings, task, shots past and hits).
+- Tuning: `TraitSpread`, `PinPressure`, `FreePressure`, `FleeFear`, `PanicFear`, `ChargeAnger`, `CoverReach`, `NearMissReach`, `FlankEvery`, `HoundCircle` (packs off); the hound pack's own are in section 9.
+- Pilot command: `MINDLIST` (every mind's feelings, task, shots past and hits; a hound's pack role).
 
 ## 5. Tests
 
@@ -144,3 +144,31 @@ So strategy changes can be cost profiles. Raise the costs before a creature's `F
 | profiles off | 124/160 | 531/535 | about 88% |
 
 It is an open arena, so some exposure can't be avoided. Settings: `bPathProfiles`, `SweepBudget`, `ExposeReach`, `ExposeCost`, `FrontCost`, `RouteCost`, `CloserCost`.
+
+## 9. Hound packs (built 2026-10-09, untested in game)
+
+The user's ask: hounds that stop dashing at the player and instead skip about, work round the sides, and pin the player down. The game's hound is the engine's (its gait, its leaps and bites through `AdventPawnAbilities`); the mind only says where it goes and when it may commit. Before this, two or more hounds each took a spot 550 units round the prey and then all charged (section 3). Code: `ModMinds.HoundPack` and the functions above it (`SkipLeg`, `HoundFlankSpot`, `HoundCommit`, `SidesTick`, `HoundStats`).
+
+**Roles** are facts each hound reads (Horizon's group agent, Halo's hold-then-charge). Dealt per squad every 1.5 s, at once when one is hurt or roleless:
+
+| role | who | what it does |
+|---|---|---|
+| **holder** | the one nearest the prey's front (the current holder keeps it while it stays in front and unhurt) | Keeps the front at `HoundHold` (380), feinting in on even legs and out on odd (+-70). Never commits first. |
+| **flanker** | the rest, sides by turns (+1, -1, +1 ...), so with three or more there is one on each side | Goes round to +-`HoundFlankAngle` (120 degrees) from where the prey looks. Far out: a path leg with the flank cost profile (section 8) to a spot scored over the path nodes: near the wanted point, about `HoundHold` from the prey, far round from its view (+300 outside the front cone), not next to another hound (`MateSpacing`), with a straight run to the prey. Inside 600: zig-zag legs. In place (more than `HoundFlankAngle` - 35 round, under 700 away): keeps its angle as the prey turns and moves. |
+| **closer** | the one committing the leap | A flanker outside the prey's front cone (`HoundCommitFront` 120, narrower the angrier the pack); or the holder when the prey is **pinned**; or, after `HoundHoldMax` (6 s, shorter the angrier) with no flanker in place, the nearest. It takes the pack's melee token (the others lose theirs: only the closer may leap or bite) and charges (`DoCharge`, 4 s). One closer at a time; two when the prey is pinned and the pack is three or more. |
+| **skirmisher** | a lone hound | Holds and skips like the holder, commits when the prey is pinned or the hold runs out. |
+
+**Skipping** (`SkipLeg`): inside 600 units every move is a leg of `HoundSkipLeg` (200, x0.75..1.25) at `HoundSkipAngle` (45 +-10 degrees) off the line to the goal, left and right by turns, to a point traced clear of walls, with a floor under it no more than 70 below the hound's, and not within 230 of the prey. `HoundSkipDodge` (0.3) of the legs are the engine's own dodge (`Bot.DoDodgeDir`: the hound has `Dodge_L/R/F/B` clips, root motion). A leg ends on arrival or when the move ends, then a dwell of 0.1-0.3 s. Both sides blocked: a straight leg to the goal, never a stall.
+
+**Pinning:** a trace `HoundPinWall` (300) behind the prey, behind its movement when it moves, away from the holder when it stands: a hit pins it (logged `hounds: pin: a wall N behind the prey`), and the holder commits. Flank sides alternate so a pack of three keeps a hound on each side of the prey.
+
+**Feelings** keep charge: fear past `FleeFear` sends that hound to the pack's rear (its centre, 500 further from the prey) and out of the roles; anger narrows the commit cone (-30 % at full anger) and shortens the hold (-60 %), and the existing enrage still charges an angry hound that holds the token. `ModBody` shows the roles: a flanker slinks with its head 8 degrees lower, a holder 4, a committing closer drives its neck forward and the jaw opens.
+
+**Settings** (`[AdventMod.ModMinds]`): `bHoundPack` (off until the runs below verify it), `bHoundLog`, `HoundHold` 380, `HoundFlankAngle` 120, `HoundSkipLeg` 200, `HoundSkipAngle` 45, `HoundCommitFront` 120, `HoundHoldMax` 6, `HoundSkipDodge` 0.3, `HoundPinWall` 300.
+
+**Pilot:** `HOUNDTEST [seconds]` logs every hound's role, task, distance and bearing round the player's view twice a second, and `houndstats:` every 5 s and at the end: first bite after the first hound engaged, bites and their damage, the bites' mean bearing (flank bites should raise it), melee contacts, the time hounds stood on two or more sides of the player (front, back, left, right within 900) as a share of the time any hound was engaged, legs skipped, flank arrivals, commits, pins. `NEARENEMY dist SeekerDog` puts the player by a hound, `HEALTH n` keeps it alive through a long fight. `MINDLIST` shows roles.
+
+**Test plan** (scratchpad `hound_pack_test.ps1`): level03sectiond has twelve placed hounds. A scout run (`-Scout`) first: do they engage, where. Then three runs each with `bHoundPack` off and on, the same steps: the player placed 900 from the nearest hound, then six watches of 6-8 s between which it backs off (`move -1`), sidesteps and dodges, about 50 s of fight. Compared: time to the first bite, the share of the fight with hounds on two or more sides, the biting hounds' mean bearing, and the hound damage taken.
+
+**Results:** to come (the GPU was taken by another chat's editor build when this was built).
+

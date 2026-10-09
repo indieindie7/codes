@@ -19,6 +19,8 @@
 //   shot                     an engine screenshot (System\ShotNNNNN.bmp)
 //   where                    log the player's position, rotation and state
 //   mark TEXT                a line in the log
+//   houndtest [SECONDS]      every hound's role, distance and bearing round the player's view twice a
+//                            second, and the pack's measures (ModMinds.HoundStats) every 5 s and at the end
 //=============================================================================
 class ModPilot extends Info
 	config(AdventMod);
@@ -52,6 +54,8 @@ var float JumpStartZ, JumpTopZ;       // JUMPTEST
 var float TopSpeed;                    // SPEEDTEST
 var vector SpeedFrom;
 var float ControlTime;                   // the script itself paused the game (pause button, menu step)
+var float HoundT;                        // HOUNDTEST: time since the last report
+var int HoundN;                          // ... and reports so far
 
 var int PrintsLeft, PrintPhase, PrintNo;  // RANDOMPRINTS
 var float PrintT, PrintSettle;
@@ -349,6 +353,21 @@ function MindList()
 	Note("mindlist: no ModMinds in this level");
 }
 
+// HOUNDTEST: the hounds now, and (bStats) the pack's measures so far
+function HoundTest(bool bStats)
+{
+	local ModMinds M;
+
+	foreach DynamicActors(class'ModMinds', M)
+	{
+		Note("houndtest: t " $ int(StepTime * 10) / 10.0 $ " " $ M.HoundReport());
+		if (bStats)
+			Note("houndstats: " $ M.HoundStats());
+		return;
+	}
+	Note("houndtest: no ModMinds in this level");
+}
+
 function Note(string S)
 {
 	class'ModSettings'.static.Note("pilot: " $ S);
@@ -397,6 +416,13 @@ function string RestOf(int From)
 	for (i = From; i < Args.Length; i++)
 		S = S $ Args[i] $ " ";
 	return Left(S, Len(S) - 1);
+}
+
+function string Arg(int i)
+{
+	if (i < Args.Length)
+		return Args[i];
+	return "";
 }
 
 function float ArgF(int i, float Fallback)
@@ -648,7 +674,7 @@ function Hurt(int Damage, string TypeName, optional string BoneName)
 	Aim(ViewDeg(rotator(Best.Location - C.Pawn.Location).Yaw), -12);
 }
 
-function NearEnemy(float Dist)
+function NearEnemy(float Dist, string Filter)
 {
 	local Pawn P, Best;
 	local vector Spot, Dir;
@@ -658,11 +684,12 @@ function NearEnemy(float Dist)
 	if (C == None || C.Pawn == None)
 		return;
 	ForEach DynamicActors(class'Pawn', P)
-		if (class'ModTargeting'.static.IsHostile(P) && (Best == None || VSize(P.Location - C.Pawn.Location) < VSize(Best.Location - C.Pawn.Location)))
+		if (class'ModTargeting'.static.IsHostile(P) && (Filter == "" || InStr(Caps(string(P.Class)), Caps(Filter)) >= 0)
+			&& (Best == None || VSize(P.Location - C.Pawn.Location) < VSize(Best.Location - C.Pawn.Location)))
 			Best = P;
 	if (Best == None)
 	{
-		Note("nearenemy: no hostile in the level");
+		Note("nearenemy: no hostile" $ Eval2(Filter != "", " of class " $ Filter, "") $ " in the level");
 		return;
 	}
 	Dir = C.Pawn.Location - Best.Location;
@@ -1161,8 +1188,17 @@ function StartStep()
 		SpawnAhead(Args[1], ArgF(2, 300), ArgF(3, 0));
 		break;
 	case "NEARENEMY":
-		// NEARENEMY [distance]: the player moved to that far from the level's nearest hostile, facing it
-		NearEnemy(ArgF(1, 900));
+		// NEARENEMY [distance] [class]: the player moved to that far from the level's nearest hostile
+		// (of a class whose name contains the word, e.g. SeekerDog), facing it
+		NearEnemy(ArgF(1, 900), Arg(2));
+		break;
+	case "HEALTH":
+		// HEALTH N: the player's health set (a long fight that must not end in a death)
+		if (PC().Pawn != None)
+		{
+			PC().Pawn.Health = int(ArgF(1, 1000));
+			Note("health " $ PC().Pawn.Health);
+		}
 		break;
 	case "GIVE":
 		// GIVE Package.WeaponClass: into the player's right hand
@@ -1264,6 +1300,13 @@ function StartStep()
 	case "MINDLIST":
 		// the creatures' minds (ModMinds): feelings, task, shots past and hits
 		MindList();
+		break;
+	case "HOUNDTEST":
+		// HOUNDTEST [seconds]: the hound pack watched (see the header)
+		StepLength = ArgF(1, 20);
+		HoundT = 0;
+		HoundN = 0;
+		HoundTest(true);
 		break;
 	case "GOOLIST":
 		// the live goo strings (ModGore): ends, length against rest, age, snapped
@@ -1386,6 +1429,18 @@ event Tick(float DeltaTime)
 	}
 	if (Cmd == "BONETEST")
 		BoneTick();
+	if (Cmd == "HOUNDTEST")
+	{
+		HoundT += DeltaTime;
+		if (HoundT >= 0.5)
+		{
+			HoundT = 0;
+			HoundN++;
+			HoundTest(HoundN % 10 == 0);
+		}
+		if (StepTime >= StepLength)
+			HoundTest(true);
+	}
 	if (Cmd == "DASH" && !bDashed && StepTime >= 0.25)
 	{
 		bDashed = true;
