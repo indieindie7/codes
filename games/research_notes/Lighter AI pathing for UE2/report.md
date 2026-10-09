@@ -236,3 +236,28 @@ Possible; readers exist (e.g. [UELib](https://github.com/EliotVU/Unreal-Library)
   - To diagnose: list the process's windows and look for a `#32770` dialog.
 - **Measured:** the 610-node staggered layout plus 75 of TutA's own nodes built in 7-14 s, against 45+ minutes
   (stopped) for 1,799 nodes.
+
+## Route A tested (2026-10-09): hand-written ReachSpecs import and load
+Tested on `TutA_RSTest`, a copy of TutA_Remake: two PathNodes, one carrying an inline ReachSpec.
+- **The T3D import works.** `Begin Object Class=ReachSpec Name=X` inside the PathNode actor, with Distance / Start / End
+  / CollisionRadius / CollisionHeight / reachFlags, plus `PathList(0)=ReachSpec'MyLevel.X'`, imports cleanly.
+  - `OBJ LIST CLASS=ReachSpec` went from 2127 to 2128: the object really exists.
+  - It survives save and reload.
+- **The load blocker is `LevelInfo.PathsRebuiltStamp`, not the nodes' `bPathsChanged`.**
+  - `bPathsChanged` is true on all 688 nodes even in maps that load fine.
+  - The import resets `PathsRebuiltStamp` to 0. `UGameEngine::LoadMap` (Engine 10390f00) then shows the modal
+    "Paths ... should be rebuilt (level changed)" box.
+  - The "must be rebuilt (build changed)" error is the other branch of the same check.
+  - Fix: set it back to the value PATHS DEFINE leaves (4 on TutA_Remake) with U2EdBridge's
+    `!setprop LevelInfo0 PathsRebuiltStamp 4`. The map then loads and plays: pilot run 20261009-120723_rstest_load.
+  - U2's LevelInfo has no `bPathsRebuilt` at runtime, despite the exported LevelInfo.uc.
+- **Also learned:**
+  - `SET LevelInfo PathSizes (...)` does nothing (the map still has U2's 10 sizes), so the "3 sizes" step was never
+    applied. Use `!setprop LevelInfo0 PathSizes (...)` instead.
+  - `!setprop` on a NavigationPoint calls PostEditChange, which sets `bPathsChanged` back to true. It's harmless.
+- **Still to test before relying on it:**
+  1. Do the AI routes use the hand-written spec? A pilot route test between the two nodes on an otherwise empty map.
+  2. Must new nodes be in `Level.NavigationPointList` (the `nextNavigationPoint` chain) to act as path anchors?
+     If so, write the chain too: the head in LevelInfo, `nextNavigationPoint` on each node.
+- `tools/python/U2Pilot/game_dialogs.ps1 [-Kill]` lists the text of any dialog the running game shows. Run it with
+  `-ExecutionPolicy Bypass`.
