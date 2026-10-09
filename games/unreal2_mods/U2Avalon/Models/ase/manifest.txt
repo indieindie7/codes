@@ -405,3 +405,7 @@ B_k_frame_p Liandri
 B_k_frame_m Liandri 
 B_k_frame_p_auth Liandri 
 B_k_plinth Liandri 
+B_headframe Liandri 
+B_transfer_tower Liandri 
+B_thickener Liandri 
+B_shiploader Liandri 

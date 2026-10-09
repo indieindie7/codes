@@ -462,6 +462,91 @@ def part_plinth():
     ubox(0, -0.42, -0.05, 4.0, 0.08, 0.1, "grey")
 
 
+# --- the process parts the binder commit 10829b6 asked for (D7-D10) ---------------------------------------------
+def part_headframe():
+    """mine portal: an 8 x 8 arch (2 m piers, a 1.5 m lintel, the dark inside, hazard stripes, rails out) under a
+    24 m A-frame headframe with the sheave wheel; footprint 8 x 8 (the legs straddle the portal)"""
+    for s in (-1, 1):
+        both(ubox, 0, s * 3.0, 4.0, 3.0, 2.0, 8.0, "steel")                         # piers
+        for k in range(4):
+            ubox(1.52, s * 3.0, 0.6 + k * 1.2, 0.05, 2.0, 0.6, "orange" if k % 2 else "charcoal")
+    both(ubox, 0, 0, 8.75, 3.0, 8.0, 1.5, "steel")                                   # lintel
+    ubox(-1.4, 0, 4.0, 0.2, 4.0, 8.0, "charcoal")                                     # the dark inside
+    ubox(-1.5, 0, 9.5, 2.6, 8.4, 0.3, "grey")
+    for s in (-1, 1):                                                                # the A-frame legs, leaning in
+        ubox(s * 1.6, 0, 12.0, 0.5, 0.5, 24.5, "charcoal", pitch=s * 8.0)
+        ubox(0, s * 1.6, 12.0, 0.5, 0.5, 24.5, "charcoal", yaw=90, pitch=s * 8.0)
+    for z in (6.0, 12.0, 18.0):
+        ubox(0, 0, z, 3.4 - z * 0.1, 0.2, 0.2, "grey")
+        ubox(0, 0, z, 0.2, 3.4 - z * 0.1, 0.2, "grey")
+    ubox(0, 0, 23.0, 2.2, 2.2, 1.2, "grey")                                           # the head
+    _cyl_u(0, 0, 24.2, 1.1, 0.3, "rustred", 16, )
+    ubox(0, 0, 24.4, 0.3, 0.3, 0.4, "rustred")                                      # the aviation lamp stub
+    for s in (-1, 1):                                                                # rails out of the portal
+        ubox(5.0, s * 0.7, 0.08, 8.0, 0.12, 0.16, "grey")
+
+
+def part_transfer_tower():
+    """6 x 6 x 14 square transfer tower: corner columns, steel panels, an open top deck with rails, a head house,
+    the chute out of the +X face sloping to the ground"""
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            ubox(sx * 2.8, sy * 2.8, 7.0, 0.4, 0.4, 14.0, "charcoal")
+    for s in (-1, 1):
+        both(ubox, s * 2.85, 0, 6.0, 0.3, 6.0, 12.0, "steel")
+        both(ubox, 0, s * 2.85, 6.0, 6.0, 0.3, 12.0, "steel")
+        ubox(s * 3.01, 0, 0.5, 0.02, 6.0, 1.0, "brown")
+    both(ubox, 0, 0, 11.85, 6.0, 6.0, 0.3, "grey")                                   # the deck at 12 m
+    for s in (-1, 1):
+        ubox(s * 2.9, 0, 12.55, 0.06, 6.0, 0.06, "orange")
+        ubox(0, s * 2.9, 12.55, 6.0, 0.06, 0.06, "orange")
+        ubox(s * 2.9, 0, 12.0, 0.06, 6.0, 1.1, "steel", hull=True)
+        ubox(0, s * 2.9, 12.0, 6.0, 0.06, 1.1, "steel", hull=True)
+    ubox(-1.0, 0, 13.0, 3.0, 3.0, 2.0, "rustred")                                     # the head house
+    ubox(4.5, 0, 6.5, 6.5, 1.2, 1.0, "rustred", pitch=-50)                            # the chute, down the +X face
+    ubox(3.4, 0, 1.5, 1.2, 1.2, 3.0, "charcoal")
+    ubox(0, 0, 0.3, 6.6, 6.6, 0.6, "grey")                                           # the footing
+
+
+def part_thickener():
+    """thickener ring 16 m across, 4 m high: the wall, the slurry surface, the centre column, a rake bridge across
+    the top with rails (walkable: a hull), the rake arms below"""
+    _cyl_u(0, 0, 2.0, 8.0, 4.0, "grey", 24)
+    _cyl_u(0, 0, 2.0, 7.6, 4.1, "charcoal", 24)
+    _cyl_u(0, 0, 3.6, 7.5, 0.1, "brown", 24)
+    _cyl_u(0, 0, 2.5, 0.5, 5.0, "steel", 12)
+    both(ubox, 0, 0, 4.45, 17.0, 1.2, 0.3, "grey")                                    # the bridge, hull = walkable
+    for s in (-1, 1):
+        ubox(0, s * 0.55, 5.15, 17.0, 0.06, 0.06, "orange")
+        ubox(0, s * 0.55, 4.6, 17.0, 0.06, 1.1, "steel", hull=True)
+    for k in range(8):                                                               # the wall as 8 hull pieces
+        a = k * math.pi / 4
+        ubox(7.8 * math.cos(a), 7.8 * math.sin(a), 2.0, 0.5, 6.3, 4.0, "grey", yaw=math.degrees(a) + 90, hull=True)
+    ubox(0, 0, 1.5, 14.0, 0.4, 0.3, "steel")                                         # the rake arms
+    ubox(0, 0, 1.5, 0.4, 14.0, 0.3, "steel")
+    for s in (-1, 1):                                                                # the launder outlet, a pipe
+        ubox(s * 8.3, 0, 3.5, 0.6, 0.6, 1.0, "rustred")
+
+
+def part_shiploader():
+    """pier 30 x 6 at 3 m on piles, a conveyor along it, a 12 m gantry at the sea end and a 25 m boom out over
+    the water (pitch 10 deg); origin at the shore end, +X toward the sea"""
+    both(ubox, 15.0, 0, 2.85, 30.0, 6.0, 0.3, "grey")
+    for k in range(6):
+        for s in (-1, 1):
+            _cyl_u(2.5 + k * 5.0, s * 2.4, 1.4, 0.3, 2.9, "charcoal", 8)
+    for s in (-1, 1):
+        ubox(15.0, s * 2.9, 3.55, 30.0, 0.06, 0.06, "orange")
+        ubox(15.0, s * 2.9, 3.0, 30.0, 0.06, 1.1, "steel", hull=True)
+    ubox(15.0, -1.5, 3.6, 30.0, 1.2, 0.5, "charcoal")                                 # the conveyor
+    for s in (-1, 1):                                                                # the gantry at the sea end
+        ubox(27.0, s * 2.5, 9.0, 0.6, 0.6, 12.0, "charcoal")
+    ubox(27.0, 0, 15.0, 1.2, 6.0, 1.2, "charcoal")
+    ubox(27.0 + 11.5, 0, 15.6 + 2.1, 25.0, 1.4, 1.2, "rustred", pitch=10)              # the boom
+    ubox(27.0 + 24.0, 0, 15.6 + 4.2 - 1.5, 1.0, 1.0, 3.0, "charcoal")                 # the spout
+    ubox(27.0, 0, 16.0, 1.0, 1.0, 0.8, "rustred")                                     # the aviation lamp
+
+
 PARTS = {
     # the drain
     "B_culvert": part_culvert, "B_culvert_bendP": lambda: part_culvert_bend(+1), "B_culvert_bendN": lambda: part_culvert_bend(-1),
@@ -480,6 +565,8 @@ PARTS = {
     "B_k_rail": part_rail, "B_k_catwalk": part_catwalk, "B_k_step": part_step, "B_k_ladder": part_ladder,
     "B_k_frame_p": lambda: part_frame(*DOOR_P), "B_k_frame_m": lambda: part_frame(*DOOR_M),
     "B_k_frame_p_auth": lambda: part_frame(*DOOR_P, "steel"), "B_k_plinth": part_plinth,
+    # the process parts (binder D7-D10)
+    "B_headframe": part_headframe, "B_transfer_tower": part_transfer_tower, "B_thickener": part_thickener, "B_shiploader": part_shiploader,
 }
 
 
