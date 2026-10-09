@@ -1130,6 +1130,18 @@ static int OpSetProp(wchar_t **tok, int n)
 		BLog("setprop: ImportText at vtable +0x%x", BK.importSlot);
 	}
 	a = FindActorNamed(lvl, tok[0]);
+	if (!a)
+	{
+		/* not an actor: any object by name (e.g. a ReachSpec imported inline in a PathNode's T3D, whose End had to
+		 * be set after the chunk that holds its End node came in: U2Avalon/tools/remake_build.py stage=specs) */
+		typedef void *(__cdecl *FindObjFn)(void *cls, void *outer, const wchar_t *name, int exact);
+		static FindObjFn findobj;
+		HMODULE core = GetModuleHandleW(L"Core.dll");
+		if (!findobj && core)
+			findobj = (FindObjFn)GetProcAddress(core, "?StaticFindObject@UObject@@SAPAV1@PAVUClass@@PAV1@PBGH@Z");
+		if (findobj)
+			a = findobj(NULL, (void *)-1, tok[0], 0);
+	}
 	if (!a) { Out(L"Not found: %s", tok[0]); return 0; }
 	p = FindProp(AT(a, UOBJ_CLASS, void *), tok[1]);
 	if (!p) { Out(L"%s has no property %s", O.GetName(a), tok[1]); return 0; }

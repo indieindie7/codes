@@ -261,3 +261,24 @@ Tested on `TutA_RSTest`, a copy of TutA_Remake: two PathNodes, one carrying an i
      If so, write the chain too: the head in LevelInfo, `nextNavigationPoint` on each node.
 - `tools/python/U2Pilot/game_dialogs.ps1 [-Kill]` lists the text of any dialog the running game shows. Run it with
   `-ExecutionPolicy Bypass`.
+
+## Route A at full scale (2026-10-09): 610 nodes, 2178 specs, no PATHS DEFINE
+- `remake_build.py stage=specs` takes `pathspecs.py`'s output (all 2178 specs in under a second) and imports it in
+  chunks of 300 nodes. The steps and what each needed:
+  - **Chunks:** UnrealEd crashes on one 610-node / 2178-object import, but 300 / 1056 works.
+  - **Forward specs:** a spec whose End sits in a later chunk imports with its End empty. The 68 such ends are set
+    afterwards with `!setprop SPEC End PathNode'MyLevel.NODE'`.
+  - **`!setprop` change:** it now finds any object, not just actors (U2EdBridge `editor_ops.c`, a
+    `StaticFindObject` fallback).
+  - **The stamp:** `!setprop LevelInfo0 PathsRebuiltStamp 4` (the source map had 0).
+- **Dead ends along the way:**
+  - A Note carrier for the forward specs imported nothing: the editor's garbage collection after the import drops
+    inline objects nothing refers to.
+  - A carrier PathNode listing other nodes' specs crashed the editor.
+  - A failed `!setprop ... PathList (...)` CLEARS the list.
+  - `Tag=` lines drew "Invalid name" warnings and are left out.
+- **Result:**
+  - `TutA_RemakeSpecs` loads in game with no rebuild box.
+  - The autoplay bot's FindPathToPoint run behaves exactly as on the editor-built TutA_Remake: the same route start,
+    then stuck at the same spot (9878, -15966), which points at a blocker in the map, not the paths.
+  - Next: find that blocker, then a longer route test and an NPC chase test.

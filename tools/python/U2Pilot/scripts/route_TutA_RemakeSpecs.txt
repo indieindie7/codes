@@ -1,0 +1,15 @@
+# route test: the autoplay bot walks the engine's path graph (FindPathToPoint) from the dock start to a spine point
+background
+map TutA_RemakeSpecs?Mutator=U2AutoPlay.AutoPlayMutator
+waitcontrol 180
+wait 2
+console god
+console autoplay on
+console autoplay goto 11880 -9436 -4724
+wait 45
+shot
+console autoplay status
+wait 45
+shot
+console autoplay status
+quit

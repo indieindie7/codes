@@ -1,6 +1,6 @@
 r"""The Avalon remake's editor build (redesign 2026-10-09, plan s.7 Phase B), on top of a finished town.py run.
 
-    py tools/remake_build.py <run folder> <map built by town.py> [out=TutA_Remake] [stage=t3d|mesh|map|paths|bsp|all] [maps=A,B (bsp)]
+    py tools/remake_build.py <run folder> <map built by town.py> [out=TutA_Remake] [stage=t3d|mesh|map|paths|specs|bsp|all] [maps=A,B (bsp)]
                              [pkg=AvalonSM4] [entry=stair|hatch] [tower=0|1] [start=dock|tower]
 
 town.py already builds the terrain, buildings, clutter, lighting and low sun into Maps\<map>. This adds what the
@@ -306,8 +306,74 @@ def stage_bsp():
     ed_session(job)
 
 
+def stage_specs():
+    """Route A: the path nodes WITH their ReachSpecs (pathspecs.py -> isl_paths_specs.t3d) instead of PATHS DEFINE.
+    UnrealEd crashes on one 610-node / 2178-spec import (300 / 1056 is fine). So: chunks of <= 300 nodes in order,
+    every spec on its own Start node. A spec whose End is in a LATER chunk comes in with its End unresolved and gets
+    it afterwards with !setprop SPEC End PathNode'MyLevel.NODE' (a carrier PathNode listing other nodes' specs crashed
+    UnrealEd; a Note carrier imported nothing: the post-import garbage collection drops unreferenced objects). Then
+    LevelInfo0.PathsRebuiltStamp back to the source map's value, or 4 (the import zeroes it; the game then refuses the
+    map: 'Paths ... should be rebuilt'). Tag lines are dropped (they drew 'Invalid name' warnings on import)."""
+    from uedlib import Ops, t3d_actors  # noqa
+    run(["py", os.path.join(TOOLS, "pathspecs.py"), RUN])
+    txt = open(os.path.join(RUN, "isl_paths_specs.t3d"), encoding="utf-8").read()
+    acts = re.findall(r"(Begin Actor Class=(\w+) Name=(\w+)\n(.*?)\nEnd Actor)", txt, re.S)
+    chunk_of = {name: k // 300 for k, (_, _, name, _) in enumerate(acts)}
+    files, forward, plist = [], [], {}
+    for c in range(max(chunk_of.values()) + 1):
+        out = ["Begin Map"]
+        for blk, cls, name, body in acts:
+            if chunk_of[name] != c:
+                continue
+            head = [l for l in re.split(r"\n    Begin Object", "\n" + body)[0].splitlines()
+                    if l.strip() and not l.strip().startswith("Tag=")]
+            out += ["Begin Actor Class=%s Name=%s" % (cls, name)] + head
+            specs = re.findall(r"    Begin Object Class=ReachSpec Name=(\w+)\n(.*?)\n    End Object", blk, re.S)
+            for k, (sn, sbody) in enumerate(specs):
+                end = re.search(r"End=(\w+)'MyLevel\.(\w+)'", sbody)
+                if chunk_of.get(end.group(2), 99) > c:
+                    forward.append((sn, end.group(1), end.group(2)))
+                out += ["    Begin Object Class=ReachSpec Name=%s" % sn, sbody, "    End Object",
+                        "    PathList(%d)=ReachSpec'MyLevel.%s'" % (k, sn)]
+                plist.setdefault(name, []).append(sn)
+            out.append("End Actor")
+        p = os.path.join(RUN, "remake_specs_%d.t3d" % c)
+        open(p, "w", newline="\r\n").write("\n".join(out + ["End Map"]) + "\n")
+        files.append(p)
+    stamp = o.get("stamp")
+
+    def job(ed):
+        ed.exec("!answer yes")
+        ed.load(OUT)
+        ops = Ops.attach_to(ed.pid)
+        ops.select("LevelInfo0")
+        st = (t3d_actors(ed.copy_selected()) or [{"props": {}}])[0]["props"].get("PathsRebuiltStamp")
+        ed.deselect()
+        for p in files:
+            ed.import_t3d(p, add=True)
+            ed.deselect()
+        bad = 0
+        for sn, ecls, end in forward:
+            r = ops.exec("!setprop %s End %s'MyLevel.%s'" % (sn, ecls, end))
+            if "Bad value" in r or "no property" in r or "not found" in r.lower():
+                bad += 1
+                if bad <= 3:
+                    print("   setprop failed:", r.strip()[:160])
+        print("  %d forward specs, End set on %d" % (len(forward), len(forward) - bad))
+        mine = [a for a in ed.actors("PathNode") if re.match(r"Gen(Path|Story)", a.get("Name", ""))]
+        refs = sum(1 for a in mine for k in a["props"] if k.startswith("PathList"))
+        print("  %d nodes in %d chunks, %d PathList entries (of %d specs) (stamp before %s)"
+              % (len(mine), len(files), refs, sum(len(v) for v in plist.values()), st))
+        ops.exec("!setprop LevelInfo0 PathsRebuiltStamp %s" % (stamp or (st if st not in (None, "", "0") else 4)))
+        ops.stop()
+        ed.save(OUT)
+    ed_session(job)
+
+
 if STAGE == "bsp":
     stage_bsp()
+if STAGE == "specs":
+    stage_specs()
 if STAGE in ("t3d", "all"):
     stage_t3d()
 if STAGE in ("mesh", "all"):
