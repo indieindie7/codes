@@ -23,7 +23,7 @@ function string Describe()
 {
 	local string S;
 
-	S = A.Name $ " -> " $ B.Name $ " straight " $ int(Straight) $ " route ";
+	S = A.Name $ " (" $ int(A.Location.X) $ " " $ int(A.Location.Y) $ " " $ int(A.Location.Z) $ ") -> " $ B.Name $ " straight " $ int(Straight) $ " route ";
 	if (Route <= 0)
 		S = S $ "none";
 	else

@@ -76,6 +76,7 @@ var array<vector> CandWall, CandNorm;
 var array<float> CandRoute, CandRatio;
 var array<int> CandTwo;
 var float LinkRadius, LinkHeight, LinkSpeed;   // a hound's body and leap speed, for the arcs at build time
+var string ArcBlock;                           // what the last ArcClear hit (for the log)
 struct PackInfo
 {
 	var SquadAI S;
@@ -1998,16 +1999,28 @@ function bool ArcClear(vector From, vector V, float G, float Flight, vector Exte
 {
 	local int i;
 	local vector Prev, Next, HitLoc, HitNorm;
+	local Actor A;
 
+	// (the last segment stops short of the landing: touching the floor there is the landing itself)
 	Prev = From;
 	for (i = 1; i <= 6; i++)
 	{
-		Next = ArcAt(From, V, G, Flight * i / 6.0);
-		if (Trace(HitLoc, HitNorm, Next, Prev, false, Extent) != None)
+		Next = ArcAt(From, V, G, Flight * FMin(i / 6.0, 0.9));
+		A = Trace(HitLoc, HitNorm, Next, Prev, false, Extent);
+		if (A != None)
+		{
+			ArcBlock = A.Name $ " on segment " $ i $ " (n.z " $ (int(HitNorm.Z * 100) / 100.0) $ ", " $ int(VSize(HitLoc - From)) $ " out, " $ int(HitLoc.Z - From.Z) $ " up)";
 			return false;
+		}
 		Prev = Next;
 	}
 	return true;
+}
+
+// what counts as a wall to kick off: the level, or a static blocking thing (a static mesh, a prop)
+static function bool IsWall(Actor A)
+{
+	return A != None && (A.bWorldGeometry || (A.bStatic && A.bBlockActors) || A.IsA('StaticMeshActor'));
 }
 
 function float LeapSpeed(ModMind M)
@@ -2024,7 +2037,7 @@ function float LeapSpeed(ModMind M)
 
 static function vector BodyExtent(float Radius, float Height)
 {
-	return vect(1,1,0) * (Radius * 0.7) + vect(0,0,1) * (Height * 0.7);
+	return vect(1,1,0) * (Radius * 0.7) + vect(0,0,1) * (Height * 0.5);
 }
 
 // a wall to kick off: within WallKickRange, 45 then 70 degrees either side of the line from M toward
@@ -2037,6 +2050,7 @@ function bool FindKickWall(ModMind M, vector Toward, vector Target, out vector W
 	local int Side, Try;
 	local float Angle, D, G, Flight2;
 	local Actor A;
+	local string Why;
 
 	Dir = Normal((Toward - M.P.Location) * vect(1,1,0));
 	if (Dir == vect(0,0,0))
@@ -2046,39 +2060,95 @@ function bool FindKickWall(ModMind M, vector Toward, vector Target, out vector W
 	Side = 1;
 	if (FRand() < 0.5)
 		Side = -1;
-	for (Try = 0; Try < 4; Try++)
+	for (Try = 0; Try < 8; Try++)
 	{
+		// 45 then 70 degrees, each pitched up 16 degrees then flat
 		Angle = 45;
-		if (Try >= 2)
+		if (Try % 4 >= 2)
 			Angle = 70;
 		if (Try % 2 == 1)
 			Side = -Side;
 		Aim = Turned(Dir, Angle * Side);
-		Aim = Normal(Aim + vect(0,0,1) * 0.3);
+		if (Try < 4)
+			Aim = Normal(Aim + vect(0,0,1) * 0.3);
 		A = Trace(HitLoc, HitNorm, M.P.Location + Aim * WallKickRange, M.P.Location, false);
-		if (A == None || !A.bWorldGeometry)
+		Why = Why $ " " $ int(Angle * Side) $ IfText(Try < 4, "up", "flat") $ ":";
+		if (A == None)
+		{
+			Why = Why $ "nothing";
 			continue;
-		if (HitNorm.Z < -0.17 || HitNorm.Z > 0.5)
+		}
+		if (!IsWall(A))
+		{
+			Why = Why $ A.Name $ " (not a wall)";
 			continue;
+		}
 		D = VSize(HitLoc - M.P.Location);
-		if (D < 150)
+		if (HitNorm.Z < -0.17 || HitNorm.Z > 0.5)
+		{
+			Why = Why $ "slope " $ (int(HitNorm.Z * 100) / 100.0) $ " at " $ int(D);
 			continue;
+		}
+		if (D < 250)
+		{
+			Why = Why $ "too near " $ int(D);     // (the hound is 60 wide: nearer than this is a hop, not a leap)
+			continue;
+		}
 		Plant = HitLoc + HitNorm * (M.P.CollisionRadius + 8);
-		if ((HitNorm dot Normal(Target - Plant)) < 0.1)
-			continue;               // the leap off must go out from the wall
-		if (VSize((Target - Plant) * vect(1,1,0)) < 100 || VSize(Target - Plant) > WallKickRange * 1.3)
+		if ((HitNorm dot Normal(Target - Plant)) <= 0)
+		{
+			Why = Why $ "faces away at " $ int(D);   // the leap off must go out from the wall (the stock RequestLeapOffWall's rule)
 			continue;
+		}
+		if (VSize((Target - Plant) * vect(1,1,0)) < 100 || VSize(Target - Plant) > WallKickRange * 1.3)
+		{
+			Why = Why $ "target " $ int(VSize(Target - Plant)) $ " from the wall";
+			continue;
+		}
 		V1 = Arc(M.P.Location, Plant, LeapSpeed(M), G, Flight1);
 		if (!ArcClear(M.P.Location, V1, G, Flight1, Extent))
+		{
+			Why = Why $ "arc in blocked at " $ int(D) $ " by " $ ArcBlock;
 			continue;
+		}
 		V2 = Arc(Plant, Target, LeapSpeed(M), G, Flight2);
 		if (!ArcClear(Plant, V2, G, Flight2, Extent))
+		{
+			Why = Why $ "arc out blocked at " $ int(D) $ " by " $ ArcBlock;
 			continue;
+		}
 		Wall = Plant;
 		Norm = HitNorm;
 		return true;
 	}
+	KickLog(M.P.Name $ " walls:" $ Why);
 	return false;
+}
+
+// the leap itself, as the stock Seeker launches at the end of its pre-jump clip (startSeekerPhysicalJump:
+// Velocity = jumpVelocity, PHYS_Falling, DidJump), without the clip: the root-motion pre-jump would hang
+// the hound mid-air at the wall, and the engine re-aims a non-attack jump at the bot's Target, so that is
+// put aside for the call. A leap attack keeps the Target (the prey) so the engine may re-aim at it and the
+// air attack bites on contact.
+function bool Launch(ModMind M, vector V, bool bAttack)
+{
+	local Seeker S;
+	local Actor OldTarget;
+
+	S = Seeker(M.P);
+	if (S == None)
+		return false;
+	S.wallJumps = 4;                // the engine's own wall-jump test refuses (it resets on landing)
+	S.bIsRunningJump = true;        // its running-leap apex and landing clips
+	S.bIsLeapAttacking = bAttack;
+	S.jumpVelocity = V;
+	OldTarget = M.B.Target;
+	if (!bAttack)
+		M.B.Target = None;
+	S.startSeekerPhysicalJump();
+	if (!bAttack)
+		M.B.Target = OldTarget;
+	return M.P.Physics == PHYS_Falling;
 }
 
 // where a leap attack at the prey goes (as the stock LeapAttack state aims: a little ahead, up to its chest)
@@ -2103,15 +2173,13 @@ function bool StartKick(ModMind M, vector Wall, vector Norm, vector V1, float Fl
 		KickLog(M.P.Name $ " can't kick (" $ Why $ "): physics " $ M.P.Physics $ ", input " $ M.P.bAllowInput);
 		return false;
 	}
-	if (Seeker(M.P) != None)
-		Seeker(M.P).wallJumps = 4;      // the engine's own wall-jump test refuses (it resets on landing)
 	M.B.Destination = Wall;
-	if (!M.P.DoJumpTo(Wall))
+	M.P.SetRotation(rotator((Wall - M.P.Location) * vect(1,1,0)));
+	if (!Launch(M, V1, false))
 	{
 		KickLog(M.P.Name $ " jump refused (" $ Why $ ")");
 		return false;
 	}
-	M.P.Velocity = V1;
 	M.B.DoWait('Mind_WallKick', Flight1 + WallKickPlant + 1.5);   // (refused in the same frame as another change: harmless, the kick runs from KickTick)
 	M.Kick = 1;
 	M.KickTime = 0;
@@ -2169,7 +2237,7 @@ function KickTick(ModMind M, float DeltaTime)
 			KickEnd(M, "landed short, " $ int(VSize(M.P.Location - M.KickWall)) $ " from the wall");
 			return;
 		}
-		if (M.P.Physics != PHYS_Falling)
+		if (M.P.Physics != PHYS_Falling && (M.P.Physics != PHYS_RootMotion || M.KickTime > M.KickFlight + 0.4))
 		{
 			KickEnd(M, "physics changed to " $ M.P.Physics);
 			return;
@@ -2192,7 +2260,7 @@ function KickTick(ModMind M, float DeltaTime)
 		break;
 	case 3:
 		// leaping off: done on landing
-		if ((M.P.Physics == PHYS_Walking && M.KickTime > 0.15) || M.KickTime > 2.5 || (M.P.Physics != PHYS_Falling && M.P.Physics != PHYS_Walking))
+		if ((M.P.Physics == PHYS_Walking && M.KickTime > 0.15) || M.KickTime > 2.5 || (M.P.Physics != PHYS_Falling && M.P.Physics != PHYS_Walking && M.P.Physics != PHYS_RootMotion))
 		{
 			KickLog(M.P.Name $ " landed after " $ (int(M.KickTime * 100) / 100.0) $ " s, " $ int(VSize((M.P.Location - M.KickTarget) * vect(1,1,0))) $ " from the target");
 			if (M.Link != None)
@@ -2219,23 +2287,22 @@ function KickPlant(ModMind M, float D)
 	M.P.SetPhysics(PHYS_None);
 	M.P.Velocity = vect(0,0,0);
 	M.P.Acceleration = vect(0,0,0);
-	if (D < 80)
-		M.P.SetLocation(M.KickWall);
+	if (D < 130)
+		M.P.SetLocation(M.KickWall);    // (fails against the wall: then it plants where it is)
 	R = rotator((M.KickTarget - M.P.Location) * vect(1,1,0));
 	M.P.SetRotation(R);
 	M.P.DesiredRotation = R;
 	M.B.DesiredRotation = R;
 	// the push-off pose: nose up (the hips pitched; ModBody leaves the hips alone while it is not walking)
 	// and its leap crouch clip
+	// (no clip: the end of the Seeker's pre-jump clips launches its own jump, so the pose is the hips alone)
 	R = rot(0,0,0);
 	R.Pitch = 6400;
 	M.P.SetBoneRotation('hips', R, 0, 1);
-	if (EonPawn(M.P) != None)
-		EonPawn(M.P).PlayEonAnim(false, 'jump_start', 0, 1.0, -1);
+	KickLog(M.P.Name $ " planted after " $ (int(M.KickTime * 100) / 100.0) $ " s, " $ int(D) $ " from the spot");
 	M.Kick = 2;
 	M.KickTime = 0;
 	M.KicksPlanted++;
-	KickLog(M.P.Name $ " planted after " $ (int(M.KickTime * 100) / 100.0) $ " s, " $ int(D) $ " from the spot");
 }
 
 // off the wall: at the prey (a leap attack, re-aimed at it now) or to the spot
@@ -2253,19 +2320,16 @@ function KickLeapOff(ModMind M)
 		Target = PreyLeapTarget(M, Prey);
 	G = Gravity(M.P);
 	V = Arc(M.P.Location, Target, LeapSpeed(M), G, Flight);
-	M.P.SetPhysics(PHYS_Walking);       // DoJump wants it (the stock RequestLeapOffWall does the same)
+	M.P.SetPhysics(PHYS_Walking);
 	M.B.Destination = Target;
-	if (M.bKickAttack)
-		bOk = M.P.DoLeapAttackTo(Target);
-	else
-		bOk = M.P.DoJumpTo(Target);
+	M.P.SetRotation(rotator((Target - M.P.Location) * vect(1,1,0)));
+	bOk = Launch(M, V, M.bKickAttack);
 	if (!bOk)
 	{
 		M.P.SetPhysics(PHYS_Falling);
 		KickEnd(M, "leap off refused");
 		return;
 	}
-	M.P.Velocity = V;
 	M.Kick = 3;
 	M.KickTime = 0;
 	M.KickLeaps++;
@@ -2311,9 +2375,31 @@ function string ForceKick()
 	}
 	if (Best == None)
 		return "no hound";
+	KickLog(Best.P.Name $ " around it: " $ Around(Best.P));
 	if (TryKick(Best, PC.Pawn.Location, PreyLeapTarget(Best, PC.Pawn), true, "pilot", true))
 		return Best.P.Name $ " kicks from " $ int(BestD);
 	return Best.P.Name $ " at " $ int(BestD) $ ": no kick (see wallkick: lines)";
+}
+
+// what the flat traces hit round P, every 45 degrees (the pilot's WALLKICK)
+function string Around(Pawn P)
+{
+	local int i;
+	local vector Dir, HitLoc, HitNorm;
+	local Actor A;
+	local string S;
+
+	for (i = 0; i < 8; i++)
+	{
+		Dir = Turned(vect(1,0,0), i * 45);
+		A = Trace(HitLoc, HitNorm, P.Location + Dir * WallKickRange, P.Location, false);
+		S = S $ " " $ (i * 45) $ ":";
+		if (A == None)
+			S = S $ "-";
+		else
+			S = S $ A.Name $ "@" $ int(VSize(HitLoc - P.Location)) $ "/" $ (int(HitNorm.Z * 100) / 100.0);
+	}
+	return S;
 }
 
 // leap links (the report's Rule 1), built once per level from the path graph, a few nodes a tick: two
@@ -2510,7 +2596,7 @@ function bool LinkWall(NavigationPoint A, NavigationPoint B, out vector Wall, ou
 	for (Side = -1; Side <= 1; Side += 2)
 	{
 		Hit = Trace(HitLoc, HitNorm, Mid + Perp * (Side * 0.6 * WallKickRange), Mid, false);
-		if (Hit == None || !Hit.bWorldGeometry)
+		if (!IsWall(Hit))
 			continue;
 		if (HitNorm.Z < -0.17 || HitNorm.Z > 0.5)
 			continue;
