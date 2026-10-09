@@ -6,7 +6,7 @@ kind: dorm
 at: 16800 2600 210
 size: 24 10 7
 count: 2 along
-users: hauliers mine_crew
+users: hauliers mine_crew dudek
 beds: 80
 doors: front:personnel
 roof: flat

@@ -4,7 +4,7 @@ role: Liandri plant director
 employer: liandri
 lives: directors_house
 works: plant_office
-routine: 0700 directors_house; 0800 plant_office; 1200 plant_office; 1700 hall_b; 1800 hall_a; 1900 directors_house
+routine: 0700 directors_house; 0800 plant_office; 1200 plant_office; 1700 hall_b:control_room; 1800 hall_a; 1900 directors_house
 wants: the quarter's numbers; the hill behind her house kept green
 fears: the sector office finding a reason to look closely
 

@@ -11,7 +11,10 @@ doors: front:roller left:personnel back:personnel
 roof: flat
 wear: 0.2
 lit: yes
-pipes: pump_station
+pipes: fuel_depot cooling_towers
+provides: power
+needs: fuel cooling
 ref: processing_hall
 
-Where the island's power comes from, including the tower's; the pylon line starts at its back wall.
+Where the island's power comes from, including the tower's; the pylon line starts at its back wall. Fuel in
+from the depot on sleepers; the cooling towers beside it take the heat of its condenser (D9, engineer s.1).

@@ -20,5 +20,10 @@ under the weep at kilometre three ("KM3, 2nd YR"). The company sign says NO ACCE
 Rook's boats tie up at its sea end, and his crates wait on a pallet above the waterline for the Tin Row traders:
 it is how he reaches Tin Row and the dead hall without passing the checkpoint. The outlaws' road.
 
-At the far end, one lamp that should not be lit. Its two doors are its two ends; lit: no is deliberate (it has
-users, it is not abandoned).
+The ending (D7, the combined version). At the far end of the quiet stretch, one lamp that should not be lit:
+it is Rook's, hung over his crates, and one of his men lies dead beside it, face down in the ankle-deep water,
+with wet footprints past him that are not the player's. Nobody is waiting; Rook's people were fought earlier,
+at the dock yard, and this one came down the road alone. Then the lamps of the sluice gallery die one by one
+from the far end, the red beacon on the sluice gate comes on, the gate opens, and a Skaarj stands against
+the red light for a breath before it moves. The drain's two doors are its two ends; lit: no is deliberate (it
+has users, it is not abandoned).

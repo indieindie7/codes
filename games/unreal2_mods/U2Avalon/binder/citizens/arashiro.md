@@ -4,7 +4,7 @@ role: Liandri water and desalination technician
 employer: liandri
 lives: dorm
 works: pump_house
-routine: 0600 dorm; 0630 pump_house; 1000 water_tanks; 1300 pump_house; 1600 tank_farm; 1900 dorm
+routine: 0600 dorm; 0630 pump_house; 1000 water_tanks; 1130 sewage_works; 1300 pump_house; 1600 tank_farm; 1900 dorm
 wants: a second pump so the first can be serviced
 fears: the outfall stain reaching the intake
 

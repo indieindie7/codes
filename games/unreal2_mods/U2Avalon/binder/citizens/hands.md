@@ -5,7 +5,7 @@ employer: liandri
 headcount: 48
 lives: dorm
 works: hall_a
-routine: 0600 dorm; 0615 mess; 0630 hall_a; 1230 hall_b; 1300 hall_a; 1830 dorm; 1900 mess; 2000 company_store
+routine: 0600 dorm; 0615 mess; 0630 hall_a; 1000 thickener; 1030 hall_b; 1230 hall_b; 1300 hall_a; 1830 dorm; 1900 mess; 2000 company_store
 wants: the night shift bonus back
 fears: the silos
 

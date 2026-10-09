@@ -19,4 +19,5 @@ ref: storage_tank
 
 Four pale tanks of concentrate slurry, agitated, below hall_b's flotation floor, with a ladder each and the
 slurry pipeline's origin at their feet. Not fuel (engineer 2026-10-09): the only fire set-back case is the
-fuel depot. `conc` is a new resource systems.py does not route yet (hall_b -> tank_farm -> the dock).
+fuel depot. The conc chain in systems.py runs hall_b -> here -> the pump station -> the concentrate shed at
+the dock.

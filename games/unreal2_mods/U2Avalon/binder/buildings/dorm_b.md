@@ -6,7 +6,7 @@ kind: dorm
 at: 13600 -2600 120
 size: 24 10 7
 count: 3 along
-users: dock_gang night_line rig_crews
+users: dock_gang night_line rig_crews lindqvist
 beds: 120
 doors: front:personnel back:personnel
 roof: flat

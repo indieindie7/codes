@@ -5,7 +5,7 @@ layer: decline
 kind: house
 at: 9200 -2000 60
 size: 7 5 3.5
-users: dock_gang garrison security ship_row tin_row_traders
+users: dock_gang garrison security ship_row tin_row_traders lindqvist
 beds: 0
 doors: front:personnel left:personnel right:personnel
 roof: pitched
