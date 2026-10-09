@@ -8,7 +8,8 @@ veto. The generator keeps the candidate they agree on best (the geometric mean o
               - the town works: systems score; a core need unmet is a VETO
               - "the company holds the high ground": the tower's ground stands over the works plateau
               - "the town lives in its smoke": the shanty's mean nuisance (the plume model of layout_spine pass 1)
-              - beat 1 "dread - compression, tower hidden" at the dock: the tower hidden from an early station
+              - beat 1 "dread - compression, tower hidden" at the dock: the hero hidden from an early station, with a shed
+                stack on the sightline when nothing else hides it (anchors.dock_occluder); no fit = WARN, half credit
   DIRECTOR  the cinematography rules (games/reports/Cinematography and concept art for the Avalon town.md)
               - the window frame (compose.py): hero on a third, the town 30-60 % of the width, 12+ buildings,
                 depth bands, a leading line into the hero; no hero in the frame is a VETO
@@ -27,7 +28,7 @@ veto. The generator keeps the candidate they agree on best (the geometric mean o
             = 5.3 m/s, NPC hit odds fall off past 1024 UU = 20 m, sight cap 6000 UU = 120 m, walkable floor ~45 deg)
               - LD1 the critical route (the spine, dock -> tower) walkable: grade <= 30 deg on the ground; < 80 % is a VETO
               - LD2 pacing (Bungie's 30 s of fun, the L4D build-up/relax): along the spine a beat (a junction, a landmark,
-                the tower shown or lost) at least every 60 s of walking (315 m)
+                the tower shown or lost) at least every 60 s of walking (315 m); over 60 s is a note, scored past 90 s
               - LD3 the weenie: from a station every 50 m of the walk, the tower OR a district landmark is in view
               - LD4 streets end on a view: each branch/lane's end looks at a building or toward the tower, never at nothing
               - LD5 arenas at the junctions: >= 2 entries, >= 3 cover pieces 10-40 m out, a high spot (+3 m), and the
@@ -35,7 +36,8 @@ veto. The generator keeps the candidate they agree on best (the geometric mean o
                 hitscan mercs win by volume of fire)
               - LD6 a local landmark per district: its tallest building >= 2x the district's median height
               - LD7 the Unreal 1 first-Skaarj recipe: somewhere on the walk a quiet stretch (25-60 s, no beat) that ends in
-                a junction good enough to fight in (the space for a staged reveal)
+                a junction good enough to fight in (the space for a staged reveal); the drain's stretch before the
+                sluice gallery counts (credit qs/25 when shorter)
   ARTIST    the drawings and the believability metrics
               - IMP (irregular, lived-in plots) and HIER (street hierarchy, loops, old core near the dock)
               - figure-ground grain: no building lost in the sea, the town compact (its built area within a radius)
@@ -115,6 +117,8 @@ def _boxes(L, sheets, skip=()):
             continue
         r = max(s["size"][0], s["size"][1]) * M * 0.5
         out.append((b["x"], b["y"], r, b.get("z", 0) + (s["size"][2] if len(s["size"]) > 2 else 6) * M))
+    for oc in L.get("occluders", []):          # beat 1's shed stack (anchors.dock_occluder, round 3)
+        out.append((oc["x"], oc["y"], oc.get("r", 212.0), oc.get("top", oc["z"] + oc.get("stack", 1) * 305.0)))
     return out
 
 
@@ -152,7 +156,8 @@ def serial(Z, L, sheets, step_m=35.0):
 
 
 WALK_MS = 263.0 / M                       # U2 GroundSpeed in m/s
-BEAT_S = 60.0                              # the longest walk without a beat
+BEAT_S = 60.0                              # the longest walk without a beat (over it: a level-designer note, round 3)
+BEAT_HARD_S = 90.0                         # ... the score only counts past this
 FIGHT_M = 2048.0 / M                       # past this, open ground belongs to the hitscan mercs
 
 
@@ -242,8 +247,11 @@ def level_designer(Z, L, sheets, walk):
     beats = sorted(beats)
     gaps = [(b2 - b1) / M / WALK_MS for b1, b2 in zip(beats[:-1], beats[1:])]
     longest = max(gaps) if gaps else 0
-    checks["LD2 pacing"] = float(np.clip(BEAT_S / max(longest, 1e-3), 0, 1))
-    notes.append("LD2: %d beats over %.0f s of walking, longest quiet %.0f s (want <= 60)" % (len(beats) - 2, s_end / M / WALK_MS, longest))
+    checks["LD2 pacing"] = float(np.clip(BEAT_HARD_S / max(longest, 1e-3), 0, 1))
+    long_gaps = [(b1, g) for b1, g in zip(beats[:-1], gaps) if g > BEAT_S]
+    notes.append("LD2: %d beats over %.0f s of walking, longest quiet %.0f s (scored past %.0f)%s" % (
+        len(beats) - 2, s_end / M / WALK_MS, longest, BEAT_HARD_S,
+        ("; NOTE for the level designer: %s" % ", ".join("%.0f s of nothing from %.0f m along the spine" % (g, b1 / M) for b1, g in long_gaps)) if long_gaps else ""))
     # LD3 the weenie: the tower or a district landmark in view every 50 m
     marks = {}
     for bid, b in B.items():
@@ -324,8 +332,18 @@ def level_designer(Z, L, sheets, walk):
                 s2, d2 = s_of(a[1], a[2])
                 if a[0] >= 0.75 and abs(s2 - b2) < 20 * M and d2 < 20 * M:
                     quiet = 1.0
+    ld7_note = "a quiet stretch ends in a fightable junction (the reveal)" if quiet else "no quiet stretch on the spine leads into a good arena"
+    dr = L.get("drain")                       # round 3: the drain's own quiet stretch (grate -> the sluice gallery, the designed reveal)
+    if dr:
+        g0 = next((sg["s0_uu"] for sg in dr.get("segments", []) if sg["kind"] == "sluice_gallery"), None)
+        if g0:
+            qs = g0 / 263.0
+            credit = 1.0 if 25 <= qs <= 60 else min(1.0, qs / 25.0)
+            if credit > quiet:
+                quiet = credit
+            ld7_note += "; the drain: %.0f s quiet before the sluice gallery (want 25-60, credit %.2f)" % (qs, credit)
     checks["LD7 reveal space"] = quiet
-    notes.append("LD7: %s" % ("a quiet stretch ends in a fightable junction (the reveal)" if quiet else "no quiet stretch leads into a good arena"))
+    notes.append("LD7: " + ld7_note)
     return {"score": round(float(np.mean(list(checks.values()))), 3), "notes": notes, "veto": veto,
             "checks": {k: round(v, 2) for k, v in checks.items()}}
 
@@ -401,8 +419,17 @@ def review(heightmap, layout_path, graded=None):
     smoke = float(np.clip(np.mean(poor) / 0.5, 0, 1)) if poor else 0.0
     notes.append("smoke over the shanty: mean nuisance %.2f" % (np.mean(poor) if poor else 0))
     walk = serial(Z, L, sheets)
-    beat1 = 1.0 if any(not v for v in walk[:5]) else 0.0
-    notes.append("beat 1 (dread: tower hidden at the dock): %s" % ("yes" if beat1 else "NO - the tower shows from the quay"))
+    occ = L.get("occluders")
+    if any(not v for v in walk[:5]):
+        beat1 = 1.0
+        notes.append("beat 1 (dread: the hero hidden at the dock): yes%s" % (
+            " (a %d-high shed stack on the quay's sightline)" % occ[0].get("stack", 1) if occ else ""))
+    elif not occ:                             # round 3: no cheap occluder fits (or none was tried) - a warning, half credit
+        beat1 = 0.5
+        notes.append("WARN beat 1 (dread: the hero hidden at the dock): the hero shows from the quay and no shed stack fits the sightline")
+    else:
+        beat1 = 0.0
+        notes.append("beat 1 (dread: the hero hidden at the dock): NO - the hero shows from the quay past the occluder")
     R["writer"] = {"score": round(0.35 * sys_s + 0.2 * high + 0.25 * smoke + 0.2 * beat1, 3), "notes": notes, "veto": veto}
 
     # ---------------------------------------------------------------- the DIRECTOR

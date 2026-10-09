@@ -929,9 +929,13 @@ if "drain" in buildings and o.get("drain", "1") != "0":
         print("  drain: %.0f m (%d UU, %.0f s walk), %.0f %% under the spine, %.1f-%.1f m deep, outfall invert %+.1f m over the sea" % (
             DRAIN["length_m"], DRAIN["length_uu"], DRAIN["walk_s"], 100 * DRAIN["under_spine"], DRAIN["min_depth_m"], DRAIN["max_depth_m"],
             DRAIN["outfall_invert_vs_sea_m"]))
+# beat 1 (dread): when the hero shows from the quay, a cheap shed stack on the sightline (tools/anchors.py); no fit = a WARN
+OCC = anchors.dock_occluder(Z, out, buildings)
+out["occluders"] = OCC["placed"]
+print("  occluder:", OCC["note"])
 out["anchors"] = {k: v for k, v in (("summit", SUMMIT and {kk: vv for kk, vv in SUMMIT.items() if kk != "road"}),
                                      ("water_tower", WATER_TOWER and {kk: vv for kk, vv in WATER_TOWER.items() if kk != "served"}),
-                                     ("guest_house", GUEST)) if v}
+                                     ("guest_house", GUEST), ("occluder", {kk: vv for kk, vv in OCC.items() if kk != "placed"} | {"n": len(OCC["placed"])})) if v}
 json.dump(out, open(dst, "w"), indent=0)
 print(f"spine {SPINE.length / M:.0f} m, {sum(r.cls == 'branch' for r in ROADS)} branches, {N_LANES} back lanes, {N_CONN} connectors, {len(PLOTS)} plots, {len(placed)} buildings placed, {len(FENCES)} fence runs -> {dst}")
 

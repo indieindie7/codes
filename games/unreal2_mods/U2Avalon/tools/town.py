@@ -91,6 +91,12 @@ for ki in range(ISLANDS):
         if anchors.PARTI_HERO not in _Lc["buildings"] or "drain" not in _Lc:
             print("  anchors (late, an older layout):", ", ".join(anchors.apply(_Lc, anchors.load_heights(ib_ + "_e.bmp"))), flush=True)
             json.dump(_Lc, open(cand, "w"), indent=0)
+        elif "occluders" not in _Lc:              # a round-2 layout: beat 1's occluder (round 3) only
+            _occ = anchors.dock_occluder(anchors.load_heights(ib_ + "_e.bmp"), _Lc, binder.load()[1])
+            _Lc["occluders"] = _occ["placed"]
+            _Lc.setdefault("anchors", {})["occluder"] = {k: v for k, v in _occ.items() if k != "placed"} | {"n": len(_occ["placed"])}
+            print("  occluder (late, a round-2 layout):", _occ["note"], flush=True)
+            json.dump(_Lc, open(cand, "w"), indent=0)
         Lc, core_unmet = systems.run(cand, report=True)
         frame = compose.score(ib_ + "_e.bmp", cand) if COMPOSE else {"total": 0.0}
         if CODIRECT:
@@ -143,7 +149,13 @@ def story_extras():
     """the informal taps (binder takes:) into the layout for clutter, the interior plans into <run>/rooms.json"""
     L_ = json.load(open(layout))
     _, sh = binder.load()
-    L_["taps"] = takes.taps(L_, anchors.load_heights(base + "_ec.bmp"), sh)
+    ZG_ = anchors.load_heights(base + "_ec.bmp")
+    L_["taps"] = takes.taps(L_, ZG_, sh)
+    # beat 1's occluder, re-fitted on the GRADED ground (the quay pad can lift the dock stations by metres): what the
+    # clutter builds and the final review counts
+    _occ = anchors.dock_occluder(ZG_, L_, sh)
+    L_["occluders"] = _occ["placed"]
+    L_.setdefault("anchors", {})["occluder"] = {k: v for k, v in _occ.items() if k != "placed"} | {"n": len(_occ["placed"]), "ground": "graded"}
     json.dump(L_, open(layout, "w"), indent=0)
     takes.overlay(anchors.load_heights(base + "_ec.bmp"), L_, L_["taps"], base + "_taps.png")
     P = rooms.build(sh, binder.load_rooms(), L_)
@@ -165,6 +177,8 @@ def story_extras():
     if "guest_house" in A:
         lines.append("guest house beside %s (%s): %d m from the fuel (E16 %s)" % (
             A["guest_house"]["host"], A["guest_house"]["side"], A["guest_house"]["fuel_m"], "ok" if A["guest_house"]["e16_ok"] else "SHORT"))
+    if "occluder" in A:
+        lines.append("occluder: %s" % A["occluder"]["note"])
     if "water_tower" in A:
         lines.append("water tower (E14'): head %.0f m (%s; %s)" % (A["water_tower"]["head_m"], "ok" if A["water_tower"]["e14_ok"] else "short",
                                                                A["water_tower"].get("pick", "highest ground")))

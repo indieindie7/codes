@@ -11,6 +11,8 @@ The rules (redesign/2026-10-09: writer s. 1 + 3.10, engineer E14', level designe
   * water_tower: E14' - the service reservoir on the LOWEST ground within the pipe's reach (300 m) of the water
     consumers (the hero included) whose tank still stands >= 28 m over the highest floor it serves (target 28-50 m);
     the pump house should sit below it.
+  * occluders (beat 1): when the hero shows from the first stations of the walk, a shed stack on the quay's sightline
+    hides it (dock_occluder(); L['occluders'] -> clutter.py; codirect counts it). No fit = a WARN, not a fail.
   * drain: an UNDERGROUND culvert from the dorm square, under the spine, to a sea outfall (by the pump house, >= 150 m
     from the intake, E24). Section 384 x 320 UU with a dry ledge, the junction room 768 x 768 and the sluice gallery
     1536 x 768 x 448 UU (level designer I3); the invert falls >= 0.5 % to the sea. It counts as a walkable path for
@@ -676,6 +678,123 @@ def drain(Z, L, sheets, main=None, start=None):
             "dorm_square": dorms[0] if dorms else None}
 
 
+# --- 5. beat 1: a cheap occluder on the quay's sightline to the hero ---------------------------------------------
+OCCLUDER_MESH = "AvalonSM.B_shed_a"
+OCCLUDER_UU = (325.0, 425.0, 305.0)       # w, d, h (Models/ase/bounds.json); stacked up to OCCLUDER_MAX high
+OCCLUDER_MAX = 3
+BEAT1_STATIONS = 5                        # codirect.serial: the hero hidden at one of the first 5 stations (35 m apart)
+STATION_M = 35.0
+
+
+def _stations(L, hero, n=BEAT1_STATIONS, step_m=STATION_M):
+    """the first n stations of codirect.serial's walk (dock -> the Authority tower along the spine)"""
+    sp = L.get("spine") or []
+    if len(sp) < 2:
+        return []
+    acc = [0.0]
+    for a, b in zip(sp[:-1], sp[1:]):
+        acc.append(acc[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
+    out, s = [], 0.0
+    while len(out) < n and s <= acc[-1]:
+        k = max(0, min(len(sp) - 2, int(np.searchsorted(acc, s) - 1)))
+        t = (s - acc[k]) / max(1e-6, acc[k + 1] - acc[k])
+        p = (sp[k][0] + (sp[k + 1][0] - sp[k][0]) * t, sp[k][1] + (sp[k + 1][1] - sp[k][1]) * t)
+        if math.hypot(p[0] - hero["x"], p[1] - hero["y"]) > 40 * M:
+            out.append(p)
+        s += step_m * M
+    return out
+
+
+def dock_occluder(Z, L, sheets, hero=None, boxes=None):
+    """beat 1 (dread: the hero hidden at the dock). When the hero's top shows from every one of the first stations, a
+    stack of sheds (OCCLUDER_MESH, 1..OCCLUDER_MAX high) goes on the sightline from one of them, on free ground
+    (off the roads and the footprints), the lowest stack first, the earliest station next. The spot is one of the
+    ray's samples (codirect.serial's 50), so the check there sees it. Returns {placed: [occluder dicts], note, ...};
+    L['occluders'] takes `placed` (clutter.py builds them, codirect._boxes counts them)."""
+    hero = hero or PARTI_HERO
+    B = L["buildings"]
+    rep = {"placed": [], "hero": hero, "fits": None, "note": ""}
+    if hero not in B or hero not in sheets or len(sheets[hero].get("size") or ()) < 3:
+        rep["note"] = "no hero placed"
+        return rep
+    T = B[hero]
+    tz = T.get("z", zat(Z, T["x"], T["y"])) + sheets[hero]["size"][2] * M
+    # the other buildings as round prisms (codirect._boxes), without the hero
+    if boxes is None:
+        boxes = []
+        for bid, b in B.items():
+            s = sheets.get(bid)
+            if not s or "size" not in s or bid in ("tower", hero) or s["kind"] in ("pad", "dock", "jetty", "rig", "islet", "barge", "wreck"):
+                continue
+            r = max(s["size"][0], s["size"][1]) * M * 0.5
+            boxes.append((b["x"], b["y"], r, b.get("z", 0) + (s["size"][2] if len(s["size"]) > 2 else 6) * M))
+    roads = [r for r, c in zip(L.get("roads", []), L.get("road_class") or ["spine"] * len(L.get("roads", []))) if c != "path"]
+    keep = [(b["x"], b["y"], max(sheets[bid]["size"][0], sheets[bid]["size"][1]) * M * 0.6)
+            for bid, b in B.items() if bid in sheets and "size" in sheets[bid] and not b.get("underground")]
+    r_occ = max(OCCLUDER_UU[0], OCCLUDER_UU[1]) * 0.5
+
+    def road_clear(x, y):
+        for r in roads:
+            for (ax, ay), (bx, by) in zip(r[:-1], r[1:]):
+                vx, vy = bx - ax, by - ay
+                t = max(0.0, min(1.0, ((x - ax) * vx + (y - ay) * vy) / (vx * vx + vy * vy + 1e-9)))
+                if math.hypot(x - (ax + t * vx), y - (ay + t * vy)) < 6 * M + r_occ:
+                    return False
+        return True
+
+    def seen_from(p):
+        e = max(zat(Z, *p), SEA_Z) + 1.6 * M
+        for u in np.linspace(0.03, 0.97, 50):
+            q = (p[0] + (T["x"] - p[0]) * u, p[1] + (T["y"] - p[1]) * u)
+            ray = e + (tz - e) * u
+            if zat(Z, *q) > ray or any(math.hypot(q[0] - bx, q[1] - by) < br and bt > ray for bx, by, br, bt in boxes):
+                return False
+        return True
+    st = _stations(L, T)
+    if not st:
+        rep["note"] = "no spine"
+        return rep
+    if any(not seen_from(p) for p in st):
+        rep["fits"] = True
+        rep["note"] = "beat 1 already holds: the hero is hidden at one of the first %d stations" % len(st)
+        return rep
+    best = None
+    for k, p in enumerate(st):
+        e = max(zat(Z, *p), SEA_Z) + 1.6 * M
+        D = math.hypot(T["x"] - p[0], T["y"] - p[1])
+        for u in np.linspace(0.03, 0.97, 50):
+            d = u * D
+            if not (8 * M <= d <= 40 * M):
+                continue
+            q = (p[0] + (T["x"] - p[0]) * u, p[1] + (T["y"] - p[1]) * u)
+            g = zat(Z, *q)
+            if g <= SEA_Z + 2 * M:
+                continue
+            ray = e + (tz - e) * u
+            n = int(math.ceil((ray + 0.5 * M - g) / OCCLUDER_UU[2]))
+            if n < 1:
+                n = 1
+            if n > OCCLUDER_MAX:
+                continue
+            if any(math.hypot(q[0] - kx, q[1] - ky) < kr + r_occ for kx, ky, kr in keep) or not road_clear(*q):
+                continue
+            cost = (n, k, d)
+            if best is None or cost < best[0]:
+                best = (cost, k, q, g, n, d, math.degrees(math.atan2(T["y"] - p[1], T["x"] - p[0])))
+    if best is None:
+        rep["fits"] = False
+        rep["note"] = "WARN beat 1: the hero shows from the first %d stations and no shed stack (<= %d high) fits on a sightline" % (len(st), OCCLUDER_MAX)
+        return rep
+    _, k, q, g, n, d, yaw = best
+    occ = {"mesh": OCCLUDER_MESH, "x": round(q[0], 1), "y": round(q[1], 1), "z": round(g, 1), "yaw": round(yaw, 1), "stack": n,
+           "w": OCCLUDER_UU[0], "d": OCCLUDER_UU[1], "h": OCCLUDER_UU[2], "r": round(r_occ, 1), "top": round(g + n * OCCLUDER_UU[2], 1),
+           "station": k, "from_station_m": round(d / M, 1), "hides": hero, "why": "beat 1: dread, the hero hidden at the dock"}
+    rep["placed"] = [occ]
+    rep["fits"] = True
+    rep["note"] = "beat 1: a %d-high shed stack %.0f m out from station %d hides %s" % (n, d / M, k, hero)
+    return rep
+
+
 def walk_edges(dr, to_fine, nearest_free, NF, cost_k=1.0):
     """walks.py: the drain as a walkable path - one tunnel edge each way between its two mouths (the grate and the
     outfall), weighted by its length (metres x cost_k). Returns [(u, v, w)] for walks.graph(extra=...)"""
@@ -763,6 +882,9 @@ def apply(L, Z, sheets=None, hero=None):
             B["drain"] = dict(B.get("drain", {}), x=gx, y=gy, yaw=0.0, z=round(zat(Z, gx, gy), 1), cells=[],
                               layer=sheets["drain"].get("layer", "core"), interest=1.0, underground=True)
             rep["drain"] = {k: v for k, v in dr.items() if k not in ("path", "segments")}
+    occ = dock_occluder(Z, L, sheets, hero=hero if hero in sheets else None)
+    L["occluders"] = occ["placed"]
+    rep["occluder"] = {k: v for k, v in occ.items() if k != "placed"} | {"n": len(occ["placed"])}
     L["anchors"] = rep
     return rep
 

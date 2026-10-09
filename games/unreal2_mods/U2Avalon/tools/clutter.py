@@ -307,6 +307,13 @@ if L.get("taps"):
         actor(mesh, x, y, yaw, scale, lift)
         n_tap += 1
 
+# 2e. beat 1's occluder (tools/anchors.dock_occluder -> L["occluders"]): a shed stack on the quay's sightline to the hero
+n_occ = 0
+for oc in L.get("occluders", []):
+    for lvl in range(int(oc.get("stack", 1))):
+        actor(oc.get("mesh", "AvalonSM.B_shed_a"), oc["x"], oc["y"], oc.get("yaw", 0.0), 1.0, lift=lvl * oc.get("h", 305.0))
+        n_occ += 1
+
 # 3. fence runs: the spine layout gives the gaps between plots; otherwise along each core building's front
 n_fence = 0
 for f in L.get("fences", []):
@@ -393,4 +400,4 @@ if WALL and BEFORE and os.path.exists(BEFORE):
                                   % (WALL, x, y, min(Z[j, i], Z[nj, ni]) - 10, int(yawd * 65536 / 360), max(0.6, hgt / 110.0), cull_of(WALL)))
                     n_walls += 1
 open(out, "w").write("Begin Map\n" + "\n".join(actors) + "\nEnd Map\n")
-print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_spots} gathering spots, {n_junk} junk, {n_add} lean-tos, {n_rack} rack pieces, {n_tap} tap props, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
+print(f"clutter{' (visible ground only)' if SEEN is not None else ''}: {n_road} road slabs, {n_lamps} lamps, {n_spots} gathering spots, {n_junk} junk, {n_add} lean-tos, {n_rack} rack pieces, {n_tap} tap props, {n_occ} occluder sheds, {n_crates} crates/barrels, {n_fence} fence runs, {n_rocks} rocks, {n_trees} trees, {n_walls} wall pieces -> {out}")
