@@ -28,10 +28,13 @@ class AvalonStorm extends Actor;
 #exec TEXTURE IMPORT NAME=RainSheetL FILE=Textures\RainSheetL.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
 #exec TEXTURE IMPORT NAME=RainSheetC FILE=Textures\RainSheetC.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
 #exec TEXTURE IMPORT NAME=RainSheetR FILE=Textures\RainSheetR.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
+// splashes where the drops land on open ground near the player (Q34 next step, tools\make_rain.py)
+#exec TEXTURE IMPORT NAME=RainSplash FILE=Textures\RainSplash.tga MIPS=On UCLAMPMODE=CLAMP VCLAMPMODE=CLAMP
 
 var array<AvalonPuff> Drops;    // near drops, then the mid and far rain sheets (each puff's Glow = its layer 0/1/2)
 var int Slant;                  // the baked slant in use: 0 left, 1 straight, 2 right (from the wind across the view)
 var int NSheets;
+var array<AvalonPuff> Splashes;  // short-lived crowns on the ground round the player (Age/Life/Size0 on each)
 var CardMesh Dome;              // the storm sky in the sky zone (None: AvalonSky.usx missing - the sprite deck only)
 var float DomeR;                // its radius (world units)
 var float DomeOn;               // the storm strength over which it shows
@@ -136,6 +139,19 @@ function Setup(int N, float R, float FallSpeed, vector Wd, float FogStart, float
 		}
 		Drops[Drops.Length] = P;
 		Drop(P, true);
+	}
+	// splashes: a pool re-placed as each one fades (a few hundred a second at full strength, all on open ground)
+	for (i = 0; i < N / 2; i++)
+	{
+		P = Spawn(class'AvalonPuff',,, Location);
+		if (P == None)
+			continue;
+		P.Texture = Texture'RainSplash';
+		P.Style = STY_Translucent;
+		P.bHidden = True;
+		P.Life = 0.1 + FRand() * 0.2;
+		P.Age = FRand() * P.Life;
+		Splashes[Splashes.Length] = P;
 	}
 	// the loops: rain on this actor, wind on a second one (one ambient sound per actor)
 	AmbientSound = Rain;
@@ -318,6 +334,21 @@ event Tick(float DeltaTime)
 		if (P.Location.Z < E.Z - Top * 0.8 || VSize((P.Location - E) * vect(1,1,0)) > Radius * (1.2 + 2.3 * FMin(P.Glow, 1) + 0.5 * FMax(P.Glow - 1, 0)))
 			Drop(P, false);
 	}
+	for (i = 0; i < Splashes.Length; i++)
+	{
+		P = Splashes[i];
+		if (P == None)
+			continue;
+		P.Age += DeltaTime;
+		if (P.Age >= P.Life)
+			Splash(P, E);
+		else if (!P.bHidden)
+		{
+			F = P.Age / P.Life;
+			P.ScaleGlow = P.Glow * (1 - F);
+			P.SetDrawScale(P.Size0 * (0.6 + 0.6 * F));
+		}
+	}
 	// lightning, only in the thick of it: a flash now, the thunder later
 	if (Level.TimeSeconds >= NextBolt)
 	{
@@ -349,6 +380,43 @@ event Tick(float DeltaTime)
 		if (NThunder > 0)
 			PlaySound(Thunder[Rand(NThunder)], SLOT_None, 2.0, false, 60000);
 	}
+}
+
+// a splash somewhere on open ground round the eye, more of them ahead of the view; hidden under a roof, in a light
+// storm (by chance), or where nothing is below within reach
+function Splash(AvalonPuff P, vector E)
+{
+	local vector S, HitL, HitN, V;
+	local float A, D;
+	local PlayerController PC;
+
+	P.Age = 0;
+	P.Life = 0.18 + FRand() * 0.14;
+	P.bHidden = True;
+	if (FRand() > Intensity)
+		return;
+	A = FRand() * 6.2832;
+	D = 80 + 1100 * FRand() * FRand();
+	S = E;
+	S.X += D * Cos(A);
+	S.Y += D * Sin(A);
+	PC = Level.PlayerControllerList;
+	if (PC != None && FRand() < 0.6)
+	{
+		V = vector(PC.Rotation) * vect(1,1,0);
+		if (VSize(V) > 0.1)
+			S += Normal(V) * D * 0.8;
+	}
+	if (Trace(HitL, HitN, S - vect(0,0,2500), S + vect(0,0,80), false) == None || HitN.Z < 0.6)
+		return;
+	if (!FastTrace(HitL + vect(0,0,6000), HitL + vect(0,0,8)))
+		return;
+	P.Size0 = 0.35 + FRand() * 0.45;
+	P.Glow = 0.35 + FRand() * 0.45;
+	P.ScaleGlow = P.Glow;
+	P.SetDrawScale(P.Size0 * 0.6);
+	P.SetLocation(HitL + vect(0,0,1) * 2);
+	P.bHidden = False;
 }
 
 // the dome: in the sky zone at its view point, as big as fits inside the sky box (traces out to its walls)

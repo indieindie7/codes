@@ -399,7 +399,7 @@ Without AvalonCards, the game says "saved and logged (AvalonCards isn't loaded h
    - The PNG is only the cropped part, with the strokes exactly where they were drawn, at full resolution.
    - The `.txt` has `map`, `eye`, `view`, `crop`, `strokes`, `labels "door here"`, `note`, and `mark not asked`.
 7. Press Escape. Sketch closes, the console is still open, and the mouse is back.
-   - Press F8: the same frame comes back with its strokes.
+   - Press F8: a fresh frame from the current camera, no strokes. F8 never reuses an older frame (user's rule, fork cb8276e).
    - Close it, close the console, then press F8 in play: a fresh frame (no HUD) opens with no strokes.
 8. **Save as mark** without AvalonCards (any map with U2GM): the console says `[GM] sketch sketch-... saved and logged (...)`, and `Unreal2.log` has `GM: SKETCH sketch-... map ... eye ... note ...`.
 9. On Avalon (AvalonCards loaded): **Save as mark** with the note `rail here`.

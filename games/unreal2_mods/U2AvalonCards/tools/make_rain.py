@@ -57,4 +57,20 @@ for k, s in SLANT.items():
     yy, xx = (np.mgrid[0:N, 0:N] + 0.5) / N * 2 - 1
     sh *= np.clip(1 - np.maximum(np.abs(xx), np.abs(yy)) ** 6, 0, 1)   # fade the edges: sheets overlap unseen
     save("RainSheet" + k, sh)
+# a splash (Q34 next step, 2026-10-08): the crown a drop throws up where it lands, seen side-on (sprites face the
+# camera); the bottom half of the sprite is empty so the sprite's centre sits on the ground
+N = 64
+sp = np.zeros((N, N))
+yy, xx = np.mgrid[0:N, 0:N] + 0.5
+cx, cy = N / 2, N / 2
+sp += 0.5 * np.exp(-(((xx - cx) / 13) ** 2 + ((yy - cy) / 1.6) ** 2))     # the flat ring on the ground
+for i in range(9):                                                         # the crown's droplets, fanned upward
+    ang = np.radians(-70 + 140 * i / 8 + rng.uniform(-6, 6))
+    L = rng.uniform(9, 17)
+    for t in np.linspace(0.15, 1.0, 24):
+        x = cx + np.sin(ang) * L * t * 1.2
+        y = cy - np.cos(ang) * L * t * (1.15 - 0.35 * t)
+        sp += 0.16 * (1 - t * 0.6) * np.exp(-(((xx - x) / 1.1) ** 2 + ((yy - y) / 1.1) ** 2))
+sp[int(cy) + 3:] = 0
+save("RainSplash", sp)
 print("rain ->", out)
