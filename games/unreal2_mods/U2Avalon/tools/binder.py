@@ -1,4 +1,4 @@
-"""Read the Avalon binder (binder/citizens/*.md, binder/buildings/*.md) and check it.
+"""Read the Avalon binder (binder/citizens/*.md, binder/buildings/*.md, binder/rooms/*.md) and check it.
 
     python tools/binder.py            check: prints problems and door-side suggestions, exit 1 if any rule breaks
     python tools/binder.py dump       the parsed sheets as JSON
@@ -6,10 +6,18 @@
 As a library: load() -> (citizens, buildings) dicts of dicts; the header 'key: value' lines are the fields,
 'at'/'size' are parsed to numbers, 'doors' to {side: type}, 'users'/'bays' to lists, 'routine' to
 [(minutes, building_id)]. Everything below the first blank line is prose and ignored.
+
+Story keys (binder 1940260) are read too:
+  * a routine stop may name a room, '1930 tower:catwalk'. It resolves to its building ('tower') in 'routine', so
+    every building check sees the building; the room goes to 'routine_rooms' {minutes: room id};
+  * citizens' 'rooms: 1930 tower:catwalk' -> 'rooms' [(minutes, building, room)];
+  * buildings' 'rooms: command_room catwalk' and 'takes: power water' -> lists ('rooms', 'takes');
+  * room sheets (binder/rooms/*.md, 'in: <building>'): load_rooms() -> {room id: sheet}, 'users' a list.
 """
 import glob, json, math, os, sys
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(HERE, "tools"))
 BINDER = os.path.join(HERE, "binder")
 SIDES = ("front", "back", "left", "right")
 DOOR_TYPES = ("personnel", "roller", "airlock", "none")
@@ -51,16 +59,112 @@ def parse(path):
     return d
 
 
+def stop(word):
+    """a routine stop: 'tower:catwalk' -> ('tower', 'catwalk'); 'tower' -> ('tower', None)"""
+    bid, _, room = word.partition(":")
+    return bid, (room or None)
+
+
 def load():
     citizens = {}
     for p in sorted(glob.glob(os.path.join(BINDER, "citizens", "*.md"))):
         c = parse(p)
+        rr = {}                         # a routine stop may name a room: the routine keeps the building
+        for k, (t, word) in enumerate(c.get("routine", [])):
+            bid, room = stop(word)
+            if room:
+                rr[t] = room
+            c["routine"][k] = (t, bid)
+        c["routine_rooms"] = rr
+        rooms = []                      # 'rooms: 1930 tower:catwalk; 2000 tower:command_room'
+        words = c.get("rooms", "").replace(";", " ").split()
+        for t, word in zip(words[0::2], words[1::2]):
+            bid, room = stop(word)
+            try:
+                rooms.append((int(t[:2]) * 60 + int(t[2:]), bid, room))
+            except ValueError:
+                rooms.append((None, bid, room))
+        c["rooms"] = rooms
         citizens[c["id"]] = c
     buildings = {}
     for p in sorted(glob.glob(os.path.join(BINDER, "buildings", "*.md"))):
         b = parse(p)
+        b["rooms"] = b.get("rooms", "").split()
+        b["takes"] = b.get("takes", "").split()
         buildings[b["id"]] = b
     return citizens, buildings
+
+
+def load_rooms():
+    """the room sheets (binder/rooms/*.md): {room id: sheet}; 'in' is the building id, 'users' a list"""
+    rooms = {}
+    for p in sorted(glob.glob(os.path.join(BINDER, "rooms", "*.md"))):
+        r = parse(p)
+        r.setdefault("id", os.path.splitext(os.path.basename(p))[0])
+        rooms[r["id"]] = r
+    return rooms
+
+
+def check_story(citizens, buildings, rooms, problems, notes):
+    """the story keys (binder 1940260): room sheets, room stops, buildings' rooms: and takes:"""
+    for rid, r in rooms.items():
+        host = r.get("in")
+        if not host:
+            problems.append(f"room {rid}: no 'in:' building")
+        elif host not in buildings:
+            problems.append(f"room {rid}: in '{host}', not a building")
+        elif rid not in buildings[host].get("rooms", []):
+            notes.append(f"room {rid}: in {host}, but {host}'s rooms: line does not list it")
+        for u in r["users"]:
+            if u not in citizens:
+                problems.append(f"room {rid}: user '{u}' is not a citizen")
+    for bid, b in buildings.items():
+        for rid in b.get("rooms", []):
+            if rid not in rooms:
+                problems.append(f"{bid}: rooms: '{rid}' has no sheet in binder/rooms/")
+            elif rooms[rid].get("in") != bid:
+                problems.append(f"{bid}: rooms: '{rid}', but that sheet says in: {rooms[rid].get('in')}")
+    for c in citizens.values():
+        at_stop = {}
+        for t, bid in c.get("routine", []):
+            at_stop.setdefault(bid, set()).add(t)
+        named = [(t, dict(c["routine"])[t], room) for t, room in c.get("routine_rooms", {}).items()]
+        for t, bid, room in list(c.get("rooms", [])) + named:
+            where = f"{c['id']}: room stop {bid}:{room}"
+            if bid not in buildings:
+                problems.append(f"{where}: '{bid}' is not a building")
+                continue
+            if room not in rooms:
+                problems.append(f"{where}: no room sheet '{room}'")
+            elif rooms[room].get("in") != bid:
+                problems.append(f"{where}: the sheet says {room} is in {rooms[room].get('in')}")
+            elif c["id"] not in rooms[room]["users"]:
+                notes.append(f"{where}: {c['id']} is not in the room's users: line")
+            if t is not None and t not in at_stop.get(bid, set()):
+                problems.append(f"{where} at {t // 60:02d}{t % 60:02d}: the routine is not at {bid} then")
+    # takes: an informal tap must have a formal provider of that resource in the town to steal from
+    taking = {bid: b["takes"] for bid, b in buildings.items() if b.get("takes")}
+    if not taking:
+        return
+    try:
+        import systems                      # the resource list and the provides/needs defaults
+        known = set(systems.RES)
+        provided = {}
+        for pid, pb in buildings.items():
+            for res in systems.spec_of(pid, pb)[0]:
+                provided.setdefault(res, []).append(pid)
+    except Exception as e:                  # never let the checker die on a systems.py that is mid-edit
+        notes.append(f"takes: not checked against systems.py ({e})")
+        return
+    for bid, res_list in taking.items():
+        need = set(buildings[bid].get("needs", "").split())
+        for res in res_list:
+            if res not in known:
+                problems.append(f"{bid}: takes '{res}', not a resource (systems.RES)")
+            elif not provided.get(res):
+                problems.append(f"{bid}: takes {res}, but no building provides {res} to tap")
+            if res in need:
+                notes.append(f"{bid}: both needs and takes {res} (a legal supply AND a tap?)")
 
 
 def side_toward(b, target):
@@ -76,8 +180,9 @@ def side_toward(b, target):
     return "left" if s > 0 else "right"
 
 
-def check(citizens, buildings, verbose=True):
+def check(citizens, buildings, verbose=True, rooms=None):
     problems, notes = [], []
+    check_story(citizens, buildings, load_rooms() if rooms is None else rooms, problems, notes)
     # beds: the people who live in a building (headcount: on group sheets) must fit its beds: line x count
     living = {}
     for c in citizens.values():
@@ -167,7 +272,7 @@ def check(citizens, buildings, verbose=True):
 if __name__ == "__main__":
     citizens, buildings = load()
     if len(sys.argv) > 1 and sys.argv[1] == "dump":
-        print(json.dumps({"citizens": citizens, "buildings": buildings}, indent=1, default=str))
+        print(json.dumps({"citizens": citizens, "buildings": buildings, "rooms": load_rooms()}, indent=1, default=str))
     else:
         problems, _ = check(citizens, buildings)
         sys.exit(1 if problems else 0)
