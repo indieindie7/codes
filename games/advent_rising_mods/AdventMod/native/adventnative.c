@@ -22,6 +22,7 @@ int CaptureNext(int Mask);  /* capture.c */
 int SetMaxFps(int Fps);     /* capture.c */
 int FootIKCommand(const wchar_t* Cmd);   /* footik.c */
 int ArmourCommand(const wchar_t* Cmd);   /* armour.c */
+int JiggleCommand(const wchar_t* Cmd);   /* jiggle.c */
 extern int D3DZAlways;
 
 __declspec(dllexport) wchar_t GPackage[] = L"AdventNative";
@@ -246,6 +247,7 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsnicmp(Cmd, L"Blood:", 6)) return BloodCommand(Cmd + 6);
 	if (!_wcsnicmp(Cmd, L"FootIK", 6)) return FootIKCommand(Cmd);
 	if (!_wcsnicmp(Cmd, L"Armour", 6)) return ArmourCommand(Cmd);
+	if (!_wcsnicmp(Cmd, L"Jiggle", 6)) return JiggleCommand(Cmd);
 	if (!_wcsnicmp(Cmd, L"Fits:", 5))
 	{
 		/* does WxH fit on the screen the game is on? */

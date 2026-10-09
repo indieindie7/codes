@@ -42,6 +42,7 @@ var config string TestClip;        // testing: always this clip
 var name ClipName;                 // a name from a string (SetPropertyText)
 
 var ModGore Gore;
+var ModJiggle Jiggle;          // the flesh springs (JIGGLE.md), found when first needed
 
 struct FlinchState
 {
@@ -340,6 +341,15 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional boo
 	local FlinchState F;
 	local float A;
 
+	// the flesh swings away from the hit (ModJiggle, JIGGLE.md)
+	if (!bCorpse)
+	{
+		if (Jiggle == None)
+			foreach DynamicActors(class'ModJiggle', Jiggle)
+				break;
+		if (Jiggle != None)
+			Jiggle.Hit(P, Dir, Damage);
+	}
 	BestD = 1000000;
 	Best = -1;
 	for (i = 0; i < 12; i++)

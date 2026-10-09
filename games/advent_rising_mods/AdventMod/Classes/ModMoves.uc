@@ -56,6 +56,7 @@ function PostBeginPlay()
 	Spawn(class'ModAction');     // the player's vault, wall slam and barge
 	Spawn(class'ModBody');       // feelings in the body (Seeker arms, hound snarl/cower), hounds on slopes
 	Spawn(class'ModFeet');       // native foot IK (K6/K9) and the foot-to-floor meter
+	Spawn(class'ModJiggle');     // flesh jiggle on the Seeker infantry (JIGGLE.md)
 	class'ModSettings'.static.Note("moves: lean " $ bLean $ " (gain " $ LeanGain $ ", max " $ MaxLean $ "), slide meter " $ bSlideMeter);
 }
 
