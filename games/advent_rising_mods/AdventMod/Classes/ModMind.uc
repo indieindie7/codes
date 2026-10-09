@@ -74,6 +74,19 @@ var float LegAt;                    // no new pack leg before this (the dwell be
 var vector LegDest;                 // where the last move we gave the bot went (ModMinds.Move checks it took)
 var float ReissueAt;                // a charge the game dropped is given again, but not before this
 var float LastCommit;               // when it last committed (closer)
+// wall-kick (ModMinds.StartKick / KickTick, AI-MINDS-DESIGN.md section 10): a leap to a wall, a plant, a leap off it
+var int Kick;                       // 0 none, 1 flying to the wall, 2 planted on it, 3 leaping off
+var float KickTime;                 // seconds in the phase
+var float KickFlight;               // the planned flight time to the wall
+var vector KickWall, KickNormal;    // the plant point and the wall's normal
+var vector KickTarget;              // where the leap off goes (the prey, a flank spot, a link's far node)
+var bool bKickAttack;               // the leap off is a leap attack at the prey
+var float KickAt;                   // when it last started a kick (cooldown)
+var float KickLeapAt;               // when it last leapt off a wall (a bite soon after counts for the kick)
+var int Kicks, KicksPlanted, KickLeaps, KickBites;
+var ModLeapLink Link;               // the leap link its current leg takes (walk to one end, kick via the wall to the other)
+var bool bLinkReverse;              // ... from B to A
+var int LinkUses;
 
 // the abilities: ours (a copy only this pawn uses) and the game's values the feelings start from
 var AdventPawnAbilities Own;

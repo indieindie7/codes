@@ -22,6 +22,8 @@
 //   spawnpack [n] [ahead] [spread]   n hounds ahead of the player in a squad of their own (for the pack tests)
 //   houndtest [SECONDS]      every hound's role, distance and bearing round the player's view twice a
 //                            second, and the pack's measures (ModMinds.HoundStats) every 5 s and at the end
+//   leaplinks                the level's wall-kick links (ModMinds.BuildLinks): ends, straight and route lengths, the wall
+//   wallkick                 the hound nearest the player kicks off a wall at it now, if one fits (ModMinds.ForceKick)
 //=============================================================================
 class ModPilot extends Info
 	config(AdventMod);
@@ -367,6 +369,32 @@ function HoundTest(bool bStats)
 		return;
 	}
 	Note("houndtest: no ModMinds in this level");
+}
+
+// LEAPLINKS: the wall-kick links ModMinds built for this level
+function LeapLinks()
+{
+	local ModMinds M;
+
+	foreach DynamicActors(class'ModMinds', M)
+	{
+		Note("leaplinks: " $ M.LinkList());
+		return;
+	}
+	Note("leaplinks: no ModMinds in this level");
+}
+
+// WALLKICK: the nearest hound kicks off a wall at the player
+function WallKick()
+{
+	local ModMinds M;
+
+	foreach DynamicActors(class'ModMinds', M)
+	{
+		Note("wallkick: " $ M.ForceKick());
+		return;
+	}
+	Note("wallkick: no ModMinds in this level");
 }
 
 function Note(string S)
@@ -1351,6 +1379,15 @@ function StartStep()
 	case "MINDLIST":
 		// the creatures' minds (ModMinds): feelings, task, shots past and hits
 		MindList();
+		break;
+	case "LEAPLINKS":
+		// the level's wall-kick links (see the header)
+		LeapLinks();
+		break;
+	case "WALLKICK":
+		// the hound nearest the player kicks off a wall at it now (see the header)
+		WallKick();
+		StepLength = 0.5;
 		break;
 	case "HOUNDTEST":
 		// HOUNDTEST [seconds]: the hound pack watched (see the header)

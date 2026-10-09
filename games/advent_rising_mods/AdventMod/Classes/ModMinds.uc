@@ -56,6 +56,26 @@ var config float HoundCommitFront;  // the prey's front cone (degrees): a flanke
 var config float HoundHoldMax;      // seconds a pack holds without a flanker in place before the nearest commits anyway
 var config float HoundSkipDodge;    // chance a skip leg is the engine's own dodge (Dodge_L/R), 0..1
 var config float HoundPinWall;      // a wall this close behind the prey pins it (world units)
+// wall-kicks and leap links (AI-MINDS-DESIGN.md section 10): a hound leaps to a wall, plants, leaps off it
+var config bool bHoundWallKick;     // the closer may commit by a wall-kick, a near flanker may skip by one
+var config float WallKickRange;     // how far a wall may be to kick off (world units)
+var config float WallKickChance;    // chance a commit kicks when a wall fits (a flank leg: half of it), 0..1
+var config float WallKickPlant;     // seconds planted on the wall before the leap off
+var config float WallKickCool;      // seconds between one hound's kicks
+var config bool bWallKickLog;       // every kick, plant, leap off and miss in AdventNative.log
+var config bool bLeapLinks;         // wall-kick links built from the path graph at level start (ModLeapLink)
+var config int LeapLinksMax;        // at most this many per level (the best savings kept)
+var array<ModLeapLink> Links;
+var bool bLinksBuilt;
+var int LinkAt;                     // the next node whose pairs are looked at (a few a tick)
+var int LinkPairs, LinkFits;        // pairs looked at, pairs that fit (before the cap)
+var float LinkBuildTime;
+var array<float> LinkDist;          // Dijkstra from the node in hand (indexed as Nodes)
+var array<NavigationPoint> CandA, CandB;
+var array<vector> CandWall, CandNorm;
+var array<float> CandRoute, CandRatio;
+var array<int> CandTwo;
+var float LinkRadius, LinkHeight, LinkSpeed;   // a hound's body and leap speed, for the arcs at build time
 struct PackInfo
 {
 	var SquadAI S;
@@ -74,6 +94,7 @@ var array<PackInfo> Packs;
 var float HoundEngagedAt, HoundFirstBite, HoundBiteBearing, HoundTime, TwoSideTime;
 var int HoundBites, HoundContacts, HoundDamage, HoundEngaged;
 var int LegsGone, ArrivalsGone, CommitsGone;   // ... the counters of hounds that died (their minds are released)
+var int KicksGone, KicksPlantedGone, KickLeapsGone, KickBitesGone, LinkUsesGone;
 
 var array<ModMind> Minds;
 var ModMindRules Rules;
@@ -281,9 +302,24 @@ function Release(ModMind M)
 	LegsGone += M.LegsSkipped;
 	ArrivalsGone += M.FlankArrivals;
 	CommitsGone += M.Commits;
+	KicksGone += M.Kicks;
+	KicksPlantedGone += M.KicksPlanted;
+	KickLeapsGone += M.KickLeaps;
+	KickBitesGone += M.KickBites;
+	LinkUsesGone += M.LinkUses;
 	M.LegsSkipped = 0;
 	M.FlankArrivals = 0;
 	M.Commits = 0;
+	M.Kicks = 0;
+	M.KicksPlanted = 0;
+	M.KickLeaps = 0;
+	M.KickBites = 0;
+	M.LinkUses = 0;
+	// a pawn left planted on a wall (recycled by a spawner) falls
+	if (M.Kick == 2 && M.P != None && !M.P.bDeleteMe && M.P.Physics == PHYS_None)
+		M.P.SetPhysics(PHYS_Falling);
+	M.Kick = 0;
+	M.Link = None;
 }
 
 // creatures near the player are animated every tick with a fresh pose (research/native-animation-
@@ -582,6 +618,8 @@ function bool Busy(ModMind M)
 	B = M.B;
 	if (B.bLockState || B.CheckScriptingReactionLevel_Ignore() || B.IsInState('Scripting'))
 		return true;
+	if (M.Kick != 0)
+		return true;            // mid wall-kick (KickTick owns it)
 	// a strike or leap state the game left hanging (seen on spawned hounds: MeleeAttack or LeapAttack for 10-30 s,
 	// on the ground, far from the enemy) is not busy: the next task given re-assigns the state
 	if ((B.IsInState('MeleeAttack') || B.IsInState('LeapAttack') || B.IsInState('Leap')) && Level.TimeSeconds - B.LastStateChangeTime > 2.5
@@ -740,6 +778,19 @@ function bool FindCover(ModMind M, Pawn Enemy, out vector Spot)
 // the next leg along the level's paths toward Dest (or Dest itself when it is in sight)
 // the nodes the player can see: a few sight traces a tick, round the list; the visible set is
 // the last full sweep plus what this sweep has found so far
+function BuildNodes()
+{
+	local NavigationPoint N;
+
+	if (bNodesBuilt)
+		return;
+	bNodesBuilt = true;
+	for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+		Nodes[Nodes.Length] = N;
+	SeenAt.Length = Nodes.Length;
+	Log2("paths: " $ Nodes.Length $ " nodes in this level");
+}
+
 function Sweep()
 {
 	local PlayerController PC;
@@ -747,14 +798,7 @@ function Sweep()
 	local int Traced, Looked, i;
 	local NavigationPoint N;
 
-	if (!bNodesBuilt)
-	{
-		bNodesBuilt = true;
-		for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
-			Nodes[Nodes.Length] = N;
-		SeenAt.Length = Nodes.Length;
-		Log2("paths: " $ Nodes.Length $ " nodes in this level");
-	}
+	BuildNodes();
 	PC = Level.GetLocalPlayerController();
 	if (PC == None || PC.Pawn == None || Nodes.Length == 0)
 		return;
@@ -848,6 +892,8 @@ function vector NextLeg(ModMind M, vector Dest)
 	local NavigationPoint N;
 	local int Cost;
 	local ModMind O;
+	local ModLeapLink L;
+	local int Rev;
 
 	Profile = 0;
 	if (bPathProfiles)
@@ -910,6 +956,23 @@ function vector NextLeg(ModMind M, vector Dest)
 	}
 	if (bMindLog && M.TaskTime < 0.5)
 		Log2(M.P.Name $ " plans a " $ ProfileName(Profile) $ " leg: " $ Seen $ " of its route's nodes in the player's sight (" $ Raised.Length $ " costs raised)");
+	// a hound whose route detours past a wall-kick link takes the link: walk to its near end, then the
+	// kick (LinkKick, from Decide's leg handling) lands it at the far end and the leg goes on from there
+	M.Link = None;
+	if (bLeapLinks && M.Species == 3/*S_Hound*/ && M.Kick == 0 && Links.Length > 0 && Step != None)
+	{
+		L = LinkOnRoute(M, Dest, Rev);
+		if (L != None)
+		{
+			M.Link = L;
+			M.bLinkReverse = Rev != 0;
+			N = L.A;
+			if (Rev != 0)
+				N = L.B;
+			KickLog(M.P.Name $ " takes link " $ L.A.Name $ " -> " $ L.B.Name $ IfText(Rev != 0, " (reverse)", "") $ " on its " $ ProfileName(Profile) $ " leg, " $ int(VSize(N.Location - M.P.Location)) $ " to its near end");
+			return N.Location;
+		}
+	}
 	// the first node on the route is often the one it stands on: then the next one
 	if (Step != None && VSize((Step.Location - M.P.Location) * vect(1,1,0)) < 120 && M.B.RouteCache[1] != None)
 		Step = M.B.RouteCache[1];
@@ -948,6 +1011,11 @@ function Decide(ModMind M, float DeltaTime)
 	local vector Spot, Away;
 	local float Now;
 
+	if (M.Kick != 0)
+	{
+		KickTick(M, DeltaTime);
+		return;
+	}
 	Now = Level.TimeSeconds;
 	Enemy = M.B.EnemyInfo.Enemy;
 	M.TaskTime += DeltaTime;
@@ -1020,8 +1088,11 @@ function Decide(ModMind M, float DeltaTime)
 				if (M.Task == 4/*T_Flank*/)
 					M.LastFlank = Level.TimeSeconds;
 				M.Task = 0/*T_None*/;
+				M.Link = None;
 				M.B.DoWait('Mind_Arrived', 0.6);
 			}
+			else if (M.Link != None && LinkKick(M))
+				return;
 			else if (!Going(M))
 			{
 				Go(M, 'Mind_Leg', NextLeg(M, M.TaskDest));
@@ -1592,6 +1663,10 @@ function HoundCommit(ModMind M, Pawn Prey, string Why)
 	Steer(M);
 	SetTask(M, 5/*T_Charge*/, 4, "commit: " $ Why);
 	HoundLog(M.P.Name $ " commits (" $ Why $ "), " $ int(VSize(M.P.Location - Prey.Location)) $ " from the prey");
+	// by a wall when one fits: the leap at the prey comes off it; the charge follows the landing (Decide
+	// gives it again when the kick ends)
+	if (FRand() < WallKickChance && TryKick(M, Prey.Location, PreyLeapTarget(M, Prey), true, "commit"))
+		return;
 	M.B.DoCharge('Mind_PackCommit', Prey);
 }
 
@@ -1837,6 +1912,12 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 				SetTask(O, 4/*T_Flank*/, 6, "flank leg " $ O.FlankSide);
 				Go(O, 'Mind_PackFlank', NextLeg(O, Want));
 			}
+			else if (FRand() < WallKickChance * 0.5 && TryKick(O, O.P.Location + Normal((O.P.Location - Prey.Location) * vect(1,1,0)) * 300, Want, false, "flank"))
+			{
+				// off a wall on its outer side, landing at its flank spot
+				O.TaskDest = Want;
+				SetTask(O, 4/*T_Flank*/, 3, "flank kick");
+			}
 			else
 				SkipLeg(O, Want, Prey);
 			break;
@@ -1859,6 +1940,716 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 	}
 }
 
+// wall-kicks and leap links (AI-MINDS-DESIGN.md section 10) --------------------------------------
+// The RAGE hopper's move, the stock Seeker chain (TryLeapToWall -> Leap -> CheckWallJump -> WallJumpBegin
+// -> WallJumpEnd -> RequestLeapOffWall) driven from script for hounds: a leap to a point on a wall along
+// an arc swept clear for the body, a short plant on the wall (PHYS_None, turned at the target, the hips
+// pitched up in its leap crouch), then a leap off it at the prey (a leap attack, so it bites on contact)
+// or to a spot (a flanker's place, a link's far end). The engine's own wall test (Seeker.CheckWallJump,
+// which the hound inherits) is kept out of it: it plays the upright Seekers' WallJump clips, which fold
+// the hound wrong, and its leap off goes where the engine likes.
+
+function KickLog(string S)
+{
+	if (bWallKickLog || bHoundLog || bMindLog)
+		class'ModSettings'.static.Note("wallkick: " $ S);
+}
+
+static function string IfText(bool bCond, string T, string F)
+{
+	if (bCond)
+		return T;
+	return F;
+}
+
+function float Gravity(Actor A)
+{
+	local float G;
+
+	G = 0;
+	if (A != None && A.PhysicsVolume != None)
+		G = Abs(A.PhysicsVolume.Gravity.Z);
+	if (G < 100)
+		G = 3000;               // the game's default (PhysicsVolume Gravity Z = -3000)
+	return G;
+}
+
+// the ballistic velocity from From to To at about Speed over the ground: closed form by time, as
+// ModAction's vault (the flight time from the ground distance, the rise from the time and the drop)
+static function vector Arc(vector From, vector To, float Speed, float G, out float Flight)
+{
+	local vector V;
+	local float Dist;
+
+	Dist = VSize((To - From) * vect(1,1,0));
+	Flight = FMax(Dist / FMax(Speed, 100), 0.25);
+	V = (To - From) * vect(1,1,0) / Flight;
+	V.Z = (To.Z - From.Z) / Flight + 0.5 * G * Flight;
+	return V;
+}
+
+static function vector ArcAt(vector From, vector V, float G, float T)
+{
+	return From + V * T - vect(0,0,1) * (0.5 * G * T * T);
+}
+
+// the body swept along the arc, clear of the world (Doom 3's TestTrajectory: a few segments)
+function bool ArcClear(vector From, vector V, float G, float Flight, vector Extent)
+{
+	local int i;
+	local vector Prev, Next, HitLoc, HitNorm;
+
+	Prev = From;
+	for (i = 1; i <= 6; i++)
+	{
+		Next = ArcAt(From, V, G, Flight * i / 6.0);
+		if (Trace(HitLoc, HitNorm, Next, Prev, false, Extent) != None)
+			return false;
+		Prev = Next;
+	}
+	return true;
+}
+
+function float LeapSpeed(ModMind M)
+{
+	local float S;
+
+	S = 0;
+	if (M.P.Ability != None)
+		S = M.P.Ability.DesiredLeapSpeed;
+	if (S < 300)
+		S = 1000;
+	return S;
+}
+
+static function vector BodyExtent(float Radius, float Height)
+{
+	return vect(1,1,0) * (Radius * 0.7) + vect(0,0,1) * (Height * 0.7);
+}
+
+// a wall to kick off: within WallKickRange, 45 then 70 degrees either side of the line from M toward
+// Toward (the line pitched up 16 degrees, as the stock TryLeapToWall aims, so the plant is above the
+// hound), world geometry, its normal in the band the stock WallJumpBegin takes (-0.17..0.5) and facing
+// the target, with the arc to the plant point and the arc off it to Target both clear for the body
+function bool FindKickWall(ModMind M, vector Toward, vector Target, out vector Wall, out vector Norm, out vector V1, out float Flight1)
+{
+	local vector Dir, Aim, HitLoc, HitNorm, Plant, V2, Extent;
+	local int Side, Try;
+	local float Angle, D, G, Flight2;
+	local Actor A;
+
+	Dir = Normal((Toward - M.P.Location) * vect(1,1,0));
+	if (Dir == vect(0,0,0))
+		return false;
+	Extent = BodyExtent(M.P.CollisionRadius, M.P.CollisionHeight);
+	G = Gravity(M.P);
+	Side = 1;
+	if (FRand() < 0.5)
+		Side = -1;
+	for (Try = 0; Try < 4; Try++)
+	{
+		Angle = 45;
+		if (Try >= 2)
+			Angle = 70;
+		if (Try % 2 == 1)
+			Side = -Side;
+		Aim = Turned(Dir, Angle * Side);
+		Aim = Normal(Aim + vect(0,0,1) * 0.3);
+		A = Trace(HitLoc, HitNorm, M.P.Location + Aim * WallKickRange, M.P.Location, false);
+		if (A == None || !A.bWorldGeometry)
+			continue;
+		if (HitNorm.Z < -0.17 || HitNorm.Z > 0.5)
+			continue;
+		D = VSize(HitLoc - M.P.Location);
+		if (D < 150)
+			continue;
+		Plant = HitLoc + HitNorm * (M.P.CollisionRadius + 8);
+		if ((HitNorm dot Normal(Target - Plant)) < 0.1)
+			continue;               // the leap off must go out from the wall
+		if (VSize((Target - Plant) * vect(1,1,0)) < 100 || VSize(Target - Plant) > WallKickRange * 1.3)
+			continue;
+		V1 = Arc(M.P.Location, Plant, LeapSpeed(M), G, Flight1);
+		if (!ArcClear(M.P.Location, V1, G, Flight1, Extent))
+			continue;
+		V2 = Arc(Plant, Target, LeapSpeed(M), G, Flight2);
+		if (!ArcClear(Plant, V2, G, Flight2, Extent))
+			continue;
+		Wall = Plant;
+		Norm = HitNorm;
+		return true;
+	}
+	return false;
+}
+
+// where a leap attack at the prey goes (as the stock LeapAttack state aims: a little ahead, up to its chest)
+function vector PreyLeapTarget(ModMind M, Pawn Prey)
+{
+	local vector T;
+
+	T = Prey.Location + Prey.Velocity * 0.25;
+	if (M.P.Ability == None || M.P.Ability.LeapAttackOffset == 0)
+		T.Z += Prey.CollisionHeight * 0.5;
+	return T;
+}
+
+// the kick begins: the hound leaps to Wall along V1 (the arc swept clear), to kick off toward Target
+function bool StartKick(ModMind M, vector Wall, vector Norm, vector V1, float Flight1, vector Target, bool bAttack, string Why)
+{
+	local float Now;
+
+	Now = Level.TimeSeconds;
+	if (M.P.Physics != PHYS_Walking || !M.P.bAllowInput)
+	{
+		KickLog(M.P.Name $ " can't kick (" $ Why $ "): physics " $ M.P.Physics $ ", input " $ M.P.bAllowInput);
+		return false;
+	}
+	if (Seeker(M.P) != None)
+		Seeker(M.P).wallJumps = 4;      // the engine's own wall-jump test refuses (it resets on landing)
+	M.B.Destination = Wall;
+	if (!M.P.DoJumpTo(Wall))
+	{
+		KickLog(M.P.Name $ " jump refused (" $ Why $ ")");
+		return false;
+	}
+	M.P.Velocity = V1;
+	M.B.DoWait('Mind_WallKick', Flight1 + WallKickPlant + 1.5);   // (refused in the same frame as another change: harmless, the kick runs from KickTick)
+	M.Kick = 1;
+	M.KickTime = 0;
+	M.KickFlight = Flight1;
+	M.KickWall = Wall;
+	M.KickNormal = Norm;
+	M.KickTarget = Target;
+	M.bKickAttack = bAttack;
+	M.KickAt = Now;
+	M.Kicks++;
+	KickLog(M.P.Name $ " kicks (" $ Why $ "): wall " $ int(VSize(Wall - M.P.Location)) $ " away, n.z " $ (int(Norm.Z * 100) / 100.0) $ ", " $ (int(Flight1 * 100) / 100.0) $ " s to it, then " $ int(VSize(Target - Wall)) $ " off it");
+	return true;
+}
+
+// a kick at the prey (a closer) or to a spot (a flanker): the wall is found first; bForce (the pilot) ignores the switch and cooldown
+function bool TryKick(ModMind M, vector Toward, vector Target, bool bAttack, string Why, optional bool bForce)
+{
+	local vector Wall, Norm, V1;
+	local float Flight1, Now;
+
+	Now = Level.TimeSeconds;
+	if (M.Species != 3/*S_Hound*/ || M.Kick != 0 || M.P.Health <= 0)
+		return false;
+	if (!bForce && (!bHoundWallKick || Now - M.KickAt < WallKickCool))
+		return false;
+	if (!FindKickWall(M, Toward, Target, Wall, Norm, V1, Flight1))
+	{
+		M.KickAt = Now - WallKickCool + 1.0;     // another look in a second
+		KickLog(M.P.Name $ " no wall (" $ Why $ ")");
+		return false;
+	}
+	return StartKick(M, Wall, Norm, V1, Flight1, Target, bAttack, Why);
+}
+
+// the kick, tick by tick (Decide hands over while M.Kick != 0)
+function KickTick(ModMind M, float DeltaTime)
+{
+	local vector HitLoc, HitNorm;
+	local float D, Now;
+	local bool bAtWall;
+
+	Now = Level.TimeSeconds;
+	M.KickTime += DeltaTime;
+	if (M.P.Health <= 0 || M.P.Physics == PHYS_KarmaRagdoll)
+	{
+		KickEnd(M, "down");
+		return;
+	}
+	switch (M.Kick)
+	{
+	case 1:
+		// flying to the wall
+		if (M.P.Physics == PHYS_Walking && M.KickTime > 0.1)
+		{
+			KickEnd(M, "landed short, " $ int(VSize(M.P.Location - M.KickWall)) $ " from the wall");
+			return;
+		}
+		if (M.P.Physics != PHYS_Falling)
+		{
+			KickEnd(M, "physics changed to " $ M.P.Physics);
+			return;
+		}
+		D = VSize(M.P.Location - M.KickWall);
+		bAtWall = D < M.P.CollisionRadius + 30;
+		// or past the apex and touching the wall (the stock CheckWallJump's trace)
+		if (!bAtWall && M.P.Velocity.Z < 30 && M.KickTime > M.KickFlight * 0.5
+			&& Trace(HitLoc, HitNorm, M.P.Location - M.KickNormal * (M.P.CollisionRadius + 20), M.P.Location, false) != None)
+			bAtWall = true;
+		if (bAtWall)
+			KickPlant(M, D);
+		else if (M.KickTime > M.KickFlight + 0.4)
+			KickEnd(M, "missed the wall, " $ int(D) $ " off");
+		break;
+	case 2:
+		// planted
+		if (M.KickTime >= WallKickPlant)
+			KickLeapOff(M);
+		break;
+	case 3:
+		// leaping off: done on landing
+		if ((M.P.Physics == PHYS_Walking && M.KickTime > 0.15) || M.KickTime > 2.5 || (M.P.Physics != PHYS_Falling && M.P.Physics != PHYS_Walking))
+		{
+			KickLog(M.P.Name $ " landed after " $ (int(M.KickTime * 100) / 100.0) $ " s, " $ int(VSize((M.P.Location - M.KickTarget) * vect(1,1,0))) $ " from the target");
+			if (M.Link != None)
+			{
+				M.Link.Uses++;
+				M.LinkUses++;
+				M.Link = None;
+			}
+			M.Kick = 0;
+			M.LegAt = Now + 0.2;
+			M.ReissueAt = Now;      // a closer's charge is given again at once (Decide), a leg goes on from here
+			if (M.bKickAttack && M.Task == 5/*T_Charge*/)
+				M.TaskTime = 0;     // the charge gets its full time after the leap
+		}
+		break;
+	}
+}
+
+// on the wall: still, snapped to the plant point, turned at the target, crouched for the push-off
+function KickPlant(ModMind M, float D)
+{
+	local rotator R;
+
+	M.P.SetPhysics(PHYS_None);
+	M.P.Velocity = vect(0,0,0);
+	M.P.Acceleration = vect(0,0,0);
+	if (D < 80)
+		M.P.SetLocation(M.KickWall);
+	R = rotator((M.KickTarget - M.P.Location) * vect(1,1,0));
+	M.P.SetRotation(R);
+	M.P.DesiredRotation = R;
+	M.B.DesiredRotation = R;
+	// the push-off pose: nose up (the hips pitched; ModBody leaves the hips alone while it is not walking)
+	// and its leap crouch clip
+	R = rot(0,0,0);
+	R.Pitch = 6400;
+	M.P.SetBoneRotation('hips', R, 0, 1);
+	if (EonPawn(M.P) != None)
+		EonPawn(M.P).PlayEonAnim(false, 'jump_start', 0, 1.0, -1);
+	M.Kick = 2;
+	M.KickTime = 0;
+	M.KicksPlanted++;
+	KickLog(M.P.Name $ " planted after " $ (int(M.KickTime * 100) / 100.0) $ " s, " $ int(D) $ " from the spot");
+}
+
+// off the wall: at the prey (a leap attack, re-aimed at it now) or to the spot
+function KickLeapOff(ModMind M)
+{
+	local vector Target, V;
+	local float Flight, G;
+	local bool bOk;
+	local Pawn Prey;
+
+	M.P.SetBoneRotation('hips', rot(0,0,0), 0, 0);
+	Target = M.KickTarget;
+	Prey = M.B.EnemyInfo.Enemy;
+	if (M.bKickAttack && Prey != None && Prey.Health > 0 && VSize(Prey.Location - M.P.Location) < WallKickRange * 1.5)
+		Target = PreyLeapTarget(M, Prey);
+	G = Gravity(M.P);
+	V = Arc(M.P.Location, Target, LeapSpeed(M), G, Flight);
+	M.P.SetPhysics(PHYS_Walking);       // DoJump wants it (the stock RequestLeapOffWall does the same)
+	M.B.Destination = Target;
+	if (M.bKickAttack)
+		bOk = M.P.DoLeapAttackTo(Target);
+	else
+		bOk = M.P.DoJumpTo(Target);
+	if (!bOk)
+	{
+		M.P.SetPhysics(PHYS_Falling);
+		KickEnd(M, "leap off refused");
+		return;
+	}
+	M.P.Velocity = V;
+	M.Kick = 3;
+	M.KickTime = 0;
+	M.KickLeaps++;
+	M.KickLeapAt = Level.TimeSeconds;
+	KickLog(M.P.Name $ " leaps off " $ IfText(M.bKickAttack, "at the prey", "to its spot") $ ", " $ int(VSize(Target - M.P.Location)) $ " away, " $ (int(Flight * 100) / 100.0) $ " s");
+}
+
+function KickEnd(ModMind M, string Why)
+{
+	if (M.P.Physics == PHYS_None)
+		M.P.SetPhysics(PHYS_Falling);
+	M.P.SetBoneRotation('hips', rot(0,0,0), 0, 0);
+	M.Kick = 0;
+	M.Link = None;
+	M.LegAt = Level.TimeSeconds + 0.3;
+	M.ReissueAt = Level.TimeSeconds;
+	KickLog(M.P.Name $ " " $ Why);
+}
+
+// pilot WALLKICK: the hound nearest the player kicks off a wall at it now, if one fits
+function string ForceKick()
+{
+	local PlayerController PC;
+	local ModMind M, Best;
+	local int i;
+	local float D, BestD;
+
+	PC = Level.GetLocalPlayerController();
+	if (PC == None || PC.Pawn == None)
+		return "no player";
+	BestD = 100000;
+	for (i = 0; i < Minds.Length; i++)
+	{
+		M = Minds[i];
+		if (M.Species != 3/*S_Hound*/ || M.P.Health <= 0)
+			continue;
+		D = VSize(M.P.Location - PC.Pawn.Location);
+		if (D < BestD)
+		{
+			BestD = D;
+			Best = M;
+		}
+	}
+	if (Best == None)
+		return "no hound";
+	if (TryKick(Best, PC.Pawn.Location, PreyLeapTarget(Best, PC.Pawn), true, "pilot", true))
+		return Best.P.Name $ " kicks from " $ int(BestD);
+	return Best.P.Name $ " at " $ int(BestD) $ ": no kick (see wallkick: lines)";
+}
+
+// leap links (the report's Rule 1), built once per level from the path graph, a few nodes a tick: two
+// nodes within 1.5 x WallKickRange whose walk route is 2.5 x the straight line or more (Dijkstra over
+// the ReachSpecs with that cutoff), a wall beside the straight line (traced from its midpoint to either
+// side, a hound's height up) whose normal fits the wall-kick band and faces the far node, and both arcs
+// clear for a hound's body. The best LeapLinksMax by saving are kept; two-way when the reverse arcs pass.
+function BuildLinks()
+{
+	local int i, j, k, Budget, Idx;
+	local NavigationPoint A, B;
+	local float D, Route, Ratio, T0;
+	local vector Wall, Norm;
+	local int Two;
+	local class<Pawn> Hound;
+	local string S;
+
+	T0 = 0;
+	BuildNodes();
+	if (LinkAt == 0)
+	{
+		LinkDist.Length = Nodes.Length;
+		Hound = class<Pawn>(DynamicLoadObject("EonCharacters.SeekerDog", class'Class'));
+		LinkRadius = 34;
+		LinkHeight = 40;
+		LinkSpeed = 1000;
+		if (Hound != None)
+		{
+			LinkRadius = Hound.default.CollisionRadius;
+			LinkHeight = Hound.default.CollisionHeight;
+			if (Hound.default.Ability != None && Hound.default.Ability.DesiredLeapSpeed >= 300)
+				LinkSpeed = Hound.default.Ability.DesiredLeapSpeed;
+		}
+	}
+	// the nodes stamped with their index (visitedWeight: the engine's own search rewrites it, so each slice stamps again)
+	for (i = 0; i < Nodes.Length; i++)
+		if (Nodes[i] != None)
+			Nodes[i].visitedWeight = i;
+	Budget = 3;
+	while (Budget > 0 && LinkAt < Nodes.Length)
+	{
+		A = Nodes[LinkAt];
+		Idx = LinkAt;
+		LinkAt++;
+		if (A == None || A.bBlocked)
+			continue;
+		Budget--;
+		Dijkstra(A, 2.5 * 1.5 * WallKickRange);
+		for (j = 0; j < Nodes.Length; j++)
+		{
+			B = Nodes[j];
+			if (B == None || B == A || B.bBlocked)
+				continue;
+			D = VSize(B.Location - A.Location);
+			if (D < 250 || D > 1.5 * WallKickRange || Abs(B.Location.Z - A.Location.Z) > 160)
+				continue;
+			// a link the other way round already (it was tested two-way then)
+			for (k = 0; k < CandA.Length; k++)
+				if (CandA[k] == B && CandB[k] == A)
+					break;
+			if (k < CandA.Length)
+				continue;
+			LinkPairs++;
+			Route = LinkDist[j];
+			if (Route >= 0 && Route < 2.5 * D)
+				continue;
+			if (!LinkWall(A, B, Wall, Norm, Two))
+				continue;
+			LinkFits++;
+			Ratio = 99;
+			if (Route > 0)
+				Ratio = Route / D;
+			// kept sorted by saving, at most LeapLinksMax
+			for (k = 0; k < CandA.Length; k++)
+				if (Ratio > CandRatio[k])
+					break;
+			if (k >= LeapLinksMax)
+				continue;
+			CandA.Insert(k, 1);
+			CandB.Insert(k, 1);
+			CandWall.Insert(k, 1);
+			CandNorm.Insert(k, 1);
+			CandRoute.Insert(k, 1);
+			CandRatio.Insert(k, 1);
+			CandTwo.Insert(k, 1);
+			CandA[k] = A;
+			CandB[k] = B;
+			CandWall[k] = Wall;
+			CandNorm[k] = Norm;
+			CandRoute[k] = Route;
+			CandRatio[k] = Ratio;
+			CandTwo[k] = Two;
+			if (CandA.Length > LeapLinksMax)
+			{
+				CandA.Length = LeapLinksMax;
+				CandB.Length = LeapLinksMax;
+				CandWall.Length = LeapLinksMax;
+				CandNorm.Length = LeapLinksMax;
+				CandRoute.Length = LeapLinksMax;
+				CandRatio.Length = LeapLinksMax;
+				CandTwo.Length = LeapLinksMax;
+			}
+		}
+	}
+	if (LinkAt < Nodes.Length)
+		return;
+	// done: the links placed (hidden actors at their plant points) and listed once
+	bLinksBuilt = true;
+	for (k = 0; k < CandA.Length; k++)
+	{
+		Links[k] = Spawn(class'ModLeapLink',,, CandWall[k]);
+		if (Links[k] == None)
+			continue;
+		Links[k].A = CandA[k];
+		Links[k].B = CandB[k];
+		Links[k].Wall = CandWall[k];
+		Links[k].Normal = CandNorm[k];
+		Links[k].Straight = VSize(CandB[k].Location - CandA[k].Location);
+		Links[k].Route = CandRoute[k];
+		Links[k].bTwoWay = CandTwo[k] != 0;
+	}
+	for (k = Links.Length - 1; k >= 0; k--)
+		if (Links[k] == None)
+			Links.Remove(k, 1);
+	CandA.Length = 0;
+	CandB.Length = 0;
+	CandWall.Length = 0;
+	CandNorm.Length = 0;
+	CandRoute.Length = 0;
+	CandRatio.Length = 0;
+	CandTwo.Length = 0;
+	LinkDist.Length = 0;
+	S = "leaplinks: " $ Links.Length $ " links from " $ Nodes.Length $ " nodes (" $ LinkPairs $ " pairs looked at, " $ LinkFits $ " fit, cap " $ LeapLinksMax $ ", hound " $ int(LinkRadius) $ "x" $ int(LinkHeight) $ " at " $ int(LinkSpeed) $ ")";
+	class'ModSettings'.static.Note(S);
+	if (Links.Length > 0)
+		class'ModSettings'.static.Note("leaplinks: " $ LinkList());
+}
+
+// the walk route's length from From to every node within Cutoff (LinkDist, -1 beyond it), over the ReachSpecs
+function Dijkstra(NavigationPoint From, float Cutoff)
+{
+	local array<NavigationPoint> Open;
+	local array<float> OpenD;
+	local int i, Best, k, Idx;
+	local NavigationPoint N, E;
+	local float D;
+
+	for (i = 0; i < LinkDist.Length; i++)
+		LinkDist[i] = -1;
+	Open[0] = From;
+	OpenD[0] = 0;
+	while (Open.Length > 0)
+	{
+		Best = 0;
+		for (i = 1; i < Open.Length; i++)
+			if (OpenD[i] < OpenD[Best])
+				Best = i;
+		N = Open[Best];
+		D = OpenD[Best];
+		Open.Remove(Best, 1);
+		OpenD.Remove(Best, 1);
+		Idx = N.visitedWeight;
+		if (Idx < 0 || Idx >= Nodes.Length || Nodes[Idx] != N || LinkDist[Idx] >= 0)
+			continue;
+		LinkDist[Idx] = D;
+		for (k = 0; k < N.PathList.Length; k++)
+		{
+			E = N.PathList[k].End;
+			if (E == None || E.bBlocked || D + N.PathList[k].Distance > Cutoff)
+				continue;
+			Idx = E.visitedWeight;
+			if (Idx < 0 || Idx >= Nodes.Length || Nodes[Idx] != E || LinkDist[Idx] >= 0)
+				continue;
+			Open[Open.Length] = E;
+			OpenD[OpenD.Length] = D + N.PathList[k].Distance;
+		}
+	}
+}
+
+// a wall beside the line A-B a hound could kick off between them (see BuildLinks); Two: 1 when B -> A passes too
+function bool LinkWall(NavigationPoint A, NavigationPoint B, out vector Wall, out vector Norm, out int Two)
+{
+	local vector Mid, Perp, HitLoc, HitNorm, Plant, V, Extent;
+	local int Side;
+	local float G, Flight;
+	local Actor Hit;
+
+	Mid = (A.Location + B.Location) * 0.5 + vect(0,0,1) * LinkHeight;
+	Perp = Normal((B.Location - A.Location) cross vect(0,0,1));
+	if (Perp == vect(0,0,0))
+		return false;
+	Extent = BodyExtent(LinkRadius, LinkHeight);
+	G = Gravity(A);
+	for (Side = -1; Side <= 1; Side += 2)
+	{
+		Hit = Trace(HitLoc, HitNorm, Mid + Perp * (Side * 0.6 * WallKickRange), Mid, false);
+		if (Hit == None || !Hit.bWorldGeometry)
+			continue;
+		if (HitNorm.Z < -0.17 || HitNorm.Z > 0.5)
+			continue;
+		if (VSize(HitLoc - Mid) < 60)
+			continue;
+		Plant = HitLoc + HitNorm * (LinkRadius + 8);
+		if ((HitNorm dot Normal(B.Location - Plant)) < 0.1)
+			continue;
+		V = Arc(A.Location, Plant, LinkSpeed, G, Flight);
+		if (!ArcClear(A.Location, V, G, Flight, Extent))
+			continue;
+		V = Arc(Plant, B.Location, LinkSpeed, G, Flight);
+		if (!ArcClear(Plant, V, G, Flight, Extent))
+			continue;
+		Wall = Plant;
+		Norm = HitNorm;
+		Two = 0;
+		if ((HitNorm dot Normal(A.Location - Plant)) >= 0.1)
+		{
+			V = Arc(B.Location, Plant, LinkSpeed, G, Flight);
+			if (ArcClear(B.Location, V, G, Flight, Extent))
+			{
+				V = Arc(Plant, A.Location, LinkSpeed, G, Flight);
+				Two = int(ArcClear(Plant, V, G, Flight, Extent));
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+// a link the hound's planned route (RouteCache) goes through: its near end within the first few nodes
+// and its far end later on, or the rest of the route from the near end more than twice the way via the wall
+function ModLeapLink LinkOnRoute(ModMind M, vector Dest, out int Rev)
+{
+	local int i, j, k, p, iA;
+	local ModLeapLink L;
+	local NavigationPoint A, B, N, Last;
+	local float Remaining, Via;
+
+	for (k = 0; k < Links.Length; k++)
+	{
+		L = Links[k];
+		if (L == None || L.A == None || L.B == None)
+			continue;
+		for (p = 0; p < 2; p++)
+		{
+			if (p == 1 && !L.bTwoWay)
+				break;
+			A = L.A;
+			B = L.B;
+			if (p == 1)
+			{
+				A = L.B;
+				B = L.A;
+			}
+			iA = -1;
+			for (i = 0; i < 4; i++)
+				if (M.B.RouteCache[i] == A)
+				{
+					iA = i;
+					break;
+				}
+			if (iA < 0)
+				continue;
+			Rev = p;
+			for (j = iA + 2; j < 16; j++)
+				if (M.B.RouteCache[j] == B)
+					return L;
+			Remaining = 0;
+			Last = A;
+			for (j = iA; j < 15; j++)
+			{
+				N = NavigationPoint(M.B.RouteCache[j + 1]);
+				if (N == None)
+					break;
+				Remaining += VSize(N.Location - Last.Location);
+				Last = N;
+			}
+			Remaining += VSize(Dest - Last.Location);
+			Via = VSize(L.Wall - A.Location) + VSize(B.Location - L.Wall) + VSize(Dest - B.Location);
+			if (Remaining > 2 * Via)
+				return L;
+		}
+	}
+	return None;
+}
+
+// at a planned link's near end: the kick to its far end (the arc checked again now)
+function bool LinkKick(ModMind M)
+{
+	local NavigationPoint A, B;
+	local vector V1;
+	local float F1, G;
+	local ModLeapLink L;
+
+	L = M.Link;
+	A = L.A;
+	B = L.B;
+	if (M.bLinkReverse)
+	{
+		A = L.B;
+		B = L.A;
+	}
+	if (VSize((M.P.Location - A.Location) * vect(1,1,0)) > 110 || M.P.Physics != PHYS_Walking)
+		return false;
+	G = Gravity(M.P);
+	V1 = Arc(M.P.Location, L.Wall, LeapSpeed(M), G, F1);
+	if (!ArcClear(M.P.Location, V1, G, F1, BodyExtent(M.P.CollisionRadius, M.P.CollisionHeight)))
+	{
+		KickLog(M.P.Name $ " link " $ L.A.Name $ " -> " $ L.B.Name $ ": the arc is blocked now, walking");
+		M.Link = None;
+		return false;
+	}
+	if (!StartKick(M, L.Wall, L.Normal, V1, F1, B.Location, false, "link " $ L.A.Name $ " -> " $ L.B.Name))
+	{
+		M.Link = None;
+		return false;
+	}
+	return true;
+}
+
+// pilot LEAPLINKS
+function string LinkList()
+{
+	local int k;
+	local string S;
+
+	if (!bLeapLinks || !bHoundWallKick)
+		return "off";
+	if (!bLinksBuilt)
+		return "building, node " $ LinkAt $ " of " $ Nodes.Length;
+	S = Links.Length $ " links";
+	for (k = 0; k < Links.Length; k++)
+		if (Links[k] != None)
+			S = S $ " | #" $ (k + 1) $ " " $ Links[k].Describe();
+	return S;
+}
+
 // a hound bit the player (ModMindRules, through Hit)
 function HoundBite(ModMind M, Pawn Player, int Damage)
 {
@@ -1867,6 +2658,8 @@ function HoundBite(ModMind M, Pawn Player, int Damage)
 
 	HoundBites++;
 	HoundDamage += Damage;
+	if (M.KickLeapAt > 0 && Level.TimeSeconds - M.KickLeapAt < 1.5)
+		M.KickBites++;
 	if (HoundFirstBite == 0 && HoundEngagedAt > 0)
 		HoundFirstBite = Level.TimeSeconds - HoundEngagedAt;
 	PreyFrame(Player, Facing, Moving);
@@ -1948,6 +2741,9 @@ function string HoundReport()
 			$ " bearing " $ int(Bearing(PC.Pawn, Facing, M.P.Location)) $ " fear " $ M.Pct(M.Fear) $ " anger " $ M.Pct(M.Anger) $ " legs " $ M.LegsSkipped $ " arrivals " $ M.FlankArrivals $ " commits " $ M.Commits;
 		if (M.bMeleeToken)
 			S = S $ " M";
+		if (M.Kick != 0)
+			S = S $ " kick" $ M.Kick;
+		S = S $ " kicks " $ M.Kicks $ "/" $ M.KicksPlanted $ "/" $ M.KickLeaps;
 		S = S $ " [" $ M.B.GetStateName() $ " lock " $ M.B.bLockState $ " phys " $ M.P.Physics $ " stasis " $ M.P.bStasis $ "/" $ M.B.Squad.bStasis $ " sees " $ M.B.bEnemyIsVisible $ " dest " $ int(VSize(M.B.Destination - M.P.Location)) $ " route " $ M.B.RouteCache[0] $ "]";
 	}
 	return S;
@@ -1955,18 +2751,28 @@ function string HoundReport()
 
 function string HoundStats()
 {
-	local int i, Legs, Arrivals, Commits, Pins;
+	local int i, Legs, Arrivals, Commits, Pins, Kicks, Planted, Leaps, KBites, Used;
 	local string S;
 
 	Legs = LegsGone;
 	Arrivals = ArrivalsGone;
 	Commits = CommitsGone;
+	Kicks = KicksGone;
+	Planted = KicksPlantedGone;
+	Leaps = KickLeapsGone;
+	KBites = KickBitesGone;
+	Used = LinkUsesGone;
 	for (i = 0; i < Minds.Length; i++)
 		if (Minds[i].Species == 3/*S_Hound*/)
 		{
 			Legs += Minds[i].LegsSkipped;
 			Arrivals += Minds[i].FlankArrivals;
 			Commits += Minds[i].Commits;
+			Kicks += Minds[i].Kicks;
+			Planted += Minds[i].KicksPlanted;
+			Leaps += Minds[i].KickLeaps;
+			KBites += Minds[i].KickBites;
+			Used += Minds[i].LinkUses;
 		}
 	for (i = 0; i < Packs.Length; i++)
 		Pins += Packs[i].Pins;
@@ -1981,7 +2787,8 @@ function string HoundStats()
 	S = S $ ", contacts " $ HoundContacts $ ", two sides " $ (int(TwoSideTime * 10) / 10.0) $ " of " $ (int(HoundTime * 10) / 10.0) $ " s";
 	if (HoundTime > 0)
 		S = S $ " (" $ int(100 * TwoSideTime / HoundTime) $ "%)";
-	return S $ ", legs skipped " $ Legs $ ", flank arrivals " $ Arrivals $ ", commits " $ Commits $ ", pins " $ Pins $ ", moves " $ MovesGiven $ " refused " $ MovesRefused;
+	S = S $ ", legs skipped " $ Legs $ ", flank arrivals " $ Arrivals $ ", commits " $ Commits $ ", pins " $ Pins $ ", moves " $ MovesGiven $ " refused " $ MovesRefused;
+	return S $ ", wallkick " $ bHoundWallKick $ ", wallkicks " $ Kicks $ " planted " $ Planted $ " leaps " $ Leaps $ " kickbites " $ KBites $ ", links " $ Links.Length $ " used " $ Used;
 }
 
 
@@ -2016,6 +2823,8 @@ function Tick(float DeltaTime)
 		KeepPosed();
 	}
 	FlankWait -= DeltaTime;
+	if (bLeapLinks && bHoundWallKick && !bLinksBuilt)
+		BuildLinks();       // a few nodes a tick, from the first tick of the level
 	if (Minds.Length == 0)
 		return;
 	Sweep();                // (also with bPathProfiles off: MINDLIST measures what plans expose)
@@ -2138,6 +2947,14 @@ defaultproperties
 	HoundHoldMax=6
 	HoundSkipDodge=0.3
 	HoundPinWall=300
+	bHoundWallKick=True
+	WallKickRange=700
+	WallKickChance=0.6
+	WallKickPlant=0.15
+	WallKickCool=4
+	bWallKickLog=False
+	bLeapLinks=True
+	LeapLinksMax=40
 	RangedTokens=2
 	RangedPer=4
 	MeleeTokens=2
