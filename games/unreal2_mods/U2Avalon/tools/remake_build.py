@@ -1,6 +1,6 @@
 r"""The Avalon remake's editor build (redesign 2026-10-09, plan s.7 Phase B), on top of a finished town.py run.
 
-    py tools/remake_build.py <run folder> <map built by town.py> [out=TutA_Remake] [stage=t3d|mesh|map|paths|all]
+    py tools/remake_build.py <run folder> <map built by town.py> [out=TutA_Remake] [stage=t3d|mesh|map|paths|bsp|all] [maps=A,B (bsp)]
                              [pkg=AvalonSM4] [entry=stair|hatch] [tower=0|1] [start=dock|tower]
 
 town.py already builds the terrain, buildings, clutter, lighting and low sun into Maps\<map>. This adds what the
@@ -262,6 +262,56 @@ def stage_paths():
     ed_session(job)
 
 
+def stage_bsp():
+    """TutA's own additive BSP (rocks, ledges, sheds) was sculpted to the OLD island: on the new ground several float
+    3-40 m up (the dark floating blocks; the old Q65 floating rock). Delete every CSG_Add brush outside the tower
+    complex whose origin is more than 150 UU over the new ground, then MAP REBUILD, LIGHT APPLY, PATHS DEFINE."""
+    import story_export  # noqa
+    from uedlib import Ops  # noqa
+    gz = story_export.ground_fn(os.path.join(RUN, "isl_ec.bmp"))
+    TOWER = (-2600, -200, 1200, 3600)            # x0, y0, x1, y1 of TutA's tower complex incl. Brush16, the tower body (its BSP stays)
+    maps = o.get("maps", OUT).split(",")
+
+    def job(ed):
+        ed.exec("!answer yes")
+        for m in maps:
+            ed.load(m)
+            gone = []
+            for a in ed.actors("Brush"):
+                x, y, z = a.get("Location", (0, 0, 0))
+                if "CSG_Add" not in a["props"].get("CsgOper", "") or abs(x) > 60000 or abs(y) > 60000:
+                    continue
+                if TOWER[0] <= x <= TOWER[2] and TOWER[1] <= y <= TOWER[3]:
+                    continue
+                if z - gz(x, y) > 150:
+                    gone.append(a["Name"])
+            # the stock TutA meshes (not our Avalon* packages) placed for the old island: set onto the new ground
+            seat = []
+            for a in ed.actors("StaticMeshActor"):
+                x, y, z = a["Location"]
+                mesh = a["props"].get("StaticMesh", "")
+                if "Avalon" in mesh or (TOWER[0] <= x <= TOWER[2] and TOWER[1] <= y <= TOWER[3]):
+                    continue
+                if z - gz(x, y) > 250:
+                    seat.append((a["Name"], x, y, gz(x, y)))
+            ops = Ops.attach_to(ed.pid)
+            if gone:
+                ops.select(*gone)
+                ed.ok("ACTOR DELETE")
+            for n, x, y, zg in seat:
+                ops.move(n, x, y, zg)
+            ops.stop()
+            print("  %s: %d stock meshes set onto the new ground %s" % (m, len(seat), [s_[0] for s_ in seat][:12]))
+            ed.ok("MAP REBUILD")
+            ed.ok("LIGHT APPLY", allow=("Couldn't bring window", "Can't find"))
+            ed.paths()
+            ed.save(m)
+            print("  %s: removed %d floating BSP brushes %s, rebuilt, lit, paths" % (m, len(gone), gone))
+    ed_session(job)
+
+
+if STAGE == "bsp":
+    stage_bsp()
 if STAGE in ("t3d", "all"):
     stage_t3d()
 if STAGE in ("mesh", "all"):
@@ -270,3 +320,5 @@ if STAGE in ("map", "all"):
     stage_map()
 if STAGE in ("paths", "all"):
     stage_paths()
+if STAGE == "all":
+    stage_bsp()
