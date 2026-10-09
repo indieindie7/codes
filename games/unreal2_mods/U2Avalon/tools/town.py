@@ -157,6 +157,8 @@ def story_extras():
     _occ = anchors.dock_occluder(ZG_, L_, sh)
     L_["occluders"] = _occ["placed"]
     L_.setdefault("anchors", {})["occluder"] = {k: v for k, v in _occ.items() if k != "placed"} | {"n": len(_occ["placed"]), "ground": "graded"}
+    # the greybox arenas E1-E4 (tools/arenas.py's plans) at the route stops, on the graded ground -> L["arenas"] for export
+    L_["arenas"] = anchors.arenas(ZG_, L_, sh)
     json.dump(L_, open(layout, "w"), indent=0)
     takes.overlay(anchors.load_heights(base + "_ec.bmp"), L_, L_["taps"], base + "_taps.png")
     P = rooms.build(sh, binder.load_rooms(), L_)
@@ -180,6 +182,10 @@ def story_extras():
             A["guest_house"]["host"], A["guest_house"]["side"], A["guest_house"]["fuel_m"], "ok" if A["guest_house"]["e16_ok"] else "SHORT"))
     if "occluder" in A:
         lines.append("occluder: %s" % A["occluder"]["note"])
+    for aid, ar in L_.get("arenas", {}).items():
+        lines.append("arena %s %s: %s" % (aid, ar["name"], ("P on the %s at (%.0f, %.0f), origin (%.0f, %.0f) yaw %.0f, floor z %.0f, ground range %.0f m%s" % (
+            ar["anchor"], ar["stop"][0], ar["stop"][1], ar["origin"][0], ar["origin"][1], ar["yaw"], ar["z"], ar["ground_range_m"],
+            (", %.0f %% over the sea" % (100 * ar["over_sea_share"])) if ar["over_sea_share"] else "")) if ar["placed"] else ar["why"]))
     if "water_tower" in A:
         lines.append("water tower (E14'): head %.0f m (%s; %s)" % (A["water_tower"]["head_m"], "ok" if A["water_tower"]["e14_ok"] else "short",
                                                                A["water_tower"].get("pick", "highest ground")))

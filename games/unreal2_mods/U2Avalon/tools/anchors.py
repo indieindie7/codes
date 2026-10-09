@@ -13,6 +13,9 @@ The rules (redesign/2026-10-09: writer s. 1 + 3.10, engineer E14', level designe
     the pump house should sit below it.
   * occluders (beat 1): when the hero shows from the first stations of the walk, a shed stack on the quay's sightline
     hides it (dock_occluder(); L['occluders'] -> clutter.py; codirect counts it). No fit = a WARN, not a fail.
+  * arenas: the greybox plans E1-E4 (tools/arenas.py, redesign/2026-10-09/greybox/arenas.json) placed by origin + yaw
+    at the level designer's route stops (E1 the dock, E2 the dorm square = the drain's grate, E3 the drain's outfall
+    facing the cooling towers, E4 the truck road's foot facing the hero) -> L['arenas'] in world UU, for export.
   * drain: an UNDERGROUND culvert from the dorm square, under the spine, to a sea outfall (by the pump house, >= 150 m
     from the intake, E24). Section 384 x 320 UU with a dry ledge, the junction room 768 x 768 and the sluice gallery
     1536 x 768 x 448 UU (level designer I3); the invert falls >= 0.5 % to the sea. It counts as a walkable path for
@@ -795,6 +798,106 @@ def dock_occluder(Z, L, sheets, hero=None, boxes=None):
     return rep
 
 
+# --- 6. the greybox arenas E1-E4 on the graded ground ------------------------------------------------------------
+# tools/arenas.py (read-only, another chat's) draws the four exterior fights in LOCAL UU: origin = the arena's lower-
+# left corner, +y = away from the player's arrival side. Here each one is anchored to the level designer's route stop
+# (level_designer.md s. "the route"): the arena's P (the arrival point) goes on the stop, and +y points from the
+# arrival toward what the fight is about. The pieces are written into L["arenas"] in WORLD UU (export emits them later).
+ARENAS_JSON = os.path.join(HERE, "redesign", "2026-10-09", "greybox", "arenas.json")
+
+
+def _rot(x, y, yaw_deg):
+    a = math.radians(yaw_deg)
+    return x * math.cos(a) - y * math.sin(a), x * math.sin(a) + y * math.cos(a)
+
+
+def _bearing(a, b):
+    return math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
+
+
+def arenas(Z, L, sheets, plans=None):
+    """place the four arenas: {E1: {name, origin, yaw, anchor, stop, z, size, ground_range_m, pieces (world), ...}}.
+    The local frame is rotated so local +y lies along `yaw` (world degrees) and local +x along yaw - 90."""
+    plans = plans or json.load(open(ARENAS_JSON))
+    B = L["buildings"]
+    hero = PARTI_HERO if PARTI_HERO in B else "tower"
+    spine = L.get("spine") or (L["roads"][0] if L.get("roads") else [])
+    dr = L.get("drain")
+    out = {}
+
+    def spot(bid):
+        return (B[bid]["x"], B[bid]["y"]) if bid in B else None
+
+    def nearest_road_pt(p):
+        pts = [q for r, c in zip(L.get("roads", []), L.get("road_class") or ["spine"] * len(L.get("roads", []))) if c != "path" for q in r]
+        return min(pts, key=lambda q: math.hypot(q[0] - p[0], q[1] - p[1])) if pts else p
+    # the stops and the facing of each arena (what P looks at along local +y)
+    stops = {}
+    dock = spot("dock")
+    if dock and spine:
+        stops["E1"] = (dock, _bearing(dock, spine[0]), "dock -> the spine's start (the dock gate)", "dock")
+    sq = None
+    if dr and dr.get("grate"):
+        sq = tuple(dr["grate"])
+    elif spot("dorm"):
+        sq = nearest_road_pt(spot("dorm"))
+    if sq:
+        arrive = spot("hall_b") or spot("hall_a") or (spine[0] if spine else sq)
+        stops["E2"] = (sq, _bearing(arrive, sq), "the hall's exit -> the dorm square (the drain's grate)", "drain grate")
+    ct = spot("cooling_towers")
+    if ct:
+        mouth = tuple(dr["outfall"]) if dr else (spine[-1] if spine else ct)
+        stops["E3"] = (mouth, _bearing(mouth, ct), "the sluice mouth (the drain's outfall) -> the cooling-tower legs", "drain outfall")
+    if hero in B:
+        rd = next((r for r in L.get("roads", []) if len(r) > 1 and math.hypot(r[-1][0] - B[hero]["x"], r[-1][1] - B[hero]["y"]) < 60 * M), None)
+        gate = tuple(rd[0]) if rd else nearest_road_pt(spot(hero))
+        stops["E4"] = (gate, _bearing(gate, spot(hero)), "the truck road's foot on the spine -> up the terraces to %s" % hero, "company gate")
+    for aid, a in plans.items():
+        if aid not in stops:
+            out[aid] = {"name": a["name"], "placed": False, "why": "no stop: the layout lacks its anchor"}
+            continue
+        st, yaw_y, why, anchor = stops[aid]
+        P = next(p for p in a["pieces"] if p[0] == "P")
+        yaw = yaw_y - 90.0                       # local +x -> yaw - 90, so local +y -> yaw_y
+        px, py = _rot(P[1], P[2], yaw)
+        ox, oy = st[0] - px, st[1] - py
+        W, H = a["size"]
+        cx, cy = _rot(W / 2, H / 2, yaw)
+        centre = (ox + cx, oy + cy)
+        # the ground under the arena's rectangle
+        zs = []
+        for gx in np.linspace(0, W, 9):
+            for gy in np.linspace(0, H, 9):
+                rx, ry = _rot(gx, gy, yaw)
+                zs.append(zat(Z, ox + rx, oy + ry))
+        z0 = zat(Z, *st)
+        pieces = []
+        for p in a["pieces"]:
+            k = p[0]
+            if k in ("solid", "full", "half", "water", "terrace", "deck"):
+                wx, wy = _rot(p[1] + p[3] / 2, p[2] + p[4] / 2, yaw)
+                d = {"kind": k, "x": round(ox + wx, 1), "y": round(oy + wy, 1), "w": p[3], "d": p[4], "yaw": round(yaw, 1), "label": p[-1]}
+                if k == "terrace":
+                    d["z_up"] = p[5]
+            elif k == "pillar":
+                wx, wy = _rot(p[1], p[2], yaw)
+                d = {"kind": k, "x": round(ox + wx, 1), "y": round(oy + wy, 1), "r": p[3], "label": p[-1]}
+            elif k == "high":
+                wx, wy = _rot(p[1], p[2], yaw)
+                d = {"kind": k, "x": round(ox + wx, 1), "y": round(oy + wy, 1), "z_up": p[3], "label": p[-1]}
+            else:                                  # spawn, entry, exit, P
+                wx, wy = _rot(p[1], p[2], yaw)
+                d = {"kind": k, "x": round(ox + wx, 1), "y": round(oy + wy, 1), "label": p[-1]}
+            d["z"] = round(z0, 1)                  # the arena floor: the stop's graded ground (export grades the rest to it)
+            pieces.append(d)
+        sea = sum(1 for z in zs if z <= SEA_Z) / len(zs)
+        out[aid] = {"name": a["name"], "placed": True, "origin": [round(ox, 1), round(oy, 1)], "yaw": round(yaw, 1), "size": [W, H],
+                    "anchor": anchor, "stop": [round(st[0], 1), round(st[1], 1)], "why": why, "centre": [round(centre[0], 1), round(centre[1], 1)],
+                    "z": round(z0, 1), "ground_range_m": round((max(zs) - min(zs)) / M, 1), "over_sea_share": round(sea, 2),
+                    "target": a.get("target"), "check": a.get("check"), "pieces": pieces}
+    return out
+
+
 def walk_edges(dr, to_fine, nearest_free, NF, cost_k=1.0):
     """walks.py: the drain as a walkable path - one tunnel edge each way between its two mouths (the grate and the
     outfall), weighted by its length (metres x cost_k). Returns [(u, v, w)] for walks.graph(extra=...)"""
@@ -885,6 +988,11 @@ def apply(L, Z, sheets=None, hero=None):
     occ = dock_occluder(Z, L, sheets, hero=hero if hero in sheets else None)
     L["occluders"] = occ["placed"]
     rep["occluder"] = {k: v for k, v in occ.items() if k != "placed"} | {"n": len(occ["placed"])}
+    try:                                                             # the greybox arenas E1-E4 at the route stops
+        L["arenas"] = arenas(Z, L, sheets)
+        rep["arenas"] = {k: {kk: vv for kk, vv in v.items() if kk not in ("pieces", "check")} for k, v in L["arenas"].items()}
+    except (OSError, ValueError) as e:
+        rep["arenas"] = {"error": str(e)}
     L["anchors"] = rep
     return rep
 

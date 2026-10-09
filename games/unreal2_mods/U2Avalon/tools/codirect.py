@@ -123,6 +123,12 @@ def _boxes(L, sheets, skip=()):
         out.append((b["x"], b["y"], r, b.get("z", 0) + (s["size"][2] if len(s["size"]) > 2 else 6) * M))
     for oc in L.get("occluders", []):          # beat 1's shed stack (anchors.dock_occluder, round 3)
         out.append((oc["x"], oc["y"], oc.get("r", 212.0), oc.get("top", oc["z"] + oc.get("stack", 1) * 305.0)))
+    for ar in L.get("arenas", {}).values():    # the greybox arenas' cover (anchors.arenas): solids, full/half cover, pillars
+        for pc in ar.get("pieces", []) if ar.get("placed") else []:
+            if pc["kind"] in ("solid", "full", "half"):
+                out.append((pc["x"], pc["y"], max(pc["w"], pc["d"]) * 0.5, pc["z"] + {"solid": 400.0, "full": 140.0, "half": 80.0}[pc["kind"]]))
+            elif pc["kind"] == "pillar":
+                out.append((pc["x"], pc["y"], pc["r"], pc["z"] + 400.0))
     return out
 
 
@@ -232,6 +238,11 @@ def level_designer(Z, L, sheets, walk):
                             legs += 1 if min(math.dist(end, r3[0]), math.dist(end, r3[-1])) < 15 * M else 2
                         junc.append((end[0], end[1], legs))
                     break
+    for aid, ar in L.get("arenas", {}).items():    # the greybox arenas: P is a junction, its entries + exits the legs
+        if ar.get("placed"):
+            P_ = next((pc for pc in ar["pieces"] if pc["kind"] == "P"), None)
+            if P_ and all(math.dist((P_["x"], P_["y"]), (jx, jy)) > 30 * M for jx, jy, _ in junc):
+                junc.append((P_["x"], P_["y"], sum(1 for pc in ar["pieces"] if pc["kind"] in ("entry", "exit"))))
     # LD2 pacing: beats along the spine
     beats = [0.0, s_end]
     for jx, jy, _ in junc:
