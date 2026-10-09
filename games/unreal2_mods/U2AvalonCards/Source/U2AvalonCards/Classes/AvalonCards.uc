@@ -46,6 +46,9 @@ var config string Lamps[32];
 // rooms the rain must not fall in although the roof trace sees sky (glass or other non-blocking ceilings, Q50):
 // one box per line, "X1 Y1 Z1 X2 Y2 Z2"
 var config string NoRain[16];
+// every zone's ambient light, "Brightness Hue Saturation" (0-255 each; "" = the map's own), then a FLUSH so the
+// baked lightmaps are rebuilt with it: lights dark corners without the editor (Q47/Q61, 2026-10-08)
+var config string Ambient;
 var config string Props[256];      // 256 since 2026-10-08 (shanty ring + factory districts with roads and pipes)
 
 // rough blocking: plain boxes, one per line: "X Y Yaw SizeX SizeY SizeZ Lift Colour" (world units, Yaw in
@@ -234,6 +237,7 @@ function FromSet()
 	for (i = 0; i < ArrayCount(Props); i++) Props[i] = Set.Props[i];
 	for (i = 0; i < ArrayCount(Lamps); i++) Lamps[i] = Set.Lamps[i];
 	for (i = 0; i < ArrayCount(NoRain); i++) NoRain[i] = Set.NoRain[i];
+	Ambient = Set.Ambient;
 	for (i = 0; i < ArrayCount(Blocks); i++) Blocks[i] = Set.Blocks[i];
 	for (i = 0; i < ArrayCount(Cards); i++) Cards[i] = Set.Cards[i];
 	for (i = 0; i < ArrayCount(Extras); i++) Extras[i] = Set.Extras[i];
@@ -253,6 +257,7 @@ function ToSet()
 	for (i = 0; i < ArrayCount(Props); i++) Set.Props[i] = Props[i];
 	for (i = 0; i < ArrayCount(Lamps); i++) Set.Lamps[i] = Lamps[i];
 	for (i = 0; i < ArrayCount(NoRain); i++) Set.NoRain[i] = NoRain[i];
+	Set.Ambient = Ambient;
 	for (i = 0; i < ArrayCount(Blocks); i++) Set.Blocks[i] = Blocks[i];
 	for (i = 0; i < ArrayCount(Cards); i++) Set.Cards[i] = Cards[i];
 	for (i = 0; i < ArrayCount(Extras); i++) Set.Extras[i] = Extras[i];
@@ -519,6 +524,10 @@ function Live(string S, PlayerController PC)
 		if (i >= 0 && i < ArrayCount(Trucks))
 			Trucks[i] = Rest(Arg);
 		break;
+	case "AMBIENT":
+		Ambient = Arg;
+		ApplyAmbient();
+		break;
 	case "HAZE":
 		HazeStart = float(Word(Arg, 0));
 		HazeEnd = float(Word(Arg, 1));
@@ -698,6 +707,23 @@ function Storm()
 			St.AddThunder(Sound(DynamicLoadObject(StormThunder[i], class'Sound', true)));
 	Made[Made.Length] = St;
 	Log("Cards: storm on "$MapName()$", "$St.Drops.Length$" drops, "$St.NThunder$" thunder sounds");
+}
+
+// Ambient into every zone, then FLUSH: the lightmaps are rebuilt from the stored shadow bits with the new ambient
+function ApplyAmbient()
+{
+	local ZoneInfo Z;
+
+	if (Ambient == "")
+		return;
+	foreach AllActors(class'ZoneInfo', Z)
+	{
+		Z.SetPropertyText("AmbientBrightness", Word(Ambient, 0));
+		Z.SetPropertyText("AmbientHue", Word(Ambient, 1));
+		Z.SetPropertyText("AmbientSaturation", Word(Ambient, 2));
+	}
+	ConsoleCommand("FLUSH");
+	Log("Cards: ambient "$Ambient$" + flush");
 }
 
 // the NoRain boxes into the storm (at the start, and live)
@@ -913,6 +939,7 @@ function Build()
 	Fly();
 	Motion();
 	Storm();
+	ApplyAmbient();
 	Clouds();
 	PlaceLamps();
 	Speakers();
