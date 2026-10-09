@@ -640,7 +640,7 @@ function SetCmd(string Args)
 	local int k;
 
 	A = Named(Word(Args, 1));
-	if (A != None && Word(Args, 3) != "")
+	if (A != None && Word(Args, 2) != "")              // NAME PROP [VALUE] (no value: show it)
 	{
 		N = Word(Args, 1);
 		P = Word(Args, 2);
