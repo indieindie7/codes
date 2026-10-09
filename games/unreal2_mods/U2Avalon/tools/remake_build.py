@@ -30,6 +30,7 @@ import json, math, os, re, shutil, subprocess, sys
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(HERE, "tools")
 sys.path.insert(0, TOOLS)
+sys.path.insert(0, r"C:\Users\john\Documents\github\codes\tools\C\U2EdBridge")
 GAME = r"C:\Program Files (x86)\Steam\steamapps\common\Unreal II The Awakening"
 MAPS = os.path.join(GAME, "Maps")
 M = 50.0
@@ -187,19 +188,26 @@ def stage_map():
         ed.exec("!answer yes")
         ed.load(OUT)
         ed.load_package(os.path.join(GAME, "StaticMeshes", PKG + ".usx"))
+        SMA0 = ed.actors("StaticMeshActor") if hollow else []
         ops = Ops.attach_to(ed.pid)
         # the solid meshes the shells replace: StaticMeshActors tagged with a hollow building's id (export's Tag=)
         if hollow:
             # (export_mutator.py doesn't tag actors: a Liandri building mesh, not road/wall/cable, within 6 m of the
             # hollow building's layout point; a count: building's other instances are listed, check them)
-            B = L["buildings"]
+            # every copy of a count: building (shells.instances, the same rule export used)
+            import shells, binder  # noqa
+            _, sheets = binder.load()
+            spots = [(bid, p["x"], p["y"]) for bid in hollow if bid in L["buildings"] and bid in sheets
+                     for p in shells.instances(bid, L["buildings"][bid], sheets[bid])]
             names = []
-            for a in ed.actors("StaticMeshActor"):
-                m = a["props"].get("StaticMesh", "")
-                if "Liandri.B_" not in m or any(k in m for k in ("B_road", "B_wall", "B_cable", "B_k_")):
+            SMA = SMA0                      # listed before the ops DLL is injected
+            print("  %d StaticMeshActors in the map, %d building copies to hollow" % (len(SMA), len(spots)))
+            for a in SMA:
+                m = a["props"].get("StaticMesh", "")    # the editor writes AvalonSM.B_x (no group)
+                if not re.search(r"AvalonSM\.(Liandri\.)?B_", m) or any(k in m for k in ("B_road", "B_wall", "B_cable", "B_k_")):
                     continue
                 x, y = a["Location"][0], a["Location"][1]
-                hit = [b for b in hollow if b in B and math.hypot(B[b]["x"] - x, B[b]["y"] - y) < 300]
+                hit = [b for b, sx, sy in spots if math.hypot(sx - x, sy - y) < 300]
                 if hit:
                     names.append(a["Name"])
                     print("   solid %s (%s) for %s" % (a["Name"], m, hit[0]))
@@ -216,7 +224,7 @@ def stage_map():
         if ps:
             if start == "dock" and "dock" in L["buildings"]:
                 d = L["buildings"]["dock"]
-                sp = (L.get("spine") or L.get("roads") or [[(d["x"], d["y"] + 1)]])[0][0]
+                sp = (L.get("spine") or (L.get("roads") or [[(d["x"], d["y"] + 1)]])[0])[0]    # spine: a list of points
                 yaw = int(round(math.degrees(math.atan2(sp[1] - d["y"], sp[0] - d["x"])) * 65536 / 360)) % 65536
                 ops.move(ps[0]["Name"], d["x"], d["y"], d.get("z", 0) + 120, pitch=0, yaw=yaw, roll=0)
             else:
