@@ -16,8 +16,8 @@
 // when the creature has stood at the ad's spot for ArriveTime (a corpse feeds it, a noise is
 // looked at, a cover spot rests it). The hound pack reads HuntDrive(P) (hunger: a fed pack stalks
 // longer, a starved one commits early) and WantsTell(P) (a holding, hungry hound: the croon).
-// One per level (ModMutator spawns it, Phase B). Config [AdventMod.ModNeeds]: bNeeds (off until
-// verified), bNeedsLog, the rates and values below. ModPilot NEEDSLIST / "mutate needs list" = List().
+// One per level (ModMutator spawns it). Config [AdventMod.ModNeeds]: bNeeds (on; off = ModMinds alone,
+// the pack as in section 9), bNeedsLog, the rates and values below. ModPilot NEEDSLIST / "mutate needs list" = List().
 //=============================================================================
 class ModNeeds extends Info
 	config(AdventMod);
@@ -61,7 +61,7 @@ var config float CorpseLife;        // seconds a corpse ad lasts
 var config float NoiseLife;         // seconds a noise ad lasts
 var config float RestLife;          // seconds a resting place ad lasts
 var config float CoverEvery;        // seconds between cover queries per creature
-var config float ArriveReach;       // this close to the ad's spot counts as there (world units)
+var config float ArriveReach;       // this close to the ad's spot counts as there (world units; ModMinds' own arrival counts too)
 var config float ArriveTime;        // ... for this long, and the need is met
 var config float ForceHunger;       // testing: every hound's hunger held at this (-1 = off)
 var config float ForceFatigue;      // testing: likewise fatigue
@@ -700,14 +700,16 @@ function Choose(int i)
 // and a resting place stay (the clocks fall there anyway); a mate reached is regrouped with.
 function Arrive(int i, float DeltaTime)
 {
-	local int j, n;
 	local float D;
-	local string S;
+	local ModMind M;
 
 	if (Recs[i].Wish == W_None)
 		return;
+	// only a creature with nothing else on (or on the want itself) counts as there: standing beside the body
+	// mid-fight is not a meal
+	M = Minds.MindOf(Recs[i].P);
 	D = VSize((Recs[i].WishAt - Recs[i].P.Location) * vect(1,1,0));
-	if (D > ArriveReach)
+	if (D > ArriveReach || (M != None && M.Task != 0/*T_None*/ && M.Task != 10/*T_Want*/))
 	{
 		Recs[i].NearSince = 0;
 		return;
@@ -719,6 +721,15 @@ function Arrive(int i, float DeltaTime)
 	}
 	if (Level.TimeSeconds - Recs[i].NearSince < ArriveTime)
 		return;
+	Finish(i);
+}
+
+// the want is met: its offer comes off the needs, the ad is used up or kept by its kind
+function Finish(int i)
+{
+	local int j, n;
+	local string S;
+
 	j = AdOf(Recs[i].WishId);
 	S = Recs[i].P.Name $ " " $ WantName(Recs[i].Wish) $ " done at " $ WishText(i) $ ":";
 	if (Recs[i].WishId == -2)
@@ -827,14 +838,15 @@ function bool WantsTell(Pawn P)
 	return M != None && (M.Role == 1/*R_Holder*/ || M.Role == 4/*R_Skirmisher*/) && M.Task != 5/*T_Charge*/;
 }
 
-// ModMinds (Phase B): the want was acted on and reached, or given up (a fight broke out)
+// ModMinds: the want was acted on and its spot reached (the creature's own arrival test: the spot it was
+// given, not where a corpse has slid to since), so the need is met now; or given up (a fight broke out)
 function Satisfied(Pawn P)
 {
 	local int i;
 
 	i = RecordOf(P);
-	if (i >= 0 && Recs[i].Wish != W_None && Recs[i].NearSince == 0)
-		Recs[i].NearSince = Level.TimeSeconds - ArriveTime;
+	if (i >= 0 && Recs[i].Wish != W_None)
+		Finish(i);
 }
 
 function GiveUp(Pawn P, string Why)
@@ -896,6 +908,18 @@ function Tick(float DeltaTime)
 	}
 }
 
+// the mind's side of it, for the list: its task, the bot's state, whether ModMinds would act on a want
+function string MindText(Pawn P)
+{
+	local ModMind M;
+
+	M = Minds.MindOf(P);
+	if (M == None || M.B == None)
+		return " (no mind)";
+	return " | task " $ M.TaskName(M.Task) $ " state " $ M.B.GetStateName() $ " busy " $ Minds.Busy(M) $ " enemy " $ (M.B.EnemyInfo.Enemy != None)
+		$ " fear " $ M.Pct(M.Fear) $ " pressure " $ M.Pct(M.Pressure) $ " lock " $ M.B.bLockState;
+}
+
 // ModPilot NEEDSLIST and "mutate needs list": every creature's needs and want, then the ads
 function string List()
 {
@@ -904,7 +928,7 @@ function string List()
 
 	S = Recs.Length $ " creatures, " $ Ads.Length $ " ads (" $ AdsPosted $ " posted, " $ AdsExpired $ " expired, " $ AdsDropped $ " dropped for room)";
 	for (i = 0; i < Recs.Length; i++)
-		class'ModSettings'.static.Note("needslist: " $ Describe(i) $ " fed " $ Recs[i].Fed $ " rested " $ Recs[i].Rested $ " looked " $ Recs[i].Looked $ " regrouped " $ Recs[i].Regrouped $ " quiet " $ int(Recs[i].Quiet) $ " s");
+		class'ModSettings'.static.Note("needslist: " $ Describe(i) $ " fed " $ Recs[i].Fed $ " rested " $ Recs[i].Rested $ " looked " $ Recs[i].Looked $ " regrouped " $ Recs[i].Regrouped $ " quiet " $ int(Recs[i].Quiet) $ " s" $ MindText(Recs[i].P));
 	for (i = 0; i < Ads.Length; i++)
 		class'ModSettings'.static.Note("needslist: ad " $ Ads[i].Id $ " " $ KindName(Ads[i].Kind) $ " " $ Ads[i].Tag $ " at " $ int(Ads[i].At.X) $ " " $ int(Ads[i].At.Y) $ " " $ int(Ads[i].At.Z)
 			$ " offers hunger " $ F2(Ads[i].Offer[N_Hunger]) $ " fatigue " $ F2(Ads[i].Offer[N_Fatigue]) $ " curiosity " $ F2(Ads[i].Offer[N_Curiosity]) $ " safety " $ F2(Ads[i].Offer[N_Safety]) $ " aggression " $ F2(Ads[i].Offer[N_Aggression])
@@ -913,12 +937,17 @@ function string List()
 }
 
 // console "mutate needs <cmd>" (ModMutator.Mutate, Phase B): list | on | off | log on|off |
-// hunger V | fatigue V | curiosity V (-1 = free) | noise (a noise at the player, loud)
+// hunger V | fatigue V | curiosity V (-1 = free) | noise (a noise at the player, loud) | noise near (400 from the
+// nearest free creature: does it come and look?)
 function string Command(string Cmd)
 {
 	local string Arg;
 	local int i;
 	local PlayerController PC;
+	local ModMind M;
+	local Pawn Near;
+	local float D, Best;
+	local vector At;
 
 	i = InStr(Cmd, " ");
 	if (i >= 0)
@@ -964,22 +993,43 @@ function string Command(string Cmd)
 		PC = Level.GetLocalPlayerController();
 		if (PC == None || PC.Pawn == None)
 			return "no player";
+		if (Caps(Arg) == "NEAR")
+		{
+			// testing: a noise 400 from the nearest creature that is free to act on it (toward the player)
+			for (i = 0; i < Recs.Length; i++)
+			{
+				M = Minds.MindOf(Recs[i].P);
+				if (M == None || M.B == None || Minds.Busy(M) || M.B.EnemyInfo.Enemy != None)
+					continue;
+				D = VSize(Recs[i].P.Location - PC.Pawn.Location);
+				if (Near == None || D < Best)
+				{
+					Best = D;
+					Near = Recs[i].P;
+				}
+			}
+			if (Near == None)
+				return "noise near: no free creature";
+			At = Near.Location + Normal((PC.Pawn.Location - Near.Location) * vect(1,1,0)) * 400;
+			PostNoise(At, 1.0, None, "a noise made by the pilot near " $ Near.Name);
+			return "noise 400 from " $ Near.Name $ " (" $ int(Best) $ " from the player)";
+		}
 		PostNoise(PC.Pawn.Location, 1.0, None, "a noise made by the pilot");
 		return "noise at the player";
 	}
-	return "needs: list | on | off | log on|off | hunger V | fatigue V | curiosity V | noise";
+	return "needs: list | on | off | log on|off | hunger V | fatigue V | curiosity V | noise | noise near";
 }
 
 defaultproperties
 {
-	bNeeds=False
+	bNeeds=True
 	bNeedsLog=False
 	DecideEvery=0.5
 	CommitBonus=0.25
 	MinRun=3
 	WantMin=0.12
 	HungerRise=0.0033
-	FatigueRise=0.025
+	FatigueRise=0.012
 	FatigueRest=0.02
 	CuriosityRise=0.0167
 	CuriosityRest=0.05
@@ -990,7 +1040,7 @@ defaultproperties
 	NoiseLife=8
 	RestLife=10
 	CoverEvery=3
-	ArriveReach=160
+	ArriveReach=220
 	ArriveTime=1.5
 	ForceHunger=-1
 	ForceFatigue=-1

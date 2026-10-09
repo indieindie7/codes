@@ -23,7 +23,7 @@
 //   houndtest [SECONDS]      every hound's role, distance and bearing round the player's view twice a
 //                            second, and the pack's measures (ModMinds.HoundStats) every 5 s and at the end
 //   needslist                every creature's needs and want, and the ads in the world (ModNeeds.List)
-//   needs <cmd>              ModNeeds.Command: list|on|off|log on|hunger V|fatigue V|curiosity V|noise
+//   needs <cmd>              ModNeeds.Command: list|on|off|log on|hunger V|fatigue V|curiosity V|noise|noise near
 //   leaplinks                the level's wall-kick links (ModMinds.BuildLinks): ends, straight and route lengths, the wall
 //   wallkick                 the hound nearest the player kicks off a wall at it now, if one fits (ModMinds.ForceKick)
 //=============================================================================

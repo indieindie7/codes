@@ -1035,7 +1035,7 @@ function Decide(ModMind M, float DeltaTime)
 	M.TaskTime += DeltaTime;
 
 	// tasks running out or done (a want ends with its time, a hit, an enemy appearing for anyone but a
-	// hound, and for a hound the prey close or the melee token in its mouth: the fight is on again)
+	// hound, and for a hound the prey close: the fight is on again)
 	if (M.Task != 0/*T_None*/)
 	{
 		if (M.TaskTime > M.TaskLimit || (Enemy == None && M.Task != 10/*T_Want*/)
@@ -1043,7 +1043,7 @@ function Decide(ModMind M, float DeltaTime)
 			|| (M.Task == 3/*T_FallBack*/ && M.Fear < FleeFear - 0.25)
 			|| (M.Task == 5/*T_Charge*/ && M.Anger < ChargeAnger - 0.3 && M.Role != 3/*R_Closer*/)
 			|| (M.Task == 10/*T_Want*/ && (Now - M.LastHit < 1.0 || M.Pressure > FreePressure
-				|| (Enemy != None && (M.Species != 3/*S_Hound*/ || M.bMeleeToken || VSize(Enemy.Location - M.P.Location) < 900)))))
+				|| (Enemy != None && (M.Species != 3/*S_Hound*/ || VSize(Enemy.Location - M.P.Location) < 400)))))
 		{
 			Log2(M.P.Name $ " done with " $ M.TaskName(M.Task) $ " after " $ int(M.TaskTime) $ " s");
 			if (M.Task == 4/*T_Flank*/)
@@ -1144,10 +1144,11 @@ function Decide(ModMind M, float DeltaTime)
 	M.NextDecision = Now + 0.4 + FRand() * 0.4;
 
 	// needs (ModNeeds, section 11): a calm creature with nothing to do acts on its want; a hound may feed or
-	// regroup in a lull (the prey far, no melee token), never while it commits or charges
+	// regroup in a lull (the prey beyond 650; it gives up under 400), never while it commits or charges (the melee token
+	// is no bar: it says who may attack, and a feeding hound attacks nobody)
 	if (Needs != None && M.Task == 0/*T_None*/ && M.Role != 3/*R_Closer*/
 		&& M.Pressure < FreePressure && M.Fear < FleeFear && M.Anger < ChargeAnger
-		&& (Enemy == None || (M.Species == 3/*S_Hound*/ && !M.bMeleeToken && VSize(Enemy.Location - M.P.Location) > 900)))
+		&& (Enemy == None || (M.Species == 3/*S_Hound*/ && VSize(Enemy.Location - M.P.Location) > 650)))
 	{
 		W = Needs.Want(M.P, At, Target);
 		if (W != 0)
