@@ -43,7 +43,7 @@ line still points at menus that no longer exist (Video > More Display Options).
 | blocker | state |
 |---|---|
 | 1. -JiggleSkin `AdventMod.u` | **pending the build session**. `package.py` now refuses any `AdventMod.u` / `AdventMod-graphics.u` that contains `SeekerSkinJ` |
-| 2. stale `d3d8.dll` | **pending the build session**. `package.py` now refuses a `System\d3d8.dll` without the string `atmos` |
+| 2. stale `d3d8.dll` | **fixed (8790e9d)**: `System\d3d8.dll` is the fork's bin\Release build (c04da3a, 971 KB, has `atmos`). `package.py` refuses a `System\d3d8.dll` without the string `atmos` |
 | 3. defaults | **fixed in source**: `ModReact.bDeathAnims=True`, `ModMoves.bSlideMeter=False`, `ModPlayerBlood.bLogBones=False` (table rows below updated). Every other log/measure default was already off. Needs the plain build to take effect |
 | 4. `gideon_uniform_pbr.dds` | **fixed in package.py**: the .dds is not in the allow-list and the `pbr=2e106041 ...` line is cut from the shipped `U2Shaders.ini` (`package.py` refuses if the name is still in it). The local `U2Shaders\gideon_uniform_pbr.dds` and the rule in the repo's `System\U2Shaders.ini` stay for the user's own play. **The PBR skin rule is left out of the release**: a player can regenerate it with `tools\make_pbr_maps.py <Gideon's uniform texture, exported from the game's Textures as dds/png> gideon_uniform_pbr.dds uniform` (needs numpy + Pillow) into `System\U2Shaders\` and add `pbr=2e106041 gideon_uniform_pbr.dds 1.8 1.6` to `U2Shaders.ini` (`tools\tex_hash.py` gives the hash); not documented in the README |
 | 5. armour data | **fixed in package.py / installer / README**: `AdventMod\Armour\*.amesh` ship from the game folder build.ps1 wrote them to (`--game <folder>` to point elsewhere; refuses when none are there); never `*_faces.png` / `*_mask.png` (an image-extension guard refuses any png/tga/jpg in the list bar the LUT bmps). The installer copies them to `<game>\AdventMod\Armour` and removes them on uninstall; README manual step 2 names the folder; KNOWN LIMITS reworded |
@@ -54,9 +54,8 @@ line still points at menus that no longer exist (Video > More Display Options).
 
 **What remains for the build session** (in order): close the game; plain `build.ps1` (no switch); confirm
 `System\AdventMod.u` has no `SeekerSkinJ`; `build.ps1 -GraphicsOnly` for `System\AdventMod-graphics.u`,
-then plain again so the installed build is the full one; copy the fork's current `d3d8.dll`
-(`Documents\github\d3d8to9-gi\bin\Release`, c04da3a; contains `atmos`) into `System\`; commit
-`System\AdventMod.u`, `AdventMod-graphics.u`, `AdventNative.dll`, `d3d8.dll` by path; `package.py --check`,
+then plain again so the installed build is the full one (the `d3d8.dll` copy is done: 8790e9d); commit
+`System\AdventMod.u`, `AdventMod-graphics.u`, `AdventNative.dll` by path; `package.py --check`,
 then `package.py` and `package.py --graphics` when the user asks for the zips. The play-test (section 4)
 still decides the "needs verdict" rows; nothing in this pass touched a feature switch.
 
