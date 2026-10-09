@@ -254,6 +254,18 @@ offline check `tools/armour_test.c`. Eight game runs that reached the level, one
 - **Cost in game: 0.7-1.3 ms per cast** (2.6 ms the first time a mesh is seen), against 0.24 ms
   offline: the difference is `FindActor`, a scan of the whole object table per call. A cache of
   the last actor by name would bring it back to ~0.3 ms; a few hits a second cost nothing either way.
+  **Cache added offline 2026-10-09** (not yet timed in game): `armour.c` keeps the last 8 pawns
+  found, by name and class with their object-table index; a repeat hit on one of them is a
+  validity check (the slot still holds the same pointer, not `bDeleteMe`, the same name and class:
+  two virtual-free `GetName` calls and two string compares) instead of the scan. Reasoned, not
+  measured: the scan is `GObjObjects.Num` (tens of thousands of objects in a level) x `GetClass` +
+  `GetName` + a string compare, which is the 0.5-1 ms; the hit path is constant and well under a
+  microsecond, so a repeat cast should land near the offline 0.24 ms (the skinning and the
+  triangle walk). A pawn that dies and is replaced by one with the same name (a respawn reusing
+  the name) fails the pointer or slot check and is scanned for again. The log line now ends
+  `actor by cache` / `actor by scan` with the time, and `ArmourStats` (native command) logs the
+  hits and scans so far; the next GPU session's fight run should show the second and later hits
+  on a pawn with `actor by cache` and about a third of the first hit's time.
 - Seeker pilot: `EonCharacters.SeekerPilot` and `SeekerPilot_AssaultRifle` don't load through
   `DynamicLoadObject` from the pilot's SPAWN ("no class"), so the helmet (head 43 %) is untested;
   the scanner's forearm guard (71 %) stood in.

@@ -18,7 +18,12 @@
    Conventions, measured rather than assumed: the bone FCoords rows (basis vectors or rotation
    rows, as footik.c learns it) are told from the reference skeleton's local positions on the
    first query per mesh; the ref skeleton's names are checked against the engine's before any
-   data is trusted. Everything runs inside __try: a fault answers "no hit". */
+   data is trusted. Everything runs inside __try: a fault answers "no hit".
+
+   The pawn is found by name and class through Core's object table, a scan of every object per
+   query (0.7-1.3 ms of the cast's time in game, ARMOUR.md); the last few pawns found are kept
+   by name with their table index, and a repeat hit on one of them skips the scan when its slot
+   still holds the same pointer, not marked for deletion, with the same name and class. */
 #include <windows.h>
 #include <math.h>
 #include <stdio.h>
@@ -146,10 +151,44 @@ static AMesh* Load(const wchar_t* MeshName)
 	return M;
 }
 
+/* the last pawns found, by name and class, with where they sat in the object table */
+typedef struct { void* Actor; int Index; wchar_t Name[48]; wchar_t Class[48]; } ActorCacheEntry;
+#define ACTOR_CACHE 8
+static ActorCacheEntry ActorCache[ACTOR_CACHE];
+static int ActorCacheNext, CacheHits, CacheScans;
+static const wchar_t* LastLookup = L"scan";
+
+/* is this cached pointer still that object: its slot unchanged, alive, the same name and class */
+static int CacheValid(const ActorCacheEntry* E)
+{
+	void* O = E->Actor;
+	void* C;
+	const wchar_t* N;
+	if (!O || E->Index < 0 || E->Index >= Objs->Num || Objs->Data[E->Index] != O) return 0;
+	if (*(DWORD*)((BYTE*)O + 0x34) & 0x80) return 0;
+	N = GetName(O, NULL);
+	if (!N || _wcsicmp(N, E->Name)) return 0;
+	C = GetClass(O, NULL);
+	if (!C) return 0;
+	N = GetName(C, NULL);
+	return N && !_wcsicmp(N, E->Class);
+}
+
 static void* FindActor(const wchar_t* Name, const wchar_t* ClassName)
 {
-	int i;
+	int i, BestI = -1;
 	void* Best = NULL;
+	ActorCacheEntry* E;
+	for (i = 0; i < ACTOR_CACHE; i++)
+	{
+		E = &ActorCache[i];
+		if (!E->Actor || _wcsicmp(E->Name, Name) || _wcsicmp(E->Class, ClassName)) continue;
+		if (CacheValid(E)) { CacheHits++; LastLookup = L"cache"; return E->Actor; }
+		E->Actor = NULL;          /* gone, or the name is another object's now: scan */
+		break;
+	}
+	CacheScans++;
+	LastLookup = L"scan";
 	for (i = 0; i < Objs->Num; i++)
 	{
 		void* O = Objs->Data[i];
@@ -164,6 +203,15 @@ static void* FindActor(const wchar_t* Name, const wchar_t* ClassName)
 		if (!N || _wcsicmp(N, Name)) continue;
 		if (*(DWORD*)((BYTE*)O + 0x34) & 0x80) continue;
 		Best = O;
+		BestI = i;
+	}
+	if (Best)
+	{
+		E = &ActorCache[ActorCacheNext];
+		ActorCacheNext = (ActorCacheNext + 1) % ACTOR_CACHE;
+		E->Actor = Best; E->Index = BestI;
+		wcsncpy(E->Name, Name, 47); E->Name[47] = 0;
+		wcsncpy(E->Class, ClassName, 47); E->Class[47] = 0;
 	}
 	return Best;
 }
@@ -336,7 +384,7 @@ static int Test(const wchar_t* Arg)
 	LastUs = (float)((T1.QuadPart - T0.QuadPart) * 1e6 / Freq.QuadPart);
 	if (best < 0)
 	{
-		if (LogOn) Note(L"armour: %ls: the ray from %.0f %.0f %.0f along %.2f %.2f %.2f misses the mesh (%.0f us)", Name, O.x, O.y, O.z, D.x, D.y, D.z, LastUs);
+		if (LogOn) Note(L"armour: %ls: the ray from %.0f %.0f %.0f along %.2f %.2f %.2f misses the mesh (%.0f us, actor by %ls)", Name, O.x, O.y, O.z, D.x, D.y, D.z, LastUs, LastLookup);
 		return 0;
 	}
 	{
@@ -360,7 +408,7 @@ static int Test(const wchar_t* Arg)
 			wchar_t BN[32], MT[32];
 			MultiByteToWideChar(CP_ACP, 0, A->B[bb].Name, -1, BN, 32);
 			MultiByteToWideChar(CP_ACP, 0, A->Mats[Fc->Section < 8 ? Fc->Section : 0], -1, MT, 32);
-			Note(L"armour hit: %ls %ls armour=%ls uv=%.3f,%.3f tri=%d section=%ls at %.1f %.1f %.1f mesh %.1f %.1f %.1f dist=%.0f (%.0f us)", Name, BN, LastArmour ? L"yes" : L"no", LastU, LastV, best, MT, LastPoint.x, LastPoint.y, LastPoint.z, pm.x, pm.y, pm.z, bestT, LastUs);
+			Note(L"armour hit: %ls %ls armour=%ls uv=%.3f,%.3f tri=%d section=%ls at %.1f %.1f %.1f mesh %.1f %.1f %.1f dist=%.0f (%.0f us, actor by %ls)", Name, BN, LastArmour ? L"yes" : L"no", LastU, LastV, best, MT, LastPoint.x, LastPoint.y, LastPoint.z, pm.x, pm.y, pm.z, bestT, LastUs, LastLookup);
 		}
 	}
 	return LastArmour;
@@ -372,11 +420,12 @@ static int Guarded(const wchar_t* Arg)
 	__except (EXCEPTION_EXECUTE_HANDLER) { Note(L"armour: exception in the test (%ls): no hit", Arg); LastHit = LastArmour = 0; return 0; }
 }
 
-/* "ArmourHit ...", "ArmourLast", "ArmourLog 1|0", "ArmourStats" */
+/* "ArmourHit ...", "ArmourLast", "ArmourLog 1|0", "ArmourReady", "ArmourStats" (the actor cache's hits and scans, logged) */
 int ArmourCommand(const wchar_t* Cmd)
 {
 	if (!_wcsnicmp(Cmd, L"ArmourHit ", 10)) return Guarded(Cmd + 10);
 	if (!_wcsicmp(Cmd, L"ArmourLast")) return LastHit;
+	if (!_wcsicmp(Cmd, L"ArmourStats")) { Note(L"armour: actor lookups: %d from the cache, %d scans of the object table", CacheHits, CacheScans); return CacheHits + CacheScans; }
 	if (!_wcsnicmp(Cmd, L"ArmourLog ", 10)) { LogOn = _wtoi(Cmd + 10) != 0; return 1; }
 	if (!_wcsicmp(Cmd, L"ArmourReady")) return Resolve();
 	return 0;
