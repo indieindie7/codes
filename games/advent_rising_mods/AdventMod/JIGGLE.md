@@ -108,22 +108,32 @@ Files outside the repo (game-derived): `Documents\AdventRising_meshes\jiggle\`.
    but a body lean, not jiggle); the fallback would be springs on spine1/Neck02/the thighs with
    small amplitudes, to be built only if needed.
 
-## B. Texture: inpaint pending (GPU shared)
+## B. Texture: done once, judged bad (2026-10-09)
 
-The Seeker skin (`seekercharacters_tx` -> `seeker_infantry`, 512x512, exported with
-tools/utx_tex.py into `Documents\AdventRising_meshes\jiggle	ex\`, never git) goes through
-FLUX Kontext (`Documents\Toolslux-kontext\kontext_edit.py`, the sana venv in
-Downloads\sana-diffusers) with the instruction "replace the grey metal armour plates and the
-gauntlet pieces with the same purple-grey alien skin ... keep everything else" at 512x512, 28
-steps, guidance 2.5, seed 7; the result is then composited over the stock skin inside
-`plate_mask.png` only (Kontext has no mask input: everything outside the plate islands stays the
-stock texel), and a before/after sheet is made. **Not finished on 2026-10-09**: the first run sat
-20 minutes without touching the GPU (a duplicate process from a mangled taskkill then loaded a
-second copy), and the live run shares the 12 GB GPU with another chat's two llama-servers
-(9-11 GB): after 25 minutes it was still in the transformer stage at 100 % GPU. It was left
-running (output `tex\kontext_skin_raw.png` when it lands); the composite and the sheet are the
-next step (`plate_mask.png` x raw + (1 - mask) x stock, then stock | result side by side). Nothing
-of B is in the game yet; the jiggle mesh wears the stock skin.
+The Seeker skin (`seekercharacters_tx` -> `seeker_infantry`, 512x512, exported with tools/utx_tex.py
+into `Documents\AdventRising_meshes\jiggle	ex\`, never git) went through FLUX Kontext
+(`Documents\Toolslux-kontext\kontext_edit.py`, the sana venv in Downloads\sana-diffusers;
+"replace the grey metal armour plates and the gauntlet pieces with the same purple-grey alien
+skin ... keep everything else", 512x512, 28 steps, guidance 2.5, seed 7). It took 80 minutes:
+the GPU was shared with another chat's two llama-servers (9-11 GB), and a duplicate process
+from a mangled taskkill loaded a second copy for a while. The raw edit was then composited over
+the stock skin inside `plate_mask.png` only (feathered 2 px; Kontext has no mask input):
+`tex\seeker_infantry_skinned.png`, sheet `skin_sheet.png` (stock | raw | composite).
+
+**Verdict: bad.** Kontext recoloured the whole sheet a flat lavender (mean change 97/255 outside
+the mask too) and kept the plates as plates (panel lines, rivets, the gun pieces), so inside the
+mask the result is flat purple patches with metal detail, nothing like the blue mottled skin
+beside them. A UV atlas isn't a picture Kontext understands; what would work is a real
+mask-inpainting model, or painting the islands by hand from the neighbouring skin texels (clone
+from the mask's ring, which a 30-line numpy pass could do: a patch-match fill of the islands from
+the flesh ring). Not retried (the GPU was handed back).
+
+How it would go into the game, if a good one existed: the regenerated 512x512 PNG -> .tga in
+`<game>\AdventMod\Textures` (outside the repo, like the gib parts), `#exec TEXTURE IMPORT
+NAME=SeekerSkinJ FILE=Textures\seeker_infantry_skinned.tga` in ModJiggleMesh, and ModJiggle puts
+that texture (or a Shader wrapping it) on the re-linked pawn's `Skins[0]` instead of the stock
+material. Game pixels: never shipped, never committed; the stock skin is what the jiggle mesh
+wears now.
 
 ## C. Live springs (built, CPU; game test waits)
 
