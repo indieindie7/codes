@@ -180,3 +180,16 @@ The plan as it was written:
      the user's mark Q83 (the summit tower is AvalonSM3.Liandri.PyramidTower) decides: the sheet now says
      `model: PyramidTower`, and the check reads it.
    - Interiors too dark and rain roofs: list them as "needs in-game check", plus binder hints (lit: no, roof: none).
+
+## Story assets (2026-10-09, STORY_ASSETS.md): the hooks
+
+Done in this pass (kit_parts.py, story_export.py, shells.py, export_mutator.py): the drain culverts, the taps'
+poles/cables/drums and the hollow shells exist as parts + emitters. One-line hooks for the files the other agent
+holds (not applied here):
+
+- town.py, after `story_extras()`: `import shells; shells.build(run)` -> `<run>/isl_shells.t3d` + `hollow.json`;
+  and give the export step `story=1 hollow=<run>/hollow.json` (export_mutator.py reads both).
+- clutter.py section 2d: `if not STORY: for mesh, x, y, yaw, scale, lift in takes.clutter_items(L["taps"]): ...`
+  (story_export emits the real poles and drums; the Pylon-at-0.45 stand-ins would double them).
+- The "still open" list above: the sagging-cable mesh (B_sagcable), the drain build (story_export.drain_actors) and
+  the hollow-shell kit (shells.py) are no longer open; rooms.py's plans drive shells.py unchanged.
