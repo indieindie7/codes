@@ -291,3 +291,11 @@ the agreement with the user's notes by category. `--dry` writes the prompts to `
 the pilot when a server answers a 1 s `/health` probe (never started from there; report.md gets a "Vision review"
 section, or a skip note) and codirect.review adds a sixth entry `R["vision"]` (the mean score, printed as VISION beside
 MARKS, outside the five-role total and never a veto) when `<run>\vision_review.json` exists.
+
+Vision review v2 (2026-10-09, after the first marks pass: 54 % agreement, it missed floating / billboard / repeat / fishing-pole,
+and reported "town missing" on interiors): (1) a shot type per picture (overview / close-up / interior / detail) from
+`<frames>\shot_types.json`, the run dir (`_town_` = overview, `_closeups_` = close-up) or `--type auto` (one cheap question to the
+model); only the rules that fit the type are asked; (2) one request per role with its 2-4 point rubric (`--single` = the old one-shot),
+per-request seconds and tokens in the JSON; (3) `--fewshot N` (default 4): examples of the user's own marks from
+`marks/fewshot.json` (built once, gitignored, 512 px) sent as earlier chat turns for the roles they cover (marks, artist); a request
+the server rejects is retried with half as many. The agreement rate leaves the example shots out and lists hits per category.

@@ -19,11 +19,18 @@ OpenAI chat API). One request per shot: the picture (downscaled JPEG) + the rubr
 
     py tools/vision_review.py <run folder | pilot run dir | image...> [--server http://127.0.0.1:8081] [--model local]
                               [--max-shots N] [--resize 1024] [--dry] [--fake answer.txt] [--marks] [--against QUEUE.md]
-                              [--out <dir>]
+                              [--out <dir>] [--type auto|overview|close-up|interior|detail] [--single] [--fewshot 4]
 
   <run folder>  Documents\U2_research\towns\<Name><seed>: its shots are <run>\shots\*.png|jpg|bmp when that exists,
                 else the latest U2Pilot runs for it (runs\*_town_<name> and *_closeups_<name>: frames\f*.bmp)
   pilot run dir a U2Pilot runs\<stamp>_<script> folder (frames\f*.bmp), or any folder of images, or image files
+  --type        the shot type (rules that do not fit it are not asked): from <frames>\shot_types.json (a sidecar
+                {"f00003": "interior"}) or the run dir (`_town_` -> overview, `_closeups_` -> close-up), else `auto` asks
+                the model one cheap question first; overview | close-up | interior | detail forces it
+  --single      the old mode: ONE request with all four rubrics (default: one request per role, 2-4 points + the type)
+  --fewshot N   N example pairs of the user's own marks (marks/fewshot.json, built once from marks/*.png + their QUEUE.md
+                notes, 512 px) sent as earlier chat turns before the real shot, for the roles they cover (marks, artist);
+                0 = off, default 4. A request the server rejects (context) is retried with half as many, down to none.
   --dry         write the prompts (<out>\vision_prompts\<shot>.txt) and skip the model; --fake FILE answers every shot
                 with FILE's text instead of the model (the parser's test); neither touches the server
   --marks       also write <out>\vision_marks.txt: one `MARK V<n> | <note> | <shot>` line per finding, the line
@@ -36,7 +43,7 @@ Outputs: <out>\vision_review.md (a table per shot, the merged top findings, the 
 the run folder (or the first image's folder).
 As a library: probe(server) -> bool (a 1 s /health check); hook(run_dir, name) -> the report.md paragraph or None.
 """
-import base64, io, json, os, re, sys, time, urllib.request
+import base64, io, json, os, re, sys, time, urllib.error, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PILOT_RUNS = os.path.normpath(os.path.join(HERE, "..", "..", "..", "..", "tools", "python", "U2Pilot", "runs"))
@@ -44,64 +51,102 @@ IMG_EXT = (".png", ".jpg", ".jpeg", ".bmp")
 DEFAULT_SERVER = "http://127.0.0.1:8081"
 ROLES = ("director", "artist", "level", "marks")
 
-# ---------------------------------------------------------------- the rubrics (compact; the sources are in the docstring)
+# ---------------------------------------------------------------- shot types + the rubrics (2-4 points per role and type)
+TYPES = ("overview", "close-up", "interior", "detail")
+TYPE_HELP = {"overview": "a wide view of the island/town from outside or above, sea or horizon in frame",
+             "close-up": "a ground-level or near view of buildings and props outdoors",
+             "interior": "inside a room, corridor, tower or under a deck roof",
+             "detail": "one object, a weapon, a menu or a small texture patch"}
 RUBRIC = {
-    "director": (
-        "DIRECTOR (cinematography): (1) FRAME: one hero building sits on a third of the width, the town spans 30-60 % of "
-        "the width, a leading line (road, pipe, shore) runs into the hero; (2) LAYERS: three depth layers with air "
-        "between them (near ground, mid town, far shore/sea/sky), not one flat wall; (3) HOUR: low back or side light "
-        "(long shadows, rim light, silhouettes); flat front light or no readable light direction scores low; "
-        "(4) REVEAL: the hero is either clearly shown or deliberately hidden by a near mass, never half-cut by the frame "
-        "edge; (5) SILHOUETTE: the hero's top crosses the skyline against the sky. The frame may be black (a dark "
-        "near edge is fine) but the path the player walks may not: the floor must read at 20 % grey or more."),
-    "artist": (
-        "ARTIST (the look): (1) ONE LANDMARK: one dominant mass; copies of the landmark or two equal masses dilute it; "
-        "(2) GRAIN: coarse big blocks for the company, fine small shacks for the shanty, visibly different sizes between "
-        "districts; (3) WEAR: rust, streaks, patches, lean-tos, nothing reads as new plastic; (4) PALETTE: value "
-        "separation between body, trim and accent; no 'one flat grey-green clay' look; no identical rim colour on every "
-        "shack; no cone towers that read as faces; (5) FIGURE-GROUND: buildings sit on terraces or graded ground, "
-        "not on a slope like pieces on a board; nothing lost in the sea; the town reads compact."),
-    "level": (
-        "LEVEL DESIGNER (how it plays, read from the picture): (1) COVER: within 10-40 m of the viewpoint are there "
-        "3+ chest-high pieces (crates, walls, drums, parapets)? (2) SIGHTLINES: are long open lines broken by masses "
-        "(open ground past 40 m is where hitscan enemies win)? (3) ENTRIES: can you see 2+ ways in or out of the space "
-        "(doors, lanes, stairs, gaps)? (4) a high spot (+3 m) the player could take? (5) a landmark in view to steer "
-        "by (tower, hall, stack)?"),
-    "marks": (
-        "MARKS (the user's own checklist; each failure is a finding): (M1) nothing floats: rocks, building bases, "
-        "masts, props must touch the ground; (M2) the island or sea edge must never read as a square or a straight "
-        "cut; (M3) no repeating/tiled texture on flat ground, no big flat pads; (M4) not too dark: interiors, decks "
-        "and the floor the player stands on must be legible (a dark frame is fine, a black floor is not); (M5) no "
-        "rain or weather drawn inside roofed spaces; (M6) horizon structures (oil rigs, flares, far towers) visible "
-        "inside the view when the sea horizon is shown. Also anything that looks wrong: cranes on pyramids, billboard "
-        "or card-like imposters, untextured flat-palette buildings, railings that do not follow the walkable edge, "
-        "things that make no sense (vehicles, banners, crates in rooms), ball-shaped smoke, fog hiding the island, "
-        "rendering bugs (white squares, boxes in the sky)."),
+    "director": {
+        "overview": "(1) FRAME: the hero building on a third of the width, the town 30-60 % of it, a leading line (road, pipe, shore) into the hero; "
+                    "(2) LAYERS: near ground, mid town, far sea/sky with air between them, not one flat wall; "
+                    "(3) HOUR: low back or side light (long shadows, rim light, a hard silhouette is the right hour); flat even front light scores low.",
+        "close-up": "(1) HOUR: low directional light, long shadows, rim light on the edges; (2) FRAME: one clear subject with a leading line into it; "
+                    "(3) the subject reads against the sky or a lit wall.",
+        "interior": "(1) FRAME: a dark near edge is fine; one lit focal point (window, lamp, door) draws the eye; "
+                    "(2) the walkable floor reads at 20 % grey or more; (3) the light has a direction (a shaft, window light).",
+        "detail": "(1) the object reads clearly, lit from one side; (2) the background does not fight it.",
+    },
+    "artist": {
+        "overview": "(1) ONE LANDMARK: one dominant mass; copies or equal masses dilute it; (2) GRAIN: coarse company blocks, fine shanty shacks, "
+                    "visibly different sizes between districts; (3) PALETTE/WEAR: value separation between body, trim and accent, rust and patches, "
+                    "not one flat clay colour; (4) FIGURE-GROUND: buildings on terraces or graded ground, not on a slope like pieces on a board.",
+        "close-up": "(1) WEAR: rust, streaks, patches, nothing reads as new plastic; (2) PALETTE: value separation body/trim/accent, no identical "
+                    "colour on every piece; (3) SHAPE: a distinct silhouette, no windows-and-door faces, a crane has a lattice and counterweight, "
+                    "not one thin line; it sits on the ground.",
+        "interior": "(1) materials differ (metal, concrete, wood) and are worn; (2) palette with one accent; (3) props that say how the room is used.",
+        "detail": "(1) the material is textured, not flat colour; (2) its palette has value separation.",
+    },
+    "level": {
+        "overview": "(1) LANDMARK in view to steer by; (2) 2+ routes or lanes visible; (3) long open ground is broken by masses.",
+        "close-up": "(1) COVER: 3+ chest-high pieces (crates, walls, drums) within 10-40 m; (2) ENTRIES: 2+ ways in or out; (3) a high spot (+3 m).",
+        "interior": "(1) COVER: pillars, crates or walls to fight behind; (2) ENTRIES: 2+ doors or openings; (3) sightlines broken, not one long hall.",
+        "detail": "Not a play space: score 0.5 and report no findings.",
+    },
 }
+MARKS_ITEMS = (   # (code, shot types it applies to, rule): the user's checklist, only what fits the shot is asked
+    ("M1", ("overview", "close-up", "interior"), "NOTHING FLOATS: rocks, building bases, masts, props touch the ground (a gap under a rock, a base hanging in air = finding)"),
+    ("M2", ("overview",), "no SQUARE ISLAND: the sea or terrain edge must not read as a straight cut or a square"),
+    ("M3", ("overview", "close-up"), "no REPEATING TEXTURE on flat ground, no big flat pads"),
+    ("M4", ("overview", "close-up", "interior"), "NOT TOO DARK: only when the floor or walkable surface is in frame, it must be legible (a dark frame is fine, a black floor is not)"),
+    ("M5", ("interior",), "no RAIN or weather drawn inside roofed spaces"),
+    ("M6", ("overview",), "HORIZON structures (oil rigs, flares, far towers) visible when the sea horizon is shown"),
+    ("M7", TYPES, "ANYTHING WRONG: BILLBOARD or card-like imposters (a flat cut-out standing in the scene), cranes on pyramids, a crane that is one thin fishing-pole line, "
+                  "untextured flat-colour buildings, railings off the walkable edge, things that make no sense, ball-shaped smoke, white squares or boxes in the sky"),
+)
 
-SYSTEM = ("You are the creative team's reviewer for an Unreal II (2003) level: a company mining town on an island, "
-          "a Liandri pyramid tower as the hero landmark on the summit, a shanty in the works' smoke, dusk, rain. Judge "
-          "the screenshot ONLY by what is visible. Be concrete: name what you see and where. Answer with JSON only.")
 
+def role_rules(role, stype):
+    if role == "marks":
+        return "; ".join("(%s) %s" % (c, t) for c, ty, t in MARKS_ITEMS if stype in ty)
+    return RUBRIC[role][stype]
+
+
+SYSTEM = ("You are the creative team's reviewer for an Unreal II (2003) level: a company mining town on an island, a Liandri pyramid tower "
+          "as the hero landmark on the summit, a shanty in the works' smoke, dusk, rain. Judge the screenshot ONLY by what is visible and "
+          "ONLY by the rules given for its shot type: never report something the rules for that type do not cover (a town missing from "
+          "an interior is not a finding). Be concrete: name what you see and where. Answer with JSON only.")
+ROLE_SHAPE = ('{"score": 0..1, "findings": [{"what": "<one concrete sentence>", "where": "<left|centre|right> <near|far>", '
+              '"severity": 0..1, "rule": "%s:<rule, e.g. M1 floats>"}], "one_line": "<the picture in one sentence>"}')
 ANSWER_SHAPE = ('{"scores": {"director": 0..1, "artist": 0..1, "level": 0..1, "marks": 0..1}, '
                 '"findings": [{"what": "<one concrete sentence>", "where": "<left|centre|right> <near|far>", '
                 '"severity": 0..1, "rule": "<director|artist|level|marks>:<rule name, e.g. M1 floats, HOUR, GRAIN>"}], '
                 '"one_line": "<the picture in one sentence>"}')
 
+
+def role_system(role):
+    """one role's system message: the base + that role's rules for every shot type (the user turn names the type)"""
+    body = "\n".join("- %s: %s" % (t, role_rules(role, t)) for t in TYPES)
+    return ("%s\n\nYou are the %s. Score 0..1 (1 = passes every rule that applies, 0.5 = half, 0 = fails) and list each concrete problem as a "
+            "finding with a severity (1 = ruins the frame, 0.2 = minor). The rules by shot type:\n%s\n\nAnswer with exactly this JSON and "
+            "nothing else:\n%s" % (SYSTEM, role.upper(), body, ROLE_SHAPE % role))
+
+
+def user_text(stype):
+    return "Shot type: %s (%s). Apply only the rules for this type. JSON only." % (stype, TYPE_HELP[stype])
+
+
+def prompt_text(label, stype="overview"):
+    """the --single prompt: all four roles in one request (type-aware rules)"""
+    return ("Review this screenshot (%s). Shot type: %s (%s). Apply ONLY the rules that fit this type.\n\n%s\n\nAnswer with exactly this JSON and "
+            "nothing else:\n%s" % (label, stype, TYPE_HELP[stype], "\n".join("%s: %s" % (r.upper(), role_rules(r, stype)) for r in ROLES), ANSWER_SHAPE))
+
+
 CATEGORIES = {   # for --against: the user's notes and the model's findings, matched by these
-    "dark": r"\bdark|black|too dim|unlit|cannot see|can't see",
-    "float": r"float|hover|above the ground|off the ground|not touch",
-    "square": r"square|straight edge|hard edge of the (sea|island|terrain)|edge of the sea",
+    "dark": r"\bdark|black|too dim|unlit|cannot see|can't see|illegible",
+    "float": r"float|hover|above the ground|off the ground|not touch|gap under|hanging",
+    "square": r"square|straight edge|straight cut|straight line|hard edge of the (sea|island|terrain)|edge of the sea",
     "rain": r"rain|drops|weather inside|falling through",
     "repeat": r"repeat|tiling|tiled|same texture|pattern repeats|flat pad|flat ground",
     "fog": r"\bfog|haze hid|hidden by fog",
     "smoke": r"smoke|plume",
     "crane": r"crane|fishing pole",
-    "billboard": r"billboard|imposter|impostor|card|flat sprite|cutout|cut-out",
+    "billboard": r"billboard|imposter|impostor|card|flat sprite|cutout|cut-out|cut out",
     "flat": r"untextured|flat.?palette|flat colou?r|one colou?r|clay|no texture|flat.?shaded|low.?detail",
     "rail": r"rail|railing|handrail",
     "clouds": r"cloud",
-    "bug": r"\bbug|glitch|artifact|artefact|white square|box(es)? in the sky|missing geometry",
+    "bug": r"\bbug|glitch|artifact|artefact|white square|box(es)? in the sky|missing geometry|texture box",
     "weird": r"weird|out of place|makes no sense|odd|strange",
     "face": r"\bface|pareidolia",
     "horizon": r"horizon|oil rig|rigs?\b|far tower",
@@ -159,6 +204,28 @@ def find_shots(inputs):
     return out
 
 
+def declared_type(path):
+    """the shot type the pilot's own names give: a sidecar shot_types.json ({"f00003": "interior"}) beside the frames or in the
+    run dir, else the run dir's suffix (`_town_` = overview, `_closeups_` = close-up); None when nothing says"""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    d = os.path.dirname(path)
+    for side in (os.path.join(d, "shot_types.json"), os.path.join(os.path.dirname(d), "shot_types.json")):
+        if os.path.exists(side):
+            try:
+                m = json.load(open(side, encoding="utf-8"))
+                t = m.get(stem) or m.get(os.path.basename(path))
+                if t in TYPES:
+                    return t
+            except (OSError, ValueError):
+                pass
+    low = path.lower().replace("/", "\\")
+    if "_closeups_" in low:
+        return "close-up"
+    if "_town_" in low:
+        return "overview"
+    return None
+
+
 def encode(path, resize=1024, quality=85):
     """the picture as a base64 JPEG no wider/taller than resize (BMP pilot frames included); (b64, (w, h))"""
     from PIL import Image
@@ -170,16 +237,84 @@ def encode(path, resize=1024, quality=85):
     return base64.b64encode(buf.getvalue()).decode("ascii"), im.size
 
 
+# ---------------------------------------------------------------- the few-shot examples (the user's own marks)
+MARKS_DIR = os.path.normpath(os.path.join(HERE, "..", "marks"))
+FEWSHOT_FILE = os.path.join(MARKS_DIR, "fewshot.json")
+# the categories the first marks pass MISSED (floating objects, billboard cards, repeating texture, the fishing-pole crane), picked
+# from the user's marked shots; the answers are written from his notes (marks/QUEUE.md) and what is in the picture.
+EXAMPLES = (
+    {"shot": "Shot00041", "type": "overview", "answers": {"marks": {"score": 0.3, "findings": [
+        {"what": "A dark rock hangs in mid-air in front of the crane tower with open sky under it; it is not touching the ground", "where": "centre near", "severity": 0.9, "rule": "marks:M1 floats"},
+        {"what": "The sea edge on the left runs as a straight line, so the island reads square", "where": "left far", "severity": 0.6, "rule": "marks:M2 square"},
+        {"what": "The crane tower's base is a pale slab floating over the shore", "where": "centre far", "severity": 0.5, "rule": "marks:M1 floats"}],
+        "one_line": "A rocky island under a dusk sky with a floating rock and a floating crane tower."}}},
+    {"shot": "Shot00030", "type": "overview", "answers": {"marks": {"score": 0.35, "findings": [
+        {"what": "The crane tower on the left is a flat cut-out card standing in the scene, a billboard rather than 3D geometry", "where": "left far", "severity": 0.8, "rule": "marks:M7 billboard"},
+        {"what": "The two rigs on the sea are dark flat cards with no depth", "where": "centre far", "severity": 0.6, "rule": "marks:M7 billboard"},
+        {"what": "The foreground below the camera is pitch black", "where": "bottom centre", "severity": 0.4, "rule": "marks:M4 dark"}],
+        "one_line": "A bright island view where the crane tower and the rigs read as flat cards."}}},
+    {"shot": "Shot00042", "type": "overview", "answers": {"marks": {"score": 0.2, "findings": [
+        {"what": "The rock surface repeats the same small texture tile over the whole slope", "where": "left near", "severity": 0.7, "rule": "marks:M3 repeat"},
+        {"what": "Dozens of square texture boxes float in the sky and over the hill", "where": "centre far", "severity": 0.9, "rule": "marks:M7 rendering bug"},
+        {"what": "The railing and the floor on the right are solid black", "where": "right near", "severity": 0.5, "rule": "marks:M4 dark"}],
+        "one_line": "A rocky hillside under a dark sky covered in floating texture squares."}}},
+    {"shot": "Shot00048", "type": "overview", "answers": {
+        "marks": {"score": 0.45, "findings": [
+            {"what": "The crane on the tower is a single thin line with no lattice, a fishing pole rather than a crane", "where": "left far", "severity": 0.7, "rule": "marks:M7 fishing-pole crane"},
+            {"what": "Several buildings sit on slabs that hover over the rock, their bases floating in the air", "where": "centre near", "severity": 0.6, "rule": "marks:M1 floats"},
+            {"what": "The pyramid tower carries a crane, which makes no sense on a pyramid", "where": "centre far", "severity": 0.5, "rule": "marks:M7 crane on pyramid"}],
+            "one_line": "A pale pyramid tower with a pole crane over a rocky island with floating building bases."},
+        "artist": {"score": 0.4, "findings": [
+            {"what": "Every building is the same flat grey-green clay colour with no separation between body, trim and accent", "where": "centre near", "severity": 0.7, "rule": "artist:PALETTE"},
+            {"what": "The crane has no lattice and no counterweight, it reads as a fishing pole", "where": "left far", "severity": 0.7, "rule": "artist:SHAPE"}],
+            "one_line": "A pale pyramid tower with a pole crane over a rocky island."}}},
+    {"shot": "Shot00096", "type": "overview", "answers": {"marks": {"score": 0.5, "findings": [
+        {"what": "A red crane is mounted on the pyramid tower, which makes no sense on a pyramid building", "where": "left far", "severity": 0.7, "rule": "marks:M7 crane on pyramid"},
+        {"what": "The smoke columns are smooth dark balls", "where": "right far", "severity": 0.4, "rule": "marks:M7 ball smoke"}],
+        "one_line": "A tan pyramid tower with a red crane on a rocky island at midday."}}},
+)
+
+
+def build_fewshot(force=False, size=512):
+    """marks/fewshot.json (built once, cached; the marks folder is gitignored): each EXAMPLES shot at `size` px as base64 JPEG, the
+    user's own QUEUE.md/MARKS.md note(s) for it, and the answer per role. Returns the list."""
+    if not force and os.path.exists(FEWSHOT_FILE):
+        try:
+            return json.load(open(FEWSHOT_FILE, encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    notes = {}
+    for f in ("QUEUE.md", "MARKS.md"):
+        for k, v in load_user_notes(os.path.join(MARKS_DIR, f)).items():
+            notes.setdefault(k, []).extend(v)
+    out = []
+    for e in EXAMPLES:
+        p = os.path.join(MARKS_DIR, e["shot"] + ".png")
+        if not os.path.exists(p):
+            continue
+        b64, sz = encode(p, size, 80)
+        out.append({"shot": e["shot"], "type": e["type"], "size": list(sz), "user_notes": notes.get(e["shot"], []), "jpeg_b64": b64,
+                    "answers": {r: json.dumps(a, ensure_ascii=False) for r, a in e["answers"].items()}})
+    json.dump(out, open(FEWSHOT_FILE, "w", encoding="utf-8"), ensure_ascii=False)
+    return out
+
+
+def fewshot_messages(role, n, shots):
+    """prior chat turns for one role: up to n examples that carry an answer for the role (image + short question -> JSON)"""
+    msgs, used = [], []
+    for e in shots:
+        if len(used) >= n:
+            break
+        if role not in e["answers"]:
+            continue
+        msgs.append({"role": "user", "content": [{"type": "text", "text": user_text(e["type"])},
+                                                 {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + e["jpeg_b64"]}}]})
+        msgs.append({"role": "assistant", "content": e["answers"][role]})
+        used.append(e["shot"])
+    return msgs, used
+
+
 # ---------------------------------------------------------------- the model
-def prompt_text(label):
-    return ("Review this screenshot (%s) against the four rubrics. Score each rubric 0..1 from what is visible "
-            "(1 = passes every point, 0.5 = half, 0 = fails). List every concrete problem as a finding with a severity "
-            "(1 = ruins the frame, 0.2 = minor), where it is (left/centre/right, near/far) and which rule it breaks. "
-            "Interiors: skip the island rules, judge the floor's legibility and the frame.\n\n%s\n\n%s\n\n%s\n\n%s\n\n"
-            "Answer with exactly this JSON and nothing else:\n%s"
-            % (label, RUBRIC["director"], RUBRIC["artist"], RUBRIC["level"], RUBRIC["marks"], ANSWER_SHAPE))
-
-
 def probe(server=DEFAULT_SERVER, timeout=1.0):
     """does a llama-server answer on the port? (a 1 s GET /health; no model call, no GPU work)"""
     try:
@@ -189,28 +324,42 @@ def probe(server=DEFAULT_SERVER, timeout=1.0):
         return False
 
 
-def chat_image(server, model, text, b64, max_tokens=900, temp=0.2, timeout=600, retry_note=None):
-    """one chat completion with the picture (storysim.chat's request shape + an image_url content part)"""
-    content = [{"type": "text", "text": text + (("\n\n" + retry_note) if retry_note else "")},
-               {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}}]
-    body = {"model": model, "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": content}],
-            "temperature": temp, "max_tokens": max_tokens, "chat_template_kwargs": {"enable_thinking": False}}
+def chat(server, model, messages, max_tokens=700, temp=0.2, timeout=600):
+    """one chat completion (storysim.chat's request shape); -> (text, usage dict)"""
+    body = {"model": model, "messages": messages, "temperature": temp, "max_tokens": max_tokens,
+            "chat_template_kwargs": {"enable_thinking": False}}
     req = urllib.request.Request(server.rstrip("/") + "/v1/chat/completions", data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         d = json.load(r)
-    return d["choices"][0]["message"]["content"]
+    return d["choices"][0]["message"]["content"], d.get("usage") or {}
 
 
-def parse_answer(text):
+def _img(b64):
+    return {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}}
+
+
+def classify_type(server, model, b64_small):
+    """the one cheap question: overview, close-up, interior or detail? (a 512 px picture, <= 8 tokens out)"""
+    q = ("Which is it: overview (%s), close-up (%s), interior (%s) or detail (%s)? Answer with one word."
+         % tuple(TYPE_HELP[t] for t in TYPES))
+    text, _ = chat(server, model, [{"role": "user", "content": [{"type": "text", "text": q}, _img(b64_small)]}], max_tokens=8, temp=0.0, timeout=120)
+    t = text.lower()
+    for key, pat in (("close-up", r"close"), ("interior", r"interior|inside|indoor"), ("detail", r"detail"), ("overview", r"overview|wide")):
+        if re.search(pat, t):
+            return key
+    return "overview"
+
+
+def parse_answer(text, role=None):
     """the model's JSON, robustly: <think> blocks and code fences stripped, the first {...} taken, keys defaulted,
-    scores clamped to 0..1; None when there is no JSON object"""
+    scores clamped to 0..1; None when there is no JSON object. role=: a one-role answer ({"score": x} or {"scores": {role: x}}),
+    findings whose rule names another role are dropped"""
     if not text:
         return None
     t = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
     t = re.sub(r"```[a-zA-Z]*\s*", "", t).replace("```", "")
-    i = t.find("{")
-    if i < 0:
+    if t.find("{") < 0:
         return None
     dec = json.JSONDecoder()
     d = None
@@ -219,7 +368,7 @@ def parse_answer(text):
             cand, _ = dec.raw_decode(t[start:])
         except ValueError:
             continue
-        if isinstance(cand, dict) and ("scores" in cand or "findings" in cand):
+        if isinstance(cand, dict) and ("scores" in cand or "score" in cand or "findings" in cand):
             d = cand
             break
         if d is None and isinstance(cand, dict):
@@ -232,11 +381,14 @@ def parse_answer(text):
             x = float(v)
         except (TypeError, ValueError):
             return default
-        if x > 1.0 and x <= 10.0:   # a 0..10 scale slipped in
+        if 1.0 < x <= 10.0:   # a 0..10 scale slipped in
             x /= 10.0
         return max(0.0, min(1.0, x))
     sc = d.get("scores") if isinstance(d.get("scores"), dict) else {}
-    scores = {k: num(sc.get(k), 0.5) for k in ROLES}
+    if role:
+        scores = {role: num(sc.get(role, d.get("score")), 0.5)}
+    else:
+        scores = {k: num(sc.get(k), 0.5) for k in ROLES}
     finds = []
     for f in d.get("findings") or []:
         if isinstance(f, str):
@@ -246,32 +398,120 @@ def parse_answer(text):
         what = str(f.get("what") or f.get("finding") or f.get("issue") or "").strip()
         if not what:
             continue
-        finds.append({"what": what, "where": str(f.get("where") or "").strip(), "severity": num(f.get("severity"), 0.5),
-                      "rule": str(f.get("rule") or "").strip()})
+        rule = str(f.get("rule") or "").strip()
+        pre = rule.split(":")[0].lower()
+        if role and pre in ROLES and pre != role:
+            continue
+        if role and pre not in ROLES:
+            rule = (role + ":" + rule) if rule else role + ":"
+        finds.append({"what": what, "where": str(f.get("where") or "").strip(), "severity": num(f.get("severity"), 0.5), "rule": rule})
     finds.sort(key=lambda f: -f["severity"])
     return {"scores": scores, "findings": finds, "one_line": str(d.get("one_line") or d.get("summary") or "").strip()}
 
 
-def review_shot(label, path, server, model, resize, dry=False, fake=None, out_dir=None):
+def ask(server, model, role, stype, b64, shots, n_few, retry=True):
+    """one role's request: system (rules) + up to n_few example turns + the real shot. Falls back to fewer examples when the server
+    rejects the request (context); -> (parsed or None, raw, info)"""
+    n = n_few
+    last_err = None
+    while True:
+        few, used = fewshot_messages(role, n, shots) if n else ([], [])
+        msgs = [{"role": "system", "content": role_system(role)}] + few + [
+            {"role": "user", "content": [{"type": "text", "text": user_text(stype)}, _img(b64)]}]
+        t0 = time.time()
+        try:
+            raw, usage = chat(server, model, msgs)
+        except urllib.error.HTTPError as e:                  # 400 = over the context: halve the examples
+            last_err = "HTTP %s" % e.code
+            if n == 0:
+                raise
+            n = n // 2
+            continue
+        info = {"role": role, "seconds": round(time.time() - t0, 1), "prompt_tokens": usage.get("prompt_tokens"),
+                "completion_tokens": usage.get("completion_tokens"), "fewshot": used, "fewshot_requested": n_few, "error_before": last_err}
+        ans = parse_answer(raw, role)
+        if ans is None and retry:
+            msgs2 = msgs[:-1] + [{"role": "user", "content": [{"type": "text", "text": user_text(stype) + " Your previous answer was not JSON: reply with the JSON object only."}, _img(b64)]}]
+            t0 = time.time()
+            raw, usage = chat(server, model, msgs2)
+            info["seconds"] = round(info["seconds"] + time.time() - t0, 1)
+            info["retried"] = True
+            ans = parse_answer(raw, role)
+        return ans, raw, info
+
+
+def review_shot(label, path, server, model, resize, dry=False, fake=None, out_dir=None, stype="auto", single=False, fewshot=0):
     b64, size = encode(path, resize)
-    text = prompt_text(label)
-    rec = {"label": label, "path": path, "size": list(size), "jpeg_kb": round(len(b64) * 3 / 4 / 1024)}
+    rec = {"label": label, "path": path, "size": list(size), "jpeg_kb": round(len(b64) * 3 / 4 / 1024), "mode": "single" if single else "roles"}
+    # the shot type: forced, else the pilot's own names, else one cheap question to the model
+    if stype not in TYPES:
+        stype_d = declared_type(path)
+        if stype_d:
+            rec["type_from"], stype = "pilot", stype_d
+        elif dry or fake is not None:
+            rec["type_from"], stype = "default (no model asked)", "overview"
+        else:
+            small, _ = encode(path, 512, 80)
+            stype = classify_type(server, model, small)
+            rec["type_from"] = "model"
+    else:
+        rec["type_from"] = "forced"
+    rec["type"] = stype
+    few = build_fewshot() if (fewshot and not single) else []
+    rec["fewshot_n"] = fewshot if few else 0
     if out_dir and (dry or fake is not None):
         pdir = os.path.join(out_dir, "vision_prompts")
         os.makedirs(pdir, exist_ok=True)
-        open(os.path.join(pdir, re.sub(r"[^A-Za-z0-9_.-]+", "_", label) + ".txt"), "w", encoding="utf-8").write(
-            "SYSTEM:\n%s\n\nUSER (+ image %dx%d, %d kB JPEG):\n%s\n" % (SYSTEM, size[0], size[1], rec["jpeg_kb"], text))
+        if single:
+            body = "SYSTEM:\n%s\n\nUSER (+ image %dx%d, %d kB JPEG):\n%s\n" % (SYSTEM, size[0], size[1], rec["jpeg_kb"], prompt_text(label, stype))
+        else:
+            body = ""
+            for r in ROLES:
+                fm, used = fewshot_messages(r, fewshot, few) if few else ([], [])
+                body += "=== %s request (type %s; %d few-shot examples: %s)\nSYSTEM:\n%s\n\nUSER (+ image %dx%d, %d kB JPEG):\n%s\n\n" % (
+                    r.upper(), stype, len(used), ", ".join(used) or "-", role_system(r), size[0], size[1], rec["jpeg_kb"], user_text(stype))
+        open(os.path.join(pdir, re.sub(r"[^A-Za-z0-9_.-]+", "_", label) + ".txt"), "w", encoding="utf-8").write(body)
     if dry:
         rec["status"] = "dry"
         return rec
     t0 = time.time()
-    raw = fake if fake is not None else chat_image(server, model, text, b64)
-    ans = parse_answer(raw)
-    if ans is None and fake is None:                     # one retry: JSON only
-        raw = chat_image(server, model, text, b64, retry_note="Your previous answer was not JSON. Reply with the JSON object only, no prose, no code fence.")
+    reqs, raws = [], []
+    if single:
+        text = prompt_text(label, stype)
+        msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": [{"type": "text", "text": text}, _img(b64)]}]
+        if fake is not None:
+            raw, usage = fake, {}
+        else:
+            raw, usage = chat(server, model, msgs, max_tokens=900)
         ans = parse_answer(raw)
+        if ans is None and fake is None:
+            msgs[1]["content"][0]["text"] += "\n\nYour previous answer was not JSON. Reply with the JSON object only, no prose, no code fence."
+            raw, usage = chat(server, model, msgs, max_tokens=900)
+            ans = parse_answer(raw)
+        reqs.append({"role": "all", "seconds": round(time.time() - t0, 1), "prompt_tokens": usage.get("prompt_tokens"), "completion_tokens": usage.get("completion_tokens")})
+        raws.append(raw)
+    else:
+        ans = {"scores": {k: None for k in ROLES}, "findings": [], "one_line": ""}
+        parsed_any = False
+        for r in ROLES:
+            if fake is not None:
+                a, raw, info = parse_answer(fake, r), fake, {"role": r, "seconds": 0.0, "prompt_tokens": None, "completion_tokens": None, "fewshot": [], "fewshot_requested": fewshot}
+            else:
+                a, raw, info = ask(server, model, r, stype, b64, few, fewshot if few else 0)
+            reqs.append(info)
+            raws.append("[%s] %s" % (r, raw))
+            if a is None:
+                continue
+            parsed_any = True
+            ans["scores"][r] = a["scores"][r]
+            ans["findings"] += a["findings"]
+            ans["one_line"] = ans["one_line"] or a["one_line"]
+        ans["findings"].sort(key=lambda f: -f["severity"])
+        if not parsed_any:
+            ans = None
     rec["seconds"] = round(time.time() - t0, 1)
-    rec["raw"] = raw[-2000:] if isinstance(raw, str) else str(raw)[-2000:]
+    rec["requests"] = reqs
+    rec["raw"] = "\n".join(raws)[-2400:]
     if ans is None:
         rec["status"] = "unparsed"
         rec["scores"], rec["findings"], rec["one_line"] = {k: None for k in ROLES}, [], ""
@@ -337,12 +577,15 @@ def load_user_notes(path):
     return notes
 
 
-def agreement(recs, notes):
-    """per shot with a user note: the user's categories vs the model's (findings + one_line); the share that share one"""
+def agreement(recs, notes, exclude=()):
+    """per shot with a user note: the user's categories vs the model's (findings + one_line); the share that share one.
+    exclude= shots left out (the few-shot examples: the model has seen the user's note for them). Also per user category: how many
+    marked shots carry it and how many the model hit."""
     rows, hit, n = [], 0, 0
+    cat = {}
     for r in recs:
         base = os.path.splitext(os.path.basename(r["path"]))[0]
-        if base not in notes or r.get("status") not in ("ok", "fake"):
+        if base not in notes or r.get("status") not in ("ok", "fake") or base in exclude:
             continue
         ucat = set()
         for nt in notes[base]:
@@ -354,37 +597,57 @@ def agreement(recs, notes):
         n += 1
         shared = ucat & mcat
         hit += 1 if shared else 0
-        rows.append({"shot": base, "user": notes[base], "user_cat": sorted(ucat), "model_cat": sorted(mcat), "shared": sorted(shared)})
-    return {"rate": round(hit / n, 2) if n else None, "n": n, "agree": hit, "rows": rows}
+        for c in ucat:
+            a = cat.setdefault(c, [0, 0])
+            a[0] += 1
+            a[1] += 1 if c in mcat else 0
+        rows.append({"shot": base, "type": r.get("type"), "user": notes[base], "user_cat": sorted(ucat), "model_cat": sorted(mcat), "shared": sorted(shared)})
+    return {"rate": round(hit / n, 2) if n else None, "n": n, "agree": hit, "excluded": sorted(exclude), "rows": rows,
+            "by_category": {c: {"user_marks": a[0], "model_hits": a[1]} for c, a in sorted(cat.items())}}
 
 
-def write_outputs(recs, out_dir, server, model, marks=False, against=None, title=""):
+def _f(x):
+    return "-" if x is None else "%.2f" % x
+
+
+def write_outputs(recs, out_dir, server, model, marks=False, against=None, title="", exclude=()):
     os.makedirs(out_dir, exist_ok=True)
     M = mean_scores(recs)
     top = merge_findings(recs)
-    agr = agreement(recs, load_user_notes(against)) if against else None
+    agr = agreement(recs, load_user_notes(against), exclude) if against else None
+    secs = [r["seconds"] for r in recs if r.get("seconds")]
     J = {"when": time.strftime("%Y-%m-%d %H:%M"), "server": server, "model": model, "title": title, "shots": recs,
-         "mean": M, "top": top, "agreement": agr}
+         "mean": M, "top": top, "agreement": agr, "seconds_per_shot": round(sum(secs) / len(secs), 1) if secs else None}
     json.dump(J, open(os.path.join(out_dir, "vision_review.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
-    L = ["# Vision review %s" % title, "", "%s shots, model %s on %s, %s" % (len(recs), model, server, J["when"]), ""]
-    dry = all(r.get("status") == "dry" for r in recs)
-    if dry:
+    L = ["# Vision review %s" % title, "", "%s shots, model %s on %s, %s%s" % (
+        len(recs), model, server, J["when"], (", %.1f s per shot" % J["seconds_per_shot"]) if J["seconds_per_shot"] else ""), ""]
+    if all(r.get("status") == "dry" for r in recs):
         L += ["DRY RUN: the prompts are in vision_prompts\\ (no model call).", ""]
     L += ["## Mean scores", "", "| director | artist | level | marks | mean |", "|---|---|---|---|---|",
-          "| %s |" % " | ".join("-" if M[k] is None else "%.2f" % M[k] for k in ROLES + ("mean",)), ""]
+          "| %s |" % " | ".join(_f(M[k]) for k in ROLES + ("mean",)), ""]
+    types = {}
+    for r in recs:
+        types[r.get("type", "-")] = types.get(r.get("type", "-"), 0) + 1
+    L += ["Shot types: " + ", ".join("%s %d" % kv for kv in sorted(types.items())), ""]
     if top:
         L += ["## Top findings (merged over the shots, by severity)", "", "| sev | rule | finding | where | shots |", "|---|---|---|---|---|"]
         L += ["| %.2f | %s | %s | %s | %s |" % (a["severity"], a["rule"], a["what"].replace("|", "/"), a["where"], ", ".join(a["shots"][:4]) + (" +%d" % (len(a["shots"]) - 4) if len(a["shots"]) > 4 else "")) for a in top]
         L.append("")
     if agr:
         L += ["## Against the user's marks (%s)" % os.path.basename(against), "",
-              "agreement %s on %d marked shots (the model's findings share a category with the user's note)" % ("-" if agr["rate"] is None else "%.0f %%" % (100 * agr["rate"]), agr["n"]), "",
-              "| shot | user said | user categories | model categories | shared |", "|---|---|---|---|---|"]
-        L += ["| %s | %s | %s | %s | %s |" % (r["shot"], "; ".join(r["user"])[:120].replace("|", "/"), ", ".join(r["user_cat"]), ", ".join(r["model_cat"]), ", ".join(r["shared"]) or "-") for r in agr["rows"]]
+              "agreement %s on %d marked shots (the model's findings share a category with the user's note%s)" % (
+                  "-" if agr["rate"] is None else "%.0f %%" % (100 * agr["rate"]), agr["n"],
+                  "; %d few-shot example shots left out" % len(agr["excluded"]) if agr["excluded"] else ""), "",
+              "| category | user marks | model hits |", "|---|---|---|"]
+        L += ["| %s | %d | %d |" % (c, v["user_marks"], v["model_hits"]) for c, v in agr["by_category"].items()]
+        L += ["", "| shot | type | user said | user categories | model categories | shared |", "|---|---|---|---|---|---|"]
+        L += ["| %s | %s | %s | %s | %s | %s |" % (r["shot"], r.get("type") or "-", "; ".join(r["user"])[:120].replace("|", "/"), ", ".join(r["user_cat"]), ", ".join(r["model_cat"]), ", ".join(r["shared"]) or "-") for r in agr["rows"]]
         L.append("")
     L += ["## Per shot", ""]
     for r in recs:
-        L += ["### %s" % r["label"], "", "`%s` (%dx%d, %d kB sent)" % (r["path"], r["size"][0], r["size"][1], r["jpeg_kb"])]
+        L += ["### %s" % r["label"], "", "`%s` (%dx%d, %d kB sent), type %s (%s)%s" % (
+            r["path"], r["size"][0], r["size"][1], r["jpeg_kb"], r.get("type", "-"), r.get("type_from", "-"),
+            (", %.1f s in %d requests" % (r["seconds"], len(r["requests"]))) if r.get("requests") else "")]
         if r.get("status") == "dry":
             L += ["", "dry: prompt written", ""]
             continue
@@ -392,7 +655,7 @@ def write_outputs(recs, out_dir, server, model, marks=False, against=None, title
             L += ["", "UNPARSED answer (see vision_review.json raw)", ""]
             continue
         L += ["", r.get("one_line") or "-", "", "| director | artist | level | marks |", "|---|---|---|---|",
-              "| %s |" % " | ".join("%.2f" % r["scores"][k] for k in ROLES), ""]
+              "| %s |" % " | ".join(_f(r["scores"].get(k)) for k in ROLES), ""]
         if r.get("findings"):
             L += ["| sev | rule | finding | where |", "|---|---|---|---|"]
             L += ["| %.2f | %s | %s | %s |" % (f["severity"], f["rule"], f["what"].replace("|", "/"), f["where"]) for f in r["findings"]]
@@ -413,14 +676,14 @@ def write_outputs(recs, out_dir, server, model, marks=False, against=None, title
 def summary_md(J):
     """the report.md paragraph (town.py) / the notes (codirect)"""
     M = J["mean"]
-    lines = ["mean %s over %d shots (model %s): %s" % ("-" if M.get("mean") is None else "%.2f" % M["mean"], len(J["shots"]), J.get("model"),
-             ", ".join("%s %s" % (k, "-" if M.get(k) is None else "%.2f" % M[k]) for k in ROLES))]
+    lines = ["mean %s over %d shots (model %s): %s" % (_f(M.get("mean")), len(J["shots"]), J.get("model"),
+             ", ".join("%s %s" % (k, _f(M.get(k))) for k in ROLES))]
     for a in J.get("top") or []:
         lines.append("- %.2f %s: %s (%s)" % (a["severity"], a["rule"], a["what"], ", ".join(a["shots"][:3])))
     return lines
 
 
-def hook(run_dir, name, server=DEFAULT_SERVER, model="local", max_shots=16, resize=1024, log=print):
+def hook(run_dir, name, server=DEFAULT_SERVER, model="local", max_shots=16, resize=1024, log=print, fewshot=4):
     """town.py's step after the pilot: when a server answers, review the run's pilot shots and return the report.md
     lines; None (with a one-line note) when no server answers or nothing was shot. Never starts a server."""
     if not probe(server):
@@ -430,17 +693,17 @@ def hook(run_dir, name, server=DEFAULT_SERVER, model="local", max_shots=16, resi
     if not shots:
         log("vision review: no pilot shots found for %s; skipped" % name)
         return None
-    recs = [review_shot(lab, p, server, model, resize, out_dir=run_dir) for lab, p in shots]
+    recs = [review_shot(lab, p, server, model, resize, out_dir=run_dir, fewshot=fewshot) for lab, p in shots]
     J = write_outputs(recs, run_dir, server, model, marks=True, title=name)
     return summary_md(J) + ["(vision_review.md, vision_review.json, vision_marks.txt)"]
 
 
 def main(argv):
     args, o = [], {"server": DEFAULT_SERVER, "model": "local", "max_shots": "0", "resize": "1024", "dry": False, "fake": None,
-                   "marks": False, "against": None, "out": None}
+                   "marks": False, "against": None, "out": None, "type": "auto", "single": False, "fewshot": "4"}
     it = iter(argv)
     for a in it:
-        if a in ("--dry", "--marks"):
+        if a in ("--dry", "--marks", "--single"):
             o[a[2:]] = True
         elif a.startswith("--") and a[2:].replace("-", "_") in o:
             o[a[2:].replace("-", "_")] = next(it)
@@ -458,15 +721,21 @@ def main(argv):
     fake = open(o["fake"], encoding="utf-8").read() if o["fake"] else None
     if not o["dry"] and fake is None and not probe(o["server"]):
         sys.exit("no llama-server answers on %s (it needs --mmproj for pictures); use --dry to write the prompts" % o["server"])
+    nfew = 0 if o["single"] else int(o["fewshot"])
+    if nfew:
+        ex = [e["shot"] for e in build_fewshot()]
+        print("few-shot: %d example shots %s (excluded from the agreement rate)" % (len(ex), ", ".join(ex)), flush=True)
     recs = []
     for i, (lab, p) in enumerate(shots):
-        r = review_shot(lab, p, o["server"], o["model"], int(o["resize"]), dry=o["dry"], fake=fake, out_dir=out_dir)
+        r = review_shot(lab, p, o["server"], o["model"], int(o["resize"]), dry=o["dry"], fake=fake, out_dir=out_dir,
+                        stype=o["type"], single=o["single"], fewshot=nfew)
         recs.append(r)
         if r.get("status") in ("ok", "fake"):
-            print("%2d/%d %-28s %s  %s" % (i + 1, len(shots), lab, " ".join("%s %.2f" % (k[:3], r["scores"][k]) for k in ROLES), r.get("one_line", "")[:80]), flush=True)
+            print("%2d/%d %-26s %-8s %5.1fs  %s  %s" % (i + 1, len(shots), lab, r["type"], r["seconds"], " ".join("%s %s" % (k[:3], _f(r["scores"][k])) for k in ROLES), r.get("one_line", "")[:60]), flush=True)
         else:
-            print("%2d/%d %-28s %s" % (i + 1, len(shots), lab, r.get("status")), flush=True)
-    J = write_outputs(recs, out_dir, o["server"], o["model"], marks=o["marks"], against=o["against"], title=os.path.basename(out_dir))
+            print("%2d/%d %-26s %s" % (i + 1, len(shots), lab, r.get("status")), flush=True)
+    excl = [e["shot"] for e in build_fewshot()] if nfew else []
+    J = write_outputs(recs, out_dir, o["server"], o["model"], marks=o["marks"], against=o["against"], title=os.path.basename(out_dir), exclude=excl)
     print("\n".join(summary_md(J)))
     if J.get("agreement"):
         a = J["agreement"]
