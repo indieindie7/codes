@@ -70,6 +70,10 @@ var bool bInPlace;                  // flanker: it has reached the prey's side o
 var bool bSkipDodge;                // this skip leg is the engine's dodge (Dodge_L/R), not a MoveTo
 var int LegsSkipped, FlankArrivals, Commits;
 var float RoleSince;                // when it got its role
+var float LegAt;                    // no new pack leg before this (the dwell between zig-zag legs)
+var vector LegDest;                 // where the last move we gave the bot went (ModMinds.Move checks it took)
+var float ReissueAt;                // a charge the game dropped is given again, but not before this
+var float LastCommit;               // when it last committed (closer)
 
 // the abilities: ours (a copy only this pawn uses) and the game's values the feelings start from
 var AdventPawnAbilities Own;

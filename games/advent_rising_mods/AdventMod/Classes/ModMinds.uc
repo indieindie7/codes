@@ -63,14 +63,17 @@ struct PackInfo
 	var float HoldSince;            // when the current hold began (the last commit, or the engagement)
 	var bool bPinned;
 	var float LogAt;
+	var float CommitAt;             // the pack's last commit
 	var int Pins;
 };
+var int MovesRefused, MovesGiven;    // the squad refused a state change (one a frame): the move is given again next tick
 var array<PackInfo> Packs;
 // measures (pilot HOUNDTEST, with packs on or off): bites on the player by hounds, when the first came
 // after the first hound engaged, how far round from the player's view they came, melee contacts, the
 // time hounds stood on two or more sides of the player, legs, arrivals, commits, pins
 var float HoundEngagedAt, HoundFirstBite, HoundBiteBearing, HoundTime, TwoSideTime;
 var int HoundBites, HoundContacts, HoundDamage, HoundEngaged;
+var int LegsGone, ArrivalsGone, CommitsGone;   // ... the counters of hounds that died (their minds are released)
 
 var array<ModMind> Minds;
 var ModMindRules Rules;
@@ -275,6 +278,12 @@ function Release(ModMind M)
 	for (i = Claims.Length - 1; i >= 0; i--)
 		if (Claims[i].M == M)
 			Claims.Remove(i, 1);
+	LegsGone += M.LegsSkipped;
+	ArrivalsGone += M.FlankArrivals;
+	CommitsGone += M.Commits;
+	M.LegsSkipped = 0;
+	M.FlankArrivals = 0;
+	M.Commits = 0;
 }
 
 // creatures near the player are animated every tick with a fresh pose (research/native-animation-
@@ -573,6 +582,11 @@ function bool Busy(ModMind M)
 	B = M.B;
 	if (B.bLockState || B.CheckScriptingReactionLevel_Ignore() || B.IsInState('Scripting'))
 		return true;
+	// a strike or leap state the game left hanging (seen on spawned hounds: MeleeAttack or LeapAttack for 10-30 s,
+	// on the ground, far from the enemy) is not busy: the next task given re-assigns the state
+	if ((B.IsInState('MeleeAttack') || B.IsInState('LeapAttack') || B.IsInState('Leap')) && Level.TimeSeconds - B.LastStateChangeTime > 2.5
+		&& M.P.Physics == PHYS_Walking && B.EnemyInfo.Enemy != None && VSize(B.EnemyInfo.Enemy.Location - M.P.Location) > 250)
+		return false;
 	if (B.IsInState('Dying') || B.IsInState('Dead') || B.IsInState('MeleeAttack') || B.IsInState('Leap') || B.IsInState('LeapAttack')
 		|| B.IsInState('LeapOffWall') || B.IsInState('RandomLeap') || B.IsInState('Stunned') || B.IsInState('Grabbed') || B.IsInState('Carried')
 		|| B.IsInState('SimpleAnim') || B.IsInState('Disabled') || B.IsInState('RidingIdle') || B.IsInState('RidingEngaged')
@@ -904,6 +918,30 @@ function vector NextLeg(ModMind M, vector Dest)
 	return Dest;
 }
 
+// a move for the bot, checked: SquadAI.AssignState refuses a second state change in the same frame
+// (the game's own WhatToDoNext often ran first), so a move that did not take is given again next tick
+// (the state is only given again every 0.4 s: giving it every tick restarts its MoveTo before it can step)
+function bool Go(ModMind M, name Why, vector Dest)
+{
+	if (Level.TimeSeconds < M.ReissueAt)
+		return false;
+	M.ReissueAt = Level.TimeSeconds + 0.4;
+	M.LegDest = Dest;
+	M.B.bShouldWalk = false;
+	M.B.DoMoveToDestination(Why, Dest);
+	MovesGiven++;
+	if (Going(M))
+		return true;
+	MovesRefused++;
+	return false;
+}
+
+// on our leg (the engine moves Destination's height to the pawn's, so only the plan is compared)
+function bool Going(ModMind M)
+{
+	return M.B.IsInState('MoveToDestination') && VSize((M.B.Destination - M.LegDest) * vect(1,1,0)) < 60;
+}
+
 function Decide(ModMind M, float DeltaTime)
 {
 	local Pawn Enemy;
@@ -950,18 +988,20 @@ function Decide(ModMind M, float DeltaTime)
 				if (!M.B.IsInState('Wait'))
 					M.B.DoWait('Mind_HoldCover', 1.0);
 			}
-			else if (!M.B.IsInState('MoveToDestination'))
-				M.B.DoMoveToDestination('Mind_ToCover', NextLeg(M, M.TaskDest));
+			else if (!Going(M))
+				Go(M, 'Mind_ToCover', NextLeg(M, M.TaskDest));
 			return;
 		case 9/*T_Skip*/:
 			// a zig-zag leg: done when it is there, or the move ended (or never started); then a short dwell
 			// and the pack gives the next one (HoundPack)
-			if (VSize((M.P.Location - M.TaskDest) * vect(1,1,0)) < 90 || (M.TaskTime > 0.25 && !M.B.IsInState('MoveToDestination')))
+			if (VSize((M.P.Location - M.TaskDest) * vect(1,1,0)) < 90 || (M.TaskTime > 0.25 && !Going(M) && !M.bSkipDodge))
 			{
 				M.Task = 0/*T_None*/;
-				M.NextDecision = Now + 0.1 + 0.2 * FRand();
+				M.LegAt = Now + 0.1 + 0.2 * FRand();
 				M.B.DoWait('Mind_SkipDwell', 0.25);
 			}
+			else if (!M.bSkipDodge && !Going(M))
+				Go(M, 'Mind_Skip', M.TaskDest);
 			return;
 		case 3/*T_FallBack*/:
 		case 4/*T_Flank*/:
@@ -982,10 +1022,9 @@ function Decide(ModMind M, float DeltaTime)
 				M.Task = 0/*T_None*/;
 				M.B.DoWait('Mind_Arrived', 0.6);
 			}
-			else if (!M.B.IsInState('MoveToDestination'))
+			else if (!Going(M))
 			{
-				M.B.bShouldWalk = false;
-				M.B.DoMoveToDestination('Mind_Leg', NextLeg(M, M.TaskDest));
+				Go(M, 'Mind_Leg', NextLeg(M, M.TaskDest));
 				if (bMindLog && M.TaskTime - M.LastLog > 2)
 				{
 					M.LastLog = M.TaskTime;
@@ -994,6 +1033,13 @@ function Decide(ModMind M, float DeltaTime)
 			}
 			return;
 		case 5/*T_Charge*/:
+			// a closer's charge the game dropped (or refused, one state change a frame) is given again
+			if (M.Role == 3/*R_Closer*/ && Now > M.ReissueAt && !M.B.IsInState('Charge') && !M.B.IsInState('Dodge'))
+			{
+				M.ReissueAt = Now + 0.5;
+				M.B.DoCharge('Mind_PackCommit', Enemy);
+			}
+			return;
 		case 7/*T_Panic*/:
 			return;
 	}
@@ -1488,14 +1534,12 @@ function SkipLeg(ModMind M, vector Goal, Pawn Prey)
 			M.bSkipDodge = true;
 			return;
 		}
-		M.B.bShouldWalk = false;
-		M.B.DoMoveToDestination('Mind_Skip', End);
+		Go(M, 'Mind_Skip', End);
 		return;
 	}
 	M.TaskDest = Goal;
 	SetTask(M, 9/*T_Skip*/, 1.5, "skip blocked, straight");
-	M.B.bShouldWalk = false;
-	M.B.DoMoveToDestination('Mind_SkipStraight', NextLeg(M, Goal));
+	Go(M, 'Mind_SkipStraight', NextLeg(M, Goal));
 }
 
 // a flanker's spot: a path node near Want, at about HoundHold from the prey, far round from where the
@@ -1543,6 +1587,8 @@ function HoundCommit(ModMind M, Pawn Prey, string Why)
 	M.bMeleeToken = true;
 	M.LastMelee = Level.TimeSeconds;
 	M.Commits++;
+	M.LastCommit = Level.TimeSeconds;
+	M.ReissueAt = Level.TimeSeconds + 0.5;
 	Steer(M);
 	SetTask(M, 5/*T_Charge*/, 4, "commit: " $ Why);
 	HoundLog(M.P.Name $ " commits (" $ Why $ "), " $ int(VSize(M.P.Location - Prey.Location)) $ " from the prey");
@@ -1695,7 +1741,7 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 			continue;
 		B = Abs(Bearing(Prey, Facing, O.P.Location));
 		D = VSize(O.P.Location - Prey.Location);
-		if (B > Front && D < 750)
+		if (B > Front && D < 750 && Now - O.LastCommit > 3)
 		{
 			Behind++;
 			if (B > Best)
@@ -1705,14 +1751,15 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 			}
 		}
 	}
-	if (Closers == 0 || (bPinned && Pack >= 3 && Closers < 2))
+	if ((Closers == 0 || (bPinned && Pack >= 3 && Closers < 2)) && Now - Packs[Pk].CommitAt > 1.5)
 	{
 		if (Pick != None)
 		{
 			bCommit = true;
 			Why = "flanker " $ int(Best) $ " deg round";
 		}
-		else if (bPinned && Holder != None && !Busy(Holder) && Holder.Fear <= FleeFear && Holder.Task != 5/*T_Charge*/)
+		else if (bPinned && Holder != None && !Busy(Holder) && Holder.Fear <= FleeFear && Holder.Task != 5/*T_Charge*/
+			&& Now - Holder.LastCommit > 3 && VSize(Holder.P.Location - Prey.Location) < 750)
 		{
 			Pick = Holder;
 			bCommit = true;
@@ -1724,7 +1771,7 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 			for (j = 0; j < Pack; j++)
 			{
 				O = Members[j];
-				if (O.Role == 3/*R_Closer*/ || Busy(O) || O.Fear > FleeFear)
+				if (O.Role == 3/*R_Closer*/ || Busy(O) || O.Fear > FleeFear || Now - O.LastCommit < 3)
 					continue;
 				D = VSize(O.P.Location - Prey.Location);
 				if (D < Best)
@@ -1733,15 +1780,18 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 					Pick = O;
 				}
 			}
-			if (Pick != None)
+			if (Pick != None && Best < 900)
 			{
 				bCommit = true;
 				Why = "held " $ int(Now - Packs[Pk].HoldSince) $ " s";
 			}
+			else
+				Packs[Pk].HoldSince += 2;      // nobody near enough yet: the hold goes on
 		}
 		if (bCommit)
 		{
 			Packs[Pk].HoldSince = Now;
+			Packs[Pk].CommitAt = Now;
 			HoundCommit(Pick, Prey, Why);
 		}
 	}
@@ -1750,7 +1800,7 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 	for (j = 0; j < Pack; j++)
 	{
 		O = Members[j];
-		if (O.Task != 0/*T_None*/ || Busy(O) || Now < O.NextDecision || O.Fear > FleeFear)
+		if (O.Task != 0/*T_None*/ || Busy(O) || Now < O.LegAt || O.Fear > FleeFear)
 			continue;
 		D = VSize((O.P.Location - Prey.Location) * vect(1,1,0));
 		switch (O.Role)
@@ -1763,8 +1813,7 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 			{
 				O.TaskDest = Want;
 				SetTask(O, 8/*T_Advance*/, 5, "to the front");
-				O.B.bShouldWalk = false;
-				O.B.DoMoveToDestination('Mind_PackFront', NextLeg(O, Want));
+				Go(O, 'Mind_PackFront', NextLeg(O, Want));
 			}
 			else
 				SkipLeg(O, Want, Prey);
@@ -1786,8 +1835,7 @@ function HoundPack(SquadAI S, int First, Pawn Prey, int Hounds)
 				Want = HoundFlankSpot(O, Want, Prey, Facing);
 				O.TaskDest = Want;
 				SetTask(O, 4/*T_Flank*/, 6, "flank leg " $ O.FlankSide);
-				O.B.bShouldWalk = false;
-				O.B.DoMoveToDestination('Mind_PackFlank', NextLeg(O, Want));
+				Go(O, 'Mind_PackFlank', NextLeg(O, Want));
 			}
 			else
 				SkipLeg(O, Want, Prey);
@@ -1890,6 +1938,7 @@ function string HoundReport()
 	if (PC == None || PC.Pawn == None)
 		return "no player";
 	PreyFrame(PC.Pawn, Facing, Moving);
+	S = "player weapon " $ PC.Pawn.RightWeapon $ ", moves " $ MovesGiven $ " refused " $ MovesRefused;
 	for (i = 0; i < Minds.Length; i++)
 	{
 		M = Minds[i];
@@ -1899,9 +1948,8 @@ function string HoundReport()
 			$ " bearing " $ int(Bearing(PC.Pawn, Facing, M.P.Location)) $ " fear " $ M.Pct(M.Fear) $ " anger " $ M.Pct(M.Anger) $ " legs " $ M.LegsSkipped $ " arrivals " $ M.FlankArrivals $ " commits " $ M.Commits;
 		if (M.bMeleeToken)
 			S = S $ " M";
+		S = S $ " [" $ M.B.GetStateName() $ " lock " $ M.B.bLockState $ " phys " $ M.P.Physics $ " stasis " $ M.P.bStasis $ "/" $ M.B.Squad.bStasis $ " sees " $ M.B.bEnemyIsVisible $ " dest " $ int(VSize(M.B.Destination - M.P.Location)) $ " route " $ M.B.RouteCache[0] $ "]";
 	}
-	if (S == "")
-		return "no hounds";
 	return S;
 }
 
@@ -1910,6 +1958,9 @@ function string HoundStats()
 	local int i, Legs, Arrivals, Commits, Pins;
 	local string S;
 
+	Legs = LegsGone;
+	Arrivals = ArrivalsGone;
+	Commits = CommitsGone;
 	for (i = 0; i < Minds.Length; i++)
 		if (Minds[i].Species == 3/*S_Hound*/)
 		{
@@ -1930,7 +1981,7 @@ function string HoundStats()
 	S = S $ ", contacts " $ HoundContacts $ ", two sides " $ (int(TwoSideTime * 10) / 10.0) $ " of " $ (int(HoundTime * 10) / 10.0) $ " s";
 	if (HoundTime > 0)
 		S = S $ " (" $ int(100 * TwoSideTime / HoundTime) $ "%)";
-	return S $ ", legs skipped " $ Legs $ ", flank arrivals " $ Arrivals $ ", commits " $ Commits $ ", pins " $ Pins;
+	return S $ ", legs skipped " $ Legs $ ", flank arrivals " $ Arrivals $ ", commits " $ Commits $ ", pins " $ Pins $ ", moves " $ MovesGiven $ " refused " $ MovesRefused;
 }
 
 
@@ -2077,7 +2128,7 @@ defaultproperties
 	NearMissReach=220
 	FlankEvery=10
 	HoundCircle=550
-	bHoundPack=False
+	bHoundPack=True
 	bHoundLog=False
 	HoundHold=380
 	HoundFlankAngle=120

@@ -19,6 +19,7 @@
 //   shot                     an engine screenshot (System\ShotNNNNN.bmp)
 //   where                    log the player's position, rotation and state
 //   mark TEXT                a line in the log
+//   spawnpack [n] [ahead] [spread]   n hounds ahead of the player in a squad of their own (for the pack tests)
 //   houndtest [SECONDS]      every hound's role, distance and bearing round the player's view twice a
 //                            second, and the pack's measures (ModMinds.HoundStats) every 5 s and at the end
 //=============================================================================
@@ -703,7 +704,51 @@ function NearEnemy(float Dist, string Filter)
 	Note("nearenemy: " $ Best $ " (" $ Best.Controller $ "), player at " $ C.Pawn.Location $ ", " $ int(VSize(Best.Location - C.Pawn.Location)) $ " away");
 }
 
-function SpawnAhead(string ClassName, float Ahead, float Right)
+// SPAWNPACK: a squad made here, the way the level's own are set up at load (FinishGameInitialization
+// finds its group and team), then the hounds join it (the first leads)
+function SpawnPack(int N, float Ahead, float Spread)
+{
+	local SquadAI S;
+	local int i, Joined;
+	local Pawn P;
+	local Bot B;
+
+	S = Spawn(class'SquadAI');
+	if (S == None)
+	{
+		Note("spawnpack: no squad");
+		return;
+	}
+	S.Tag = 'ModPack';
+	S.bAutoStasis = false;
+	S.DesiredSquadSize = N;
+	S.FinishGameInitialization();
+	S.SetStasis(false);
+	for (i = 0; i < N; i++)
+	{
+		P = Pawn(SpawnAhead("EonCharacters.SeekerDog", Ahead + 120 * (i % 2), (i - (N - 1) * 0.5) * Spread));
+		if (P == None)
+			continue;
+		B = Bot(P.Controller);
+		if (B == None)
+			continue;
+		if (B.Squad == None)
+		{
+			if (S.SquadLeader == None)
+				S.SetLeader(B);
+			else
+				S.AddBot(B);
+		}
+		if (B.Squad == S)
+			Joined++;
+		// they know the player at once (a repeatable fight: the game's own sighting can take 1-10 s or not come)
+		B.AssignEnemy(PC().Pawn, true);
+	}
+	S.AddEnemy(PC().Pawn);
+	Note("spawnpack: " $ N $ " hounds, " $ Joined $ " in squad " $ S $ " (group " $ S.MyGroup $ ", leader " $ S.SquadLeader $ ", stasis " $ S.bStasis $ ")");
+}
+
+function Actor SpawnAhead(string ClassName, float Ahead, float Right)
 {
 	local class<Actor> C;
 	local Actor A;
@@ -714,7 +759,7 @@ function SpawnAhead(string ClassName, float Ahead, float Right)
 	if (C == None || PC() == None || PC().Pawn == None)
 	{
 		Note("spawn: no class " $ ClassName $ " (" $ C $ ") or no player");
-		return;
+		return None;
 	}
 	GetAxes(PC().Rotation, X, Y, Z);
 	X.Z = 0;
@@ -732,6 +777,7 @@ function SpawnAhead(string ClassName, float Ahead, float Right)
 			P.Controller.Possess(P);
 	}
 	Note("spawn: " $ A $ " at " $ Spot $ Eval2(P != None, " controller " $ P.Controller, ""));
+	return A;
 }
 
 static function string Eval2(bool B, string T, string F)
@@ -1186,6 +1232,11 @@ function StartStep()
 		// SPAWN Package.Class ahead [right]: an actor that far in front of the player
 		// (unreal units), a pawn with its own AI
 		SpawnAhead(Args[1], ArgF(2, 300), ArgF(3, 0));
+		break;
+	case "SPAWNPACK":
+		// SPAWNPACK [n] [ahead] [spread]: n hounds that far in front of the player, that far apart, in a
+		// squad of their own (a pawn spawned alone has no squad, and the Bot's Do* need one)
+		SpawnPack(int(ArgF(1, 3)), ArgF(2, 700), ArgF(3, 250));
 		break;
 	case "NEARENEMY":
 		// NEARENEMY [distance] [class]: the player moved to that far from the level's nearest hostile

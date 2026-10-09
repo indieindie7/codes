@@ -145,7 +145,7 @@ So strategy changes can be cost profiles. Raise the costs before a creature's `F
 
 It is an open arena, so some exposure can't be avoided. Settings: `bPathProfiles`, `SweepBudget`, `ExposeReach`, `ExposeCost`, `FrontCost`, `RouteCost`, `CloserCost`.
 
-## 9. Hound packs (built 2026-10-09, untested in game)
+## 9. Hound packs (built and tested 2026-10-09)
 
 The user's ask: hounds that stop dashing at the player and instead skip about, work round the sides, and pin the player down. The game's hound is the engine's (its gait, its leaps and bites through `AdventPawnAbilities`); the mind only says where it goes and when it may commit. Before this, two or more hounds each took a spot 550 units round the prey and then all charged (section 3). Code: `ModMinds.HoundPack` and the functions above it (`SkipLeg`, `HoundFlankSpot`, `HoundCommit`, `SidesTick`, `HoundStats`).
 
@@ -164,11 +164,36 @@ The user's ask: hounds that stop dashing at the player and instead skip about, w
 
 **Feelings** keep charge: fear past `FleeFear` sends that hound to the pack's rear (its centre, 500 further from the prey) and out of the roles; anger narrows the commit cone (-30 % at full anger) and shortens the hold (-60 %), and the existing enrage still charges an angry hound that holds the token. `ModBody` shows the roles: a flanker slinks with its head 8 degrees lower, a holder 4, a committing closer drives its neck forward and the jaw opens.
 
-**Settings** (`[AdventMod.ModMinds]`): `bHoundPack` (off until the runs below verify it), `bHoundLog`, `HoundHold` 380, `HoundFlankAngle` 120, `HoundSkipLeg` 200, `HoundSkipAngle` 45, `HoundCommitFront` 120, `HoundHoldMax` 6, `HoundSkipDodge` 0.3, `HoundPinWall` 300.
+**Settings** (`[AdventMod.ModMinds]`): `bHoundPack` (on; off = the old circle-then-charge), `bHoundLog`, `HoundHold` 380, `HoundFlankAngle` 120, `HoundSkipLeg` 200, `HoundSkipAngle` 45, `HoundCommitFront` 120, `HoundHoldMax` 6, `HoundSkipDodge` 0.3, `HoundPinWall` 300.
 
-**Pilot:** `HOUNDTEST [seconds]` logs every hound's role, task, distance and bearing round the player's view twice a second, and `houndstats:` every 5 s and at the end: first bite after the first hound engaged, bites and their damage, the bites' mean bearing (flank bites should raise it), melee contacts, the time hounds stood on two or more sides of the player (front, back, left, right within 900) as a share of the time any hound was engaged, legs skipped, flank arrivals, commits, pins. `NEARENEMY dist SeekerDog` puts the player by a hound, `HEALTH n` keeps it alive through a long fight. `MINDLIST` shows roles.
+**Pilot:** `HOUNDTEST [seconds]` logs every hound's role, task, distance and bearing round the player's view twice a second, and `houndstats:` every 5 s and at the end: first bite after the first hound engaged, bites and their damage, the bites' mean bearing (flank bites should raise it), melee contacts, the time hounds stood on two or more sides of the player (front, back, left, right within 900) as a share of the time any hound was engaged, legs skipped, flank arrivals, commits, pins. `SPAWNPACK n [ahead] [spread]` spawns n hounds in a squad of their own that know the player at once (a pawn spawned alone has no squad; the level's own hounds come from spawners later in each map, none at a start), `NEARENEMY dist [class]` puts the player by a hound, `HEALTH n` keeps it alive through a long fight. `MINDLIST` shows roles.
 
-**Test plan** (scratchpad `hound_pack_test.ps1`): level03sectiond has twelve placed hounds. A scout run (`-Scout`) first: do they engage, where. Then three runs each with `bHoundPack` off and on, the same steps: the player placed 900 from the nearest hound, then six watches of 6-8 s between which it backs off (`move -1`), sidesteps and dodges, about 50 s of fight. Compared: time to the first bite, the share of the fight with hounds on two or more sides, the biting hounds' mean bearing, and the hound damage taken.
+**What the runs taught** (fixed before the A/B): `SquadAI.AssignState` refuses a second state change in the same frame and the game's own `WhatToDoNext` often runs first, so a `DoMoveToDestination` or `DoCharge` from the mind silently did nothing; every move now goes through `Go` (checks the bot is in `MoveToDestination` on our plan, compared flat since the engine moves the destination's height, and gives it again after 0.4 s if not; giving it every tick restarts the `MoveTo` before it can step). A closer's charge is given again the same way. Spawned hounds were left hanging by the game in `MeleeAttack`/`LeapAttack` for 10-30 s on the ground far from the enemy; `Busy` no longer counts that. A pack hound's `NextDecision` is set by `Decide` every tick, so the pack's legs are gated by their own `LegAt`. Commits are rate-limited (1.5 s per pack, 3 s per hound, only within 750 of the prey) because the game drops the hound's enemy for a tick now and then, which ended the charge task and dealt a new closer at once.
 
-**Results:** to come (the GPU was taken by another chat's editor build when this was built).
+**Test** (scratchpad `hound_pack_test.ps1`, level03sectionb's start, `SPAWNPACK 3 700 250`, the player unarmed, since `GIVE` did not put the pistol in hand: the game's hounds then guard and nip for 10, `SeekerDogBot.TryMeleeAttack`, the same in both arms): six runs each, the same steps, six HOUNDTEST watches of 6-8 s between which the player backs off, sidesteps and dodges, about 48 s. Each run 108-109 s with a hidden UnrealEd path build on the CPU at the same time. Bites and damage are the game's own (a leap that lands); "two sides" is the share of the time any hound was engaged (within 900) with hounds on two or more of front/back/left/right.
+
+| run | pack | first bite (s) | bites | damage | bite bearing | two sides | legs | arrivals | commits | pins |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A1 | on | 10.4 | 13 | 130 | 116 | 45 % (21/46 s) | 35 | 4 | 20 | 8 |
+| A2 | on | 0.0 | 1 | 10 | 20 | 41 % (5/12 s) | 4 | 0 | 2 | 3 |
+| A3 | on | 6.5 | 5 | 50 | 107 | 51 % (20/38 s) | 34 | 4 | 11 | 4 |
+| A4 | on | 2.7 | 4 | 40 | 49 | 12 % (2/14 s) | 0 | 0 | 0 | 9 |
+| A5 | on | 16.6 | 4 | 205 | 99 | 0 % (0/22 s) | 4 | 0 | 6 | 10 |
+| A6 | on | 43.0 | 3 | 30 | 103 | 15 % (7/48 s) | 34 | 1 | 18 | 10 |
+| B1 | off | none | 0 | 0 | - | 16 % (5/32 s) | - | - | - | - |
+| B2 | off | 5.0 | 2 | 20 | 159 | 54 % (18/34 s) | - | - | - | - |
+| B3 | off | none | 0 | 0 | - | 47 % (22/46 s) | - | - | - | - |
+| B4 | off | 2.7 | 3 | 30 | 57 | 20 % (7/35 s) | - | - | - | - |
+| B5 | off | 0.7 | 5 | 620 | 68 | 69 % (34/48 s) | - | - | - | - |
+| B6 | off | 0.0 | 2 | 12 | 64 | 28 % (14/48 s) | - | - | - | - |
+
+| | pack on (6 runs) | pack off (6 runs) |
+|---|---|---|
+| bites, damage | 30, 465 | 12, 682 (620 of it in B5) |
+| mean first bite | 13.2 s | 2.1 s (4 runs; none in 2) |
+| mean bite bearing (bite-weighted) | 99 degrees | 80 degrees |
+| hounds on two or more sides (time-weighted) | 31 % (55/180 s) | 41 % (100/243 s) |
+| legs skipped, flank arrivals, commits | 111, 9, 57 | - |
+
+Reading: the pack bites more often and more from the sides and back (99 vs 80 degrees, 30 vs 12 bites), and the hold works as designed (the first bite comes later: the holder waits for a flanker or a pin). Pinning fires (44 pins: the player starts with its back to a wall and backs into it). What did not improve is the two-sides share: the stock circle-then-charge throws three hounds round the player too, and in the pack runs hounds were lost to the arena (A4 and A5: two hounds fell to a kill volume, 1000 damage; A2, A5: the game dropped the player as enemy when it backed round the start corner, and a pack hound with no enemy sits out). The far flank leg also failed often at this start (a flanker stuck at 1900 with `route None`: `NextLeg` falls back to a straight `MoveTo` when `FindPathTo` has no route). The runs are noisy (six each, a cramped start area, other NPCs about): the direction is right for flanking and holding, not proven for pinning. Next: a run on an open arena with the level's own hound packs (level03sectiond, level06sectionb have spawners), an armed player (why `GIVE` leaves the hand empty), a flanker that re-plans when its path leg stalls, and a prey the pack keeps for a few seconds after the game drops it.
 
