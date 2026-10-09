@@ -25,10 +25,11 @@ Each one needs a yes/no or a pick before the work it blocks can start. **Rec.** 
   compose.py and the A-401 walk then need a hero id per frame.
 
 **D2. Hawkins as the lone figure on the catwalk (the peak frame, beat 4).**
-- (a) Hawkins at the rail at 1930 (writer s.5.5: a new catwalk stop in her routine, plus a cigarette tin prop).
+- (a) Hawkins at the rail at 1930 (writer s.5.5: a new catwalk stop in his routine, plus a cigarette tin prop).
 - (b) A nameless garrison marine on a smoking break (director F5).
 - **Rec.: (a), with (b) as the fallback** if the engine cannot pose her there. The frame works with any lone figure.
-  The binder's Hawkins is Ruth Hawkins (she). director.md F2 calls her "he"; that is a slip to fix.
+  Hawkins is **male** (user 2026-10-08: remade characters keep the stock gender for voice reuse); "Ruth" is dropped,
+  new lines are spliced from the stock Commander voice. writer.md / tutorial_fold.md pronouns fixed.
 
 **D3. The shanty's population: about 470 against the company's official 380.**
 - (a) Keep 380 and thin the shanty to match it.
