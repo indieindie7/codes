@@ -18,7 +18,6 @@ var ModGore Gore;
 var ModPlayerBlood PlayerBlood;
 var ModMinds Minds;
 var ModNeeds Needs;
-var ModGizmos Gizmos;
 
 // ticks while the game is paused too (bAlwaysTick), so the FOV slider in the pause menu
 // shows its effect at once
@@ -104,8 +103,8 @@ function Every()
 		Needs = Spawn(class'ModNeeds');   // their needs and the world's advertisements (bNeeds off = it does nothing)
 	if (Needs != None && Minds != None && Minds.Needs == None)
 		Minds.Needs = Needs;
-	if (class'ModSettings'.default.bGizmos && Gizmos == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
-		Gizmos = Spawn(class'ModGizmos');   // debug lines on the player
+	if (class'ModSettings'.default.bGizmos && !class'ModGizmos'.default.bAdded && PC != None && PC.Player != None && Level.Game != None && !Level.Game.IsInFrontEnd)
+		PC.Player.InteractionMaster.AddInteraction(string(class'ModGizmos'), PC.Player);   // debug lines on the player
 	if (Live == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Live = Spawn(class'ModLive');      // live sessions: "mutate live reload" and the place it puts the player back
 	if (class'ModSettings'.default.bD3DTrace)
@@ -224,10 +223,10 @@ function Mutate(string MutateString, PlayerController Sender)
 		class'ModSettings'.static.Note("needs: " $ Needs.Command(Mid(MutateString, 6)));
 	if (Caps(MutateString) == "GIZMOS")
 	{
-		if (Gizmos == None)
-			Gizmos = Spawn(class'ModGizmos');
+		if (!class'ModGizmos'.default.bAdded)
+			class'ModSettings'.default.bGizmos = true;   // the next tick adds it
 		else
-			Gizmos.Toggle();
+			class'ModGizmos'.static.Toggle();
 	}
 	Super.Mutate(MutateString, Sender);
 }
