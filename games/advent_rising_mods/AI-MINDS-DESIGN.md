@@ -4,9 +4,11 @@
 > The AI director and the custom animations are shelved: their code stays, but the defaults are off.
 > Shelved switches (set True in `System\AdventMod.ini` to bring one back):
 > ModMinds `bMinds` (waves, hound packs, wall-kicks, leap links), ModNeeds `bNeeds`,
-> ModReact `bFlinch` `bKnockdown` `bStagger` `bDeathAnims`, ModMelee `bBlades`, ModMoves `bLean`.
+> ModReact `bFlinch` `bKnockdown` `bStagger` `bDeathAnims`, ModMoves `bAILean` (the AI's lean).
 > Kept on: ModFeet `bFootIK` (now default True), ModMoves `bStrideMatch`, ragdolls (`bDeathRagdoll`),
 > gore and sever, armour hits and sparks, jiggle, and all graphics.
+> Gideon's animation stays (user, 10-10): the lean (`bLean`, player only) and the blade with its swings (`bBlades`).
+> Dev aids on by default (user, 10-10): the FPS graph (`bFpsGraph`) and the player gizmos (ModGizmos, `bGizmos`, "mutate gizmos").
 
 
 AdventMod's layer over the game's enemy AI. It gives each creature a psychology: traits that make it who it is, and feelings that change with what happens. Those feelings drive four behaviours: suppression, real cover use, squad morale with flanking, and hunting as a pack. Code: `AdventMod/Classes/ModMind.uc`, `ModMinds.uc`, `ModMindRules.uc`.

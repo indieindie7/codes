@@ -20,6 +20,7 @@ var config float MaxLean;           // degrees
 var config float LeanSpring;        // 1/s
 var config bool bSlideMeter;
 var config int LeanSign;
+var config bool bAILean;            // lean the AI too (off since the 10-10 scope cut: the player only)
 var config bool bStrideMatch;       // K4: AI clip rate follows the planted foot (no skating)
 var config float StrideGain;
 var int StrideAdjusts;            // +1/-1: which way the bone's roll banks (set from a test)
@@ -76,6 +77,8 @@ function int Find(Pawn P)
 function bool Leanable(Pawn P)
 {
 	if (P == None || P.bDeleteMe || P.Health <= 0 || P.Physics != PHYS_Walking || P.IsA('Vehicle'))
+		return false;
+	if (!bAILean && PlayerController(P.Controller) == None)
 		return false;
 	if (P.IsA('SeekerDogNative'))
 		return false;               // the hound's spine is the engine's (SetWalkUpright false)
@@ -283,7 +286,7 @@ function Meter(int i, float DeltaTime, float Speed)
 
 defaultproperties
 {
-	bLean=False
+	bLean=True
 	LeanGain=1.0
 	MaxLean=12
 	LeanSpring=9

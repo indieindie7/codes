@@ -18,6 +18,7 @@ var ModGore Gore;
 var ModPlayerBlood PlayerBlood;
 var ModMinds Minds;
 var ModNeeds Needs;
+var ModGizmos Gizmos;
 
 // ticks while the game is paused too (bAlwaysTick), so the FOV slider in the pause menu
 // shows its effect at once
@@ -103,6 +104,8 @@ function Every()
 		Needs = Spawn(class'ModNeeds');   // their needs and the world's advertisements (bNeeds off = it does nothing)
 	if (Needs != None && Minds != None && Minds.Needs == None)
 		Minds.Needs = Needs;
+	if (class'ModSettings'.default.bGizmos && Gizmos == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
+		Gizmos = Spawn(class'ModGizmos');   // debug lines on the player
 	if (Live == None && PC != None && Level.Game != None && !Level.Game.IsInFrontEnd)
 		Live = Spawn(class'ModLive');      // live sessions: "mutate live reload" and the place it puts the player back
 	if (class'ModSettings'.default.bD3DTrace)
@@ -219,6 +222,13 @@ function Mutate(string MutateString, PlayerController Sender)
 	// "mutate needs list|on|off|log on|hunger V|fatigue V|curiosity V|noise" (ModNeeds)
 	if (Caps(Left(MutateString, 6)) == "NEEDS " && Needs != None)
 		class'ModSettings'.static.Note("needs: " $ Needs.Command(Mid(MutateString, 6)));
+	if (Caps(MutateString) == "GIZMOS")
+	{
+		if (Gizmos == None)
+			Gizmos = Spawn(class'ModGizmos');
+		else
+			Gizmos.Toggle();
+	}
 	Super.Mutate(MutateString, Sender);
 }
 

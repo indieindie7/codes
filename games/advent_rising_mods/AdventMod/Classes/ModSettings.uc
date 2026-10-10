@@ -40,7 +40,8 @@ var config float ExploreSpeed;        // running speed while no enemy is near (M
 var bool bInCombat;                   // a hostile within CombatRange (ModTargeting, twice a second)
 var config bool bGoreLog;             // testing: log every hit and blood mark (ModGore)
 var config string DebugDecalTexture;  // testing: every blood mark with this texture instead
-var config bool bFpsGraph;            // development: the frame-time graph overlay (ModFpsGraph); off in releases
+var config bool bFpsGraph;            // the frame-time graph overlay (ModFpsGraph); on by default since 10-10 (user)
+var config bool bGizmos;              // debug lines on the player (ModGizmos); "mutate gizmos" toggles
 var config bool bJumpLog;             // testing: log every jump (ModInput)
 var config bool bMouseLog;            // testing: log how much of the mouse movement the engine's curve keeps
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
@@ -406,6 +407,8 @@ static function Startup(PlayerController PC)
 
 defaultproperties
 {
+     bFpsGraph=True
+     bGizmos=True
      bShadowFix=True
      bSoftShadows=True
      bNoGamePostFx=True

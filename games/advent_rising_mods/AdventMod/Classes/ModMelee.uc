@@ -327,7 +327,7 @@ event Destroyed()
 
 defaultproperties
 {
-     bBlades=False
+     bBlades=True
      BladeDropChance=0.150000
      BladeCharges=15
      BladeDamage=5.000000
