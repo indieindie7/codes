@@ -62,7 +62,7 @@ What it does:
       lands on the lens as drops that slide off. Bullets dig holes into walls
       and ceilings; clustered hits open a breach.
 
-  Energy blade (new)
+  Energy blade (off by default: bBlades=True under [AdventMod.ModMelee])
       Some Seekers drop an energy blade. Pick it up and it rides on Gideon's
       back; a melee attack swings it (three hand-keyed swings), with its own
       light, hum and sparks. A hit cuts: heads and limbs come off at the
@@ -227,9 +227,9 @@ GOOD TO KNOW
 - Foot IK bends the legs inside the engine so each foot stands on the floor
   under it on stairs and step edges (humans only; see KNOWN LIMITS). Off:
   bFootIK=False under [AdventMod.ModFeet].
-- The frame-time graph and the debug lines on Gideon are on. Off: under
-  [AdventMod.ModSettings] add bFpsGraph=False and bGizmos=False. The console
-  command "mutate gizmos" switches the lines while you play.
+- The frame-time graph is on. Off: under [AdventMod.ModSettings] add
+  bFpsGraph=False. Debug lines on Gideon: bGizmos=True there, or the console
+  command "mutate gizmos" while you play.
 - Fog, soft particles, terrain detail and sheen are lines in U2Shaders.ini
   (atmos=, soft=, terraindetail=, sheen=); set the first number to 0 to turn
   one off, or delete the line.

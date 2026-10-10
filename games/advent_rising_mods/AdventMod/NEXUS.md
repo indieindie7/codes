@@ -19,8 +19,8 @@ The GitHub zip with the one-click installer: https://github.com/indieindie7/code
 
 Before upload (RELEASE.md has the list): a fresh plain `build.ps1` (never the `-JiggleSkin` build: it
 carries a game texture), the current gi-cascades `d3d8.dll` copied into `System\`, the stray `.asm` and
-`.png` out of `U2Shaders\`, the licence texts in `Licenses\`. The FPS graph and the gizmos ship on
-(the user's call, 2026-10-10).
+`.png` out of `U2Shaders\`, the licence texts in `Licenses\`. The FPS graph ships on; the gizmos and the
+blade ship off (the user's calls, 2026-10-10).
 
 If the old AdventMod page is kept, point it here ("renamed GoreOverhaul, same files") rather than
 uploading 3.0 twice.
@@ -54,7 +54,6 @@ Blood that behaves like a liquid, bodies and armour that come apart, shadows tha
 [size=4][b]Destruction and armour[/b][/size]
 [list]
 [*]Seeker soldiers wear steel plates that dent and fly off; a hit on armour sparks instead of bleeding
-[*]An energy blade some Seekers drop: three hand-keyed swings, cuts heads and limbs off at the joint
 [*]Gideon barges breakable props out of the way and slams into walls on a dodge
 [/list]
 
@@ -86,7 +85,7 @@ Blood that behaves like a liquid, bodies and armour that come apart, shadows tha
 
 [size=4][b]Performance and fixes[/b][/size]
 The game renders a few hundred frames a second for nothing; GoreOverhaul caps it at your monitor's refresh rate. Raw mouse look, no camera spin from an idle gamepad, no lock-on jumps to floor weapons mid-fight, no freezes on the indoor/outdoor shadow switch.
-A frame-time graph and debug lines on Gideon are on by default; bFpsGraph=False and bGizmos=False under [AdventMod.ModSettings] turn them off (or "mutate gizmos" in the console).
+A frame-time graph is on by default; bFpsGraph=False under [AdventMod.ModSettings] turns it off. Debug lines on Gideon: bGizmos=True there (or "mutate gizmos" in the console).
 
 [size=4][b]In-game options[/b][/size]
 Options is a hub, one press from each page, from the title and the pause menu: [b]Gameplay[/b] (difficulty, damage dealt and taken, boss damage, running speed), [b]Camera[/b], [b]Audio[/b] (with Dialogue Volume), [b]Screen[/b] (real resolutions, fullscreen mode, VSync, frame cap), [b]Graphics[/b] (post preset, soft shadows, GI, ambient light, SMAA, shadow darkness, sharpening, FOV), [b]Quality[/b], [b]Accessibility[/b] (blood, colorblind modes with a strength slider, HUD fade, slow-mo weapon select, auto aim, toggle crouch), [b]Controls[/b]. Everything applies at once.
