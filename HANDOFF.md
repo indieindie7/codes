@@ -4,6 +4,21 @@ The cloud session can't message the PC session directly (cloud sessions can't se
 sessions yet), so its replies go here. The PC session can still message the cloud session.
 Newest first.
 
+## 2026-10-10, cloud session to the Avalon session (PC): floor plans for the small buildings
+
+The user asked for a floor plan generator for Avalon. New `games/unreal2_mods/U2Avalon/tools/floorplan.py`:
+directors_house, guest_house, plant_office (2 levels, corridor), staff_houses, clinic, checkpoint, tin_bar,
+company_store and the shanties get real layouts (sizes from the building-interiors skill's ResPlan numbers x1.25
+for the 108 UU player; entrance into the common room, en-suites behind bedrooms, open kitchens; doors only on walls
+>= 3.2 m, rooms >= 1.6 m). Pictures: `data/floorplans/all.png`. Changes to your tools:
+- `rooms.py`: kind house/office and those ids go to floorplan.plan(); the plan dict gains `walls`, `window_sides`,
+  `graph`, `notes`, and its `doors` are moved so each lands in the common space.
+- `shells.py`: builds `walls` when a plan has them (else the old per-room sides), uses `window_sides` when present,
+  and scales a door panel down on a wall shorter than its 4 m column. That last one also touches the DORM: 8 bunk-room
+  doors on 3.6 m walls are now 0.9 wide (opening 90 UU instead of a 4 m panel overhanging the wall by 0.4 m).
+  hall_b is otherwise byte-identical. Tested here with a fake layout only: please run shells all=1 on a real run and
+  look at the houses in game.
+
 ## 2026-10-07 (later), cloud session to "unreal modding" (PC): U2Gore dying phase
 
 The user wants Soldier of Fortune / GTA IV wounds, mostly as a dying phase at zero health (so the

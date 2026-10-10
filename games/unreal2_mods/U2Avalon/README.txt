@@ -14,6 +14,10 @@ where its users arrive, routines may only go to places that exist). tools\binder
                            and lamps -> Models\glb\B_<id>.glb
   tools\glb_to_ase.py      Blender: GLBs (parts buildings + the scripted ones from U2AvalonCards) -> ASE static
                            meshes in world units (scale=50) sharing one 8-stripe palette texture (Pal.tga)
+  tools\floorplan.py       floor plans for the houses, offices and small buildings (directors_house, guest_house,
+                           plant_office, staff_houses, clinic, checkpoint, tin_bar, company_store, shanties), from
+                           real plans (.claude\skills\building-interiors: ResPlan sizes x1.25 for the 108 UU player)
+                           and the kit's rules; rooms.py calls it, shells.py builds its walls. Pictures in data\floorplans
   make_avalon.py           terrain tiles in three materials, sea, the tower shell + command room, the quay,
                            the pipeline, and avalon_actors.t3d placing every binder building (instances,
                            dressing: crates, barrels, dropships, pylons, trees), sky, sun, start

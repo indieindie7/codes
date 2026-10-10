@@ -19,6 +19,7 @@ import json, math, os, sys
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import binder  # noqa
+import floorplan  # noqa  (houses, offices and the small buildings: generated from real plans)
 
 M = 50.0
 PLAYER_R, PLAYER_HH, STEP = 28, 54, 37            # facts_measured.md
@@ -191,9 +192,15 @@ SHEET_ROOM_DEFAULTS = {"command_room": "command_room", "catwalk": "catwalk", "to
 def plan(bid, sheet, room_sheets, drain=None):
     W, D, H = (tuple(SHELLS.get(bid, sheet.get("size", (10, 10, 4)))) + (4.0,))[:3]
     fn = BY_ID.get(bid) or BY_KIND.get(sheet.get("kind"))
+    extra = {}
+    if bid in floorplan.IDS or (sheet.get("kind") in ("house", "office") and bid not in BY_ID):
+        fn = "floorplan"                                   # floorplan.py: sizes and connections from real plans
     if fn is None and not room_sheets:
         return None
-    levels, rooms, stairs = (fn(sheet, W, D, H, drain) if fn is culvert else fn(sheet, W, D, H)) if fn else (1, [], [])
+    if fn == "floorplan":
+        levels, rooms, stairs, extra = floorplan.plan(bid, sheet, W, D, H, seed=sheet.get("_seed", 1))
+    else:
+        levels, rooms, stairs = (fn(sheet, W, D, H, drain) if fn is culvert else fn(sheet, W, D, H)) if fn else (1, [], [])
     have = {r["id"] for r in rooms}
     for rid, rs in room_sheets.items():                # the binder's room sheets: merge their story keys, add the missing
         if rid in have:
@@ -220,8 +227,12 @@ def plan(bid, sheet, room_sheets, drain=None):
     doors = shell_doors(sheet, W, D) if sheet.get("kind") != "culvert" else [door("grate", "personnel", 0, 0), door("outfall", "personnel", 0, 0)]
     if any(r.get("lift") for r in rooms):           # the lift and the catwalk deck are the tower's second way out
         doors += [door("lift", "personnel", 0, 0, to="lift"), door("deck", "personnel", 0, -D / 2, to="catwalk")]
-    return {"id": bid, "kind": sheet.get("kind"), "shell_m": [W, D, H], "shell_uu": [uu(W), uu(D), uu(H)], "levels": levels,
-            "rooms": rooms, "stairs": stairs, "doors": doors, "checks": checks(rooms, doors, stairs, sheet)}
+    if extra.get("doors"):
+        doors = extra.pop("doors")                       # moved so each lands in the common space
+    out = {"id": bid, "kind": sheet.get("kind"), "shell_m": [W, D, H], "shell_uu": [uu(W), uu(D), uu(H)], "levels": levels,
+           "rooms": rooms, "stairs": stairs, "doors": doors, "checks": checks(rooms, doors, stairs, sheet)}
+    out.update(extra)                                    # walls, window_sides, graph, notes (floorplan.py)
+    return out
 
 
 def checks(rooms, doors, stairs, sheet):

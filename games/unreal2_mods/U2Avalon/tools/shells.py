@@ -68,7 +68,7 @@ class Shell:
         t = -length / 2
         for td, kind in feats:
             part, pw, ph = DOOR_PART.get(kind, DOOR_PART["personnel"])
-            pw = min(pw, length)
+            pw = min(pw, length)                 # a short wall (>= 3.2 m, floorplan.py) takes the door panel scaled down
             a = max(t, min(td - pw / 2, length / 2 - pw))
             if a - t > 0.05:
                 cols.append((t, a, None))
@@ -86,7 +86,9 @@ class Shell:
             else:
                 part, pw, ph = door
                 tc = (a + b) / 2
-                self.put(part, origin[0] + along[0] * tc, origin[1] + along[1] * tc, z0, yaw_deg, 1.0, 1.0, 1.0)
+                full = DOOR_PART.get(next((k for k, v in DOOR_PART.items() if v[0] == part), "personnel"), DOOR_PART["personnel"])[1]
+                sx = 1.0 if pw >= full - 1e-6 else pw / full
+                self.put(part, origin[0] + along[0] * tc, origin[1] + along[1] * tc, z0, yaw_deg, sx, 1.0, 1.0)
                 self.bands(origin, along, yaw_deg, tc, pw / PANEL, ph, H, plain, windows, z0, door_over=True)
         return cols
 
@@ -118,7 +120,7 @@ class Shell:
         W, D, H = self.W, self.D, self.H
         kind = self.sheet.get("kind")
         owner = self.sheet.get("owner")
-        wsides = WINDOW_SIDES.get(kind, ())
+        wsides = self.p.get("window_sides") or WINDOW_SIDES.get(kind, ())   # floorplan.py: every side a living room touches
         for side, (centre, along, yaw, tof) in self.SIDES.items():
             length = W if side in ("front", "back") else D
             doors = [(tof(d), d["kind"]) for d in self.p["doors"] if d["side"] == side and d.get("z", 0) == 0]
@@ -154,6 +156,7 @@ class Shell:
         W, D, H = self.W, self.D, self.H
         rooms = self.p["rooms"]
         by_id = {r["id"]: r for r in rooms}
+        given = self.p.get("walls")              # floorplan.py: the exact partitions, a door where a wall carries one
         for r in rooms:
             if r.get("existing") or r.get("lift") or r.get("shown_not_given"):
                 continue
@@ -175,6 +178,8 @@ class Shell:
                 self.slab(r["x"], r["y"], r["w"], r["d"], z)       # an upper floor piece
             if full_w and full_d:
                 continue                                           # the shell itself
+            if given:
+                continue                                           # the partitions come from the plan (below)
             # partitions: the room's 4 sides, skipping the shell walls, a door on the side toward door_to (else
             # toward the shell's centre when the room is closed on all sides)
             target = by_id.get(r.get("door_to"))
@@ -200,6 +205,14 @@ class Shell:
                 if not doors and target is None and not r["id"].startswith(("corridor", "stair")) and side == "front":
                     doors = [(0.0, "personnel")]
                 self.wall_run((px, py), along, yaw, length, min(r["h"], H - z), doors, False, True, z)
+        for w in given or []:
+            if w.get("open"):
+                continue
+            hz = abs(w["y0"] - w["y1"]) < 1e-6
+            length = abs(w["x1"] - w["x0"]) if hz else abs(w["y1"] - w["y0"])
+            centre = ((w["x0"] + w["x1"]) / 2, (w["y0"] + w["y1"]) / 2)
+            along, yaw = ((1, 0), 90) if hz else ((0, 1), 180)
+            self.wall_run(centre, along, yaw, length, min(w["h"], H - w["z"]), [(d["t"], d["kind"]) for d in w["doors"]], False, True, w["z"])
         for st in self.p.get("stairs", []):
             self.stair(st)
         if self.sheet.get("kind") == "hall" and self.p["levels"] >= 2:
