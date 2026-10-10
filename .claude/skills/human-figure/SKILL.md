@@ -34,7 +34,7 @@ bodies, not memory.
 5. **Generate bodies by sampling real people, not by scaling a template.** Blend a few similar ANSUR records,
    then scale for the game. This keeps every correlation: tall people are leggy and small-headed, and breadth
    follows build, not height.
-6. **Convert to game scale last.** In this repo's Unreal 2 work, 1 m = 50 UU. Avalon's buildings use a 1.25
+6. **Convert to game scale last.** In this repo's Unreal 2 work, 1 m = 50 UU. The building work here used a 1.25
    game scale for the 108 UU player, which makes a median man 110 UU tall: check the player pawn first.
 
 ## Know the limits
