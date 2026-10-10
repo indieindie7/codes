@@ -119,8 +119,10 @@ HydroWater is a `dinput8.dll` proxy. The background switches live in `HydroWater
 | `continue` | Continues the game. |
 | `state` | Logs the game state: 0x29 menu, 2 playing, 0x1a popup. |
 | `key <vk>` | Posts a key to the game window. |
-| `look dx dy [steps]` | Turns the camera (control = 1 redirects `GetRawInputData`; WM_INPUT with a marker handle). Hook confirmed installed; the turn itself is still unverified in a level. |
+| `look dx dy [steps]` | Turns the camera (control = 1 redirects `GetRawInputData`; WM_INPUT with a marker handle). Verified in chapter 1 (2026-10-10): two still frames differed by 1.1, and after `look 3000 0 30` the camera had swung around Kate (28.2). |
 | `click [r] [x y]` | Posts `WM_MOUSEMOVE` and then button down/up messages. The game reads mouse buttons from window messages and only the deltas from raw input. |
+
+**Write each command atomically.** Write to `HydroWater.tmp`, rename it to `HydroWater.cmd`, and wait for the game to take it (the file disappears) before the next one. A plain overwrite can be read half-written: the game reads nothing, deletes the file, and the command is lost (seen once with `chapter 1`). Builds after 2026-10-10 also take the file by renaming it to `HydroWater.cmd.run` first, which fails while a writer still has it open.
 
 **Write the path as an argument.** In bash, never put the path inside the printf format string, or its backslashes become escapes:
 

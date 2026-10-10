@@ -1001,7 +1001,13 @@ static void RunControlFile(IDirect3DDevice9 *dev)
     wchar_t path[MAX_PATH];
     char line[512];
     FILE *f;
+    wchar_t work[MAX_PATH];
     _snwprintf(path, MAX_PATH, L"%ls\\HydroWater.cmd", g_dir);
+    _snwprintf(work, MAX_PATH, L"%ls\\HydroWater.cmd.run", g_dir);
+    /* Take the file by renaming it first. The rename fails while a writer still has it open,
+     * so a half-written file is never read and deleted. */
+    if (!MoveFileExW(path, work, MOVEFILE_REPLACE_EXISTING)) return;
+    wcscpy(path, work);
     f = _wfopen(path, L"r");
     if (!f) return;
     while (fgets(line, sizeof line, f)) {

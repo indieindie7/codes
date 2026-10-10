@@ -299,4 +299,7 @@ two frames of the same run (4.2–5.1), and the mean colour matches. So the patc
 unfoamed water untouched. It shows no foam either: the menu runs on 20+ HydroWater sheets, but its
 water mesh never passes the 0xbf1448 builder ("first water mesh coloured" is not logged). The foam
 look still needs a level shot.
+Level run (2026-10-10, direct launch, off-screen): `chapter 1` from a fresh menu renders normally (Kate on
+the lift-shaft ladder), and `look` is verified there. Chapter 1 starts dry, so a foam frame needs a scripted
+walk to water or a save near it.
 Spray drops are not drawn in the game yet.
