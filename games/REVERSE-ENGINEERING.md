@@ -296,6 +296,26 @@ drop from a throwaway D3D device.
   - **Housekeeping:** `Documents\Hydrophobia_research\unpacked\` was deleted (disk); `get`
     now reads single files from the archives instead, and `names.csv` is the index. Decompiles
     of the loader are in `loader_refs\` and `console_refs\`.
+  - **HydroWater mod (2026-10-09, `HydroWater/mod/`):** a `dinput8.dll` proxy dropped into
+    the game folder (HydroPC imports only `DirectInput8Create` from it; forwarded to
+    `System32\dinput8.dll`). `DllMain` starts a thread that polls the solver entry
+    (module base + `0xd5c9d0 - 0x400000`) every 20 ms for up to two minutes until the
+    SteamStub has decrypted `.text` and the prologue `55 8B EC 83 E4 F0 81 EC A4 08 00 00` is
+    there, then writes a 5-byte JMP (+NOP) over the first six bytes, with the six bytes copied
+    to an RWX trampoline followed by a JMP back. `FUN_00d5c9d0(sheet, dt)` is cdecl but
+    **returns the consumed dt in xmm0**, so the hook is a naked thunk (x87 return -> xmm0 and
+    back). Solver calls arrive from the job threads in parallel, one per sheet; the mod keeps a
+    sheet -> `hw_sheet` table under an SRWLOCK and copies planes in and out each step (copy
+    rather than aliasing: the game's row stride is `[2]+4`, HydroWater's is `w+4`).
+    Sheet dwords used: `[0]` current buffer, `[1]` w, `[2]` padded width, `[3]` h, `[4]` dx,
+    `[8]` CFL, `[9]` g, `[10]/[11]` depth A/B, `[0xd]/[0xe]` hu, `[0xf]/[0x10]` hv, `[0x12]` v,
+    `[0x13]` c = sqrt(g h), `[0x14]` u, `[0x15]` bed, `[0x19]` wall (1/dx on wall cells),
+    `[0x1c]/[0x1d]` flow accumulators (`+= vel*[0x60]*dt + [0xb1]/[0xb2]*dt`), `[0x24]` last dt,
+    `[0x17]` stage count (1 or 2) picking `[0x42]`/`[0x43]` as the step counter, `[0x6b]` flat
+    flag (flat sheets go to the original). Planes are `(h+4)` rows of stride floats, interior
+    cell (i,j) at row j+2, column i+2; the mod keeps the two-cell ring as wall. `tests\hooktest.c`
+    checks all of this against a fake solver with the game's prologue bytes (note: GAS encodes
+    `mov ebp,esp` as `89 E5`, MSVC as `8B EC`, so the fake emits `.byte`s).
 
 ## 4. Rules we keep
 - Decompiled sources, extracted meshes/textures and other game assets stay out of git.

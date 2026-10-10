@@ -34,6 +34,7 @@ typedef struct hw_opts {
     float alpha;        /* stage 1 wave amplitude scale, 0.5..1 (default 1) */
     float c_adapt;      /* stage 2 adaptation rate (default 0.2) */
     float edge_damp;    /* stage 8 velocity scale within 2 cells of a wet/dry edge (default 0.7) */
+    int recon;          /* stage 5: minmod-limited linear reconstruction of eta, u, v at faces */
 } hw_opts;
 
 typedef struct hw_sheet hw_sheet;

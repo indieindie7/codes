@@ -395,6 +395,13 @@ static void mark_edges(hw_sheet *s)
 }
 
 /* fluxes from state (h, hu, hv, u, v, c) accumulated into (ho, huo, hvo) with coefficient a = dt/dx */
+static float minmod(float a, float b)
+{
+    if (a > 0 && b > 0) return a < b ? a : b;
+    if (a < 0 && b < 0) return a > b ? a : b;
+    return 0.0f;
+}
+
 static void fluxes(hw_sheet *s, const float *h, const float *hu, const float *hv,
                    float *ho, float *huo, float *hvo, float a)
 {
@@ -426,6 +433,35 @@ static void fluxes(hw_sheet *s, const float *h, const float *hu, const float *hv
                     if (dir == 0) { huo[R] += a * g2 * hR * hR; huo[L] -= a * g2 * hL * hL; }
                     else          { hvo[R] += a * g2 * hR * hR; hvo[L] -= a * g2 * hL * hL; }
                     continue;
+                }
+                if (s->o.recon) {
+                    /* stage 5: minmod-limited linear reconstruction of the surface eta = h + B
+                       and of u, v on each side of the face (second order where the stencil is
+                       wet and wall-free, first order elsewhere; exact for still water) */
+                    int LL = dir == 0 ? AT(s, i - 1, j) : AT(s, i, j - 1);
+                    int RR = dir == 0 ? AT(s, i + 2, j) : AT(s, i, j + 2);
+                    int inL = dir == 0 ? i - 1 >= -2 : j - 1 >= -2;
+                    int inR = dir == 0 ? i + 2 <= s->w + 1 : j + 2 <= s->h + 1;
+                    float eL = hL + bL, eR = hR + bR, de = eR - eL;
+                    if (hL > EPS_H && hR > EPS_H) {
+                        if (inL && h[LL] > EPS_H && s->wall[LL] == 0) {
+                            float uLL = dir == 0 ? s->u[LL] : s->v[LL], vLL = dir == 0 ? s->v[LL] : s->u[LL];
+                            float sl = minmod(eL - (h[LL] + s->Beff[LL]), de), hn;
+                            hn = eL + 0.5f * sl - bL; if (hn < 0) hn = 0; if (hn > 2.0f * hL) hn = 2.0f * hL;
+                            uL += 0.5f * minmod(uL - uLL, uR - uL);
+                            vL += 0.5f * minmod(vL - vLL, vR - vL);
+                            hL = hn;
+                        }
+                        if (inR && h[RR] > EPS_H && s->wall[RR] == 0) {
+                            float uRR = dir == 0 ? s->u[RR] : s->v[RR], vRR = dir == 0 ? s->v[RR] : s->u[RR];
+                            float sl = minmod(de, (h[RR] + s->Beff[RR]) - eR), hn;
+                            hn = eR - 0.5f * sl - bR; if (hn < 0) hn = 0; if (hn > 2.0f * hR) hn = 2.0f * hR;
+                            uR -= 0.5f * minmod(uR - uL, uRR - uR);
+                            vR -= 0.5f * minmod(vR - vL, vRR - vR);
+                            hR = hn;
+                        }
+                        cL = sqrtf(s->g * hL); cR = sqrtf(s->g * hR);
+                    }
                 }
                 tmp = bL - bR; hLs = hL + (tmp < 0 ? tmp : 0); if (hLs < 0) hLs = 0;
                 tmp = bR - bL; hRs = hR + (tmp < 0 ? tmp : 0); if (hRs < 0) hRs = 0;
