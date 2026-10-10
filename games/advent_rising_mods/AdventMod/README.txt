@@ -1,5 +1,9 @@
-GoreOverhaul 3.0 - gore, graphics, destruction and in-game options for Advent Rising
-====================================================================================
+GoreOverhaul 3.0 (Experimental) - gore, graphics, destruction and in-game options for Advent Rising
+===================================================================================================
+EXPERIMENTAL: lots of new gore and effects, play-tested in a few levels but not
+through the whole game. If something breaks, every part can be switched off in
+System\AdventMod.ini (each feature has a switch there), and the uninstaller puts the game back.
+
 (Formerly AdventMod. Its files and settings keep that name, so an older install
 and your settings carry over.)
 
@@ -306,8 +310,12 @@ and destruction):
   on slopes; Seeker flesh jiggle; foot IK.
 - Armour: steel plates on Seekers that dent and fly off; sparks on armour
   hits.
-- Energy blade with hand-keyed swings; gib snapshots on the floor.
-- Frame-time graph and debug lines on Gideon, on by default.
+- Gib snapshots on the floor; an energy blade with hand-keyed swings (off by
+  default: ModMelee bBlades=True turns it on).
+- Bullet impacts kick up a puff of dust and grit; bullet holes look deeper
+  and catch the light.
+- Frame-time graph on by default (debug lines on Gideon: ModSettings
+  bGizmos=True).
 - Graphics: height fog, soft particles, close-up terrain detail, sheen on
   metal and floors, skin shading with subsurface scattering, ambient
   occlusion, the crash level graded toward desert photos, 16x anisotropic

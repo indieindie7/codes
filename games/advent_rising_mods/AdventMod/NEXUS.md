@@ -1,4 +1,4 @@
-# Nexus page for GoreOverhaul 3.0 (formerly AdventMod; draft, the user posts it)
+# Nexus page for GoreOverhaul 3.0 (Experimental) (formerly AdventMod; draft, the user posts it)
 
 Version 3.0. The mod was renamed GoreOverhaul on 2026-10-10, when its scope was cut to gore, graphics
 and destruction (the enemy AI and the new enemy animations are shelved, off by default). Only the
@@ -7,14 +7,14 @@ release name changed: the files inside keep the AdventMod name (AdventMod.u, Adv
 The second page, AdventGraphicalMod, is the same build with `package.py --graphics` and keeps its own
 page text.
 
-**Title:** GoreOverhaul - Gore, Graphics, Destruction and In-Game Options
+**Title:** GoreOverhaul (Experimental) - Gore, Graphics, Destruction and In-Game Options
 
 **Category:** Visuals and Graphics (the 2.x pages sit there)
 
 **Summary (short line):**
 Blood that runs, pools, drips and dries, bodies that come apart, Seeker armour that dents and flies off, working character shadows, a modern post chain (bloom, LUT, CAS, SMAA, GI, AO, fog), foot IK, and the launcher's settings inside the game's menus. Formerly AdventMod.
 
-**Files to upload:** `GoreOverhaul-3.0-nexus.zip` (no .bat inside; Nexus quarantines them).
+**Files to upload:** `GoreOverhaul-3.0-experimental-nexus.zip` (no .bat inside; Nexus quarantines them).
 The GitHub zip with the one-click installer: https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods/AdventMod
 
 Before upload (RELEASE.md has the list): a fresh plain `build.ps1` (never the `-JiggleSkin` build: it
@@ -37,7 +37,8 @@ after a fight (pools, runs, prints), a Seeker with a plate knocked off, a severe
 ## Description (BBCode)
 
 ```
-[size=5][b]GoreOverhaul 3.0[/b][/size] (formerly AdventMod)
+[size=5][b]GoreOverhaul 3.0 (Experimental)[/b][/size] (formerly AdventMod)
+[i]Experimental: play-tested in a few levels, not the whole game. Every part can be switched off in System\AdventMod.ini, and the uninstaller restores the game.[/i]
 Blood that behaves like a liquid, bodies and armour that come apart, shadows that work, a modern post-processing chain, and the launcher's settings inside the game.
 
 [size=4][b]Gore[/b][/size]
