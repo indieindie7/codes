@@ -13,6 +13,7 @@
  *   (3) smooth buoyancy is hw_body_force(), a query, so it has no switch
  *   face_walls    (4a) walls on faces, plus the automatic dry-ledge rule
  *   clamps        (8) velocity cap 0.5 dx/dt, edge damping, no 1000 h cap
+ *   foam          (7) foam, entrained air and spray drops read from the field (render-only)
  *
  * Plain C99, no dependencies. Built as a DLL for the Python harness (tests/harness.py) and
  * meant to become the drop-in for the game's step function later (same per-cell state).
@@ -35,7 +36,25 @@ typedef struct hw_opts {
     float c_adapt;      /* stage 2 adaptation rate (default 0.2) */
     float edge_damp;    /* stage 8 velocity scale within 2 cells of a wet/dry edge (default 0.7) */
     int recon;          /* stage 5: minmod-limited linear reconstruction of eta, u, v at faces */
+    int foam;           /* stage 7: foam, air and spray planes (never feed back into the flow) */
 } hw_opts;
+
+/* stage 7 tuning; hw_create sets the defaults shown */
+typedef struct hw_foam_params {
+    float foam_gain;    /* foam added per second at full source strength (0.8) */
+    float air_gain;     /* entrained air added per second at full source strength (3) */
+    float foam_life;    /* seconds for thick foam to thin out (2.5) */
+    float lace;         /* decay floor: thin foam lasts foam_life / lace (0.25) */
+    float bubble_rise;  /* bubble rise speed, units/s; deep water holds its air longer (25) */
+    float air_to_foam;  /* share of surfacing air that turns into foam (0.35) */
+    float spread;       /* foam diffusion rate per second (3) */
+    float spray_rate;   /* spray drops per cell per second at full strength (30) */
+    float spray_foam;   /* foam left where a drop lands (0.15) */
+    float spray_drag;   /* air drag on drops, per second (0.5) */
+    int spray_max;      /* drop limit, at most HW_SPRAY_CAP (4096) */
+} hw_foam_params;
+
+#define HW_SPRAY_CAP 8192
 
 typedef struct hw_sheet hw_sheet;
 
@@ -94,6 +113,18 @@ HW_API int hw_probe(const hw_sheet *s, float x, float z, float *eta, float *u, f
 HW_API float hw_body_force(const hw_sheet *s, const float *probes, int n, float V, float A_eff,
                            float rho, float dt_ramp, float c_d, float k_damp,
                            const float *body_vel, float *force);
+
+/* --- stage 7: foam, air and spray (hw_opts.foam) ---
+ * updated once per hw_step from the frame's flow; all three are for the renderer only.
+ * foam: surface coverage 0..1 (white). air: bubbles in the column 0..1 (pale, milky water).
+ * spray: count drops of 8 floats (x, y, z, vx, vy, vz, age s, size 0.5..1.5); y is height. */
+HW_API float *hw_foam(hw_sheet *s);
+HW_API float *hw_air(hw_sheet *s);
+HW_API const float *hw_spray(const hw_sheet *s, int *count);
+HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p);
+HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p);
+/* splash event (bullet, explosion, a body falling in): add foam and air within radius r */
+HW_API void hw_foam_add(hw_sheet *s, float x, float z, float r, float foam, float air);
 
 /* advance by dt seconds (sub-stepped by CFL); returns the number of sub-steps */
 HW_API int hw_step(hw_sheet *s, float dt);
