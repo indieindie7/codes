@@ -1,4 +1,4 @@
-tools/python/U2Pilot/runs/
+﻿tools/python/U2Pilot/runs/
 __pycache__/
 games/unreal2_mods/U2GM/staging/
 games/unreal2_mods/U2GM/tools/.gm_commit_state.json
@@ -7,3 +7,8 @@ games/advent_rising_mods/AdventMod/Textures/armor_seekerinfantry_c*.tga
 games/advent_rising_mods/AdventMod/hound_game3.png
 games/advent_rising_mods/AdventMod/U2Shaders/UsersjohnAppDataLocalTemp*.asm
 games/advent_rising_mods/AdventMod/sheet.py
+
+# Avalon is a commercial product: it lives in the private repo indieindie7/avalon (Documents/github/commercial/avalon)
+/games/unreal2_mods/U2Avalon
+/games/unreal2_mods/U2AvalonCards
+
