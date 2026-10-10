@@ -38,6 +38,8 @@ var config float TraitSpread;       // how far one creature's traits stray from 
 var config float PinPressure;       // pressure that pins (0..1)
 var config float FreePressure;      // ... and lets go again
 var config float FleeFear;          // fear that makes it fall back
+var config bool bWaveFight;        // a squad with reinforcements still to come keeps its members in the fight: the level only
+                                   // sends the next wave when they fall, so a creature hiding or falling back stalls the invasion
 var config float PanicFear;         // ... and run (with low courage)
 var config float ChargeAnger;       // anger that makes it charge
 var config float CoverReach;        // how far it looks for cover (world units)
@@ -1033,12 +1035,17 @@ function vector NextLeg(ModMind M, vector Dest)
 			return N.Location;
 		}
 	}
-	// the first node on the route is often the one it stands on: then the next one
-	if (Step != None && VSize((Step.Location - M.P.Location) * vect(1,1,0)) < 120 && M.B.RouteCache[1] != None)
+	// the first node on the route is often the one it stands on: then the next one, when it can
+	// walk there straight (round a corner it would cut through the wall)
+	if (Step != None && VSize((Step.Location - M.P.Location) * vect(1,1,0)) < 120 && M.B.RouteCache[1] != None && M.B.actorReachable(M.B.RouteCache[1]))
 		Step = M.B.RouteCache[1];
 	if (Step != None)
 		return Step.Location;
-	return Dest;
+	// no route: straight there only if nothing is in the way (a point behind a wall had them
+	// walking into it); otherwise it stays put and the next decision picks something else
+	if (M.B.pointReachable(Dest))
+		return Dest;
+	return M.P.Location;
 }
 
 // a move for the bot, checked: SquadAI.AssignState refuses a second state change in the same frame
@@ -1072,6 +1079,8 @@ function Decide(ModMind M, float DeltaTime)
 	local float Now, D;
 	local int W;
 	local Actor Target;
+	local bool bWave;
+	local float Hold;
 
 	if (M.Kick != 0)
 	{
@@ -1268,9 +1277,13 @@ function Decide(ModMind M, float DeltaTime)
 	}
 	if (Enemy == None)
 		return;
+	bWave = bWaveFight && M.B.Squad != None && M.B.Squad.SpawnsRemaining > 0;
+	Hold = 1.0;
+	if (bWave)
+		Hold = 0.4;
 
 	// broken: run
-	if (M.Fear > PanicFear && M.Courage < 0.45 && M.Species != 4/*S_Construct*/)
+	if (M.Fear > PanicFear && M.Courage < 0.45 && M.Species != 4/*S_Construct*/ && !bWave)
 	{
 		SetTask(M, 7/*T_Panic*/, 4 + 4 * FRand(), "broken");
 		HoldFire(M, false);
@@ -1282,7 +1295,7 @@ function Decide(ModMind M, float DeltaTime)
 	}
 	// pinned: down and into cover
 	// ordered to fall back: everyone fighting the player does, once per order
-	if (Order == "fallback" && M.bTokenGated && !M.bOrderDone)
+	if (Order == "fallback" && M.bTokenGated && !M.bOrderDone && !bWave)
 	{
 		M.bOrderDone = true;
 		Away = M.P.Location + Normal(M.P.Location - Enemy.Location) * 800;
@@ -1310,7 +1323,7 @@ function Decide(ModMind M, float DeltaTime)
 		if (FindCover(M, Enemy, Spot))
 		{
 			M.TaskDest = Spot;
-			SetTask(M, 1/*T_Pinned*/, 6 + 4 * M.Discipline, "suppressed, cover at " $ int(VSize(Spot - M.P.Location)));
+			SetTask(M, 1/*T_Pinned*/, (6 + 4 * M.Discipline) * Hold, "suppressed, cover at " $ int(VSize(Spot - M.P.Location)));
 			M.B.DoMoveToDestination('Mind_ToCover', NextLeg(M, Spot));
 		}
 		else
@@ -1322,7 +1335,7 @@ function Decide(ModMind M, float DeltaTime)
 		return;
 	}
 	// scared: back off toward the squad, or into cover further away
-	if (M.Fear > FleeFear && M.Species != 4/*S_Construct*/)
+	if (M.Fear > FleeFear && M.Species != 4/*S_Construct*/ && !bWave)
 	{
 		HoldFire(M, false);
 		if (M.Species != 3/*S_Hound*/ && FindCover(M, Enemy, Spot) && VSize(Spot - Enemy.Location) > VSize(M.P.Location - Enemy.Location))
@@ -1362,8 +1375,18 @@ function Decide(ModMind M, float DeltaTime)
 		M.B.DoCharge('Mind_Charge', Enemy);
 		return;
 	}
+	// a wave with more behind it: on at the player, along paths (the next wave comes when these fall)
+	if (bWave && M.Task == 0/*T_None*/ && M.Species != 4/*S_Construct*/
+		&& VSize(M.P.Location - Enemy.Location) > FMax(M.P.Ability.PreferredMinRange, 450) + 250)
+	{
+		M.TaskDest = Enemy.Location + Normal(M.P.Location - Enemy.Location) * FMax(M.P.Ability.PreferredMinRange, 450);
+		SetTask(M, 8/*T_Advance*/, 5, "wave pushes in");
+		M.B.bShouldWalk = false;
+		M.B.DoMoveToDestination('Mind_Advance', NextLeg(M, M.TaskDest));
+		return;
+	}
 	// hurt or under fire, and cover-minded: take cover before it has to
-	if (M.Species != 3/*S_Hound*/ && M.Species != 4/*S_Construct*/
+	if (M.Species != 3/*S_Hound*/ && M.Species != 4/*S_Construct*/ && !bWave
 		&& (Order != "push" || !M.bTokenGated)
 		&& (M.Pressure > 0.35 || M.P.Health < 0.5 * M.P.default.Health || (Order == "hidden" && M.bTokenGated))
 		&& (FRand() < 0.5 * M.Cunning + 0.3 * M.Fear || ((Order == "hidden" && M.bTokenGated) && FRand() < 0.6)))
@@ -3324,6 +3347,7 @@ function string List()
 
 defaultproperties
 {
+     bWaveFight=True
 	bMinds=True
 	bMindLog=False
 	TraitSpread=0.15

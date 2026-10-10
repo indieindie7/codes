@@ -673,7 +673,7 @@ event Tick(float DeltaTime)
 defaultproperties
 {
      bArmor=True
-     bPlateActors=True
+     bPlateActors=False
      bArmourHits=True
      ArmourFactor=1.0
      bArmourSparks=True
