@@ -87,7 +87,8 @@ def ghost(a, times, out, cols, pad=False):
 
 
 def duration(video):
-    probe = ffmpeg().replace("ffmpeg", "ffprobe")
+    f = ffmpeg()
+    probe = os.path.join(os.path.dirname(f), os.path.basename(f).replace("ffmpeg", "ffprobe"))
     r = subprocess.run([probe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video],
                        capture_output=True, text=True)
     return float(r.stdout.strip())

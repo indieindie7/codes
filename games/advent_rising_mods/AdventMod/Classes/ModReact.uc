@@ -70,7 +70,8 @@ var config int KnockDamage;        // a single hit this big (after the game's sc
 var config float KnockChance;      // ...this often
 var config float KnockDown, KnockGetUp;   // seconds lying, seconds the get-up takes
 var config float KnockPush;
-var config float KnockLift;        // the throw's upward speed (the stock flying reaction)
+var config float KnockLift;
+var config float BigHeight, BigHeft;   // a pawn taller than BigHeight (collision height; humans 78) is heavier: knock and stagger need BigHeft * (height/BigHeight)^2 times the damage, and it is shoved that much less        // the throw's upward speed (the stock flying reaction)
 var int Impact;                   // the current hit before armour (ModGoreRules sets it)
 struct DownState
 {
@@ -188,9 +189,9 @@ function Hit(Pawn Victim, vector HitLocation, vector Momentum, int Damage, class
 	}
 	if (bFlinch)
 		Flinch(Victim, HitLocation, Dir, Damage, false);
-	if (bKnockdown && Max(Damage, Impact) >= KnockDamage && Victim.iBaseTargetingPriority < 255 && FRand() < KnockChance && Knock(Victim, Dir))
+	if (bKnockdown && Max(Damage, Impact) >= KnockDamage * Heft(Victim) && Victim.iBaseTargetingPriority < 255 && FRand() < KnockChance && Knock(Victim, Dir))
 		return;
-	if (bStagger && Damage >= StaggerDamage && Victim.iBaseTargetingPriority < 255)
+	if (bStagger && Damage >= StaggerDamage * Heft(Victim) && Victim.iBaseTargetingPriority < 255)
 		Stagger(Victim, Dir);
 }
 
@@ -207,7 +208,8 @@ function bool Knock(Pawn P, vector Dir)
 		if (Downs[i].P == P)
 			return false;
 	D.P = P;
-	D.Speed = P.GroundSpeed;
+	D.Speed = BaseSpeed(P);
+	EndStagger(P);
 	if (IsHound(P))
 	{
 		// the hound's own: thrown onto the side the hit pushes it to
@@ -534,9 +536,13 @@ function Stagger(Pawn P, vector Dir)
 	local StaggerState S;
 	local vector L;
 
+	// no stagger on a pawn that is down (it would keep the down's zero speed as its own)
+	for (i = 0; i < Downs.Length; i++)
+		if (Downs[i].P == P)
+			return;
 	Dir.Z = 0;
 	if (P.Physics == PHYS_Walking)
-		P.Velocity += Normal(Dir) * StaggerPush;
+		P.Velocity += Normal(Dir) * StaggerPush / Heft(P);
 	// the lean: the spine bone (Bones[1]) turned away from the hit, the flinch's convention
 	L = Normal(Dir) << P.Rotation;
 	for (i = 0; i < Staggers.Length; i++)
@@ -556,6 +562,41 @@ function Stagger(Pawn P, vector Dir)
 	P.GroundSpeed = S.Speed * StaggerSlow;
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("react: " $ P $ " staggers");
+}
+
+// how much harder a big pawn is to stagger or knock down (1 for a human's size)
+function float Heft(Pawn P)
+{
+	if (BigHeight <= 0 || P.CollisionHeight <= BigHeight)
+		return 1.0;
+	return FMax(1.0, BigHeft) * Square(P.CollisionHeight / BigHeight);
+}
+
+// the pawn's own ground speed: the one a stagger or a down saved, not the slowed one it has now
+function float BaseSpeed(Pawn P)
+{
+	local int i;
+
+	for (i = 0; i < Downs.Length; i++)
+		if (Downs[i].P == P)
+			return Downs[i].Speed;
+	for (i = 0; i < Staggers.Length; i++)
+		if (Staggers[i].P == P)
+			return Staggers[i].Speed;
+	return P.GroundSpeed;
+}
+
+// a stagger cut short (a down takes over): the lean undone; the speed is the down's to restore
+function EndStagger(Pawn P)
+{
+	local int i;
+
+	for (i = Staggers.Length - 1; i >= 0; i--)
+		if (Staggers[i].P == P)
+		{
+			P.SetBoneRotation(Staggers[i].Bone, rot(0,0,0), 0, 0);
+			Staggers.Remove(i, 1);
+		}
 }
 
 function AddDeath(Pawn P, vector Dir, vector Spot, class<DamageType> Type)
@@ -1239,6 +1280,8 @@ defaultproperties
      KnockGetUp=1.400000
      KnockPush=260.000000
      KnockLift=280.000000
+     BigHeight=80.000000
+     BigHeft=2.000000
      SpringFreq=3.200000
      SpringDecay=5.500000
      SpringTime=0.900000
