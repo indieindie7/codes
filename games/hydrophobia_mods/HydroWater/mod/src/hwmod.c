@@ -217,6 +217,12 @@ static void CopyPlane(float *dst, int dstride, const float *src, int sstride, in
     for (r = 0; r < rows; r++) memcpy(dst + r * dstride, src + r * sstride, (size_t)cols * sizeof(float));
 }
 
+/* mesh hook diagnostics: rebuilds seen, no bridge/snap for the sheet, size mismatch, sheets coloured */
+static volatile LONG g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheets;
+static const uint32_t *g_mesh_seen[256];
+static volatile LONG g_shader_calls, g_shader_water_noanchor;
+static volatile LONG g_foam_patched, g_foam_failed, g_foam_dumps;
+
 /* the detour target: same contract as FUN_00d5c9d0, returns the consumed dt */
 __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
 {
@@ -311,11 +317,13 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
     b->steps++;
     if (cfg.log_every > 0 && b->steps % (unsigned)cfg.log_every == 0)
     {
-        Log("sheet %p: step %u dt %.4f volume %.1f smax %.1f (presents %ld)", (void *)S, b->steps, dt, hw_volume(b->hw), hw_smax(b->hw), g_presents);
+        Log("sheet %p: step %u dt %.4f volume %.1f smax %.1f (presents %ld) [+60 %x +f8 %x +6c %x]", (void *)S, b->steps, dt, hw_volume(b->hw), hw_smax(b->hw), g_presents, S[0x18], S[0x3e], S[0x1b]);
         if (b->snap) {
             Log("sheet %p: foam max %.2f, %.1f cells above 0.1 per step", (void *)S, b->snap->fmax, b->snap->fcells / (float)cfg.log_every);
             b->snap->fmax = 0.0f; b->snap->fcells = 0;
         }
+        Log("mesh hook: %ld rebuilds, %ld no bridge, %ld size mismatch, %ld sheets coloured; shaders %ld compiled, %ld patched, %ld water-like without anchor",
+            g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheets, g_shader_calls, g_foam_patched, g_shader_water_noanchor);
     }
     return dt;
 }
@@ -371,10 +379,22 @@ __attribute__((used, noinline)) void hw_mesh_foam(BYTE *job)
     S = *(uint32_t **)(job + 0xc);
     vb = *(BYTE **)(job + 0x10);
     if (!S || !vb) return;
+    InterlockedIncrement(&g_mesh_calls);
     b = Lookup(S);
-    if (!b || !(sn = b->snap)) return;
     w = (int)S[1]; h = (int)S[3];
-    if (w != sn->w || h != sn->h) return;
+    if (!b || !(sn = b->snap)) {
+        if (InterlockedIncrement(&g_mesh_nobridge) <= 3) Log("foam: mesh for sheet %p (%d x %d) has no bridge", (void *)S, w, h);
+        return;
+    }
+    if (w != sn->w || h != sn->h) {
+        if (InterlockedIncrement(&g_mesh_badsize) <= 3) Log("foam: mesh for sheet %p is %d x %d, snap %d x %d", (void *)S, w, h, sn->w, sn->h);
+        return;
+    }
+    for (i = 0; i < 256 && g_mesh_seen[i] && g_mesh_seen[i] != S; i++) ;
+    if (i < 256 && !g_mesh_seen[i]) {
+        g_mesh_seen[i] = S;   /* render jobs may race; a duplicate entry only inflates the count */
+        if (InterlockedIncrement(&g_mesh_sheets) <= 8) Log("foam: colouring sheet %p (%d x %d)", (void *)S, w, h);
+    }
     for (j = 0; j <= h; j++) {
         cj = j < h ? j : h - 1;
         row = vb + (size_t)j * (w + 1) * 36;
@@ -459,7 +479,8 @@ static int Install(void)
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH2.bin";   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH2.bin";
+static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT2.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -489,7 +510,6 @@ static const char FOAM_HLSL[] =
 
 typedef HRESULT (WINAPI *Compile_t)(const char *, UINT, const void *, void *, const char *, const char *, DWORD, void **, void **, void **);
 static Compile_t g_orig_compile;
-static volatile LONG g_foam_patched, g_foam_failed, g_foam_dumps;
 
 static const char *FindN(const char *s, size_t n, const char *pat, size_t m)
 {
@@ -501,11 +521,27 @@ static const char *FindN(const char *s, size_t n, const char *pat, size_t m)
 
 /* src (len bytes, not necessarily terminated) with the foam inserted after every anchor, NULL
    when there is no anchor. The caller frees the result. */
+/* foam_test 2: the shader draws world-space bands itself, ignoring the vertex colour, to tell a
+   mesh that never gets our colours from a surface that doesn't use the patched shader */
+static const char FOAM_F_LINE[] = "  float hwF = saturate(1.0f - vertexColour.r);\n";
+static const char FOAM_F_TEST[] = "  float hwF = pow(0.5f + 0.5f * sin((vertexPosition.x + vertexPosition.y) * 0.02f), 2.0f);\n";
+static char g_hlsl_t2[sizeof FOAM_HLSL + sizeof FOAM_F_TEST];
+
 __attribute__((used)) char *hw_foam_inject(const char *src, size_t len, size_t *outlen)
 {
     size_t na = sizeof FOAM_ANCHOR - 1, nd = sizeof FOAM_DEFS - 1, nh = sizeof FOAM_HLSL - 1, k = 0, o = 0;
-    const char *p = src, *q;
+    const char *p = src, *q, *hl = FOAM_HLSL;
     char *out;
+    if (cfg.foam_test == 2) {
+        const char *f = strstr(FOAM_HLSL, FOAM_F_LINE);
+        if (f && !g_hlsl_t2[0]) {
+            size_t a = (size_t)(f - FOAM_HLSL);
+            memcpy(g_hlsl_t2, FOAM_HLSL, a);
+            strcpy(g_hlsl_t2 + a, FOAM_F_TEST);
+            strcat(g_hlsl_t2, f + sizeof FOAM_F_LINE - 1);
+        }
+        if (g_hlsl_t2[0]) { hl = g_hlsl_t2; nh = strlen(g_hlsl_t2); }
+    }
     while ((q = FindN(p, len - (size_t)(p - src), FOAM_ANCHOR, na)) != NULL) { k++; p = q + na; }
     if (!k) return NULL;
     out = (char *)malloc(len + k * (nd + nh) + 1);
@@ -514,7 +550,7 @@ __attribute__((used)) char *hw_foam_inject(const char *src, size_t len, size_t *
     while ((q = FindN(p, len - (size_t)(p - src), FOAM_ANCHOR, na)) != NULL) {
         memcpy(out + o, p, (size_t)(q - p) + na); o += (size_t)(q - p) + na;
         memcpy(out + o, FOAM_DEFS, nd); o += nd;
-        memcpy(out + o, FOAM_HLSL, nh); o += nh;
+        memcpy(out + o, hl, nh); o += nh;
         p = q + na;
     }
     memcpy(out + o, p, len - (size_t)(p - src)); o += len - (size_t)(p - src);
@@ -536,6 +572,17 @@ static HRESULT WINAPI CompileHook(const char *src, UINT len, const void *defs, v
     size_t n = 0, srclen = len ? len : (src ? strlen(src) : 0);
     char *mod = (cfg.opts.foam && src) ? hw_foam_inject(src, srclen, &n) : NULL;
     HRESULT hr;
+    InterlockedIncrement(&g_shader_calls);
+    if (!mod && src && FindN(src, srclen, "vReflectionSample", 17)) {
+        LONG d = InterlockedIncrement(&g_shader_water_noanchor);
+        if (d <= 4) Log("water-like shader without the foam anchor (%s %s)", fn ? fn : "?", prof ? prof : "?");
+        if (cfg.foam_dump && d <= 4) {
+            wchar_t path[MAX_PATH];
+            FILE *f;
+            _snwprintf(path, MAX_PATH, L"%ls\\HydroWater_noanchor%ld.hlsl", g_dir, d);
+            if ((f = _wfopen(path, L"wb")) != NULL) { fwrite(src, 1, srclen, f); fclose(f); }
+        }
+    }
     if (mod) {
         void *e = NULL;
         LONG d;
@@ -599,9 +646,10 @@ static void PatchCacheName(void)
     static int done;
     char *s = (char *)Exe(VA_SHADER_CACHE_NAME);
     if (done || !cfg.opts.foam || !Readable(s, sizeof CACHE_NAME_GAME)) return;
-    if (!memcmp(s, CACHE_NAME_HW, sizeof CACHE_NAME_HW)) { done = 1; return; }
+    const char *name = cfg.foam_test == 2 ? CACHE_NAME_T2 : CACHE_NAME_HW;
+    if (!memcmp(s, name, sizeof CACHE_NAME_HW)) { done = 1; return; }
     if (memcmp(s, CACHE_NAME_GAME, sizeof CACHE_NAME_GAME)) return;    /* not unpacked yet */
-    if (PatchBytes(s, CACHE_NAME_HW, sizeof CACHE_NAME_HW)) { done = 1; Log("foam: shader cache is %s (the game's %s is left alone)", CACHE_NAME_HW, CACHE_NAME_GAME); }
+    if (PatchBytes(s, name, sizeof CACHE_NAME_HW)) { done = 1; Log("foam: shader cache is %s (the game's %s is left alone)", name, CACHE_NAME_GAME); }
 }
 
 /* every 4-byte slot in the exe image holding fn (import table entries) is pointed at hook */
