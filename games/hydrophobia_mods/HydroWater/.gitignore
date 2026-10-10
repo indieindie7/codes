@@ -1,2 +1,6 @@
 tests/out/
 bin/
+mod/bin/
+mod/tests/*.exe
+mod/tests/HydroWater.log
+mod/dist/
