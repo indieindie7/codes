@@ -7,7 +7,9 @@
 #   .\wincap.ps1 -Title 'Hydrophobia' -Fps 0.5   # one frame every 2 seconds
 #   .\wincap.ps1 -Exe advent.exe -Timelapse      # same frames, played back at 30 fps (sped up)
 #   .\wincap.ps1 -Exe advent.exe -Seconds 600    # stop after 10 minutes
+#   .\wincap.ps1 -Exe advent.exe -Background     # no console; stops cleanly when advent.exe exits
 # Stops when the window closes, after -Seconds, or on 'q' / Ctrl+C in the console.
+# wincap-watch.ps1 runs it with -Background for every Advent launch.
 param(
 	[string]$Exe,                 # process exe name, e.g. advent.exe
 	[string]$Title,               # regex on the window title
@@ -15,7 +17,8 @@ param(
 	[switch]$Timelapse,           # play the spaced frames back at 30 fps instead of real time
 	[int]$Seconds = 0,            # 0 = until the window closes
 	[int]$Crf = 23,
-	[string]$OutDir = "$env:USERPROFILE\Videos"
+	[string]$OutDir = "$env:USERPROFILE\Videos",
+	[switch]$Background           # hidden ffmpeg, sent 'q' when the -Exe process exits (mp4 stays valid)
 )
 if (-not $Exe -and -not $Title) { throw 'give -Exe or -Title' }
 
@@ -43,5 +46,17 @@ $a += if ($Timelapse) { @('-r', '30') } else { @('-fps_mode', 'vfr') }
 $a += @('-movflags', '+faststart', $out)
 
 Write-Host "recording -> $out"
-& $ff @a
+if (-not $Background) { & $ff @a }
+else {
+	$psi = New-Object Diagnostics.ProcessStartInfo $ff
+	$psi.Arguments = ($a | ForEach-Object { '"' + ([string]$_ -replace '"', '\"') + '"' }) -join ' '
+	$psi.UseShellExecute = $false; $psi.CreateNoWindow = $true; $psi.RedirectStandardInput = $true
+	$proc = [Diagnostics.Process]::Start($psi)
+	$name = if ($Exe) { [IO.Path]::GetFileNameWithoutExtension($Exe) } else { $null }
+	while (-not $proc.HasExited) {
+		Start-Sleep -Milliseconds 500
+		if ($name -and -not (Get-Process $name -EA 0)) { $proc.StandardInput.Write('q'); $proc.StandardInput.Flush(); break }
+	}
+	if (-not $proc.WaitForExit(15000)) { $proc.Kill() }
+}
 if (Test-Path $out) { Write-Host "saved $out ($([math]::Round((Get-Item $out).Length/1MB,1)) MB)" }
