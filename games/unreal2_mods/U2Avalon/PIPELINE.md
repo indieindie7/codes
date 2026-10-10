@@ -62,6 +62,13 @@ map; (2) neighbour rules in `build_parts.py` (door toward the arriving road is f
 and the erosion masks into the terrain layer alphas; (4) a 2D WFC over footprints for panel variation
 (Townscaper); (5) retaining-wall parts on terrace risers.
 
+Floor plans (2026-10-10): `tools/floorplan.py` plans the houses, offices and small buildings (rooms.py routes
+kind house/office and those ids to it). Room sizes come from 8,061 real plans (the building-interiors skill)
+scaled x1.25 to the measured player, connections from the same plans (entrance into the common room, en-suites
+behind their bedroom, 3 in 4 kitchens open), and the kit's limits (doors on walls >= 3.2 m, rooms >= 1.6 m).
+It writes rooms.py's schema plus `walls` (exact partitions with doors), `window_sides`, `graph`, `notes`;
+shells.py builds `walls` when present. Pictures: `data/floorplans/*.png`.
+
 ## Where things are
 
 Run folders: `Documents\U2_research\towns\<name><seed>\` (sketch, layout map, systems report, terrain
