@@ -47,7 +47,10 @@ static struct {
     int borderless;     /* force the D3D9 device into a borderless window instead of exclusive fullscreen */
     int background;     /* keep the game running when its window is not in the foreground */
     int control;        /* poll HydroWater.cmd for test-pilot commands (shot ...) */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f }, 600, 4096, 1, 0, 0 };
+    int foam_dump;      /* write the first few foam-patched water shaders next to the DLL (debugging) */
+    float foam_p[8];    /* foam_gain air_gain foam_life lace bubble_rise air_to_foam spread spray_rate; < 0 = library default */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0 } };
+static const char *const FOAM_KEYS[8] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
 static volatile LONG g_presents;    /* IDirect3DDevice9::Present calls (control = 1) */
@@ -109,11 +112,17 @@ static void ReadIni(void)
         else if (!_stricmp(k, "borderless")) cfg.borderless = atoi(v);
         else if (!_stricmp(k, "background")) cfg.background = atoi(v);
         else if (!_stricmp(k, "control")) cfg.control = atoi(v);
+        else if (!_stricmp(k, "foam")) cfg.opts.foam = atoi(v);
+        else if (!_stricmp(k, "foam_dump")) cfg.foam_dump = atoi(v);
+        else {
+            int n;
+            for (n = 0; n < 8; n++) if (!_stricmp(k, FOAM_KEYS[n])) cfg.foam_p[n] = (float)atof(v);
+        }
     }
     fclose(f);
-    Log("config: mode=%d displacement=%d capped_stamp=%d face_walls=%d clamps=%d recon=%d alpha=%.2f c_adapt=%.2f edge_damp=%.2f log_every=%d max_cells=%d borderless=%d background=%d control=%d",
+    Log("config: mode=%d displacement=%d capped_stamp=%d face_walls=%d clamps=%d recon=%d alpha=%.2f c_adapt=%.2f edge_damp=%.2f log_every=%d max_cells=%d borderless=%d background=%d control=%d foam=%d",
         cfg.mode, cfg.opts.displacement, cfg.opts.capped_stamp, cfg.opts.face_walls, cfg.opts.clamps, cfg.opts.recon,
-        cfg.opts.alpha, cfg.opts.c_adapt, cfg.opts.edge_damp, cfg.log_every, cfg.max_cells, cfg.borderless, cfg.background, cfg.control);
+        cfg.opts.alpha, cfg.opts.c_adapt, cfg.opts.edge_damp, cfg.log_every, cfg.max_cells, cfg.borderless, cfg.background, cfg.control, cfg.opts.foam);
 }
 
 /* ---------------------------------------------------------------- the original, via trampoline */
@@ -138,11 +147,20 @@ __attribute__((naked)) static float CallOrig(uint32_t *sheet, float dt)
 }
 
 /* ---------------------------------------------------------------- sheet bridge */
+/* stage 7: foam and air of the last step as bytes (0..255), read by the mesh builder on a
+   render worker thread. A new snapshot replaces the pointer in one store; old ones are never
+   freed (sheets change size about never) so a reader can't be left holding freed memory. */
+typedef struct foam_snap {
+    int w, h;
+    BYTE *foam, *air;   /* w*h each, cell (i,j) at j*w+i */
+} foam_snap;
+
 typedef struct bridge {
     uint32_t *S;        /* the game's sheet */
     int w, h;
     hw_sheet *hw;
     unsigned steps;
+    foam_snap *volatile snap;
     struct bridge *next;
 } bridge;
 
@@ -168,6 +186,18 @@ static bridge *Find(uint32_t *S, int w, int h)
         b->w = w; b->h = h; b->steps = 0;
         b->hw = hw_create(w, h, *(float *)&S[4], *(float *)&S[9], *(float *)&S[8]);
         hw_set_opts(b->hw, &cfg.opts);
+        if (cfg.opts.foam) {
+            hw_foam_params fp;
+            float *f = &fp.foam_gain;   /* the first seven floats, in FOAM_KEYS order */
+            int n;
+            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * 2);
+            hw_get_foam_params(b->hw, &fp);
+            for (n = 0; n < 7; n++) if (cfg.foam_p[n] >= 0.0f) f[n] = cfg.foam_p[n];
+            if (cfg.foam_p[7] >= 0.0f) fp.spray_rate = cfg.foam_p[7];   /* drops aren't drawn in the game yet: 0 by default */
+            hw_set_foam_params(b->hw, &fp);
+            if (sn) { sn->w = w; sn->h = h; sn->foam = (BYTE *)(sn + 1); sn->air = sn->foam + (size_t)w * h; }
+            b->snap = sn;
+        }
         Log("sheet %p: %d x %d cells (stride %u), dx %.1f g %.1f cfl %.2f, now on HydroWater (%d sheets)",
             (void *)S, w, h, S[2] + 4, *(float *)&S[4], *(float *)&S[9], *(float *)&S[8], g_nbridges);
     }
@@ -222,6 +252,17 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
 
     if (cfg.opts.displacement) hw_bodies_begin(b->hw);   /* no bodies registered yet (stage 1 hook pending) */
     hw_step(b->hw, dt);
+    if (cfg.opts.foam && b->snap) {
+        foam_snap *sn = b->snap;
+        const float *pf = hw_foam(b->hw), *pa = hw_air(b->hw);
+        int j;
+        for (j = 0; j < h; j++)
+            for (i = 0; i < w; i++) {
+                float f = pf[(j + 2) * hs + i + 2], a = pa[(j + 2) * hs + i + 2];
+                sn->foam[j * w + i] = (BYTE)(f <= 0.0f ? 0 : f >= 1.0f ? 255 : (int)(f * 255.0f + 0.5f));
+                sn->air[j * w + i] = (BYTE)(a <= 0.0f ? 0 : a >= 1.0f ? 255 : (int)(a * 255.0f + 0.5f));
+            }
+    }
 
     hh = hw_depth(b->hw); hhu = hw_hu(b->hw); hhv = hw_hv(b->hw);
     hu = hw_u(b->hw); hv = hw_v(b->hw);
@@ -267,6 +308,71 @@ __attribute__((naked)) static void HookEntry(void)
         "movss (%%esp), %%xmm0\n\t"
         "addl $4, %%esp\n\t"
         "ret\n\t"
+        ::: "memory");
+}
+
+/* ---------------------------------------------------------------- stage 7: foam into the water mesh
+ * The sheet mesh is rebuilt by a render job, FUN_00bf0e20(job): job[0] the vertex buffer object,
+ * job+0xc the sheet, job+0x10 the locked vertex pointer. It writes (w+1) x (h+1) vertices of 36
+ * bytes, vertex j*(w+1)+i, colour dword at +32 = alpha << 24 | 0xffffff; the water shader reads
+ * only the alpha (shallow fade). After a rebuild it unlocks through FUN_009b7f00 at 0xbf1448 with
+ * the job in ESI; that call is pointed at MeshStub, which writes foam into red and air into green
+ * (as 255 - value, so an untouched white vertex means none) and then jumps on to the unlock. The
+ * shader patch below turns those channels into foam. Bytes are only written, never read: the
+ * locked buffer can be write-combined memory. */
+#define VA_MESH_UNLOCK_CALL 0xbf1448u          /* call FUN_009b7f00 after the vertices were written */
+#define VA_UNLOCK           0x9b7f00u
+void *g_unlock;                                /* asm name _g_unlock */
+static int Readable(const void *p, size_t n);
+static volatile LONG g_mesh_writes;
+
+static bridge *Lookup(const uint32_t *S)
+{
+    bridge *b;
+    AcquireSRWLockShared(&g_lock);
+    for (b = g_bridges; b; b = b->next) if (b->S == S) break;
+    ReleaseSRWLockShared(&g_lock);
+    return b;
+}
+
+__attribute__((used, noinline)) void hw_mesh_foam(BYTE *job)
+{
+    uint32_t *S;
+    BYTE *vb, *row;
+    bridge *b;
+    foam_snap *sn;
+    int w, h, i, j, ci, cj;
+    if (!job || !Readable(job, 0x14)) return;
+    S = *(uint32_t **)(job + 0xc);
+    vb = *(BYTE **)(job + 0x10);
+    if (!S || !vb) return;
+    b = Lookup(S);
+    if (!b || !(sn = b->snap)) return;
+    w = (int)S[1]; h = (int)S[3];
+    if (w != sn->w || h != sn->h) return;
+    for (j = 0; j <= h; j++) {
+        cj = j < h ? j : h - 1;
+        row = vb + (size_t)j * (w + 1) * 36;
+        for (i = 0; i <= w; i++) {
+            ci = i < w ? i : w - 1;
+            row[i * 36 + 34] = (BYTE)(255 - sn->foam[cj * w + ci]);   /* R */
+            row[i * 36 + 33] = (BYTE)(255 - sn->air[cj * w + ci]);    /* G */
+        }
+    }
+    if (InterlockedIncrement(&g_mesh_writes) == 1) Log("foam: first water mesh coloured (sheet %p, %d x %d)", (void *)S, w, h);
+}
+
+__attribute__((naked, used)) static void MeshStub(void)
+{
+    __asm__ volatile(
+        "pushal\n\t"
+        "pushfl\n\t"
+        "pushl %%esi\n\t"
+        "call _hw_mesh_foam\n\t"
+        "addl $4, %%esp\n\t"
+        "popfl\n\t"
+        "popal\n\t"
+        "jmp *_g_unlock\n\t"
         ::: "memory");
 }
 
@@ -316,6 +422,217 @@ static int Install(void)
     return 1;
 }
 
+/* ---------------------------------------------------------------- stage 7: the foam shader
+ * The game composes its shaders as HLSL text at run time and compiles them through its
+ * D3DXCompileShader import. That import slot is pointed at CompileHook, which looks for the end
+ * of the water's reflect/refract pixel code (FOAM_ANCHOR) and adds the foam after it: lace from
+ * two octaves of value noise on the world position, coverage growing with the foam the mesh
+ * carries in red, the foam lit from the scene behind it, and milky water where green says there
+ * is air. If the patched text fails to compile, the original is compiled instead.
+ * Compiled shaders are cached in shaderCacheDX.bin, which would keep the unpatched water; with
+ * foam on, the exe's file name string is changed to shaderCacheHW.bin (same length) before the
+ * cache is opened, so the game's own cache stays untouched and a second one is built. */
+#define VA_SHADER_CACHE_NAME 0xeaf830u
+static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHW.bin";   /* rename (same length) when FOAM_HLSL changes */
+static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
+static const char FOAM_DEFS[] =
+    "\n#ifndef HW_VN\n"
+    "#define HW_H(q) frac(sin(dot((q), float2(127.1f, 311.7f))) * 43758.5453f)\n"
+    "#define HW_VN(p) lerp(lerp(HW_H(floor(p)), HW_H(floor(p) + float2(1.0f, 0.0f)), smoothstep(0.0f, 1.0f, frac(p).x)), "
+    "lerp(HW_H(floor(p) + float2(0.0f, 1.0f)), HW_H(floor(p) + float2(1.0f, 1.0f)), smoothstep(0.0f, 1.0f, frac(p).x)), smoothstep(0.0f, 1.0f, frac(p).y))\n"
+    "#endif\n";
+static const char FOAM_HLSL[] =
+    "{ /* HydroWater foam */\n"
+    "  float hwF = saturate(1.0f - vertexColour.r);\n"
+    "  float hwA = saturate(1.0f - vertexColour.g);\n"
+    "  float2 hwP = vertexPosition.xy * (1.0f / 12.0f);\n"
+    "  float hwN = 0.6f * HW_VN(hwP) + 0.4f * HW_VN(hwP * 0.45f + float2(17.0f, 5.0f));\n"
+    "  float hwLace = lerp(1.0f - abs(hwN - 0.5f) * 2.0f, diffuseMapSample.x, 0.25f);\n"
+    "  float hwCov = saturate((hwF * 1.25f - (1.0f - hwLace)) * (1.0f / 0.18f)) * saturate(hwF * 4.0f);\n"
+    "  hwCov = max(hwCov, saturate((hwF - 0.8f) * 5.0f));\n"
+    "  float hwLum = dot(vRefractionSample.rgb + vReflectionSample.rgb, float3(0.299f, 0.587f, 0.114f));\n"
+    "  float3 hwFoam = lerp(float3(0.93f, 0.95f, 0.97f), vFogColour.rgb, 0.12f) * saturate(0.3f + 0.8f * hwLum);\n"
+    "  float hwGrey = dot(refractionColour.rgb, float3(0.333f, 0.333f, 0.334f));\n"
+    "  refractionColour.rgb = lerp(refractionColour.rgb, hwGrey * float3(0.8f, 1.0f, 1.0f) + 0.06f, hwA * 0.5f);\n"
+    "  refractionColour.rgb = lerp(refractionColour.rgb, hwFoam, hwCov);\n"
+    "  reflectionColour *= 1.0f - hwCov;\n"
+    "  specularStrength *= 1.0f - hwCov;\n"
+    "  diffuseMapSample.a = max(diffuseMapSample.a, hwCov);\n"
+    "}\n";
+
+typedef HRESULT (WINAPI *Compile_t)(const char *, UINT, const void *, void *, const char *, const char *, DWORD, void **, void **, void **);
+static Compile_t g_orig_compile;
+static volatile LONG g_foam_patched, g_foam_failed, g_foam_dumps;
+
+static const char *FindN(const char *s, size_t n, const char *pat, size_t m)
+{
+    size_t i;
+    if (m > n) return NULL;
+    for (i = 0; i + m <= n; i++) if (s[i] == pat[0] && !memcmp(s + i, pat, m)) return s + i;
+    return NULL;
+}
+
+/* src (len bytes, not necessarily terminated) with the foam inserted after every anchor, NULL
+   when there is no anchor. The caller frees the result. */
+__attribute__((used)) char *hw_foam_inject(const char *src, size_t len, size_t *outlen)
+{
+    size_t na = sizeof FOAM_ANCHOR - 1, nd = sizeof FOAM_DEFS - 1, nh = sizeof FOAM_HLSL - 1, k = 0, o = 0;
+    const char *p = src, *q;
+    char *out;
+    while ((q = FindN(p, len - (size_t)(p - src), FOAM_ANCHOR, na)) != NULL) { k++; p = q + na; }
+    if (!k) return NULL;
+    out = (char *)malloc(len + k * (nd + nh) + 1);
+    if (!out) return NULL;
+    p = src;
+    while ((q = FindN(p, len - (size_t)(p - src), FOAM_ANCHOR, na)) != NULL) {
+        memcpy(out + o, p, (size_t)(q - p) + na); o += (size_t)(q - p) + na;
+        memcpy(out + o, FOAM_DEFS, nd); o += nd;
+        memcpy(out + o, FOAM_HLSL, nh); o += nh;
+        p = q + na;
+    }
+    memcpy(out + o, p, len - (size_t)(p - src)); o += len - (size_t)(p - src);
+    out[o] = 0;
+    *outlen = o;
+    return out;
+}
+
+static void ReleaseCom(void **pp)
+{
+    typedef ULONG (WINAPI *Rel_t)(void *);
+    if (pp && *pp) { ((Rel_t)(*(void ***)*pp)[2])(*pp); *pp = NULL; }
+}
+
+static HRESULT WINAPI CompileHook(const char *src, UINT len, const void *defs, void *inc, const char *fn, const char *prof,
+                                  DWORD flags, void **shader, void **errs, void **ctab)
+{
+    typedef void *(WINAPI *Ptr_t)(void *);
+    size_t n = 0, srclen = len ? len : (src ? strlen(src) : 0);
+    char *mod = (cfg.opts.foam && src) ? hw_foam_inject(src, srclen, &n) : NULL;
+    HRESULT hr;
+    if (mod) {
+        void *e = NULL;
+        LONG d;
+        if (cfg.foam_dump && (d = InterlockedIncrement(&g_foam_dumps)) <= 4) {
+            wchar_t path[MAX_PATH];
+            FILE *f;
+            _snwprintf(path, MAX_PATH, L"%ls\\HydroWater_shader%ld.hlsl", g_dir, d);
+            if ((f = _wfopen(path, L"wb")) != NULL) { fwrite(mod, 1, n, f); fclose(f); }
+        }
+        hr = g_orig_compile(mod, (UINT)n, defs, inc, fn, prof, flags, shader, &e, ctab);
+        if (hr >= 0) {
+            free(mod);
+            if (errs) *errs = e; else ReleaseCom(&e);
+            if (InterlockedIncrement(&g_foam_patched) <= 3) Log("foam shader patched (%s %s)", fn ? fn : "?", prof ? prof : "?");
+            return hr;
+        }
+        if (InterlockedIncrement(&g_foam_failed) <= 3) {
+            const char *msg = e ? (const char *)((Ptr_t)(*(void ***)e)[3])(e) : NULL;   /* ID3DXBuffer::GetBufferPointer */
+            Log("foam shader did not compile (%08lx, %s %s), the game's water is kept: %.600s", (unsigned long)hr,
+                fn ? fn : "?", prof ? prof : "?", msg ? msg : "(no message)");
+        }
+        ReleaseCom(&e);
+        if (shader) *shader = NULL;
+        if (ctab) *ctab = NULL;
+        free(mod);
+    }
+    return g_orig_compile(src, len, defs, inc, fn, prof, flags, shader, errs, ctab);
+}
+
+#ifdef HW_TEST
+void hw_test_set_compile(void *fn) { g_orig_compile = (Compile_t)fn; }
+void *hw_test_compile_hook(void) { return (void *)CompileHook; }
+void hw_test_mesh_foam(BYTE *job) { hw_mesh_foam(job); }
+int hw_test_foam_fill(const uint32_t *S, int foam, int air)
+{
+    bridge *b = Lookup(S);
+    foam_snap *sn = b ? b->snap : NULL;
+    if (!sn) return 0;
+    memset(sn->foam, foam, (size_t)sn->w * sn->h);
+    memset(sn->air, air, (size_t)sn->w * sn->h);
+    sn->foam[0] = 255;                     /* cell (0,0) fully white */
+    return 1;
+}
+#else
+static BYTE *Exe(DWORD va) { return (BYTE *)GetModuleHandleW(NULL) + (va - IMAGE_BASE); }
+
+static int PatchBytes(void *at, const void *bytes, size_t n)
+{
+    DWORD prot;
+    if (!VirtualProtect(at, n, PAGE_EXECUTE_READWRITE, &prot)) return 0;
+    memcpy(at, bytes, n);
+    VirtualProtect(at, n, prot, &prot);
+    FlushInstructionCache(GetCurrentProcess(), at, n);
+    return 1;
+}
+
+/* the cache name, before the renderer opens the file: tried from the installer loop and again
+   when the device is created */
+static void PatchCacheName(void)
+{
+    static int done;
+    char *s = (char *)Exe(VA_SHADER_CACHE_NAME);
+    if (done || !cfg.opts.foam || !Readable(s, sizeof CACHE_NAME_GAME)) return;
+    if (!memcmp(s, CACHE_NAME_HW, sizeof CACHE_NAME_HW)) { done = 1; return; }
+    if (memcmp(s, CACHE_NAME_GAME, sizeof CACHE_NAME_GAME)) return;    /* not unpacked yet */
+    if (PatchBytes(s, CACHE_NAME_HW, sizeof CACHE_NAME_HW)) { done = 1; Log("foam: shader cache is %s (the game's %s is left alone)", CACHE_NAME_HW, CACHE_NAME_GAME); }
+}
+
+/* the compile import: every slot in the exe image holding d3dx9_43!D3DXCompileShader */
+static void HookCompile(void)
+{
+    static int done;
+    HMODULE d3dx, exe = GetModuleHandleW(NULL);
+    BYTE *fn, *base = (BYTE *)exe, *p, *end;
+    IMAGE_NT_HEADERS *nt;
+    MEMORY_BASIC_INFORMATION mbi;
+    int hits = 0;
+    if (done || !cfg.opts.foam) return;
+    d3dx = GetModuleHandleW(L"d3dx9_43.dll");
+    if (!d3dx || !(fn = (BYTE *)GetProcAddress(d3dx, "D3DXCompileShader"))) return;
+    nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
+    end = base + nt->OptionalHeader.SizeOfImage;
+    g_orig_compile = (Compile_t)fn;
+    for (p = base; p < end && VirtualQuery(p, &mbi, sizeof mbi); p = (BYTE *)mbi.BaseAddress + mbi.RegionSize) {
+        BYTE *q, *re = (BYTE *)mbi.BaseAddress + mbi.RegionSize;
+        if (mbi.State != MEM_COMMIT || (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) continue;
+        if (re > end) re = end;
+        for (q = (BYTE *)mbi.BaseAddress; q + 4 <= re; q += 4)
+            if (*(BYTE **)q == fn) {
+                void *hook = (void *)CompileHook;
+                if (PatchBytes(q, &hook, 4)) hits++;
+            }
+    }
+    done = 1;
+    if (hits) Log("foam: D3DXCompileShader import hooked (%d slot%s)", hits, hits == 1 ? "" : "s");
+    else Log("foam: no D3DXCompileShader import slot found, the water shader is unchanged");
+}
+
+/* the mesh: call FUN_009b7f00 at 0xbf1448 retargeted to MeshStub */
+static void HookMesh(void)
+{
+    static int done;
+    BYTE *c = Exe(VA_MESH_UNLOCK_CALL);
+    int32_t rel;
+    if (done || !cfg.opts.foam || cfg.mode != MODE_HW || !Readable(c, 5) || c[0] != 0xE8) return;
+    memcpy(&rel, c + 1, 4);
+    done = 1;
+    if (c + 5 + rel != Exe(VA_UNLOCK)) { Log("foam: unexpected code at the mesh unlock call, the mesh is not coloured"); return; }
+    g_unlock = Exe(VA_UNLOCK);
+    rel = (int32_t)((BYTE *)MeshStub - (c + 5));
+    if (PatchBytes(c + 1, &rel, 4)) Log("foam: water mesh builder hooked at %p", (void *)c);
+}
+#endif
+
+static void InstallFoam(void)
+{
+#ifndef HW_TEST
+    PatchCacheName();
+    HookCompile();
+    HookMesh();
+#endif
+}
+
 static void InstallWindowHooks(void);
 
 static DWORD WINAPI Installer(LPVOID arg)
@@ -324,8 +641,12 @@ static DWORD WINAPI Installer(LPVOID arg)
     (void)arg;
     InstallWindowHooks();
     for (i = 0; i < 6000; i++) {           /* up to two minutes for the Steam stub to unpack */
+#ifndef HW_TEST
+        PatchCacheName();
+#endif
         r = Install();
         if (r != 0) {
+            InstallFoam();
             if (r > 0 && cfg.mode == MODE_OFF) Log("mode=off: the hook forwards every call to the game's solver");
             return 0;
         }
@@ -686,6 +1007,7 @@ static HRESULT WINAPI CreateDeviceHook(void *self, UINT adapter, UINT type, HWND
                 (int)pp->Windowed, (unsigned long)pp->PresentationInterval, pp->SwapEffect);
     AdoptWindow(h);
     ForceWindowed(pp, h);
+    InstallFoam();
     hr = g_orig_create_device(self, adapter, type, focus, flags, pp, dev);
     if (hr == 0 && dev && *dev) {
         if (!g_orig_reset) PatchVtable(*dev, 16, (void *)ResetHook, (void **)&g_orig_reset);
@@ -712,7 +1034,7 @@ static void InstallWindowHooks(void)
     Direct3DCreate9_t create = NULL;
     Release_t release;
     void *d3d9 = NULL;
-    if (!cfg.borderless && !cfg.background && !cfg.control) return;
+    if (!cfg.borderless && !cfg.background && !cfg.control && !cfg.opts.foam) return;
     d3d = LoadLibraryW(L"d3d9.dll");
     if (d3d) create = (Direct3DCreate9_t)GetProcAddress(d3d, "Direct3DCreate9");
     if (create) d3d9 = create(32);                   /* D3D_SDK_VERSION */

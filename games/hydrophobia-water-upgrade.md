@@ -282,3 +282,10 @@ Stages 1 to 3, 4a and 8 are implemented as our own library, `games/hydrophobia_m
 harness: crate ring at sqrt(g h), wading wake, box settling at Archimedes' depth. One change to
 stage 1 found in testing: the displaced column `b` must also count as bed for the pressure terms,
 or the hole under a body refills from its neighbours before the ring can leave.
+
+Stage 7 (2026-10-10): library side done (foam, entrained air and spray planes, commit 71cecd1).
+Game side implemented in `mod/src/hwmod.c` (`foam = 1`): the foam and air go into the water
+mesh's vertex colour, and the water shader is patched at compile time to draw lace foam and
+milky aerated water from it (shaders cached in `shaderCacheHW.bin`). Offline tests pass
+(mesh writer, a real `ps_3_0` compile of the patched shader). In-game check pending; spray
+drops are not drawn in the game yet.

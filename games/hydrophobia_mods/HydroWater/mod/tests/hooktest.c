@@ -13,6 +13,11 @@ extern BYTE *hw_test_target;
 void hw_test_setup(const wchar_t *dir, int mode);
 int hw_test_install(void);
 void hw_test_mode(int mode);
+void hw_test_set_compile(void *fn);
+void *hw_test_compile_hook(void);
+void hw_test_mesh_foam(BYTE *job);
+int hw_test_foam_fill(const uint32_t *S, int foam, int air);
+char *hw_foam_inject(const char *src, size_t len, size_t *outlen);
 
 /* the fake game solver: same prologue as FUN_00d5c9d0, counts calls in sheet[0x90],
    returns dt * 0.5 in xmm0 */
@@ -107,6 +112,75 @@ int main(void)
     /* a second step reads from the flipped buffer */
     ret = CallXmm(hw_test_target, S, 0.04f);
     CHECK(S[0] == 0 && S[0x43] == 2, "second step flipped back");
+
+    /* stage 7: the step left a foam snapshot; the mesh writer puts it into red/green only */
+    {
+        BYTE job[0x14], *vb;
+        size_t nv = (size_t)(w + 1) * (h + 1), k;
+        int others = 1;
+        CHECK(hw_test_foam_fill(S, 64, 128), "foam snapshot exists for the sheet");
+        vb = (BYTE *)malloc(nv * 36);
+        memset(vb, 0xEE, nv * 36);
+        memset(job, 0, sizeof job);
+        *(uint32_t **)(job + 0xc) = S;
+        *(BYTE **)(job + 0x10) = vb;
+        hw_test_mesh_foam(job);
+        CHECK(vb[34] == 0 && vb[33] == 127, "vertex (0,0): R = 255 - foam, G = 255 - air (%u %u)", vb[34], vb[33]);
+        k = nv - 1;   /* last vertex maps to the last cell */
+        CHECK(vb[k * 36 + 34] == 191 && vb[k * 36 + 33] == 127, "last vertex coloured (%u %u)", vb[k * 36 + 34], vb[k * 36 + 33]);
+        for (k = 0; k < nv * 36; k++) if (k % 36 != 33 && k % 36 != 34 && vb[k] != 0xEE) others = 0;
+        CHECK(others, "no other vertex bytes touched");
+        *(uint32_t **)(job + 0xc) = NULL;
+        hw_test_mesh_foam(job);   /* no sheet: nothing happens */
+        free(vb);
+    }
+
+    /* stage 7: the foam shader compiles with the real D3DX through the compile hook */
+    {
+        static const char src[] =
+            "sampler2D foamMap;\n"
+            "float4 vFogColour;\n"
+            "void Water(float4 vertexColour, float4 vertexPosition, inout float4 diffuseMapSample, float3 vRefractionSample,\n"
+            "           float4 vReflectionSample, float fFresRefr, float fFresRefl, out float4 refractionColour,\n"
+            "           out float4 reflectionColour, inout float specularStrength)\n"
+            "{\n"
+            "    refractionColour = float4(vRefractionSample, 1.0f) * fFresRefr.xxxx;\n"
+            "    reflectionColour = vReflectionSample * fFresRefl.xxxx;\n"
+            "}\n"
+            "float4 main(float4 c : COLOR0, float4 p : TEXCOORD0, float2 uv : TEXCOORD1) : COLOR0\n"
+            "{\n"
+            "    float4 d = tex2D(foamMap, uv), rr, rl;\n"
+            "    float sp = 1.0f;\n"
+            "    Water(c, p, d, float3(0.2f, 0.3f, 0.4f), float4(0.5f, 0.5f, 0.6f, 1.0f), 0.7f, 0.3f, rr, rl, sp);\n"
+            "    return rr + rl * sp + d.a * 0.01f;\n"
+            "}\n";
+        typedef HRESULT (WINAPI *Compile_t)(const char *, UINT, const void *, void *, const char *, const char *, DWORD, void **, void **, void **);
+        HMODULE d3dx = LoadLibraryW(L"d3dx9_43.dll");
+        void *real = d3dx ? (void *)GetProcAddress(d3dx, "D3DXCompileShader") : NULL;
+        void *shader = NULL, *errs = NULL, *ctab = NULL;
+        size_t n0 = 0;
+        char *inj = hw_foam_inject(src, sizeof src - 1, &n0);
+        CHECK(inj && strstr(inj, "HydroWater foam") && n0 > sizeof src, "foam block inserted after the anchor");
+        free(inj);
+        CHECK(hw_foam_inject("float4 x;", 9, &n0) == NULL, "shaders without the anchor are left alone");
+        if (!real) printf("skip: d3dx9_43.dll not installed\n");
+        else {
+            HRESULT hr;
+            hw_test_set_compile(real);
+            hr = ((Compile_t)hw_test_compile_hook())(src, sizeof src - 1, NULL, NULL, "main", "ps_3_0", 0, &shader, &errs, &ctab);
+            if (errs) printf("  d3dx: %s\n", (const char *)((void *(WINAPI *)(void *))(*(void ***)errs)[3])(errs));
+            CHECK(hr >= 0 && shader, "patched water shader compiles for ps_3_0 (%08lx)", (unsigned long)hr);
+            CHECK(GetFileAttributesW(L"HydroWater.log") != INVALID_FILE_ATTRIBUTES, "log written");
+            {
+                FILE *f = _wfopen(L"HydroWater.log", L"r");
+                char line[512];
+                int seen = 0;
+                while (f && fgets(line, sizeof line, f)) if (strstr(line, "foam shader patched")) seen = 1;
+                if (f) fclose(f);
+                CHECK(seen, "log says the foam shader was patched (not the fallback)");
+            }
+        }
+    }
 
     /* flat sheets go to the original */
     S[0x6b] = 1;

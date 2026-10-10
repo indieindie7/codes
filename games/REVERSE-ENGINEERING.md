@@ -316,6 +316,18 @@ drop from a throwaway D3D device.
     cell (i,j) at row j+2, column i+2; the mod keeps the two-cell ring as wall. `tests\hooktest.c`
     checks all of this against a fake solver with the game's prologue bytes (note: GAS encodes
     `mov ebp,esp` as `89 E5`, MSVC as `8B EC`, so the fake emits `.byte`s).
+  - **Foam in the game (stage 7, 2026-10-10):** three run-time patches, no exe change on disk.
+    (1) Mesh colour: `FUN_00bf0e20(job)` writes each sheet's (w+1) x (h+1) 36-byte vertices
+    (`job+0xc` sheet, `job+0x10` locked vertex pointer; colour bytes +33 G, +34 R) and then
+    calls `FUN_009b7f00` (unlock) at `0xbf1448` with ESI = job. The mod retargets that E8's
+    rel32 to a naked stub that writes R = 255 - foam, G = 255 - air from its own foam snapshot
+    and jumps on to `FUN_009b7f00`. (2) Shader: the game composes its shaders as HLSL text and
+    compiles them through its `d3dx9_43!D3DXCompileShader` import; every image dword holding
+    that address is pointed at a hook that inserts the foam code after the water fragment's
+    `reflectionColour = vReflectionSample * fFresRefl.xxxx;` line (falls back to the original
+    text if it doesn't compile). (3) Cache: compiled shaders go to `shaderCacheDX.bin`, name
+    string at `0xeaf830`; the mod changes it in memory to `shaderCacheHW.bin` (same length)
+    before the renderer opens it, so the user's cache stays as it was.
 
 ## 4. Rules we keep
 - Decompiled sources, extracted meshes/textures and other game assets stay out of git.
