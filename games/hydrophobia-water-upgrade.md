@@ -304,4 +304,4 @@ the lift-shaft ladder), and `look` is verified there. Chapter 1 starts dry, so a
 walk to water or a save near it.
 Spray drops are not drawn in the game yet.
 
-Foam on real water (2026-10-10): Challenge Room > Practice has a coloured water sheet (20 x 38); frames of the pool with foam on were taken off-screen and shown to the user (private, not committed). The foam is subtle: a lighter lace along the container waterlines.
+Foam on real water (2026-10-10), corrected: the Practice pool runs 80 sheets on HydroWater, but the simulated foam stays at 0 there (the water is calm and water powers do not touch the sheets). With `foam_test = 1` (moving bands at full foam) nothing shows on the pool either, and the mesh hook at 0xbf1448 colours only one 20 x 38 mesh. So the pool surface is drawn by another path, and the lace seen earlier was the game's own shading. Next: find how these sheets are drawn (other mesh builders than 0xbf1448), then give foam sources (stamp hook FUN_00c12880, bodies). Shader ideas to borrow (licence-safe for GPL): Crest (MIT) foam feather + foam-gradient normals, nvjob water shaders v2 (MIT).

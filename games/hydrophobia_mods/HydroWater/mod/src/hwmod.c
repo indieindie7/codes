@@ -49,7 +49,9 @@ static struct {
     int control;        /* poll HydroWater.cmd for test-pilot commands (shot ...) */
     int foam_dump;      /* write the first few foam-patched water shaders next to the DLL (debugging) */
     float foam_p[8];    /* foam_gain air_gain foam_life lace bubble_rise air_to_foam spread spray_rate; < 0 = library default */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0 } };
+    int foam_test;      /* 1 = paint moving foam bands instead of the simulated foam (to see the look) */
+    float foam_strength; /* how strongly thin foam and air show: 0 = linear (the field as is), 2 = default */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0 }, 2.0f };
 static const char *const FOAM_KEYS[8] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -114,6 +116,8 @@ static void ReadIni(void)
         else if (!_stricmp(k, "control")) cfg.control = atoi(v);
         else if (!_stricmp(k, "foam")) cfg.opts.foam = atoi(v);
         else if (!_stricmp(k, "foam_dump")) cfg.foam_dump = atoi(v);
+        else if (!_stricmp(k, "foam_test")) cfg.foam_test = atoi(v);
+        else if (!_stricmp(k, "foam_strength")) cfg.foam_strength = (float)atof(v);
         else {
             int n;
             for (n = 0; n < 8; n++) if (!_stricmp(k, FOAM_KEYS[n])) cfg.foam_p[n] = (float)atof(v);
@@ -153,6 +157,8 @@ __attribute__((naked)) static float CallOrig(uint32_t *sheet, float dt)
 typedef struct foam_snap {
     int w, h;
     BYTE *foam, *air;   /* w*h each, cell (i,j) at j*w+i */
+    float fmax;         /* largest shown foam since the last stats line (0..1, after foam_strength) */
+    unsigned fcells;    /* cell-steps with shown foam above 0.1 since the last stats line */
 } foam_snap;
 
 typedef struct bridge {
@@ -255,10 +261,23 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
     if (cfg.opts.foam && b->snap) {
         foam_snap *sn = b->snap;
         const float *pf = hw_foam(b->hw), *pa = hw_air(b->hw);
+        /* thin foam is most of the field; a soft curve lifts it so the lace shows: 1 - exp(-k f),
+           scaled to reach 1 at f = 1 */
+        float k = 3.0f * cfg.foam_strength, kn = k > 0.01f ? 1.0f / (1.0f - expf(-k)) : 0.0f;
         int j;
         for (j = 0; j < h; j++)
             for (i = 0; i < w; i++) {
                 float f = pf[(j + 2) * hs + i + 2], a = pa[(j + 2) * hs + i + 2];
+                if (cfg.foam_test) {   /* diagonal bands drifting across the sheet, thin to thick */
+                    f = 0.5f + 0.5f * sinf((float)(i + j) * 0.5f - (float)b->steps * 0.05f);
+                    f = f * f; a = f * 0.6f;
+                }
+                if (kn > 0.0f) {
+                    f = f > 0.0f ? (1.0f - expf(-k * f)) * kn : 0.0f;
+                    a = a > 0.0f ? (1.0f - expf(-k * a)) * kn : 0.0f;
+                }
+                if (f > sn->fmax) sn->fmax = f;
+                if (f > 0.1f) sn->fcells++;
                 sn->foam[j * w + i] = (BYTE)(f <= 0.0f ? 0 : f >= 1.0f ? 255 : (int)(f * 255.0f + 0.5f));
                 sn->air[j * w + i] = (BYTE)(a <= 0.0f ? 0 : a >= 1.0f ? 255 : (int)(a * 255.0f + 0.5f));
             }
@@ -291,7 +310,13 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
     InterlockedIncrement(&g_hw_calls);
     b->steps++;
     if (cfg.log_every > 0 && b->steps % (unsigned)cfg.log_every == 0)
+    {
         Log("sheet %p: step %u dt %.4f volume %.1f smax %.1f (presents %ld)", (void *)S, b->steps, dt, hw_volume(b->hw), hw_smax(b->hw), g_presents);
+        if (b->snap) {
+            Log("sheet %p: foam max %.2f, %.1f cells above 0.1 per step", (void *)S, b->snap->fmax, b->snap->fcells / (float)cfg.log_every);
+            b->snap->fmax = 0.0f; b->snap->fcells = 0;
+        }
+    }
     return dt;
 }
 
@@ -434,7 +459,7 @@ static int Install(void)
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHW.bin";   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH2.bin";   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -446,15 +471,16 @@ static const char FOAM_HLSL[] =
     "{ /* HydroWater foam */\n"
     "  float hwF = saturate(1.0f - vertexColour.r);\n"
     "  float hwA = saturate(1.0f - vertexColour.g);\n"
-    "  float2 hwP = vertexPosition.xy * (1.0f / 12.0f);\n"
-    "  float hwN = 0.6f * HW_VN(hwP) + 0.4f * HW_VN(hwP * 0.45f + float2(17.0f, 5.0f));\n"
-    "  float hwLace = lerp(1.0f - abs(hwN - 0.5f) * 2.0f, diffuseMapSample.x, 0.25f);\n"
-    "  float hwCov = saturate((hwF * 1.25f - (1.0f - hwLace)) * (1.0f / 0.18f)) * saturate(hwF * 4.0f);\n"
-    "  hwCov = max(hwCov, saturate((hwF - 0.8f) * 5.0f));\n"
+    "  float2 hwP = vertexPosition.xy * (1.0f / 10.0f);\n"
+    "  float hwN = 0.6f * HW_VN(hwP) + 0.4f * HW_VN(hwP * 0.4f + float2(17.0f, 5.0f));\n"
+    "  float hwLace = lerp(1.0f - abs(hwN - 0.5f) * 2.0f, diffuseMapSample.x, 0.2f);\n"
+    "  float hwCov = saturate((hwF * 1.7f - (1.0f - hwLace)) * (1.0f / 0.22f)) * saturate(hwF * 8.0f);\n"
+    "  hwCov = max(hwCov, saturate((hwF - 0.55f) * 3.0f));\n"
+    "  hwCov = max(hwCov, hwF * 0.35f);\n"
     "  float hwLum = dot(vRefractionSample.rgb + vReflectionSample.rgb, float3(0.299f, 0.587f, 0.114f));\n"
-    "  float3 hwFoam = lerp(float3(0.93f, 0.95f, 0.97f), vFogColour.rgb, 0.12f) * saturate(0.3f + 0.8f * hwLum);\n"
+    "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 0.98f), vFogColour.rgb, 0.1f) * saturate(0.6f + 0.9f * hwLum);\n"
     "  float hwGrey = dot(refractionColour.rgb, float3(0.333f, 0.333f, 0.334f));\n"
-    "  refractionColour.rgb = lerp(refractionColour.rgb, hwGrey * float3(0.8f, 1.0f, 1.0f) + 0.06f, hwA * 0.5f);\n"
+    "  refractionColour.rgb = lerp(refractionColour.rgb, hwGrey * float3(0.85f, 1.0f, 1.0f) + 0.1f, hwA * 0.65f);\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwFoam, hwCov);\n"
     "  reflectionColour *= 1.0f - hwCov;\n"
     "  specularStrength *= 1.0f - hwCov;\n"
