@@ -165,6 +165,13 @@ the PC, per the depth probe).
 
 `scripts/char_probe.txt`, `scripts/destruct_probe.txt`.
 
+### building-interiors skill (`.claude/skills/building-interiors`)
+
+Room sizes, door and wall sizes, which rooms connect and how deep they sit from the entrance,
+measured from 8,061 ResPlan plans (CC BY 4.0, South Asian listings; scale checked per plan by its
+doors), plus paraphrased rules (Blondel stairs, ceilings, daylight depth, Alexander, Lynch, shape
+grammars) and a game-scale note (1 m = 50 uu). For U2Avalon / generated buildings.
+
 ## Design notes
 
 ### Gore (from Brutal Doom)
