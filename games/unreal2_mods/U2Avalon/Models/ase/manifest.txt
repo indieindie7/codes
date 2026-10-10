@@ -409,3 +409,11 @@ B_headframe Liandri
 B_transfer_tower Liandri 
 B_thickener Liandri 
 B_shiploader Liandri 
+B_k_win_tall Liandri 
+B_k_win_pair Liandri 
+B_k_win_small Liandri 
+B_k_win_shop Liandri 
+B_k_win_stair Liandri 
+B_k_win_boarded Liandri 
+B_k_canopy Liandri 
+B_k_cornice Liandri 

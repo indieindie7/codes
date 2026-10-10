@@ -69,6 +69,14 @@ behind their bedroom, 3 in 4 kitchens open), and the kit's limits (doors on wall
 It writes rooms.py's schema plus `walls` (exact partitions with doors), `window_sides`, `graph`, `notes`;
 shells.py builds `walls` when present. Pictures: `data/floorplans/*.png`.
 
+Facades (2026-10-10): `tools/facade.py`, a shape grammar (Mueller/Wonka): Building -> Sides -> Floors -> Bays ->
+Elements. Bays are cut around the doors near a module (3.6 m formal, 3.0 m informal and offices); the room behind
+each bay picks its window (tall, pair, small, stair, kitchen strip, shop glazing, or blank); wear boards windows up;
+formal fronts are mirrored; canopies over front personnel doors, cornices on formal buildings. rooms.py attaches it
+to the floor-plan buildings as `facade`; shells.py builds it bay by bay instead of the uniform wall run (other
+buildings unchanged: hall_b and the dorm are byte-identical). New kit parts: `B_k_win_tall`, `_pair`, `_small`,
+`_shop`, `_stair`, `_boarded`, `B_k_canopy`, `B_k_cornice` (STORY_ASSETS.md). Elevations: `data/facades/*.png`.
+
 ## Where things are
 
 Run folders: `Documents\U2_research\towns\<name><seed>\` (sketch, layout map, systems report, terrain

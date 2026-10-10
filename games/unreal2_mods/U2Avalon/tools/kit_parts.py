@@ -386,6 +386,58 @@ def panel_window(w=4.0, h=STOREY, ww=3.2, z0=2.0, z1=2.9, m="charcoal"):
         ubox(x, 0, (z0 + z1) / 2, 0.08, T - 0.1, z1 - z0, "grey")
 
 
+def panel_window_framed(ww, z0, z1, mullions=1, transom=None, frame="pale", m="charcoal", stop_hull=False, w=4.0, h=STOREY):
+    """the facade grammar's windows (facade.py): a ww x (z1 - z0) opening with a frame on the outside face, a sill,
+    mullions and an optional transom. stop_hull: a low sill (< 1 m) gets a hull pane in the opening so the player
+    can't step through a shop window"""
+    pw = (w - ww) / 2
+    for s in (-1, 1):
+        both(ubox, s * (ww / 2 + pw / 2), 0, h / 2, pw, T, h, m)
+        ubox(s * (ww / 2 + pw / 2), -T / 2 - 0.01, 0.5, pw, 0.02, 1.0, "brown")
+    if z0 > 0.01:
+        both(ubox, 0, 0, z0 / 2, ww + 0.02, T, z0, m)
+    both(ubox, 0, 0, z1 + (h - z1) / 2, ww + 0.02, T, h - z1, m)
+    ubox(0, -T / 2 - 0.01, h - 0.2, w, 0.02, 0.4, "grey")
+    fo = -T / 2 - 0.04                                                         # the frame, proud of the outside face
+    for s in (-1, 1):
+        ubox(s * (ww / 2 + 0.05), fo, (z0 + z1) / 2, 0.1, 0.08, z1 - z0 + 0.2, frame)
+    ubox(0, fo, z1 + 0.05, ww + 0.2, 0.08, 0.1, frame)
+    if z0 > 0.01:
+        ubox(0, -T / 2 - 0.08, z0 - 0.03, ww + 0.3, 0.2 + T, 0.06, "grey")   # the sill, dripping outward
+    for k in range(1, mullions + 1):
+        ubox(-ww / 2 + k * ww / (mullions + 1), 0, (z0 + z1) / 2, 0.07, T - 0.1, z1 - z0, frame)
+    if transom:
+        ubox(0, 0, transom, ww, T - 0.1, 0.07, frame)
+    if stop_hull:
+        ubox(0, 0, (z0 + z1) / 2, ww, 0.05, z1 - z0, hull=True)
+
+
+def panel_boarded(ww=1.6, z0=0.9, z1=2.7, m="charcoal"):
+    """a tall window boarded up (wear): the opening closed by planks, a hull behind them"""
+    panel_window_framed(ww, z0, z1, mullions=0, frame="grey", m=m)
+    n = 6
+    for k in range(n):
+        ubox(0.05 * (k % 2), -T / 2 - 0.06, z0 + (k + 0.5) * (z1 - z0) / n, ww + 0.25, 0.04, (z1 - z0) / n - 0.04, "brown",
+             yaw=0, pitch=0)
+    ubox(0, 0, (z0 + z1) / 2, ww, 0.05, z1 - z0, hull=True)
+
+
+def part_canopy(w=3.0, d=1.2):
+    """a door canopy: a thin slab w wide projecting d from the wall face (-Y) over a personnel door (top 2.8 m),
+    two diagonal brackets; origin at the wall line, z = 0 at the floor (decoration, no hull)"""
+    ubox(0, -T / 2 - d / 2, 3.05, w, d, 0.12, "steel")
+    ubox(0, -T / 2 - d + 0.03, 3.0, w, 0.06, 0.22, "grey")                    # the fascia
+    for s in (-1, 1):
+        ubox(s * (w / 2 - 0.2), -T / 2 - d / 2 + 0.05, 2.7, 0.08, 0.06, 0.95, "steel", pitch=48)
+
+
+def part_cornice(w=4.0):
+    """the top of a facade: a 0.3 m band projecting 0.3 from the wall face (-Y) with a drip ledge; its BOTTOM is z =
+    0 (place at the roof line); DrawScale3D X for other bay widths"""
+    ubox(0, -T / 2 - 0.15, 0.15, w, 0.3 + 0.02, 0.3, "grey")
+    ubox(0, -T / 2 - 0.29, 0.02, w, 0.06, 0.04, "steel")
+
+
 def part_frame(dw, dh, m="orange"):
     """a door frame round a dw x dh opening: 0.15 members, 0.4 deep, standing on the floor at the wall line.
     orange = the company's frame colour; slate = the Authority's, with its one cold (cyan) indicator strip over
@@ -569,6 +621,14 @@ PARTS = {
     "B_k_rail": part_rail, "B_k_catwalk": part_catwalk, "B_k_step": part_step, "B_k_ladder": part_ladder,
     "B_k_frame_p": lambda: part_frame(*DOOR_P), "B_k_frame_m": lambda: part_frame(*DOOR_M),
     "B_k_frame_p_auth": lambda: part_frame(*DOOR_P, "slate"), "B_k_plinth": part_plinth,
+    # the facade grammar's elements (facade.py), all on the 4 m panel module (DrawScale3D X for the bay)
+    "B_k_win_tall": lambda: panel_window_framed(1.6, 0.9, 2.7, mullions=1, transom=2.2),          # living rooms, bedrooms
+    "B_k_win_pair": lambda: panel_window_framed(2.8, 0.9, 2.7, mullions=2, transom=2.2),          # big rooms, offices
+    "B_k_win_small": lambda: panel_window_framed(0.8, 2.0, 2.6, mullions=0, frame="grey"),        # baths, WCs, lockers
+    "B_k_win_shop": lambda: panel_window_framed(3.2, 0.5, 2.8, mullions=2, frame="orange", stop_hull=True),  # bar, store
+    "B_k_win_stair": lambda: panel_window_framed(0.9, 0.4, 3.0, mullions=0, transom=1.7),         # stairs, one per storey
+    "B_k_win_boarded": lambda: panel_boarded(),                                                     # wear
+    "B_k_canopy": part_canopy, "B_k_cornice": part_cornice,
     # the process parts (binder D7-D10)
     "B_headframe": part_headframe, "B_transfer_tower": part_transfer_tower, "B_thickener": part_thickener, "B_shiploader": part_shiploader,
 }

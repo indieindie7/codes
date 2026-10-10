@@ -18,6 +18,9 @@ where its users arrive, routines may only go to places that exist). tools\binder
                            plant_office, staff_houses, clinic, checkpoint, tin_bar, company_store, shanties), from
                            real plans (.claude\skills\building-interiors: ResPlan sizes x1.25 for the 108 UU player)
                            and the kit's rules; rooms.py calls it, shells.py builds its walls. Pictures in data\floorplans
+  tools\facade.py          facades for the same buildings by a shape grammar (sides -> floors -> bays -> elements;
+                           the room behind each bay picks the window, wear boards some up, formal fronts mirrored,
+                           canopies, cornices); rooms.py attaches it, shells.py builds it. Elevations in data\facades
   make_avalon.py           terrain tiles in three materials, sea, the tower shell + command room, the quay,
                            the pipeline, and avalon_actors.t3d placing every binder building (instances,
                            dressing: crates, barrels, dropships, pylons, trees), sky, sun, start

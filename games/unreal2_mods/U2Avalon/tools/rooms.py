@@ -20,6 +20,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import binder  # noqa
 import floorplan  # noqa  (houses, offices and the small buildings: generated from real plans)
+import facade  # noqa  (their facades, by a shape grammar)
 
 M = 50.0
 PLAYER_R, PLAYER_HH, STEP = 28, 54, 37            # facts_measured.md
@@ -232,6 +233,8 @@ def plan(bid, sheet, room_sheets, drain=None):
     out = {"id": bid, "kind": sheet.get("kind"), "shell_m": [W, D, H], "shell_uu": [uu(W), uu(D), uu(H)], "levels": levels,
            "rooms": rooms, "stairs": stairs, "doors": doors, "checks": checks(rooms, doors, stairs, sheet)}
     out.update(extra)                                    # walls, window_sides, graph, notes (floorplan.py)
+    if fn == "floorplan":
+        out["facade"] = facade.facade(bid, out, sheet, seed=sheet.get("_seed", 1))   # facade.py: the shape grammar
     return out
 
 

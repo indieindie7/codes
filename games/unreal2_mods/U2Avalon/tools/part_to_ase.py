@@ -21,7 +21,7 @@ import palette  # noqa
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASE = os.path.join(HERE, "Models", "ase")
 GLB = os.path.join(HERE, "Models", "glb")
-BLENDER = r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
+BLENDER = os.environ.get("BLENDER") or r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"   # BLENDER=python3: Blender as the bpy module (Linux)
 names = [a for a in sys.argv[1:] if "=" not in a]
 o = dict(a.split("=", 1) for a in sys.argv[1:] if "=" in a)
 stripes = list(palette.COLOURS.values())
@@ -45,7 +45,9 @@ for name in names:
     extra = ["scale=%s" % o["scale"]] if "scale" in o else []
     extra += ["zero=%s" % name] if o.get("zero") == "1" else []
     extra += ["hulls=1"] if o.get("hulls") == "1" else []
-    r = subprocess.run([BLENDER, "-b", "--python", os.path.join(HERE, "tools", "glb_to_ase.py"), "--", GLB, tmp, "pattern=%s.glb" % name] + extra,
+    script = os.path.join(HERE, "tools", "glb_to_ase.py")
+    head = [BLENDER, script] if os.path.basename(BLENDER).startswith("python") else [BLENDER, "-b", "--python", script]
+    r = subprocess.run(head + ["--", GLB, tmp, "pattern=%s.glb" % name] + extra,
                        capture_output=True, text=True)
     if not os.path.exists(os.path.join(tmp, name + ".ase")):
         raise SystemExit("glb_to_ase failed for %s: %s" % (name, r.stdout[-3000:] + r.stderr[-3000:]))

@@ -1,7 +1,8 @@
 r"""Hollow-shell interiors from rooms.json (rooms.py): per building, StaticMeshActors of the kit parts (kit_parts.py,
 AvalonSM.Liandri.B_k_*) that replace the solid building mesh - walls with real door and window openings, floor and
 roof slabs, partitions with doors, upper slabs, gratings with rails, stairs from single steps, ladders, door frames by
-owner and the plinth. The hulls in the parts (MCDCX_) keep the doorways walkable.
+owner and the plinth. The hulls in the parts (MCDCX_) keep the doorways walkable. A plan with a "facade" (facade.py,
+the floor-plan buildings) gets its outside walls bay by bay from it, plus its canopies and cornice.
 
     py tools/shells.py <run folder with rooms.json + isl_layout.json> [out=<run>\isl_shells.t3d] [only=hall_b,dorm]
                        [all=1] [pkg=AvalonSM.Liandri] [plinth_m=1.2] [shell=rooms|sheet]
@@ -126,7 +127,10 @@ class Shell:
             doors = [(tof(d), d["kind"]) for d in self.p["doors"] if d["side"] == side and d.get("z", 0) == 0]
             windows = ("top" if kind == "hall" else True) if side in wsides else False
             c = centre(W, D)
-            self.wall_run(c, along, yaw, length, H, doors, windows)
+            if self.p.get("facade"):
+                self.facade_side(side, c, along, yaw)
+            else:
+                self.wall_run(c, along, yaw, length, H, doors, windows)
             # door frames by owner (orange = company, steel = authority, none = nobody)
             for td, dk in doors:
                 fp = FRAME.get(owner, {}).get(dk)
@@ -141,11 +145,32 @@ class Shell:
         for sx in (-1, 1):
             for sy in (-1, 1):
                 self.put("B_k_column", sx * (W / 2 - 0.2), sy * (D / 2 - 0.2), 0.0, 0, 1, 1, H / STOREY)
+        for x in (self.p.get("facade") or {}).get("extras", []):   # canopies, the cornice
+            c, along, yaw, _ = self.SIDES[x["side"]]
+            c = c(W, D)
+            self.put(x["part"], c[0] + along[0] * x["t"], c[1] + along[1] * x["t"], x["z"], yaw, x.get("sx", 1.0), 1.0, 1.0)
         self.slab(0, 0, W, D, 0.0)                               # the ground slab
         self.slab(0, 0, W + 0.3, D + 0.3, H + 0.3)               # the roof: underside at H
         for s in (-1, 1):                                        # a parapet
             self.wall_run((0, s * (D / 2 + 0.15)), (1, 0), 90 if s < 0 else -90, W + 0.3, 0.7, [], False, True, H + 0.3)
             self.wall_run((s * (W / 2 + 0.15), 0), (0, s), 180 if s > 0 else 0, D, 0.7, [], False, True, H + 0.3)
+
+    def facade_side(self, side, c, along, yaw):
+        """facade.py's elements for one side: each bay one part, X-scaled to the bay, Z-scaled to its band; a door
+        keeps its height (Z-scaled down only if its band is lower) and its full width unless the bay is narrower"""
+        for e in self.p["facade"]["elements"]:
+            if e["side"] != side:
+                continue
+            x, y = c[0] + along[0] * e["t"], c[1] + along[1] * e["t"]
+            door = next((v for v in DOOR_PART.values() if v[0] == e["part"]), None)
+            if door:
+                _, full, ph = door
+                h = e["sz"] * STOREY
+                self.put(e["part"], x, y, e["z"], yaw, min(1.0, e["w"] / full), 1.0, min(1.0, h / ph))
+                if h - ph > 0.05:
+                    self.put("B_k_wall", x, y, e["z"] + ph, yaw, e["w"] / PANEL, 1.0, (h - ph) / STOREY)
+            else:
+                self.put(e["part"], x, y, e["z"], yaw, e["w"] / PANEL, 1.0, e["sz"])
 
     def slab(self, x, y, w, d, z, part="B_k_slab"):
         # at yaw 0 the part's X runs along room -y (the depth) and its Y along room x (the width)

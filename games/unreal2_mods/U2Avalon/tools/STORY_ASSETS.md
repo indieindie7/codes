@@ -92,6 +92,14 @@ in-game check list is in s. 6.
 | `B_k_wall_main` | 4.00 x 0.32 x 4.40 | 200 x 16 x 220 | 3 | 0.00, 0.01 |
 | `B_k_wall_roller` | 6.00 x 0.32 x 6.00 | 300 x 16 x 300 | 3 | 0.00, 0.01 |
 | `B_k_wall_win` | 4.00 x 0.38 x 3.40 | 200 x 19 x 170 | 4 | 0.00, -0.00 |
+| `B_k_win_tall` | 4.00 x 0.63 x 3.40 | 200 x 32 x 170 | 4 | 0.00, 0.17 |
+| `B_k_win_pair` | 4.00 x 0.63 x 3.40 | 200 x 32 x 170 | 4 | 0.00, 0.17 |
+| `B_k_win_small` | 4.00 x 0.63 x 3.40 | 200 x 32 x 170 | 4 | 0.00, 0.17 |
+| `B_k_win_shop` | 4.00 x 0.63 x 3.40 | 200 x 32 x 170 | 5 | 0.00, 0.17 |
+| `B_k_win_stair` | 4.00 x 0.63 x 3.40 | 200 x 32 x 170 | 4 | 0.00, 0.17 |
+| `B_k_win_boarded` | 4.00 x 0.63 x 3.40 | 200 x 32 x 170 | 5 | 0.00, 0.17 |
+| `B_k_canopy` | 3.36 x 1.20 x 0.76 (z 2.35..3.11) | 168 x 60 x 38 | 0 | 0.00, 0.75 |
+| `B_k_cornice` | 4.00 x 0.33 x 0.30 | 200 x 17 x 15 | 0 | 0.00, 0.31 |
 | `B_k_column` | 0.46 x 0.46 x 3.40 | 23 x 23 x 170 | 1 | 0.00, -0.00 |
 | `B_k_slab` | 4.00 x 4.00 x 0.30 | 200 x 200 x 15 | 1 | 0.00, -0.00 |
 | `B_k_grating` | 4.00 x 4.00 x 0.12 | 200 x 200 x 6 | 1 | 0.00, -0.00 |
@@ -154,6 +162,13 @@ Frame: every part is authored in Unreal's local frame, X = along / forward at ya
   Hulls: the two piers and the lintel, so the opening is real for collision.
 - `B_k_wall_win`: a 3.2 x 0.9 m window opening at 2.0..2.9 m (45 UU tall: no pawn fits), two mullions, a sill; 4
   hulls round the hole.
+- The facade grammar's windows (facade.py), 4 x 3.4 panels with a pale frame proud of the outside face, a sill
+  dripping outward and mullions: `B_k_win_tall` 1.6 x 1.8 m at 0.9..2.7 (one mullion, transom at 2.2),
+  `B_k_win_pair` 2.8 x 1.8 (two mullions), `B_k_win_small` 0.8 x 0.6 at 2.0..2.6 (bathrooms), `B_k_win_shop` 3.2 x
+  2.3 at 0.5..2.8 in orange with a hull pane in the opening (no stepping through), `B_k_win_stair` 0.9 x 2.6 at
+  0.4..3.0, `B_k_win_boarded` the tall window planked shut (hull behind). `B_k_canopy` (no hull) sits on the floor
+  line over a personnel door; `B_k_cornice` (no hull) has its bottom at z = 0, placed at the roof line. Import these
+  8 like the rest of the kit: ASEs from `Models\ase`, scale 1, the shared Pal skin.
 - `B_k_column` 0.4 sq x 3.4 (Z-scaled to the building height); `B_k_slab` 4 x 4 x 0.3 with its TOP at z = 0 (a floor
   at level z has its walk surface at the actor Z; the roof slab actor sits at H + 15 UU so its underside is at H;
   NoRain boxes and the roof trace meet the slab's top at H + 15); `B_k_grating` 4 x 4 x 0.1 (top at z = 0).

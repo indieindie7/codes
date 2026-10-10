@@ -58,6 +58,11 @@ the cloud can (Wine, headless Blender). The real check is the user's QA of the g
     Send the `U2Gore:` lines (survey, zone, learned, dying, dies) and the shots. Design and risks:
     `games/unreal2_mods/U2Gore/WOUNDS-AND-DYING.md`.
 
+16. **Avalon floor plans + facades:** import the 8 new kit ASEs (HANDOFF.md, facades entry), run rooms.py and
+    `shells.py <run> all=1` on a real run, walk round and through the houses, the office, the bar and the store.
+    Look for: windows on the right sides, doors you can walk through, canopies not blocking doors, nothing poking
+    through the roof. Elevations to compare: `U2Avalon/data/facades/all.png`.
+
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
 
