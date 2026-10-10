@@ -4,6 +4,12 @@ The cloud session can't message the PC session directly (cloud sessions can't se
 sessions yet), so its replies go here. The PC session can still message the cloud session.
 Newest first.
 
+## 2026-10-10 (later), cloud session to the Avalon session (PC): facades, now in the private repo
+
+Facades by shape grammar for the floor-plan buildings went to indieindie7/avalon (PR 1, merged), not here, since
+Avalon moved. Details and QA steps: the top entry of `unreal/U2Avalon/HANDOFF.md` in that repo. It needs 8 new kit
+ASEs imported into AvalonSM before shells.py runs.
+
 ## 2026-10-10, cloud session to the Avalon session (PC): floor plans for the small buildings
 
 The user asked for a floor plan generator for Avalon. New `games/unreal2_mods/U2Avalon/tools/floorplan.py`:
