@@ -57,6 +57,8 @@ var string ReleaseCommand;             // console command that "lets go" of the 
 var bool bWantPause;
 var float JumpStartZ, JumpTopZ;       // JUMPTEST
 var float TopSpeed;                    // SPEEDTEST
+var int FpsFrames;                      // FPS: frames, summed and worst frame time over the step
+var float FpsSum, FpsWorst;
 var vector SpeedFrom;
 var float ControlTime;                   // the script itself paused the game (pause button, menu step)
 var float HoundT;                        // HOUNDTEST: time since the last report
@@ -415,6 +417,31 @@ function WallKick()
 function Note(string S)
 {
 	class'ModSettings'.static.Note("pilot: " $ S);
+}
+
+function FpsReport()
+{
+	local Actor A;
+	local int Live, Dead, Karma, Proj, Emit, All;
+
+	ForEach DynamicActors(class'Actor', A)
+	{
+		All++;
+		if (Pawn(A) != None)
+		{
+			if (Pawn(A).Health > 0)
+				Live++;
+			else
+				Dead++;
+		}
+		if (A.Physics == PHYS_Karma || A.Physics == PHYS_KarmaRagDoll)
+			Karma++;
+		if (Projector(A) != None)
+			Proj++;
+		if (Emitter(A) != None)
+			Emit++;
+	}
+	Note("fps " $ Arg(2) $ ": avg " $ int(FpsFrames / FMax(FpsSum, 0.0001)) $ " (" $ int(1000 * FpsSum / Max(FpsFrames, 1)) $ " ms) worst " $ int(1000 * FpsWorst) $ " ms over " $ FpsFrames $ " frames; live " $ Live $ " dead " $ Dead $ " karma " $ Karma $ " projectors " $ Proj $ " emitters " $ Emit $ " actors " $ All);
 }
 
 function PlayerController PC()
@@ -1315,6 +1342,14 @@ function StartStep()
 		// the player (at that bone if one is given)
 		Hurt(int(ArgF(1, 30)), Args.Length > 2 ? Args[2] : "EonWeapons.dmgType_HumanPistolFire", Args.Length > 3 ? Args[3] : "");
 		break;
+	case "FPS":
+		// FPS [seconds] [label]: stand and log the average and worst frame time over that long, with
+		// the counts of what has piled up (live and dead pawns, karma bodies, projectors, emitters)
+		FpsFrames = 0;
+		FpsSum = 0;
+		FpsWorst = 0;
+		StepLength = ArgF(1, 10);
+		break;
 	case "SPEEDTEST":
 		// SPEEDTEST [seconds] [walk]: run forward and log the top speed and what decides it
 		class'ModPilot'.default.Forward = 1;
@@ -1534,6 +1569,22 @@ event Tick(float DeltaTime)
 		else if (StepTime > StepLength)
 		{
 			Note("waitcontrol timed out");
+			StartStep();
+		}
+		return;
+	}
+	if (Cmd == "FPS")
+	{
+		// the first frames of the step can still carry the last step's work
+		if (StepTime > 0.5)
+		{
+			FpsFrames++;
+			FpsSum += DeltaTime;
+			FpsWorst = FMax(FpsWorst, DeltaTime);
+		}
+		if (StepTime > StepLength)
+		{
+			FpsReport();
 			StartStep();
 		}
 		return;
