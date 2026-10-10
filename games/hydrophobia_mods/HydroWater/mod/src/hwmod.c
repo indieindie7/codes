@@ -23,6 +23,8 @@
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#define COBJMACROS
+#include <d3d9.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,9 +44,13 @@ static struct {
     hw_opts opts;
     int log_every;      /* log sheet stats every N steps (0 = never) */
     int max_cells;      /* sheets larger than this stay on the game's solver */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f }, 600, 4096 };
+    int borderless;     /* force the D3D9 device into a borderless window instead of exclusive fullscreen */
+    int background;     /* keep the game running when its window is not in the foreground */
+    int control;        /* poll HydroWater.cmd for test-pilot commands (shot ...) */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f }, 600, 4096, 1, 0, 0 };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
+static volatile LONG g_presents;    /* IDirect3DDevice9::Present calls (control = 1) */
 
 /* ---------------------------------------------------------------- logging */
 static CRITICAL_SECTION g_logcs;
@@ -100,11 +106,14 @@ static void ReadIni(void)
         else if (!_stricmp(k, "edge_damp")) cfg.opts.edge_damp = (float)atof(v);
         else if (!_stricmp(k, "log_every")) cfg.log_every = atoi(v);
         else if (!_stricmp(k, "max_cells")) cfg.max_cells = atoi(v);
+        else if (!_stricmp(k, "borderless")) cfg.borderless = atoi(v);
+        else if (!_stricmp(k, "background")) cfg.background = atoi(v);
+        else if (!_stricmp(k, "control")) cfg.control = atoi(v);
     }
     fclose(f);
-    Log("config: mode=%d displacement=%d capped_stamp=%d face_walls=%d clamps=%d recon=%d alpha=%.2f c_adapt=%.2f edge_damp=%.2f log_every=%d max_cells=%d",
+    Log("config: mode=%d displacement=%d capped_stamp=%d face_walls=%d clamps=%d recon=%d alpha=%.2f c_adapt=%.2f edge_damp=%.2f log_every=%d max_cells=%d borderless=%d background=%d control=%d",
         cfg.mode, cfg.opts.displacement, cfg.opts.capped_stamp, cfg.opts.face_walls, cfg.opts.clamps, cfg.opts.recon,
-        cfg.opts.alpha, cfg.opts.c_adapt, cfg.opts.edge_damp, cfg.log_every, cfg.max_cells);
+        cfg.opts.alpha, cfg.opts.c_adapt, cfg.opts.edge_damp, cfg.log_every, cfg.max_cells, cfg.borderless, cfg.background, cfg.control);
 }
 
 /* ---------------------------------------------------------------- the original, via trampoline */
@@ -241,7 +250,7 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
     InterlockedIncrement(&g_hw_calls);
     b->steps++;
     if (cfg.log_every > 0 && b->steps % (unsigned)cfg.log_every == 0)
-        Log("sheet %p: step %u dt %.4f volume %.1f smax %.1f", (void *)S, b->steps, dt, hw_volume(b->hw), hw_smax(b->hw));
+        Log("sheet %p: step %u dt %.4f volume %.1f smax %.1f (presents %ld)", (void *)S, b->steps, dt, hw_volume(b->hw), hw_smax(b->hw), g_presents);
     return dt;
 }
 
@@ -307,10 +316,13 @@ static int Install(void)
     return 1;
 }
 
+static void InstallWindowHooks(void);
+
 static DWORD WINAPI Installer(LPVOID arg)
 {
     int i, r;
     (void)arg;
+    InstallWindowHooks();
     for (i = 0; i < 6000; i++) {           /* up to two minutes for the Steam stub to unpack */
         r = Install();
         if (r != 0) {
@@ -323,11 +335,400 @@ static DWORD WINAPI Installer(LPVOID arg)
     return 0;
 }
 
+/* ---------------------------------------------------------------- borderless window / background
+ * The game creates an exclusive-fullscreen Direct3D 9 device. IDirect3D9::CreateDevice (vtable
+ * slot 16) and IDirect3DDevice9::Reset (slot 16) are patched in d3d9.dll's shared vtables: every
+ * request with Windowed = FALSE is turned into a windowed device, and the game window is restyled
+ * as a borderless popup the size of the back buffer, placed on its monitor. With background = 1
+ * the window procedure is subclassed so the game never sees itself deactivated (it pauses
+ * otherwise). No exe bytes are touched. */
+typedef struct {
+    UINT BackBufferWidth, BackBufferHeight, BackBufferFormat, BackBufferCount, MultiSampleType;
+    DWORD MultiSampleQuality;
+    UINT SwapEffect;
+    HWND hDeviceWindow;
+    BOOL Windowed, EnableAutoDepthStencil;
+    UINT AutoDepthStencilFormat;
+    DWORD Flags;
+    UINT FullScreen_RefreshRateInHz, PresentationInterval;
+} HW_D3DPP;
+typedef HRESULT (WINAPI *CreateDevice_t)(void *, UINT, UINT, HWND, DWORD, HW_D3DPP *, void **);
+typedef HRESULT (WINAPI *Reset_t)(void *, HW_D3DPP *);
+typedef ULONG (WINAPI *Release_t)(void *);
+typedef void *(WINAPI *Direct3DCreate9_t)(UINT);
+static CreateDevice_t g_orig_create_device;
+static Reset_t g_orig_reset;
+static HWND g_game_wnd;
+static WNDPROC g_orig_wndproc;
+
+static LRESULT CALLBACK WndProcHook(HWND h, UINT m, WPARAM w, LPARAM l)
+{
+    if (cfg.background) {
+        if (m == WM_ACTIVATEAPP && w == FALSE) return 0;
+        if (m == WM_ACTIVATE && LOWORD(w) == WA_INACTIVE) return 0;
+        if (m == WM_KILLFOCUS) return 0;
+    }
+    return CallWindowProcW(g_orig_wndproc, h, m, w, l);
+}
+
+static void AdoptWindow(HWND h)
+{
+    if (!h || h == g_game_wnd) return;
+    g_game_wnd = h;
+    if (cfg.background && !g_orig_wndproc) {
+        g_orig_wndproc = (WNDPROC)SetWindowLongPtrW(h, GWLP_WNDPROC, (LONG_PTR)WndProcHook);
+        Log("background: game window %p subclassed", (void *)h);
+    }
+}
+
+
+/* With background = 1 the game must also believe it owns the foreground: user32's
+ * GetForegroundWindow / GetActiveWindow / GetFocus are detoured at their hot-patchable
+ * prologue (mov edi,edi; push ebp; mov ebp,esp) to answer with the game window. */
+typedef HWND (WINAPI *HwndFn_t)(void);
+static HwndFn_t g_orig_fg, g_orig_active, g_orig_focus;
+static HWND WINAPI FgHook(void)     { return g_game_wnd ? g_game_wnd : g_orig_fg(); }
+static HWND WINAPI ActiveHook(void) { return g_game_wnd ? g_game_wnd : g_orig_active(); }
+static HWND WINAPI FocusHook(void)  { return g_game_wnd ? g_game_wnd : g_orig_focus(); }
+
+/* Length of a relocatable prologue: the first >= 5 bytes must be instructions that run unchanged
+ * from another address. Windows 10 user32 has these shapes; an existing jmp rel32 (another tool's
+ * detour) is chained by relocating its target into the trampoline. */
+static int PrologueLen(const BYTE *t)
+{
+    if (t[0] == 0x8B && t[1] == 0xFF && t[2] == 0x55 && t[3] == 0x8B && t[4] == 0xEC) return 5; /* mov edi,edi; push ebp; mov ebp,esp */
+    if (t[0] == 0xFF && t[1] == 0x25) return 6;                                                  /* jmp [abs32] (forwarder) */
+    if (t[0] == 0x6A && t[2] == 0xFF && t[3] == 0x15) return 8;                                  /* push imm8; call [abs32] */
+    if (t[0] == 0xB8) return 5;                                                                  /* mov eax,imm32 (syscall stub) */
+    if (t[0] == 0xE9) return 5;                                                                  /* jmp rel32 (someone else's detour, chained) */
+    return 0;
+}
+
+static int HotPatch(const char *name, void *hook, HwndFn_t *orig)
+{
+    BYTE *t = (BYTE *)GetProcAddress(GetModuleHandleW(L"user32.dll"), name), *tr;
+    DWORD prot;
+    int32_t rel;
+    int n = t ? PrologueLen(t) : 0;
+    if (!n) {
+        Log("background: %s has an unexpected prologue (%02x %02x %02x %02x %02x), not hooked", name,
+            t ? t[0] : 0, t ? t[1] : 0, t ? t[2] : 0, t ? t[3] : 0, t ? t[4] : 0);
+        return 0;
+    }
+    tr = (BYTE *)VirtualAlloc(NULL, 32, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!tr) return 0;
+    if (t[0] == 0xE9) {                     /* already detoured (e.g. an overlay): the trampoline jumps to that detour */
+        memcpy(&rel, t + 1, 4);
+        tr[0] = 0xE9;
+        rel = (int32_t)((t + 5 + rel) - (tr + 5));
+        memcpy(tr + 1, &rel, 4);
+    } else {
+        memcpy(tr, t, n);                   /* original prologue, then jump back behind it */
+        tr[n] = 0xE9;
+        rel = (int32_t)((t + n) - (tr + n + 5));
+        memcpy(tr + n + 1, &rel, 4);
+    }
+    *orig = (HwndFn_t)tr;
+    if (!VirtualProtect(t, n, PAGE_EXECUTE_READWRITE, &prot)) return 0;
+    t[0] = 0xE9;
+    rel = (int32_t)((BYTE *)hook - (t + 5));
+    memcpy(t + 1, &rel, 4);
+    VirtualProtect(t, n, prot, &prot);
+    FlushInstructionCache(GetCurrentProcess(), t, n);
+    Log("background: %s hooked (%d-byte prologue)", name, n);
+    return 1;
+}
+
+static void InstallForegroundHooks(void)
+{
+    int n = 0;
+    n += HotPatch("GetForegroundWindow", (void *)FgHook, &g_orig_fg);
+    n += HotPatch("GetActiveWindow", (void *)ActiveHook, &g_orig_active);
+    n += HotPatch("GetFocus", (void *)FocusHook, &g_orig_focus);
+    Log("background: %d of 3 foreground queries answered with the game window", n);
+}
+
+static void MakeBorderless(HWND h, UINT w, UINT hgt)
+{
+    MONITORINFO mi;
+    int x, y, mw, mh, iw = (int)w, ih = (int)hgt;
+    LONG ex;
+    mi.cbSize = sizeof mi;
+    GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTOPRIMARY), &mi);
+    x = mi.rcMonitor.left; y = mi.rcMonitor.top;
+    mw = mi.rcMonitor.right - x; mh = mi.rcMonitor.bottom - y;
+    if (mw > iw) x += (mw - iw) / 2;
+    if (mh > ih) y += (mh - ih) / 2;
+    SetWindowLongW(h, GWL_STYLE, WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS);
+    ex = GetWindowLongW(h, GWL_EXSTYLE) & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
+    SetWindowLongW(h, GWL_EXSTYLE, ex);
+    SetWindowPos(h, HWND_TOP, x, y, iw, ih, SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    Log("borderless: window %p -> %dx%d at %d,%d", (void *)h, iw, ih, x, y);
+}
+
+static void ForceWindowed(HW_D3DPP *pp, HWND h)
+{
+    if (!pp || !cfg.borderless || pp->Windowed) return;
+    pp->Windowed = TRUE;
+    pp->FullScreen_RefreshRateInHz = 0;
+    if (pp->PresentationInterval > 1 && pp->PresentationInterval != 0x80000000u) pp->PresentationInterval = 1;
+    if (h) MakeBorderless(h, pp->BackBufferWidth, pp->BackBufferHeight);
+}
+
+static void PatchVtable(void *obj, int idx, void *hook, void **orig)
+{
+    void **vt = *(void ***)obj;
+    DWORD old;
+    if (vt[idx] == hook) return;
+    if (!VirtualProtect(&vt[idx], sizeof(void *), PAGE_EXECUTE_READWRITE, &old)) { Log("vtable patch failed: %lu", GetLastError()); return; }
+    *orig = vt[idx];
+    vt[idx] = hook;
+    VirtualProtect(&vt[idx], sizeof(void *), old, &old);
+}
+
+/* ---------------------------------------------------------------- control file (control = 1)
+ * IDirect3DDevice9::Present (slot 17) is hooked as well. Every 250 ms it looks for
+ * HydroWater.cmd next to the DLL, reads it, deletes it and runs its lines:
+ *   shot <file.bmp>   dump the back buffer (works hidden, off-screen, any mode)
+ * This is the test-pilot channel; it costs one file probe every quarter second. */
+typedef HRESULT (WINAPI *Present_t)(IDirect3DDevice9 *, const RECT *, const RECT *, HWND, const RGNDATA *);
+static Present_t g_orig_present;
+static DWORD g_last_cmd_poll;
+
+static void SaveBackbuffer(IDirect3DDevice9 *dev, const char *path)
+{
+    IDirect3DSurface9 *bb = NULL, *rt = NULL, *sys = NULL, *src;
+    D3DSURFACE_DESC d;
+    D3DLOCKED_RECT lr;
+    HRESULT hr;
+    FILE *f = NULL;
+    hr = IDirect3DDevice9_GetBackBuffer(dev, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb);
+    if (hr != D3D_OK) { Log("shot: GetBackBuffer failed %08lx", (unsigned long)hr); return; }
+    IDirect3DSurface9_GetDesc(bb, &d);
+    src = bb;
+    if (d.MultiSampleType != D3DMULTISAMPLE_NONE) {
+        hr = IDirect3DDevice9_CreateRenderTarget(dev, d.Width, d.Height, d.Format, D3DMULTISAMPLE_NONE, 0, FALSE, &rt, NULL);
+        if (hr == D3D_OK) hr = IDirect3DDevice9_StretchRect(dev, bb, NULL, rt, NULL, D3DTEXF_NONE);
+        if (hr != D3D_OK) { Log("shot: resolve failed %08lx", (unsigned long)hr); goto done; }
+        src = rt;
+    }
+    hr = IDirect3DDevice9_CreateOffscreenPlainSurface(dev, d.Width, d.Height, d.Format, D3DPOOL_SYSTEMMEM, &sys, NULL);
+    if (hr == D3D_OK) hr = IDirect3DDevice9_GetRenderTargetData(dev, src, sys);
+    if (hr != D3D_OK) { Log("shot: GetRenderTargetData failed %08lx (format %d)", (unsigned long)hr, (int)d.Format); goto done; }
+    if (d.Format != D3DFMT_X8R8G8B8 && d.Format != D3DFMT_A8R8G8B8) { Log("shot: back buffer format %d not handled", (int)d.Format); goto done; }
+    hr = IDirect3DSurface9_LockRect(sys, &lr, NULL, D3DLOCK_READONLY);
+    if (hr != D3D_OK) { Log("shot: LockRect failed %08lx", (unsigned long)hr); goto done; }
+    f = fopen(path, "wb");
+    if (f) {
+        BITMAPFILEHEADER fh;
+        BITMAPINFOHEADER ih;
+        UINT y, x, stride = (d.Width * 3 + 3) & ~3u;
+        BYTE *row = (BYTE *)calloc(stride, 1);
+        memset(&fh, 0, sizeof fh); memset(&ih, 0, sizeof ih);
+        fh.bfType = 0x4D42; fh.bfOffBits = sizeof fh + sizeof ih; fh.bfSize = fh.bfOffBits + stride * d.Height;
+        ih.biSize = sizeof ih; ih.biWidth = (LONG)d.Width; ih.biHeight = (LONG)d.Height; ih.biPlanes = 1; ih.biBitCount = 24;
+        fwrite(&fh, sizeof fh, 1, f); fwrite(&ih, sizeof ih, 1, f);
+        for (y = d.Height; y-- > 0;) {
+            const BYTE *p = (const BYTE *)lr.pBits + y * lr.Pitch;
+            for (x = 0; x < d.Width; x++) { row[x * 3] = p[x * 4]; row[x * 3 + 1] = p[x * 4 + 1]; row[x * 3 + 2] = p[x * 4 + 2]; }
+            fwrite(row, stride, 1, f);
+        }
+        free(row);
+        fclose(f);
+        Log("shot: %s (%ux%u, present #%ld)", path, d.Width, d.Height, g_presents);
+    }
+    else Log("shot: cannot write %s", path);
+    IDirect3DSurface9_UnlockRect(sys);
+done:
+    if (sys) IDirect3DSurface9_Release(sys);
+    if (rt) IDirect3DSurface9_Release(rt);
+    if (bb) IDirect3DSurface9_Release(bb);
+}
+
+/* Level jumps for tests. The Lua handlers behind script_ChapterSelect (00be6060) and
+ * script_LoadGame (00be5ab0) only write a few globals and switch the game's state machine;
+ * the same writes are made here, on the render thread between frames (where the game's own
+ * frame loop runs), so the game picks them up on its next update. Addresses are for the
+ * Steam build (code version 0032) and are rebased on the exe's load address. */
+#define g_exe_base ((BYTE *)GetModuleHandleW(NULL))
+#define HG(a) ((volatile int *)(g_exe_base + ((a) - 0x400000)))
+static void GameStateLog(const char *what)
+{
+    Log("control: %s state %d (0x%x), chapter %d/%d", what, *HG(0x01911380), *HG(0x01911380), *HG(0x01a880cc), *HG(0x01a880d0));
+}
+static void QuitToMenuIfPlaying(void)
+{
+    if (*HG(0x01911380) == 0x29) ((void (__cdecl *)(void))(g_exe_base + (0x00ce3030 - 0x400000)))();
+}
+static void ChapterSelect(int n)
+{
+    if (n <= 0) { Log("control: chapter %d ignored (chapters start at 1)", n); return; }
+    *HG(0x0194070c) = 1;
+    QuitToMenuIfPlaying();
+    *HG(0x01a88080) = 1;
+    *HG(0x01a0f184) = 1;
+    *HG(0x01a72ffc) = 1;
+    *HG(0x01911380) = 0x36;
+    *HG(0x01a880cc) = n;
+    *HG(0x01a880d0) = n;
+    GameStateLog("chapter select ->");
+}
+static void ContinueGame(void)
+{
+    *HG(0x01a6c498) = 3;
+    QuitToMenuIfPlaying();
+    *HG(0x01911380) = 8;
+    GameStateLog("load last checkpoint ->");
+}
+
+/* Mouse buttons for the menus. The game's window procedure takes only mouse movement from
+ * Raw Input; buttons come in as WM_LBUTTONDOWN/UP and WM_RBUTTONDOWN/UP, which set a button
+ * latch and call the UI's mouse callback with the client position. "click [r] [x y]" posts a
+ * move, a press and (on the second following poll) a release to the game window. The position
+ * is in client pixels and defaults to the centre. */
+static UINT g_click_up;
+static LPARAM g_click_pos;
+
+static void InjectClick(const char *args)
+{
+    int right = args && (args[0] == 'r' || args[0] == 'R'), x = -1, y = -1;
+    RECT rc;
+    if (!g_game_wnd) { Log("control: click unavailable (no game window yet)"); return; }
+    sscanf(args + (right ? 1 : 0), "%d %d", &x, &y);
+    GetClientRect(g_game_wnd, &rc);
+    if (x < 0 || y < 0) { x = rc.right / 2; y = rc.bottom / 2; }
+    g_click_pos = MAKELPARAM(x, y);
+    PostMessageW(g_game_wnd, WM_MOUSEMOVE, 0, g_click_pos);
+    PostMessageW(g_game_wnd, right ? WM_RBUTTONDOWN : WM_LBUTTONDOWN, right ? MK_RBUTTON : MK_LBUTTON, g_click_pos);
+    g_click_up = right ? WM_RBUTTONUP : WM_LBUTTONUP;
+    Log("control: %s click at %d,%d", right ? "right" : "left", x, y);
+}
+
+static void ClickTick(void)           /* release on the second following control poll */
+{
+    static int armed;
+    if (!g_click_up) { armed = 0; return; }
+    if (!armed) { armed = 1; return; }
+    PostMessageW(g_game_wnd, g_click_up, 0, g_click_pos);
+    g_click_up = 0; armed = 0;
+}
+
+static void InjectKey(const char *args);
+static void RunControlFile(IDirect3DDevice9 *dev)
+{
+    ClickTick();
+    wchar_t path[MAX_PATH];
+    char line[512];
+    FILE *f;
+    _snwprintf(path, MAX_PATH, L"%ls\\HydroWater.cmd", g_dir);
+    f = _wfopen(path, L"r");
+    if (!f) return;
+    while (fgets(line, sizeof line, f)) {
+        char *e = line + strlen(line);
+        while (e > line && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ')) *--e = 0;
+        if (!line[0]) continue;
+        if (!_strnicmp(line, "shot ", 5)) SaveBackbuffer(dev, line + 5);
+        else if (!_strnicmp(line, "chapter ", 8)) ChapterSelect(atoi(line + 8));
+        else if (!_stricmp(line, "continue")) ContinueGame();
+        else if (!_strnicmp(line, "key ", 4)) InjectKey(line + 4);
+        else if (!_strnicmp(line, "click", 5)) InjectClick(line[5] ? line + 6 : "");
+        else if (!_stricmp(line, "state")) GameStateLog("now");
+        else Log("control: unknown command '%s'", line);
+    }
+    fclose(f);
+    DeleteFileW(path);
+}
+
+/* After the intro the engine presents through the implicit swap chain
+ * (IDirect3DSwapChain9::Present, slot 3), so that is hooked too. */
+typedef HRESULT (WINAPI *SwapPresent_t)(IDirect3DSwapChain9 *, const RECT *, const RECT *, HWND, const RGNDATA *, DWORD);
+static SwapPresent_t g_orig_swap_present;
+static volatile LONG g_swap_presents;
+static HRESULT WINAPI SwapPresentHook(IDirect3DSwapChain9 *self, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty, DWORD flags)
+{
+    DWORD now = GetTickCount();
+    IDirect3DDevice9 *dev = NULL;
+    InterlockedIncrement(&g_swap_presents);
+    InterlockedIncrement(&g_presents);
+    if (now - g_last_cmd_poll >= 250 && IDirect3DSwapChain9_GetDevice(self, &dev) == D3D_OK) {
+        g_last_cmd_poll = now;
+        RunControlFile(dev);
+        IDirect3DDevice9_Release(dev);
+    }
+    return g_orig_swap_present(self, src, dst, wnd, dirty, flags);
+}
+
+static HRESULT WINAPI PresentHook(IDirect3DDevice9 *self, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty)
+{
+    DWORD now = GetTickCount();
+    InterlockedIncrement(&g_presents);
+    if (now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(self); }
+    return g_orig_present(self, src, dst, wnd, dirty);
+}
+
+static HRESULT WINAPI ResetHook(void *self, HW_D3DPP *pp)
+{
+    HRESULT hr;
+    HWND h = g_game_wnd;
+    if (pp && pp->hDeviceWindow) h = pp->hDeviceWindow;
+    ForceWindowed(pp, h);
+    hr = g_orig_reset(self, pp);
+    Log("borderless: Reset -> %08lx", (unsigned long)hr);
+    return hr;
+}
+
+static HRESULT WINAPI CreateDeviceHook(void *self, UINT adapter, UINT type, HWND focus, DWORD flags, HW_D3DPP *pp, void **dev)
+{
+    HRESULT hr;
+    HWND h = focus;
+    if (pp && pp->hDeviceWindow) h = pp->hDeviceWindow;
+    if (pp) Log("D3D device requested: %ux%u windowed=%d interval=%08lx swap=%u", pp->BackBufferWidth, pp->BackBufferHeight,
+                (int)pp->Windowed, (unsigned long)pp->PresentationInterval, pp->SwapEffect);
+    AdoptWindow(h);
+    ForceWindowed(pp, h);
+    hr = g_orig_create_device(self, adapter, type, focus, flags, pp, dev);
+    if (hr == 0 && dev && *dev) {
+        if (!g_orig_reset) PatchVtable(*dev, 16, (void *)ResetHook, (void **)&g_orig_reset);
+        if (cfg.control && !g_orig_present) {
+            PatchVtable(*dev, 17, (void *)PresentHook, (void **)&g_orig_present);
+            Log("control: Present hooked (orig %p)", (void *)g_orig_present);
+            {
+                IDirect3DSwapChain9 *sc = NULL;
+                if (IDirect3DDevice9_GetSwapChain((IDirect3DDevice9 *)*dev, 0, &sc) == D3D_OK && sc) {
+                    PatchVtable(sc, 3, (void *)SwapPresentHook, (void **)&g_orig_swap_present);
+                    Log("control: swap chain Present hooked (orig %p)", (void *)g_orig_swap_present);
+                    IDirect3DSwapChain9_Release(sc);
+                }
+            }
+        }
+    }
+    Log("CreateDevice -> %08lx", (unsigned long)hr);
+    return hr;
+}
+
+static void InstallWindowHooks(void)
+{
+    HMODULE d3d;
+    Direct3DCreate9_t create = NULL;
+    Release_t release;
+    void *d3d9 = NULL;
+    if (!cfg.borderless && !cfg.background && !cfg.control) return;
+    d3d = LoadLibraryW(L"d3d9.dll");
+    if (d3d) create = (Direct3DCreate9_t)GetProcAddress(d3d, "Direct3DCreate9");
+    if (create) d3d9 = create(32);                   /* D3D_SDK_VERSION */
+    if (cfg.background) InstallForegroundHooks();
+    if (!d3d9) { Log("borderless: Direct3DCreate9 unavailable (%lu)", GetLastError()); return; }
+    PatchVtable(d3d9, 16, (void *)CreateDeviceHook, (void **)&g_orig_create_device);
+    release = (Release_t)(*(void ***)d3d9)[2];      /* release the probe object; the vtable is shared */
+    release(d3d9);
+    Log("borderless=%d background=%d: IDirect3D9::CreateDevice hooked (orig %p)", cfg.borderless, cfg.background, (void *)g_orig_create_device);
+}
+
 /* ---------------------------------------------------------------- dinput8 forwarding */
 static HMODULE g_real;
 static FARPROC g_real_create;
 
-__attribute__((used)) FARPROC hw_resolve_dinput(void)
+static FARPROC hw_resolve_real_dinput(void)
 {
     wchar_t path[MAX_PATH];
     if (!g_real_create) {
@@ -338,6 +739,149 @@ __attribute__((used)) FARPROC hw_resolve_dinput(void)
         if (!g_real_create) Log("the system dinput8.dll could not be loaded (%lu)", GetLastError());
     }
     return g_real_create;
+}
+
+/* ---------------------------------------------------------------- DirectInput hooks (background / control)
+ * The game reads keyboard and mouse through DirectInput 8. When this proxy hands out the real
+ * IDirectInput8, its CreateDevice (slot 3) is patched; on each device, SetCooperativeLevel (13),
+ * GetDeviceState (9) and GetDeviceData (10) are patched in the shared device vtable.
+ *  - background = 1: devices are opened background/non-exclusive so they are never lost when the
+ *    window is not in front (a lost keyboard made the game open its pause menu); real keys are
+ *    hidden from the game while another window has the focus.
+ *  - control = 1: "key <name|DIK hex> [ms]" in HydroWater.cmd presses a key for the game only. */
+typedef HRESULT (WINAPI *DI8Create_t)(HINSTANCE, DWORD, const GUID *, void **, void *);
+typedef HRESULT (WINAPI *DICreateDevice_t)(void *, const GUID *, void **, void *);
+typedef HRESULT (WINAPI *DISetCoop_t)(void *, HWND, DWORD);
+typedef HRESULT (WINAPI *DIGetState_t)(void *, DWORD, void *);
+typedef HRESULT (WINAPI *DIGetData_t)(void *, DWORD, BYTE *, DWORD *, DWORD);
+static DICreateDevice_t g_orig_di_create;
+static DISetCoop_t g_orig_di_coop;
+static DIGetState_t g_orig_di_state;
+static DIGetData_t g_orig_di_data;
+static void *g_kbd;                       /* the game's keyboard device */
+static volatile LONG g_di_seen;           /* bit per method, for one-time logging */
+static DWORD g_key_until[256];            /* tick until which an injected key is held (0 = up) */
+static BYTE g_key_down[256];              /* injected key state already reported as down */
+static DWORD g_di_seq = 0x40000000;
+
+static const GUID HW_GUID_SysKeyboard = { 0x6F1D2B61, 0xD5A0, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+
+static void DISeen(int bit, const char *what)
+{
+    if (!(InterlockedOr(&g_di_seen, 1 << bit) & (1 << bit))) Log("dinput: game uses %s", what);
+}
+
+static int GameHasFocus(void)
+{
+    HWND fg = g_orig_fg ? g_orig_fg() : GetForegroundWindow();
+    return !g_game_wnd || fg == g_game_wnd;
+}
+
+static HRESULT WINAPI DISetCoopHook(void *self, HWND h, DWORD flags)
+{
+    DWORD f = flags;
+    if (cfg.background) f = (flags & ~(0x1u | 0x4u)) | 0x2u | 0x8u;   /* EXCLUSIVE|FOREGROUND -> NONEXCLUSIVE|BACKGROUND */
+    Log("dinput: SetCooperativeLevel(%p, %p, %lx -> %lx)%s", self, (void *)h, flags, f, self == g_kbd ? " keyboard" : "");
+    return g_orig_di_coop(self, h, f);
+}
+
+static HRESULT WINAPI DIGetStateHook(void *self, DWORD cb, void *data)
+{
+    HRESULT hr = g_orig_di_state(self, cb, data);
+    if (self != g_kbd || cb != 256 || !data) return hr;
+    DISeen(0, "keyboard GetDeviceState");
+    {
+        BYTE *k = (BYTE *)data;
+        DWORD now = GetTickCount();
+        int i;
+        if (hr != 0 || (cfg.background && !GameHasFocus())) { memset(k, 0, 256); hr = 0; }
+        for (i = 0; i < 256; i++) if (g_key_until[i] && (LONG)(g_key_until[i] - now) > 0) k[i] = 0x80;
+    }
+    return hr;
+}
+
+static HRESULT WINAPI DIGetDataHook(void *self, DWORD cbo, BYTE *rgdod, DWORD *inout, DWORD flags)
+{
+    DWORD room = inout ? *inout : 0, n, now = GetTickCount();
+    HRESULT hr = g_orig_di_data(self, cbo, rgdod, inout, flags);
+    int i;
+    if (self != g_kbd || !inout) return hr;
+    DISeen(1, "keyboard GetDeviceData");
+    if (hr < 0 || (cfg.background && !GameHasFocus())) { *inout = 0; hr = 0; }
+    n = *inout;
+    if (!rgdod || (flags & 1) || cbo < 16) return hr;                  /* DIGDD_PEEK or a size query: leave edges queued */
+    for (i = 0; i < 256 && n < room; i++) {
+        int want = g_key_until[i] && (LONG)(g_key_until[i] - now) > 0;
+        if (want != g_key_down[i]) {
+            BYTE *e = rgdod + n * cbo;
+            memset(e, 0, cbo);
+            ((DWORD *)e)[0] = (DWORD)i;                 /* dwOfs = DIK code */
+            ((DWORD *)e)[1] = want ? 0x80 : 0;          /* dwData */
+            ((DWORD *)e)[2] = now;                      /* dwTimeStamp */
+            ((DWORD *)e)[3] = g_di_seq++;               /* dwSequence */
+            g_key_down[i] = (BYTE)want;
+            if (!want) g_key_until[i] = 0;
+            n++;
+        }
+    }
+    *inout = n;
+    return hr;
+}
+
+static HRESULT WINAPI DICreateDeviceHook(void *self, const GUID *g, void **dev, void *outer)
+{
+    HRESULT hr = g_orig_di_create(self, g, dev, outer);
+    if (hr == 0 && dev && *dev) {
+        int kbd = g && !memcmp(g, &HW_GUID_SysKeyboard, sizeof(GUID));
+        if (kbd) g_kbd = *dev;
+        Log("dinput: CreateDevice %08lx-... -> %p%s", g ? g->Data1 : 0, *dev, kbd ? " (keyboard)" : "");
+        if (!g_orig_di_coop) PatchVtable(*dev, 13, (void *)DISetCoopHook, (void **)&g_orig_di_coop);
+        if (!g_orig_di_state) PatchVtable(*dev, 9, (void *)DIGetStateHook, (void **)&g_orig_di_state);
+        if (!g_orig_di_data) PatchVtable(*dev, 10, (void *)DIGetDataHook, (void **)&g_orig_di_data);
+    }
+    return hr;
+}
+
+/* key names for the control file; anything else is read as a DIK hex code */
+static int DikFromName(const char *s)
+{
+    static const struct { const char *n; int k; } T[] = {
+        { "esc", 0x01 }, { "enter", 0x1C }, { "space", 0x39 }, { "tab", 0x0F }, { "backspace", 0x0E },
+        { "w", 0x11 }, { "a", 0x1E }, { "s", 0x1F }, { "d", 0x20 }, { "e", 0x12 }, { "q", 0x10 }, { "f", 0x21 },
+        { "r", 0x13 }, { "c", 0x2E }, { "lshift", 0x2A }, { "lctrl", 0x1D },
+        { "up", 0xC8 }, { "down", 0xD0 }, { "left", 0xCB }, { "right", 0xCD } };
+    int i;
+    for (i = 0; i < (int)(sizeof T / sizeof T[0]); i++) if (!_stricmp(s, T[i].n)) return T[i].k;
+    return (int)strtol(s, NULL, 16) & 0xFF;
+}
+
+static void InjectKey(const char *args)
+{
+    char name[32] = { 0 };
+    int ms = 120, k;
+    if (sscanf(args, "%31s %d", name, &ms) < 1) return;
+    k = DikFromName(name);
+    if (!k) { Log("control: key '%s' unknown", name); return; }
+    if (ms < 30) ms = 30;
+    g_key_until[k] = GetTickCount() + (DWORD)ms;
+    if (!g_key_until[k]) g_key_until[k] = 1;
+    Log("control: key %s (DIK %02x) for %d ms%s", name, k, ms, g_kbd ? "" : " (no keyboard device yet)");
+}
+
+static HRESULT WINAPI MyDirectInput8Create(HINSTANCE inst, DWORD ver, const GUID *riid, void **out, void *outer)
+{
+    DI8Create_t real = (DI8Create_t)hw_resolve_real_dinput();
+    HRESULT hr = real ? real(inst, ver, riid, out, outer) : E_FAIL;
+    if (hr == 0 && out && *out && (cfg.background || cfg.control) && !g_orig_di_create) {
+        PatchVtable(*out, 3, (void *)DICreateDeviceHook, (void **)&g_orig_di_create);
+        Log("dinput: IDirectInput8::CreateDevice hooked (background=%d control=%d)", cfg.background, cfg.control);
+    }
+    return hr;
+}
+
+__attribute__((used)) FARPROC hw_resolve_dinput(void)
+{
+    return hw_resolve_real_dinput() ? (FARPROC)MyDirectInput8Create : NULL;
 }
 
 /* exported as DirectInput8Create; the stack is handed through untouched, so the stdcall
