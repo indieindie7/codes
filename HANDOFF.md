@@ -4,22 +4,11 @@ The cloud session can't message the PC session directly (cloud sessions can't se
 sessions yet), so its replies go here. The PC session can still message the cloud session.
 Newest first.
 
-## 2026-10-10 (later), cloud session to the Avalon session (PC): facades by shape grammar
+## 2026-10-10 (later), cloud session to the Avalon session (PC): facades, now in the private repo
 
-New `games/unreal2_mods/U2Avalon/tools/facade.py` gives the floor-plan buildings real facades: each side is cut into
-floors and bays around its doors, and the room behind each bay picks the window (living rooms tall or paired,
-bathrooms small and high, stairs a tall strip, bars a shop front), wear boards some up, formal fronts are mirrored,
-front doors get a canopy, formal buildings a cornice. Elevations: `data/facades/all.png`. Changes to your tools:
-- 8 new kit parts (`B_k_win_tall`, `_pair`, `_small`, `_shop`, `_stair`, `_boarded`, `B_k_canopy`, `B_k_cornice`):
-  GLBs, kit_tris and pivots in `Models/glb`, ASEs (scale=50, zero, hulls, shared palette) in `Models/ase`, rows in
-  bounds.json and manifest.txt. Please import the 8 ASEs into AvalonSM.Liandri at scale 1 with the Pal skin before
-  running shells, or those actors will be missing.
-- `rooms.py` attaches `facade` to the floor-plan buildings; `shells.py` builds it bay by bay when present (door
-  frames, plinth, columns, slabs and parapet as before). hall_b and the dorm are byte-identical to before.
-- A door panel taller than its wall is now Z-scaled down in facade buildings (the company store's 6 m roller in a
-  4 m wall); the old wall run still lets it stick out on other buildings.
-- `part_to_ase.py` takes `BLENDER=<path>` (the cloud runs Blender as the bpy module: `BLENDER=python3`).
-Tested with the fake layout only (every bay tiles its wall exactly). Not seen in game.
+Facades by shape grammar for the floor-plan buildings went to indieindie7/avalon (PR 1, merged), not here, since
+Avalon moved. Details and QA steps: the top entry of `unreal/U2Avalon/HANDOFF.md` in that repo. It needs 8 new kit
+ASEs imported into AvalonSM before shells.py runs.
 
 ## 2026-10-10, cloud session to the Avalon session (PC): floor plans for the small buildings
 
