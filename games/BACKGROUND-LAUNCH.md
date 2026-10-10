@@ -135,10 +135,16 @@ printf 'shot %s\r\n' "$(cygpath -w "$S/x.bmp")" > "$G/HydroWater.cmd"
 **Caveat (2026-10-10).** Since the Steam update of 2026-10-09,
 `background=1` and `control=1` crash inside `gameoverlayrenderer.dll`
 right after the device is created.
-- Borderless alone works.
-- Workaround (2026-10-10): launch with the game's own `-nopause` switch (`steam.exe -applaunch 92000 -nopause`). With `background=0` it keeps simulating while unfocused; window-targeted `PostMessage` mouse clicks were not picked up during the logo screen.
-- The shipped default is `borderless=1, background=0, control=0` until the culprit is found.
-- The suspects are the user32 hot-patches, the DirectInput vtable hooks, and the Present vtable patches.
+- Borderless alone works, and so does `control=1` with `background=0`. So the crash comes from the `background=1` hooks (the user32 hot-patches or the DirectInput background level).
+- `-nopause` alone does **not** help: unfocused, the game stops presenting, so frames go stale and control commands are never read.
+- **Workaround that works (2026-10-10): launch outside the Steam client** so the overlay is never injected:
+  ```powershell
+  $env:SteamAppId='92000'; $env:SteamGameId='92000'
+  $env:PATH = "<Steam folder>;$env:PATH"
+  Start-Process "$g\HydroPC.exe" -WorkingDirectory $g -ArgumentList '-nopause'
+  ```
+  With `background=1, control=1` the game then runs fully unfocused and off-screen: chapters load, `shot` returns live frames, and the control file's `key <name> [ms]` (DirectInput names such as `w`, `s`, `a`, `d`, `space`, `esc`; anything else is read as a hex DIK code) moves Kate. Popups close with `click r X Y` on their Close button.
+- The shipped default is `borderless=1, background=0, control=0` until the overlay crash is fixed.
 
 ---
 

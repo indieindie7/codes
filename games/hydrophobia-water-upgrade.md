@@ -289,6 +289,8 @@ mesh's vertex colour, and the water shader is patched at compile time to draw la
 milky aerated water from it (shaders cached in `shaderCacheHW.bin`). Offline tests pass
 (mesh writer, a real `ps_3_0` compile of the patched shader). In the game (2026-10-10 run): the cache rename, the compile hook
 (1 slot), the mesh hook at 0xbf1448 and "foam shader patched (main ps_3_0)" all logged, and
-the game ran on 41 HydroWater sheets; `shaderCacheDX.bin` unchanged. Not yet seen: a water mesh
-being coloured (the run never got past the intro to visible water). Spray drops are not drawn
-in the game yet.
+the game ran on 41 HydroWater sheets; `shaderCacheDX.bin` unchanged. Second run (2026-10-10, direct launch, off-screen): loading
+chapter 2 logged "foam: first water mesh coloured (sheet 30 x 15)", so the whole path runs in
+the game, with no errors over chapters 1–4. Still to do: look at the foam in a frame (the chapter
+starts are dry lift shafts, and without camera control a scripted run couldn't reach visible water).
+Spray drops are not drawn in the game yet.
