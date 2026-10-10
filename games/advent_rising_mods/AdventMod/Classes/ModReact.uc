@@ -70,7 +70,8 @@ var config int KnockDamage;        // a single hit this big (after the game's sc
 var config float KnockChance;      // ...this often
 var config float KnockDown, KnockGetUp;   // seconds lying, seconds the get-up takes
 var config float KnockPush;
-var int Impact;                    // the current hit before armour (ModGoreRules sets it)
+var config float KnockLift;        // the throw's upward speed (the stock flying reaction)
+var int Impact;                   // the current hit before armour (ModGoreRules sets it)
 struct DownState
 {
 	var Pawn P;
@@ -78,6 +79,7 @@ struct DownState
 	var int Phase;          // 0 falling and lying, 1 getting up
 	var name Fall, Up;      // the fall (held on its last frame while lying) and the get-up
 	var bool bOwnClips;     // ours (ModHoundAnims): PlayAnim, no lying pose clip
+	var bool bStock;        // the game's own flying reaction does it all: we only watch
 };
 var array<DownState> Downs;        // bGoreLog: the classes whose knockdown / get-up animations were listed
 
@@ -197,6 +199,7 @@ function bool Knock(Pawn P, vector Dir)
 {
 	local int i;
 	local DownState D;
+	local AdventPawn A;
 
 	if (P.Physics != PHYS_Walking)
 		return false;
@@ -233,6 +236,26 @@ function bool Knock(Pawn P, vector Dir)
 	}
 	if (!P.HasAnim('Death_Impact') || !P.HasAnim('GetUp_back'))
 		return false;
+	// the game's own knockdown (an explosion's): thrown in the air clip, the landing plays the
+	// impact, the pawn lies in its pose and gets itself up. Its physics and its animation-end
+	// code stay in step, so the body stays on the collision and nothing loops
+	A = AdventPawn(P);
+	if (A.bHasFlyingReaction && A.bCanPlayReactions && (P.HasAnim('R_DeathFront') || P.HasAnim('R_DeathBack')))
+	{
+		Dir.Z = 0;
+		A.nextReactionTime = 0;
+		A.PlayTakeHit(None, P.Location - Normal(Dir) * P.CollisionRadius, KnockDamage, class'dmgType_Explosion', Normal(Dir) * 1000);
+		if (P.Physics == PHYS_Falling)
+		{
+			P.Velocity = Normal(Dir) * KnockPush + vect(0,0,1) * KnockLift;
+			D.bStock = true;
+			Downs[Downs.Length] = D;
+			P.GroundSpeed = 0;
+			if (class'ModSettings'.default.bGoreLog)
+				class'ModSettings'.static.Note("react: " $ P $ " knocked down (stock flying reaction)");
+			return true;
+		}
+	}
 	D.Fall = 'Death_Impact';
 	// the impact animation falls backwards: getting up from the back; from the front if it has it
 	// and the shot came from behind
@@ -270,6 +293,33 @@ function Downed(float DeltaTime)
 		P.GroundSpeed = 0;
 		P.Acceleration = vect(0,0,0);
 		P.GetAnimParams(0, Anim, Frame, Rate);
+		if (Downs[i].bStock)
+		{
+			// the game plays it all; the AI is only kept from walking off while it's down.
+			// Up again (or something else playing) ends it. A pawn left lying gets itself up
+			if (Downs[i].T > 0.3 && P.Physics == PHYS_Walking && !IsDownClip(Anim))
+			{
+				P.GroundSpeed = Downs[i].Speed;
+				Downs.Remove(i, 1);
+				continue;
+			}
+			if (Downs[i].Phase == 0 && Downs[i].T > KnockDown + 5 && P.Physics == PHYS_Walking && InStr(Caps(Anim), "_POSE") >= 0)
+			{
+				Downs[i].Phase = 1;
+				if (InStr(Caps(Anim), "_F_POSE") >= 0 && P.HasAnim('GetUp_front'))
+					P.PlayEonAnim(false, 'GetUp_front', 0, 1.0, 0.15);
+				else
+					P.PlayEonAnim(false, 'GetUp_back', 0, 1.0, 0.15);
+				if (class'ModSettings'.default.bGoreLog)
+					class'ModSettings'.static.Note("react: " $ P $ " left lying in " $ Anim $ ": got up by us");
+			}
+			if (Downs[i].T > KnockDown + KnockGetUp + 10)
+			{
+				P.GroundSpeed = Downs[i].Speed;
+				Downs.Remove(i, 1);
+			}
+			continue;
+		}
 		if (Downs[i].bOwnClips)
 		{
 			// ours: the fall's last frame is the lying pose; the AI starting something else
@@ -305,10 +355,14 @@ function Downed(float DeltaTime)
 		if (Downs[i].Phase == 0)
 		{
 			// lying: hold the impact animation's last frame if the AI or the animation moved on
-			if (Anim != 'Death_Impact' && Anim != 'Death_Impact_B_Pose')
-				P.PlayEonAnim(false, 'Death_Impact', 0, 1.0, 0.05);
-			else if (Frame > 0.98 && P.HasAnim('Death_Impact_B_Pose'))
-				P.PlayEonAnim(true, 'Death_Impact_B_Pose', 0, 1.0, 0.1);
+			// (the pawn's own clip-end code turns the impact into its lying pose: any of those is fine)
+			if (Left(Caps(string(Anim)), 12) != "DEATH_IMPACT")
+			{
+				if (P.HasAnim('Death_Impact_B_Pose'))
+					P.PlayEonAnim(true, 'Death_Impact_B_Pose', 0, 1.0, 0.1);
+				else
+					P.PlayEonAnim(false, 'Death_Impact', 0, 1.0, 0.05);
+			}
 			if (Downs[i].T >= KnockDown)
 			{
 				Downs[i].Phase = 1;
@@ -327,6 +381,15 @@ function Downed(float DeltaTime)
 			}
 		}
 	}
+}
+
+// the clips of a knockdown, from the throw to the get-up
+function bool IsDownClip(name Anim)
+{
+	local string S;
+
+	S = Caps(string(Anim));
+	return Left(S, 7) == "R_DEATH" || S == "R_AIR" || InStr(S, "SPINNING") >= 0 || Left(S, 12) == "DEATH_IMPACT" || Left(S, 6) == "GETUP_";
 }
 
 // a corpse hit: a twitch, a little stronger than a living flinch
@@ -1175,6 +1238,7 @@ defaultproperties
      KnockDown=1.300000
      KnockGetUp=1.400000
      KnockPush=260.000000
+     KnockLift=280.000000
      SpringFreq=3.200000
      SpringDecay=5.500000
      SpringTime=0.900000
