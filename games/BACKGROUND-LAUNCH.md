@@ -119,6 +119,7 @@ HydroWater is a `dinput8.dll` proxy. The background switches live in `HydroWater
 | `continue` | Continues the game. |
 | `state` | Logs the game state: 0x29 menu, 2 playing, 0x1a popup. |
 | `key <vk>` | Posts a key to the game window. |
+| `look dx dy [steps]` | Turns the camera (control = 1 redirects `GetRawInputData`; WM_INPUT with a marker handle). Hook confirmed installed; the turn itself is still unverified in a level. |
 | `click [r] [x y]` | Posts `WM_MOUSEMOVE` and then button down/up messages. The game reads mouse buttons from window messages and only the deltas from raw input. |
 
 **Write the path as an argument.** In bash, never put the path inside the printf format string, or its backslashes become escapes:

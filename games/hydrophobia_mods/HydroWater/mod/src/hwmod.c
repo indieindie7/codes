@@ -578,31 +578,36 @@ static void PatchCacheName(void)
     if (PatchBytes(s, CACHE_NAME_HW, sizeof CACHE_NAME_HW)) { done = 1; Log("foam: shader cache is %s (the game's %s is left alone)", CACHE_NAME_HW, CACHE_NAME_GAME); }
 }
 
-/* the compile import: every slot in the exe image holding d3dx9_43!D3DXCompileShader */
-static void HookCompile(void)
+/* every 4-byte slot in the exe image holding fn (import table entries) is pointed at hook */
+static int PatchImportSlots(void *fn, void *hook)
 {
-    static int done;
-    HMODULE d3dx, exe = GetModuleHandleW(NULL);
-    BYTE *fn, *base = (BYTE *)exe, *p, *end;
-    IMAGE_NT_HEADERS *nt;
+    BYTE *base = (BYTE *)GetModuleHandleW(NULL), *p, *end;
+    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
     MEMORY_BASIC_INFORMATION mbi;
     int hits = 0;
-    if (done || !cfg.opts.foam) return;
-    d3dx = GetModuleHandleW(L"d3dx9_43.dll");
-    if (!d3dx || !(fn = (BYTE *)GetProcAddress(d3dx, "D3DXCompileShader"))) return;
-    nt = (IMAGE_NT_HEADERS *)(base + ((IMAGE_DOS_HEADER *)base)->e_lfanew);
     end = base + nt->OptionalHeader.SizeOfImage;
-    g_orig_compile = (Compile_t)fn;
     for (p = base; p < end && VirtualQuery(p, &mbi, sizeof mbi); p = (BYTE *)mbi.BaseAddress + mbi.RegionSize) {
         BYTE *q, *re = (BYTE *)mbi.BaseAddress + mbi.RegionSize;
         if (mbi.State != MEM_COMMIT || (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) continue;
         if (re > end) re = end;
         for (q = (BYTE *)mbi.BaseAddress; q + 4 <= re; q += 4)
-            if (*(BYTE **)q == fn) {
-                void *hook = (void *)CompileHook;
-                if (PatchBytes(q, &hook, 4)) hits++;
-            }
+            if (*(void **)q == fn && PatchBytes(q, &hook, 4)) hits++;
     }
+    return hits;
+}
+
+/* the compile import: every slot in the exe image holding d3dx9_43!D3DXCompileShader */
+static void HookCompile(void)
+{
+    static int done;
+    HMODULE d3dx;
+    BYTE *fn;
+    int hits;
+    if (done || !cfg.opts.foam) return;
+    d3dx = GetModuleHandleW(L"d3dx9_43.dll");
+    if (!d3dx || !(fn = (BYTE *)GetProcAddress(d3dx, "D3DXCompileShader"))) return;
+    g_orig_compile = (Compile_t)fn;
+    hits = PatchImportSlots(fn, (void *)CompileHook);
     done = 1;
     if (hits) Log("foam: D3DXCompileShader import hooked (%d slot%s)", hits, hits == 1 ? "" : "s");
     else Log("foam: no D3DXCompileShader import slot found, the water shader is unchanged");
@@ -634,6 +639,7 @@ static void InstallFoam(void)
 }
 
 static void InstallWindowHooks(void);
+static void HookRawInput(void);
 
 static DWORD WINAPI Installer(LPVOID arg)
 {
@@ -647,6 +653,7 @@ static DWORD WINAPI Installer(LPVOID arg)
         r = Install();
         if (r != 0) {
             InstallFoam();
+            HookRawInput();
             if (r > 0 && cfg.mode == MODE_OFF) Log("mode=off: the hook forwards every call to the game's solver");
             return 0;
         }
@@ -934,6 +941,59 @@ static void ClickTick(void)           /* release on the second following control
     g_click_up = 0; armed = 0;
 }
 
+/* Camera turns. The game takes mouse movement only from Raw Input: its window procedure calls
+ * GetRawInputData on WM_INPUT. With control = 1 that import is redirected; "look dx dy [steps]"
+ * posts `steps` WM_INPUT messages carrying a marker handle, and the hook answers those with a
+ * relative mouse move of (dx/steps, dy/steps). Real raw input passes through unchanged. */
+#define HW_LOOK_HANDLE ((HRAWINPUT)(UINT_PTR)0x4857C00Cu)
+typedef UINT (WINAPI *GetRawInputData_t)(HRAWINPUT, UINT, LPVOID, PUINT, UINT);
+static GetRawInputData_t g_orig_rawdata;
+static volatile LONG g_look_sx, g_look_sy;
+
+static UINT WINAPI RawDataHook(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size, UINT hdr)
+{
+    RAWINPUT ri;
+    UINT n;
+    if (h != HW_LOOK_HANDLE) return g_orig_rawdata(h, cmd, data, size, hdr);
+    memset(&ri, 0, sizeof ri);
+    ri.header.dwType = RIM_TYPEMOUSE;
+    ri.header.dwSize = sizeof ri;
+    ri.data.mouse.usFlags = MOUSE_MOVE_RELATIVE;
+    ri.data.mouse.lLastX = g_look_sx;
+    ri.data.mouse.lLastY = g_look_sy;
+    n = cmd == RID_HEADER ? (UINT)sizeof ri.header : (UINT)sizeof ri;
+    if (!size || hdr != sizeof(RAWINPUTHEADER)) return (UINT)-1;
+    if (!data) { *size = n; return 0; }
+    if (*size < n) { *size = n; return (UINT)-1; }
+    memcpy(data, &ri, n);
+    return n;
+}
+
+static void HookRawInput(void)
+{
+#ifndef HW_TEST
+    void *fn = (void *)GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetRawInputData");
+    int hits;
+    if (!cfg.control || g_orig_rawdata || !fn) return;
+    g_orig_rawdata = (GetRawInputData_t)fn;
+    hits = PatchImportSlots(fn, (void *)RawDataHook);
+    Log("control: GetRawInputData import %s (%d slot%s)", hits ? "hooked" : "NOT found", hits, hits == 1 ? "" : "s");
+#endif
+}
+
+static void InjectLook(const char *args)
+{
+    int dx = 0, dy = 0, steps = 10, i;
+    if (sscanf(args, "%d %d %d", &dx, &dy, &steps) < 2) { Log("control: look needs dx dy [steps]"); return; }
+    if (!g_game_wnd || !g_orig_rawdata) { Log("control: look unavailable (no window or raw input hook)"); return; }
+    if (steps < 1) steps = 1;
+    if (steps > 100) steps = 100;
+    InterlockedExchange(&g_look_sx, dx / steps);
+    InterlockedExchange(&g_look_sy, dy / steps);
+    for (i = 0; i < steps; i++) PostMessageW(g_game_wnd, WM_INPUT, RIM_INPUT, (LPARAM)HW_LOOK_HANDLE);
+    Log("control: look %d %d in %d steps", dx, dy, steps);
+}
+
 static void InjectKey(const char *args);
 static void RunControlFile(IDirect3DDevice9 *dev)
 {
@@ -952,6 +1012,7 @@ static void RunControlFile(IDirect3DDevice9 *dev)
         else if (!_strnicmp(line, "chapter ", 8)) ChapterSelect(atoi(line + 8));
         else if (!_stricmp(line, "continue")) ContinueGame();
         else if (!_strnicmp(line, "key ", 4)) InjectKey(line + 4);
+        else if (!_strnicmp(line, "look ", 5)) InjectLook(line + 5);
         else if (!_strnicmp(line, "click", 5)) InjectClick(line[5] ? line + 6 : "");
         else if (!_stricmp(line, "state")) GameStateLog("now");
         else Log("control: unknown command '%s'", line);
