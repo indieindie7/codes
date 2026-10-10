@@ -95,8 +95,10 @@ Start-Process "$g\System\advent.exe" -WorkingDirectory "$g\System"
 - Check that no other instance is running first. Two instances corrupt the ini.
 - Read `System\Advent.log` afterwards.
 
-**Background input.** Advent uses the same DirectInput approach as U2Input:
-fake focus, and never grab the real device.
+**Background runs.** Advent has no DirectInput proxy and no fake focus.
+- `AdventMod/test_run.ps1` parks the game window off the left edge of the screen (`SetWindowPos`), hands focus straight back to the previous window (`AttachThreadInput` + `SetForegroundWindow`), and grabs screenshots with `PrintWindow`.
+- The game is driven from inside by script: ModPilot steps (`GOTO`, `SPAWNPACK`, `FLOORMAP` and others) run by the mod, not by injected input.
+- `AdventNative.dll` only does a borderless resize/restore of the game window.
 
 ## 3. Hydrophobia: Prophecy, the HydroWater mod (this chat)
 
@@ -134,6 +136,7 @@ printf 'shot %s\r\n' "$(cygpath -w "$S/x.bmp")" > "$G/HydroWater.cmd"
 `background=1` and `control=1` crash inside `gameoverlayrenderer.dll`
 right after the device is created.
 - Borderless alone works.
+- Workaround (2026-10-10): launch with the game's own `-nopause` switch (`steam.exe -applaunch 92000 -nopause`). With `background=0` it keeps simulating while unfocused; window-targeted `PostMessage` mouse clicks were not picked up during the logo screen.
 - The shipped default is `borderless=1, background=0, control=0` until the culprit is found.
 - The suspects are the user32 hot-patches, the DirectInput vtable hooks, and the Present vtable patches.
 
