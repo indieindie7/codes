@@ -23,7 +23,8 @@ DX, G = 20.0, 980.0
 class Opts(ctypes.Structure):
     _fields_ = [("displacement", ctypes.c_int), ("capped_stamp", ctypes.c_int),
                 ("face_walls", ctypes.c_int), ("clamps", ctypes.c_int),
-                ("alpha", ctypes.c_float), ("c_adapt", ctypes.c_float), ("edge_damp", ctypes.c_float)]
+                ("alpha", ctypes.c_float), ("c_adapt", ctypes.c_float), ("edge_damp", ctypes.c_float),
+                ("recon", ctypes.c_int)]
 
 
 lib = ctypes.CDLL(DLL)
@@ -67,7 +68,7 @@ class Sheet:
         self.stride = lib.hw_stride(self.s)
         o = Opts()
         if upgraded:
-            o.displacement = o.capped_stamp = o.face_walls = o.clamps = 1
+            o.displacement = o.capped_stamp = o.face_walls = o.clamps = o.recon = 1
         for k, v in kw.items():
             setattr(o, k, v)
         lib.hw_set_opts(self.s, ctypes.byref(o))

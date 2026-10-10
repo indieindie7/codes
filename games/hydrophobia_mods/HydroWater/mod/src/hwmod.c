@@ -94,6 +94,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "capped_stamp")) cfg.opts.capped_stamp = atoi(v);
         else if (!_stricmp(k, "face_walls")) cfg.opts.face_walls = atoi(v);
         else if (!_stricmp(k, "clamps")) cfg.opts.clamps = atoi(v);
+        else if (!_stricmp(k, "recon")) cfg.opts.recon = atoi(v);
         else if (!_stricmp(k, "alpha")) cfg.opts.alpha = (float)atof(v);
         else if (!_stricmp(k, "c_adapt")) cfg.opts.c_adapt = (float)atof(v);
         else if (!_stricmp(k, "edge_damp")) cfg.opts.edge_damp = (float)atof(v);
@@ -101,8 +102,8 @@ static void ReadIni(void)
         else if (!_stricmp(k, "max_cells")) cfg.max_cells = atoi(v);
     }
     fclose(f);
-    Log("config: mode=%d displacement=%d capped_stamp=%d face_walls=%d clamps=%d alpha=%.2f c_adapt=%.2f edge_damp=%.2f log_every=%d max_cells=%d",
-        cfg.mode, cfg.opts.displacement, cfg.opts.capped_stamp, cfg.opts.face_walls, cfg.opts.clamps,
+    Log("config: mode=%d displacement=%d capped_stamp=%d face_walls=%d clamps=%d recon=%d alpha=%.2f c_adapt=%.2f edge_damp=%.2f log_every=%d max_cells=%d",
+        cfg.mode, cfg.opts.displacement, cfg.opts.capped_stamp, cfg.opts.face_walls, cfg.opts.clamps, cfg.opts.recon,
         cfg.opts.alpha, cfg.opts.c_adapt, cfg.opts.edge_damp, cfg.log_every, cfg.max_cells);
 }
 

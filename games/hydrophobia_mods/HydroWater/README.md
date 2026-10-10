@@ -49,8 +49,9 @@ build; the five tests together run in about two seconds.
 
 ## Next
 
-- Stage 5 (Kurganov–Petrova reconstruction) and 7 (splash and foam from the field) are the next
-  visible gains; 9 (tile sleeping) and 10 (SSE/AVX2) once a real room is hooked up.
+- Stage 5 is in as `recon` (minmod-limited reconstruction of eta, u, v at faces; all five
+  milestone tests pass with it on, dam front 1120 vs 1300 units at 3 s, still water exact).
+  Stage 7 (splash and foam from the field) is the next visible gain; 9 (tile sleeping) and 10 (SSE/AVX2) once a real room is hooked up.
 - Hooking into the game: done in `mod/` (a `dinput8.dll` proxy that detours `FUN_00d5c9d0`
   and copies the sheet planes through `hw_sheet` each step; `mod/README.txt` is the Nexus
   readme, `mod/build.ps1` builds, `mod/tests/build.ps1` runs the hook test,

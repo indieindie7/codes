@@ -24,7 +24,8 @@ Options (HydroWater.ini)
 ------------------------
 mode = hw           run the water on HydroWater (default)
 mode = passthrough  load the mod but leave the game's own solver in charge (for comparing)
-clamps, alpha, c_adapt, edge_damp  tuning, see the comments in the file
+clamps, recon       the upgrade stages (1 = on)
+alpha, c_adapt, edge_damp  tuning, see the comments in the file
 max_cells           grids with more cells than this stay on the game's solver
 
 Notes
