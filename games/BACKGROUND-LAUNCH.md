@@ -132,6 +132,8 @@ printf 'shot %s\r\n' "$(cygpath -w "$S/x.bmp")" > "$G/HydroWater.cmd"
 1. Run `steam://rungameid/92000`. The exe is SteamStub-wrapped, so it is never patched on disk.
 2. The settings launcher dialog always appears. The script presses Start with `BM_CLICK` (control id 1) on the dialog's handle. No real click is needed.
 3. Park the window at off-screen coordinates, then capture it with PrintWindow or `shot`.
+   Wait about 25 s after Start first: a window parked 3 s after Start never presented
+   (`presents 0`, no `shot` handled), while one parked at 25 s ran normally.
 
 **Caveat (2026-10-10).** Since the Steam update of 2026-10-09,
 `background=1` and `control=1` crash inside `gameoverlayrenderer.dll`

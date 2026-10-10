@@ -293,4 +293,10 @@ the game ran on 41 HydroWater sheets; `shaderCacheDX.bin` unchanged. Second run 
 chapter 2 logged "foam: first water mesh coloured (sheet 30 x 15)", so the whole path runs in
 the game, with no errors over chapters 1–4. Still to do: look at the foam in a frame (the chapter
 starts are dry lift shafts, and without camera control a scripted run couldn't reach visible water).
+Main-menu A/B (2026-10-10, foam=1 vs foam=0, three frames each): the backdrop water looks the same
+either way. The on/off difference (mean 3.6–4.4 per channel in the water strip) is no bigger than
+two frames of the same run (4.2–5.1), and the mean colour matches. So the patched shader leaves
+unfoamed water untouched. It shows no foam either: the menu runs on 20+ HydroWater sheets, but its
+water mesh never passes the 0xbf1448 builder ("first water mesh coloured" is not logged). The foam
+look still needs a level shot.
 Spray drops are not drawn in the game yet.
