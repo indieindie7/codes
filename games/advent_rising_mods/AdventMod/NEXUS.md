@@ -15,7 +15,7 @@ page text.
 Blood that runs, pools, drips and dries, bodies that come apart, Seeker armour that dents and flies off, working character shadows, a modern post chain (bloom, LUT, CAS, SMAA, GI, AO, fog), foot IK, and the launcher's settings inside the game's menus. Formerly AdventMod.
 
 **Files to upload:** `GoreOverhaul-3.0-experimental-nexus.zip` (no .bat inside; Nexus quarantines them).
-The GitHub zip with the one-click installer: https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods/AdventMod
+No GitHub links anywhere in the page text (user, 2026-10-10: Nexus may not like them). The installer zip lives on GitHub only.
 
 Before upload (RELEASE.md has the list): a fresh plain `build.ps1` (never the `-JiggleSkin` build: it
 carries a game texture), the current gi-cascades `d3d8.dll` copied into `System\`, the stray `.asm` and
@@ -93,12 +93,11 @@ Options is a hub, one press from each page, from the title and the pause menu: [
 
 [size=4][b]Install[/b][/size]
 Extract the zip, then copy everything in its [i]System[/i] folder into the game's [i]System[/i] folder (rename your own d3d8.dll first if you have one, e.g. dgVoodoo), and the [i]KarmaData[/i] and [i]AdventMod[/i] folders next to it. Then add a few configuration lines to Mydefault.ini and MyDefUser.ini, as described step by step in the README. The files keep the old AdventMod name, so an existing AdventMod install is simply overwritten.
-Or take the GitHub version, which has a one-click installer and uninstaller that back up everything they change.
 
 Works with the Steam/GOG version and Advent Revising (already included there). Tested on Steam, Windows 10, NVIDIA. Known limits are listed in the README (foot IK keeps the animation's foot tilt, hounds never ragdoll, light shafts and exclusive fullscreen unverified).
 
 [size=4][b]How it works[/b][/size]
-GoreOverhaul is an UnrealScript package (compiled with AdventUCC, which runs the compiler hidden in the game's Editor.dll), a small native helper (shadow fixes, frame cap, foot IK and flesh springs inside the engine's pose build, the armour test), and a d3d8.dll: a fork of crosire's d3d8to9 with shader-based shadow filtering, post-processing, GI, live blood sheets and the rest. Full source on GitHub.
+GoreOverhaul is an UnrealScript package (compiled with AdventUCC, which runs the compiler hidden in the game's Editor.dll), a small native helper (shadow fixes, frame cap, foot IK and flesh springs inside the engine's pose build, the armour test), and a d3d8.dll: a fork of crosire's d3d8to9 with shader-based shadow filtering, post-processing, GI, live blood sheets and the rest.
 
 [size=4][b]Credits[/b][/size]
 GlyphX Games / Majesco for Advent Rising; Mike Tyndall for Advent Revising; crosire for d3d8to9; Jorge Jimenez et al. for SMAA, the bloom technique and separable SSS; AMD for CAS; Khronos for PBR Neutral; Inigo Quilez for the texture repetition and fog techniques; Lucas Norr for UnityPCSS; Omar Cornut (Dear ImGui) and Sean Barrett (stb); McGuire, Mara and Luebke (SAO); Mikkelsen (hex tiling); Sannikov (radiance cascades).
