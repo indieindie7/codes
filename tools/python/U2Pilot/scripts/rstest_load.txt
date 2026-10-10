@@ -1,0 +1,7 @@
+# does a map with hand-written ReachSpecs load?
+background
+map TutA_RSTest
+waitcontrol 120
+wait 2
+shot
+quit

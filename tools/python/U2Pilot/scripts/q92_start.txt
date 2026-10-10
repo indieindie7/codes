@@ -1,0 +1,10 @@
+# what is the floating dark box? aim at it and GM-pick
+background
+map TutA_Remake
+waitcontrol 240
+wait 3
+console god
+console hub frame 4000 -10000 -3500 2600 225 try=225:1
+wait 2
+shot
+quit

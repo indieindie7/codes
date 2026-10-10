@@ -1,0 +1,16 @@
+# Q92 round 2: the floating-box view again, then the patch's steepest slope (7752 -13916)
+background
+map TutA_RemakeQ92
+waitcontrol 240
+wait 3
+console god
+console hub frame 4000 -10000 -3500 2600 225 try=225:1,200:1,250:1
+wait 2
+shot
+console hub frame 7752 -13916 -3020 1400 0 try=0:1,90:1,180:1,270:1
+wait 2
+shot
+console hub frame 7752 -13916 -3020 700 135 try=135:1,45:1,225:1
+wait 2
+shot
+quit

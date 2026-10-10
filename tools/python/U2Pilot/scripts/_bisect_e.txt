@@ -1,0 +1,6 @@
+background
+map TutA_Live9?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 90
+wait 2
+shot
+quit

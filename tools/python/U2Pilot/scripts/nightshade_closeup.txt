@@ -1,0 +1,14 @@
+# NightshadeBike close-up: board, nearest chase camera, hold Alt Fire to watch the arm deploy, release to retract.
+userini U2Hover.HoverMutator BikeClass=U2Hover.NightshadeBike
+map HoverTest?Mutator=U2Hover.HoverMutator
+waitcontrol 60
+move 1 0 1.6
+wait 1
+console set NightshadeBike CamPosIndex 1
+turn 0 -15 0.5
+shots 0.3
+wait 1
+altfire 4.5
+wait 1.5
+dump NightshadeBike CurSeq SeqTime bDeployed
+quit

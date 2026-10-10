@@ -1,0 +1,23 @@
+# which mesh->actor axis flips put the gauge needle on the gauge
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+give U2UTFlak.WeaponInvUTBio
+wait 2
+turn 30 -6 0.3
+wait 2
+console set WeaponInvUTBio GaugeSign (X=-1,Y=-1,Z=1)
+wait 0.5
+shot
+console set WeaponInvUTBio GaugeSign (X=-1,Y=1,Z=1)
+wait 0.5
+shot
+console set WeaponInvUTBio GaugeSign (X=1,Y=-1,Z=1)
+wait 0.5
+shot
+console set WeaponInvUTBio GaugeSign (X=1,Y=1,Z=1)
+wait 0.5
+shot
+quit

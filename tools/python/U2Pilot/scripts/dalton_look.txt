@@ -1,0 +1,17 @@
+# Dalton's armour material look: Dalton stood facing the camera (wardrobe photo), lit by a lamp
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+console hub clean 40
+turn 0 1 0.3
+wait 1
+console wardrobe photo 0 170
+console hub lamp 220 40 150
+wait 2
+shot
+turn 6 0 0.2
+wait 1
+shot
+quit

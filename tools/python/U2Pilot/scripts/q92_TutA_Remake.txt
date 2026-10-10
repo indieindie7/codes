@@ -1,0 +1,16 @@
+# Q92 terrain patch look: TutA_Remake, the shanty slope below the Liandri tower (patch centre 4000 -10000)
+background
+map TutA_Remake
+waitcontrol 240
+wait 3
+console god
+console hub frame 4000 -10000 -3500 2600 225 try=225:1,200:1,250:1,180:1
+wait 2
+shot
+console hub frame 3000 -9000 -3500 1200 135 try=135:1,160:1,110:1
+wait 2
+shot
+console hub frame 5000 -11500 -3300 1600 45 try=45:1,70:1,20:1
+wait 2
+shot
+quit

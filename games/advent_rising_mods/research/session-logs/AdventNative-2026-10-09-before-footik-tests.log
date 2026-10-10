@@ -1,0 +1,135 @@
+[49581921] AdventNative loaded, hook ready
+[49581953] d3d8: H:\SteamLibrary\steamapps\common\Advent Rising\System\d3d8.dll
+[49581953] shadowfix: the sky pass no longer draws the level's waiting projectors
+[49582000] d3dtrace: reference device: table 678FC53C in d3d8.dll, Present in d3d8.dll
+[49582015] d3dtrace: game device at render device +195c: 11895400, table 678FC53C in d3d8.dll
+[49582015] shadowalpha: watching the device (11895400) so shadow bitmaps keep their alpha
+[49582015] input class set to AdventMod.ModInput
+[49582015] removed the launcher's FOV binding from key W (now: MoveForward)
+[49582046] borderless on: 1920x1080 at 0,0
+[49582046] open level03sectionc?Menu=?Game=EonEngine.EonGameInfo => 
+[49582046] softshadows: 0 lamps light characters (0 others skipped), sun None
+[49582046] frame cap: 60 fps
+[49582046] input: ModInput is the input of title_pc.EonGuiPlayerController
+[49582437] input: ModInput given to level03sectionc.adventPlayer
+[49582437] softshadows: 176 lamps light characters (178 others skipped), sun level03sectionc.Sunlight7
+[49582437] difficulty: level scalar 1.00, normal damage x1.00, normal health x1.00
+[49582437] armor: ready (on True, log False, 4 armoured classes, absorb 0.70)
+[49582437] gore: watching hits
+[49582437] blood: the d3d8 layer's live pools are available
+[49582437] moves: lean True (gain 1.00, max 12.00), slide meter True
+[49582437] minds: on (spread 0.15, pin 0.70, flee 0.70, charge 0.75)
+[49582437] pilot: loaded 9 steps
+[49582437] input: ModInput is the input of level03sectionc.adventPlayer
+[49582437] pilot: step 1: waitcontrol 30
+[49582437] pilot: the game paused itself (window not in focus): unpausing
+[49582515] pilot: the game paused itself (window not in focus): unpausing
+[49582515] pilot: skipping cutscene level03sectionc.CinematicEvent0
+[49582671] shadowalpha: first shadow bitmap (128x128): alpha writes on while it is drawn
+[49583906] post fx: removed the game's Engine.ScreenDistortion
+[49583906] softshadows: stock shadow of GideonDressUniform0: at 0.19,0.07,15.63 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 48 scale 2.64 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49583906] softshadows: multi-light shadows for GideonDressUniform0 (4 max) at -7408.95,11522.85,-368.00 collision 34.00x78.00 drawtype DT_Mesh
+[49583921] softshadows: stock shadow of SeekerInfantry_SpaceStation49: at 1.53,2.52,15.69 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 60 scale 3.43 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49583921] softshadows: multi-light shadows for SeekerInfantry_SpaceStation49 (1 max) at -8536.77,13766.81,-349.15 collision 60.00x93.00 drawtype DT_Mesh
+[49584562] contact-hardening shadows on (indoors)
+[49584562] softshadows: stock shadow of Marine7: at -0.19,0.09,16.84 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 48 scale 2.64 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49584562] softshadows: multi-light shadows for Marine7 (1 max) at -7837.34,12037.65,-364.15 collision 34.00x78.00 drawtype DT_Mesh
+[49584562] softshadows: stock shadow of marine2: at -0.19,0.07,17.01 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 48 scale 2.64 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49584562] softshadows: multi-light shadows for marine2 (1 max) at -8196.09,11955.03,-364.15 collision 34.00x78.00 drawtype DT_Mesh
+[49588343] softshadows: GideonDressUniform0: light here 365 (ambient 8) | Light70 share 0.78 dark 136 fade 681 at 0.42,-1.17,15.71 rot [P=-6371,Y=-5311,R=0] dir -0.72,0.40,0.57 dist 354 fov 50 active True | Light328 share 0.66 dark 115 fade 337 at 0.42,-1.17,15.71 rot [P=-10923,Y=30887,R=0] dir 0.49,-0.09,0.87 dist 200 fov 65 active True
+[49588343] softshadows: SeekerInfantry_SpaceStation49: light here 208 (ambient 8)
+[49588343] softshadows: Marine7: light here 472 (ambient 8) | Light70 share 1.00 dark 174 fade 620 at -1.58,0.38,13.27 rot [P=-6882,Y=-2605,R=0] dir -0.77,0.20,0.61 dist 226 fov 62 active True
+[49588343] softshadows: marine2: light here 208 (ambient 8) | Sunlight7 share 0.98 dark 175 fade 734 at -0.80,-0.95,15.64 rot [P=-5987,Y=-29099,R=0] dir 0.79,0.29,0.54 dist 600 fov 35 active True
+[49588343] softshadows: stock shadow of DYN_marine1: at -0.16,0.73,18.20 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 48 scale 2.64 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49588343] softshadows: multi-light shadows for DYN_marine1 (1 max) at -5870.98,10331.65,-368.00 collision 34.00x78.00 drawtype DT_Mesh
+[49588343] pilot: where: -7408.95,11522.85,-368.00 rotation [P=-1146,Y=26699,R=0] pawn [P=0,Y=26703,R=0] velocity 0 physics PHYS_Walking state PlayerWalking
+[49588343] pilot: where: time 5.40 dilation 1.00 gamespeed 1.00 paused False groundspeed 410.00 velocity 0.00 at -7408.95,11522.85,-368.00
+[49588343] pilot: where: camera PlayerFollower desired [P=0,Y=26703,R=0] current [P=0,Y=26703,R=0] camera rot [P=-1146,Y=26699,R=0]
+[49588343] pilot: step 2: move 1 0 4
+[49588625] targeting: combat, weapons on the ground off the lock-on list
+[49588625] targeting: 17 more weapons on the ground off the lock-on list (17 in all)
+[49588843] softshadows: stock shadow of SeekerInfantry_SpaceStation48: at -0.29,1.05,17.01 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 60 scale 3.43 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49588843] softshadows: multi-light shadows for SeekerInfantry_SpaceStation48 (1 max) at -8050.20,14455.22,-349.15 collision 60.00x93.00 drawtype DT_Mesh
+[49589125] targeting: 5 more weapons on the ground off the lock-on list (22 in all)
+[49591359] softshadows: GideonDressUniform0: light here 208 (ambient 8) | Sunlight7 share 0.98 dark 175 fade 734 at -4.30,4.21,17.34 rot [P=-5987,Y=-29099,R=0] dir 0.79,0.29,0.54 dist 563 fov 37 active True
+[49591359] softshadows: SeekerInfantry_SpaceStation49: light here 208 (ambient 8) | Sunlight7 share 0.98 dark 175 fade 518 at -4.34,29.77,29.36 rot [P=-5987,Y=-29099,R=0] dir 0.79,0.29,0.54 dist 600 fov 47 active True
+[49591359] softshadows: Marine7: light here 297 (ambient 8) | Light293 share 0.78 dark 45 fade 480 at -0.72,-3.25,35.75 rot [P=-6372,Y=22019,R=0] dir 0.42,-0.70,0.57 dist 284 fov 56 active True
+[49591359] softshadows: marine2: light here 208 (ambient 8) | Sunlight7 share 0.98 dark 175 fade 734 at 0.23,-0.07,16.38 rot [P=-5987,Y=-29099,R=0] dir 0.79,0.29,0.54 dist 600 fov 35 active True
+[49591359] softshadows: DYN_marine1: light here 8 (ambient 8)
+[49591359] softshadows: SeekerInfantry_SpaceStation48: light here 182 (ambient 8)
+[49592359] pilot: step 3: face 90
+[49593515] playerblood: mesh Humans.gideonformal at -8386.26,11995.82,-364.10
+[49593515] playerblood: bone righthand at -1.03,-33.48,12.80 x 0.12,0.36,0.92 y 0.26,0.89,-0.38
+[49593515] playerblood: bone rightForeArm at 4.99,-24.33,31.61
+[49593515] playerblood: bone lefthand at -2.65,35.00,14.34 x -0.51,0.31,-0.80 y 0.39,-0.74,-0.54
+[49593515] playerblood: bone leftForeArm at 6.29,24.93,31.44
+[49593859] contact-hardening shadows off (outdoors: the plain sun shadow)
+[49594359] softshadows: GideonDressUniform0: light here 208 (ambient 8) | Sunlight7 share 0.98 dark 175 fade 734 at 0.29,-0.95,16.22 rot [P=-5987,Y=-29099,R=0] dir 0.79,0.29,0.54 dist 563 fov 37 active True
+[49594359] softshadows: SeekerInfantry_SpaceStation49: light here 208 (ambient 8) | Sunlight7 share 0.98 dark 175 fade 875 at -12.74,51.89,32.21 rot [P=-5987,Y=-29099,R=0] dir 0.79,0.29,0.54 dist 600 fov 47 active True
+[49594359] softshadows: Marine7: light here 66 (ambient 8)
+[49594359] softshadows: marine2: light here 460 (ambient 8) | Light70 share 0.86 dark 151 fade 680 at -2.08,-0.73,-5.58 rot [P=-6379,Y=22572,R=0] dir 0.46,-0.68,0.57 dist 277 fov 57 active True
+[49594359] softshadows: DYN_marine1: light here 226 (ambient 8) | Light277 share 0.88 dark 139 fade 680 at 4.77,-2.44,13.95 rot [P=-6381,Y=20936,R=0] dir 0.35,-0.74,0.57 dist 274 fov 57 active True
+[49594359] softshadows: SeekerInfantry_SpaceStation48: light here 182 (ambient 8)
+[49594937] moves: player: 6 footfalls, mean speed 577, planted foot at its slowest 55 units/s (9%)
+[49594937] moves: AI: 27 footfalls, mean speed 280, planted foot at its slowest 97 units/s (34% of the speed), 29 stride adjustments, largest bank 10 deg; head toward the inside of the turn 142, away 58
+[49597359] softshadows: GideonDressUniform0: light here 208 (ambient 8) | Sunlight7 share 0.98 dark 175 fade 734 at 0.20,0.01,15.66 rot [P=-5987,Y=-29099,R=0] dir 0.79,0.29,0.54 dist 563 fov 37 active True
+[49597359] softshadows: SeekerInfantry_SpaceStation49: light here 208 (ambient 8) | Sunlight7 share 0.98 dark 175 fade 875 at 2.17,2.18,15.08 rot [P=-5987,Y=-29099,R=0] dir 0.79,0.29,0.54 dist 600 fov 47 active True
+[49597359] softshadows: Marine7: light here 71 (ambient 8)
+[49597359] softshadows: marine2: light here 366 (ambient 8) | Light70 share 0.84 dark 146 fade 681 at 8.13,1.01,12.23 rot [P=-6375,Y=25991,R=0] dir 0.65,-0.50,0.57 dist 376 fov 48 active True
+[49597359] softshadows: DYN_marine1: light here 443 (ambient 8) | Light70 share 0.99 dark 173 fade 678 at 5.19,-4.01,13.78 rot [P=-6399,Y=-15245,R=0] dir -0.09,0.81,0.58 dist 247 fov 60 active True
+[49597359] softshadows: SeekerInfantry_SpaceStation48: light here 182 (ambient 8)
+[49598375] pilot: turn: stopped -65 / 0 degrees short
+[49598375] pilot: step 4: move 1 0 4
+[49598859] softshadows: shadows of Marine7 go back to the pool
+[49599859] softshadows: stock shadow of Marine7: at 2.68,2.33,12.92 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 48 scale 2.64 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49599859] softshadows: multi-light shadows for Marine7 (1 max) at -5522.72,10216.90,-364.10 collision 34.00x78.00 drawtype DT_Mesh
+[49600015] targeting: no enemies near, weapons on the ground back on the lock-on list
+[49600359] softshadows: GideonDressUniform0: light here 8 (ambient 8)
+[49600359] softshadows: SeekerInfantry_SpaceStation49: light here 208 (ambient 8)
+[49600359] softshadows: marine2: light here 20 (ambient 8) | Light70 share 0.90 dark 86 fade 681 at -0.35,-0.79,16.52 rot [P=-6371,Y=-27853,R=0] dir 0.73,0.37,0.57 dist 510 fov 40 active True
+[49600359] softshadows: DYN_marine1: light here 431 (ambient 8) | Light70 share 1.00 dark 174 fade 681 at 5.66,-0.79,-14.31 rot [P=-6371,Y=24455,R=0] dir 0.57,-0.59,0.57 dist 247 fov 60 active True
+[49600359] softshadows: SeekerInfantry_SpaceStation48: light here 182 (ambient 8)
+[49600359] softshadows: Marine7: light here 228 (ambient 8)
+[49600859] softshadows: shadows of SeekerInfantry_SpaceStation48 go back to the pool
+[49602359] contact-hardening shadows on (indoors)
+[49602390] pilot: step 5: face 200
+[49602859] softshadows: stock shadow of SeekerInfantry_SpaceStation48: at -3.64,14.16,45.92 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 60 scale 3.43 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49602859] softshadows: multi-light shadows for SeekerInfantry_SpaceStation48 (1 max) at -7812.05,13851.88,-323.79 collision 60.00x93.00 drawtype DT_Mesh
+[49602953] moves: player: 5 footfalls, mean speed 650, planted foot at its slowest 37 units/s (5%)
+[49602953] moves: AI: 38 footfalls, mean speed 306, planted foot at its slowest 139 units/s (45% of the speed), 72 stride adjustments, largest bank 11 deg; head toward the inside of the turn 226, away 153
+[49603359] softshadows: GideonDressUniform0: light here 63 (ambient 8) | Light310 share 1.00 dark 138 fade 681 at 0.21,0.59,16.43 rot [P=-6371,Y=32759,R=0] dir 0.82,-0.00,0.57 dist 402 fov 46 active True
+[49603359] softshadows: SeekerInfantry_SpaceStation49: light here 208 (ambient 8)
+[49603359] softshadows: marine2: light here 98 (ambient 8) | Light181 share 1.00 dark 149 fade 445 at 0.19,-0.10,16.14 rot [P=-8883,Y=-18563,R=0] dir 0.14,0.64,0.75 dist 336 fov 52 active True
+[49603359] softshadows: DYN_marine1: light here 442 (ambient 8) | Light70 share 0.82 dark 144 fade 681 at -0.42,-0.99,16.30 rot [P=-6371,Y=19955,R=0] dir 0.28,-0.77,0.57 dist 298 fov 55 active True
+[49603359] softshadows: Marine7: light here 53 (ambient 8)
+[49603359] softshadows: SeekerInfantry_SpaceStation48: light here 379 (ambient 8)
+[49604656] targeting: combat, weapons on the ground off the lock-on list
+[49604656] targeting: 22 more weapons on the ground off the lock-on list (22 in all)
+[49608406] pilot: turn: stopped -5 / 0 degrees short
+[49608406] pilot: step 6: move 1 0 4
+[49610843] targeting: 6 more weapons on the ground off the lock-on list (22 in all)
+[49610968] moves: player: 9 footfalls, mean speed 631, planted foot at its slowest 38 units/s (6%)
+[49610968] moves: AI: 19 footfalls, mean speed 378, planted foot at its slowest 290 units/s (76% of the speed), 92 stride adjustments, largest bank 11 deg; head toward the inside of the turn 269, away 177
+[49612421] pilot: step 7: wait 6
+[49613375] softshadows: shadows of SeekerInfantry_SpaceStation49 go back to the pool
+[49618437] pilot: step 8: move 1 0 4
+[49618546] targeting: no enemies near, weapons on the ground back on the lock-on list
+[49619000] moves: player: 7 footfalls, mean speed 626, planted foot at its slowest 192 units/s (30%)
+[49619000] moves: AI: 11 footfalls, mean speed 305, planted foot at its slowest 170 units/s (55% of the speed), 111 stride adjustments, largest bank 11 deg; head toward the inside of the turn 269, away 200
+[49621375] softshadows: shadows of DYN_marine1 go back to the pool
+[49622468] pilot: step 9: wait 12
+[49624875] softshadows: stock shadow of DYN_marine2: at -0.09,-6.43,11.72 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 48 scale 2.64 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 0
+[49624875] softshadows: multi-light shadows for DYN_marine2 (1 max) at -6100.59,10870.88,-364.00 collision 34.00x78.00 drawtype DT_Mesh
+[49627015] moves: player: 1 footfalls, mean speed 809, planted foot at its slowest 260 units/s (32%)
+[49627015] moves: AI: 10 footfalls, mean speed 280, planted foot at its slowest 78 units/s (28% of the speed), 123 stride adjustments, largest bank 7 deg; head toward the inside of the turn 325, away 201
+[49627390] softshadows: shadows of SeekerInfantry_SpaceStation48 go back to the pool
+[49629890] softshadows: stock shadow of SeekerInfantry_SpaceStation48: at -0.01,-23.52,5.40 rot [P=-11789,Y=-24575,R=0] dir 0.30,0.30,0.90 dist 380.00 fov 60 scale 3.43 trace 350 active True blob False root True interval 0.00 owner None base None physics PHYS_None tex dark 200
+[49629890] softshadows: multi-light shadows for SeekerInfantry_SpaceStation48 (1 max) at -8053.10,13188.47,-349.10 collision 60.00x93.00 drawtype DT_Mesh
+[49632875] targeting: combat, weapons on the ground off the lock-on list
+[49632875] targeting: 23 more weapons on the ground off the lock-on list (23 in all)
+[49634468] pilot: done
+[49635031] moves: AI: 14 footfalls, mean speed 299, planted foot at its slowest 149 units/s (49% of the speed), 141 stride adjustments, largest bank 10 deg; head toward the inside of the turn 433, away 269
+[49641625] targeting: no enemies near, weapons on the ground back on the lock-on list
+[49643046] moves: AI: 1 footfalls, mean speed 250, planted foot at its slowest 189 units/s (75% of the speed), 145 stride adjustments, largest bank 5 deg; head toward the inside of the turn 433, away 274
+[49643906] softshadows: shadows of SeekerInfantry_SpaceStation48 go back to the pool
+[49651062] moves: AI: 5 footfalls, mean speed 242, planted foot at its slowest 86 units/s (35% of the speed), 153 stride adjustments, largest bank 7 deg; head toward the inside of the turn 462, away 274

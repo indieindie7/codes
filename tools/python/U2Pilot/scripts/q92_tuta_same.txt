@@ -1,0 +1,13 @@
+# same spot and facing as TutA_Remake's start, in the original TutA (are the dark boxes skybox objects?)
+background
+map TutA
+waitcontrol 300
+wait 3
+console god
+console gm on
+console hub tp 10344 -16924 -4704
+console hub face 45
+turn 0 0 0.2
+wait 2
+shot
+quit

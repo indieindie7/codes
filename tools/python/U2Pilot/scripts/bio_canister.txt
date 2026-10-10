@@ -1,0 +1,21 @@
+# Bio Rifle with the canister on top and the pilot flame ahead of the muzzle: idle, charge, flame
+background
+map HoverTest
+waitcontrol 180
+wait 2
+console hub kill 30000
+give U2Weapons.weaponInvFlamethrower
+wait 1.5
+give U2UTFlak.WeaponInvUTBio
+wait 2
+turn 30 -6 0.3
+wait 1.5
+shot
+fire 1.0
+wait 0.3
+shot
+wait 1.2
+altfire 1.2
+shot
+wait 1
+quit

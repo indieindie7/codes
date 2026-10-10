@@ -1,0 +1,48 @@
+# close-ups: walls at the hall pads, the conveyor line, the street, the yards
+background
+map TutA_Town5?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+console ghost
+console hub tp 8348 -14166 -3257
+console hub face 90
+turn 0 -6 0.3
+wait 1
+shot
+console hub tp 1834 1300 -3491
+console hub face 225
+turn 0 -6 0.3
+wait 1
+shot
+console hub tp -11422 -5710 -3848
+console hub face 334
+turn 0 -6 0.3
+wait 1
+shot
+console hub tp 6498 -10366 -3257
+console hub face 270
+turn 0 -6 0.3
+wait 1
+shot
+console hub tp -2299 652 -3526
+console hub face 22
+turn 0 -6 0.3
+wait 1
+shot
+console hub tp 9856 -7093 -3257
+console hub face 225
+turn 0 -6 0.3
+wait 1
+shot
+console hub tp -6457 -3668 -2331
+console hub face 139
+turn 0 -8 0.3
+wait 1
+shot
+console hub tp 2152 -1756 -3357
+console hub face 129
+turn 0 -4 0.3
+wait 1
+shot
+quit

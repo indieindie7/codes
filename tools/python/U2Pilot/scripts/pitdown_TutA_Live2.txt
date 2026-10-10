@@ -1,0 +1,13 @@
+# straight-down check of the carved pit on TutA_Live2
+background
+map TutA_Live2?Mutator=U2AvalonCards.AvalonCards
+waitcontrol 240
+wait 2
+console god
+console avalon weather clear
+console hub tp 3000 -3500 4500 hold
+console hub face 0
+turn 0 -88 0.3
+wait 6
+shot
+quit

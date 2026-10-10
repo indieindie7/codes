@@ -3,8 +3,10 @@
 // spawns it):
 //   - flinch: the bone nearest the hit jerks away from the shot and eases back
 //     (SetBoneRotation over the animation, FlinchTime long);
-//   - stagger: a hit of StaggerDamage or more pushes the victim back a step and
-//     slows it for StaggerTime (bosses don't stagger);
+//   - stagger: a hit of StaggerDamage or more pushes the victim back a step, slows it
+//     for StaggerTime and leans its spine away from the hit (SetBoneRotation: a quick
+//     lean in, held, eased back over the last part; the meshes have no stagger clip,
+//     the Seekers not even a hit clip). Bosses don't stagger;
 //   - ragdoll on death: the body goes limp at the killing blow. The PC release
 //     ships no KarmaData\*.ka ragdoll skeletons; AdventMod brings its own
 //     (KarmaData\Advent.ka from tools/make_ka.py, installed by build.ps1).
@@ -24,6 +26,7 @@ var config float SpringFreq, SpringDecay, SpringTime, RippleShare, RippleDelay;
 var config bool bStagger;
 var config int StaggerDamage;
 var config float StaggerPush, StaggerSlow, StaggerTime;
+var config float StaggerLean;      // rotation units the spine leans away from the hit (65536 = a turn)
 var config bool bDeathRagdoll;
 var config int MaxRagdolls;
 var config float KarmaTimeScale, RagdollTimeScale;   // the level's physics speed (the game ships 0.9 / 1.0; 0 = leave)
@@ -82,6 +85,8 @@ struct StaggerState
 {
 	var Pawn P;
 	var float T, Speed;
+	var name Bone;
+	var rotator Turn;
 };
 var array<StaggerState> Staggers;
 
@@ -464,18 +469,26 @@ function Stagger(Pawn P, vector Dir)
 {
 	local int i;
 	local StaggerState S;
+	local vector L;
 
 	Dir.Z = 0;
 	if (P.Physics == PHYS_Walking)
 		P.Velocity += Normal(Dir) * StaggerPush;
+	// the lean: the spine bone (Bones[1]) turned away from the hit, the flinch's convention
+	L = Normal(Dir) << P.Rotation;
 	for (i = 0; i < Staggers.Length; i++)
 		if (Staggers[i].P == P)
 		{
 			Staggers[i].T = 0;
+			Staggers[i].Turn.Pitch = int(-L.X * StaggerLean);
+			Staggers[i].Turn.Roll = int(L.Y * StaggerLean);
 			return;
 		}
 	S.P = P;
 	S.Speed = P.GroundSpeed;
+	S.Bone = Bones[1];
+	S.Turn.Pitch = int(-L.X * StaggerLean);
+	S.Turn.Roll = int(L.Y * StaggerLean);
 	Staggers[Staggers.Length] = S;
 	P.GroundSpeed = S.Speed * StaggerSlow;
 	if (class'ModSettings'.default.bGoreLog)
@@ -555,8 +568,19 @@ event Tick(float DeltaTime)
 		if (Staggers[i].T >= StaggerTime || P.Health <= 0)
 		{
 			P.GroundSpeed = Staggers[i].Speed;
+			P.SetBoneRotation(Staggers[i].Bone, rot(0,0,0), 0, 0);
 			Staggers.Remove(i, 1);
+			continue;
 		}
+		// lean in over 80 ms, hold, ease back over the last 40 % of StaggerTime
+		if (Staggers[i].T < 0.08)
+			Alpha = Staggers[i].T / 0.08;
+		else if (Staggers[i].T > StaggerTime * 0.6)
+			Alpha = 1 - (Staggers[i].T - StaggerTime * 0.6) / (StaggerTime * 0.4);
+		else
+			Alpha = 1;
+		Alpha = Alpha * Alpha * (3 - 2 * Alpha);
+		P.SetBoneRotation(Staggers[i].Bone, Staggers[i].Turn * Alpha, 0, 1);
 	}
 	// a killing blow: once the pawn is in its death state, limp
 	for (i = Deaths.Length - 1; i >= 0; i--)
@@ -1158,9 +1182,10 @@ defaultproperties
      RippleDelay=0.070000
      bStagger=True
      StaggerDamage=40
-     StaggerPush=260.000000
+     StaggerPush=380.000000
      StaggerSlow=0.350000
-     StaggerTime=0.450000
+     StaggerTime=0.600000
+     StaggerLean=5500.000000
      bDeathRagdoll=True
      bDeathAnims=True
      bClipFloor=True
