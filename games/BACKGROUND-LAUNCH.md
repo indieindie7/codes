@@ -124,6 +124,10 @@ HydroWater is a `dinput8.dll` proxy. The background switches live in `HydroWater
 
 **Write each command atomically.** Write to `HydroWater.tmp`, rename it to `HydroWater.cmd`, and wait for the game to take it (the file disappears) before the next one. A plain overwrite can be read half-written: the game reads nothing, deletes the file, and the command is lost (seen once with `chapter 1`). Builds after 2026-10-10 also take the file by renaming it to `HydroWater.cmd.run` first, which fails while a writer still has it open.
 
+**Real mouse is ignored in background mode.** With background = 1 the hook zeroes the user's own raw mouse movement, so the off-screen camera only moves for `look` (before this, the camera wandered with the user's mouse and still frames never matched).
+
+**Getting to water.** The menu ignores `click`; use keys. From the main menu: `key d0 150` twice (Down), `key 1c 150` (Enter, Challenge Room), `key 1c 150` (Enter, Practice). It loads "chapter 40" in about 60 s and logs "foam: first water mesh coloured". Kate spawns facing a wall; the pool (containers, red crate, a waterfall) is behind her to the right. `key 05` ('4') turns on water powers, then `click X Y` fires them. `look` turns are not repeatable here (the camera eases on its own), so sweep and keep the best frame. Chapter select is unreliable for this: chapter 2 renders black off-screen.
+
 **Write the path as an argument.** In bash, never put the path inside the printf format string, or its backslashes become escapes:
 
 ```bash

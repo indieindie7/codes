@@ -954,7 +954,16 @@ static UINT WINAPI RawDataHook(HRAWINPUT h, UINT cmd, LPVOID data, PUINT size, U
 {
     RAWINPUT ri;
     UINT n;
-    if (h != HW_LOOK_HANDLE) return g_orig_rawdata(h, cmd, data, size, hdr);
+    if (h != HW_LOOK_HANDLE) {
+        /* In background mode the user's own mouse must not steer the game: zero real movement. */
+        n = g_orig_rawdata(h, cmd, data, size, hdr);
+        if (cfg.background && cmd == RID_INPUT && data && n != (UINT)-1 && n >= sizeof(RAWINPUTHEADER)
+            && ((RAWINPUT *)data)->header.dwType == RIM_TYPEMOUSE) {
+            ((RAWINPUT *)data)->data.mouse.lLastX = 0;
+            ((RAWINPUT *)data)->data.mouse.lLastY = 0;
+        }
+        return n;
+    }
     memset(&ri, 0, sizeof ri);
     ri.header.dwType = RIM_TYPEMOUSE;
     ri.header.dwSize = sizeof ri;

@@ -303,3 +303,5 @@ Level run (2026-10-10, direct launch, off-screen): `chapter 1` from a fresh menu
 the lift-shaft ladder), and `look` is verified there. Chapter 1 starts dry, so a foam frame needs a scripted
 walk to water or a save near it.
 Spray drops are not drawn in the game yet.
+
+Foam on real water (2026-10-10): Challenge Room > Practice has a coloured water sheet (20 x 38); frames of the pool with foam on were taken off-screen and shown to the user (private, not committed). The foam is subtle: a lighter lace along the container waterlines.
