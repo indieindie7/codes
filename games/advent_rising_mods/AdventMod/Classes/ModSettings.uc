@@ -408,7 +408,7 @@ static function Startup(PlayerController PC)
 defaultproperties
 {
      bFpsGraph=True
-     bGizmos=True
+     bGizmos=False
      bShadowFix=True
      bSoftShadows=True
      bNoGamePostFx=True
