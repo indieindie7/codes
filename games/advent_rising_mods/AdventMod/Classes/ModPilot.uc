@@ -713,6 +713,32 @@ function ShootWall(float YawOff, float PitchOff)
 	G.ShotGone(HitL - Dir * 8, Dir * 2500);
 }
 
+function Blast(float Dist, string ClassName)
+{
+	local class<Projectile> C;
+	local Projectile P;
+	local vector Dir, Spot, HitL, HitN;
+
+	if (PC() == None || PC().Pawn == None)
+		return;
+	C = class<Projectile>(DynamicLoadObject(ClassName, class'Class', true));
+	if (C == None)
+	{
+		Note("blast: no class " $ ClassName);
+		return;
+	}
+	Dir = vector(PC().Rotation);
+	Dir.Z = 0;
+	Dir = Normal(Dir);
+	Spot = PC().Pawn.Location + Dir * Dist;
+	if (PC().Pawn.Trace(HitL, HitN, Spot - vect(0,0,300), Spot, false) != None)
+		Spot = HitL + vect(0,0,10);
+	P = Spawn(C,,, Spot);
+	Note("blast: " $ P $ " at " $ Spot);
+	if (P != None)
+		P.Explode(None, Spot, vect(0,0,1));
+}
+
 function Hurt(int Damage, string TypeName, optional string BoneName)
 {
 	local Pawn P, Best;
@@ -1335,6 +1361,12 @@ function StartStep()
 		// SHOOTWALL [yaw] [pitch]: a shot's impact on whatever the view (offset by that much, in
 		// degrees) looks at: ModGore's impact marks (holes, scorches, burns, chips) without a weapon
 		ShootWall(ArgF(1, 0), ArgF(2, 0));
+		StepLength = 0.2;
+		break;
+	case "BLAST":
+		// BLAST [distance] [Package.ProjectileClass]: a grenade goes off that far in front of the
+		// player (its stock explosion and smoke), for frame-time tests of big smoke near the camera
+		Blast(ArgF(1, 200), Args.Length > 2 ? Args[2] : "EonWeapons.HumanGrenade_Proj");
 		StepLength = 0.2;
 		break;
 	case "HURT":

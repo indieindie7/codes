@@ -112,6 +112,7 @@ var Material Burns[4];                               // a plasma burn cooling: w
 var config float BurnChance;                        // the share of wall hits that burn (glow and cool) rather than scorch
 var Material WallHoles[6];                           // bullet holes dug into walls: the layer's parallax rule reads their darkness as depth
 var config bool bWallHoles;                         // walls take holes (parallax) and lose chips where shots land
+var config bool bImpactSmoke;                        // a small puff of dust and smoke where shots land (walls and floors)
 var config int ChipCount;                           // chips of wall knocked out per hit (tiny rubble), 0: none
 // wall destruction step 2: hits that cluster on a wall knock the plaster away (a breach: a deep
 // parallax hole with rebar), bigger again as more land; a blast breaches the wall it reaches
@@ -1689,6 +1690,8 @@ function ShotGone(vector Loc, vector Vel)
 			if (bBreaches)
 				WallHit(HitL, HitN);
 		}
+		if (bImpactSmoke)
+			ImpactPuff(HitL, HitN);
 		if (FRand() < BurnChance)
 			Burn(HitL, HitN, DecalScale * (0.34 + 0.12 * FRand()));
 		else if (!bWallHoles || HitN.Z >= 0.5 || FRand() < 0.5)
@@ -1774,6 +1777,24 @@ function Breach(vector Spot, vector N, int Lvl)
 	}
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("dirt: breach level " $ Lvl $ " at " $ Spot);
+}
+
+// a shot's puff of dust and smoke out of where it landed (near the player only, as the marks)
+function ImpactPuff(vector Spot, vector N)
+{
+	local ModImpactPuff P;
+	local color Tint;
+
+	P = Spawn(class'ModImpactPuff',,, Spot + N * 3, rotator(N));
+	if (P == None)
+		return;
+	Tint.R = 150 + Rand(20);
+	Tint.G = Tint.R - 5;
+	Tint.B = Tint.R - 12;
+	P.Aim(N, Tint, N.Z >= 0.5 ? 1.25 : 1.0);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: impact puff " $ P $ " texture " $ P.default.SmokeTex $ " " $ P.default.SmokeU $ "x" $ P.default.SmokeV $ " grit " $ P.default.GritTex
+			$ " emitters " $ P.Emitters.Length $ " size " $ P.Emitters[0].StartSizeRange.X.Min);
 }
 
 // chips of wall knocked out by a shot: tiny rubble, out and down, gone within the minute
@@ -3227,6 +3248,7 @@ defaultproperties
      WallBreaches(0)=Texture'AdventMod.Dirt.WallBreach0'
      WallBreaches(1)=Texture'AdventMod.Dirt.WallBreach1'
      WallBreaches(2)=Texture'AdventMod.Dirt.WallBreach2'
+     bImpactSmoke=True
      ChipCount=2
      CasingTex=Texture'AdventMod.Blood.Casing0'
      bCasings=True
