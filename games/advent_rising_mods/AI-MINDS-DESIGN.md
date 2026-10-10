@@ -1,5 +1,14 @@
 # Advent Rising: creature minds (AI design)
 
+> **Scope cut (2026-10-10):** AdventMod is now gore, graphics, destruction and foot IK only.
+> The AI director and the custom animations are shelved: their code stays, but the defaults are off.
+> Shelved switches (set True in `System\AdventMod.ini` to bring one back):
+> ModMinds `bMinds` (waves, hound packs, wall-kicks, leap links), ModNeeds `bNeeds`,
+> ModReact `bFlinch` `bKnockdown` `bStagger` `bDeathAnims`, ModMelee `bBlades`, ModMoves `bLean`.
+> Kept on: ModFeet `bFootIK` (now default True), ModMoves `bStrideMatch`, ragdolls (`bDeathRagdoll`),
+> gore and sever, armour hits and sparks, jiggle, and all graphics.
+
+
 AdventMod's layer over the game's enemy AI. It gives each creature a psychology: traits that make it who it is, and feelings that change with what happens. Those feelings drive four behaviours: suppression, real cover use, squad morale with flanking, and hunting as a pack. Code: `AdventMod/Classes/ModMind.uc`, `ModMinds.uc`, `ModMindRules.uc`.
 
 Status (2026-10-08): built and compiled, first in-game tests below.

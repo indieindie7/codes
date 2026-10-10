@@ -1024,7 +1024,7 @@ function string Command(string Cmd)
 
 defaultproperties
 {
-	bNeeds=True
+	bNeeds=False
 	bNeedsLog=False
 	DecideEvery=0.5
 	CommitBonus=0.25

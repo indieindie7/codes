@@ -1269,11 +1269,11 @@ function WatchRagdolls(float DeltaTime)
 defaultproperties
 {
      RagdollTime=4.000000
-     bFlinch=True
+     bFlinch=False
      FlinchAngle=4500.000000
      FlinchTime=0.300000
      bSpringFlinch=True
-     bKnockdown=True
+     bKnockdown=False
      KnockDamage=30
      KnockChance=0.5
      KnockDown=1.300000
@@ -1287,14 +1287,14 @@ defaultproperties
      SpringTime=0.900000
      RippleShare=0.550000
      RippleDelay=0.070000
-     bStagger=True
+     bStagger=False
      StaggerDamage=40
      StaggerPush=380.000000
      StaggerSlow=0.350000
      StaggerTime=0.600000
      StaggerLean=5500.000000
      bDeathRagdoll=True
-     bDeathAnims=True
+     bDeathAnims=False
      bClipFloor=True
      FloorBones(0)=hips
      FloorBones(1)=head

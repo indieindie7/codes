@@ -283,7 +283,7 @@ function Meter(int i, float DeltaTime, float Speed)
 
 defaultproperties
 {
-	bLean=True
+	bLean=False
 	LeanGain=1.0
 	MaxLean=12
 	LeanSpring=9

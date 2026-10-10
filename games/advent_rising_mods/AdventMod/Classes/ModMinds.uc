@@ -3348,7 +3348,7 @@ function string List()
 defaultproperties
 {
      bWaveFight=True
-	bMinds=True
+	bMinds=False
 	bMindLog=False
 	TraitSpread=0.15
 	PinPressure=0.7
