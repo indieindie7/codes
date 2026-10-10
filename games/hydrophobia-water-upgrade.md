@@ -274,3 +274,11 @@ this last; stages 1 to 11 are where the money is.
 First milestone: stages 1 to 3 in a test room with a tub, a crate and a walking character,
 judged by eye and by a volume plot. Everything after that is measurable against the tests
 written into each stage.
+
+## Status (2026-10-09)
+
+Stages 1 to 3, 4a and 8 are implemented as our own library, `games/hydrophobia_mods/HydroWater`
+(C99, baseline switchable to the game's exact scheme), with the first-milestone tests in its
+harness: crate ring at sqrt(g h), wading wake, box settling at Archimedes' depth. One change to
+stage 1 found in testing: the displaced column `b` must also count as bed for the pressure terms,
+or the hole under a body refills from its neighbours before the ring can leave.

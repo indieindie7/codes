@@ -224,6 +224,79 @@ drop from a throwaway D3D device.
     cells that objects disturb; rendering is planar reflection/refraction + a per-sheet mesh +
     spray particles. Closer to Barotrauma's rooms-with-a-wave-surface than to a full fluid grid.
 
+- **Modding entry points (2026-10-09; Ghidra `DataRefs`/`DecompAt`/`InstrDump` on the loader,
+  not the water):**
+  - **Archives and the override slot.** `WinMain` (`FUN_00971850`) mounts the main archive
+    (`FUN_009dab10`: `HYDRO.dat`, with an optional `.zpack` index, magic `0x79ac79ac`, and a
+    `.pat` sidecar, neither shipped), then `FUN_009da0b0("Patch.dat")` and
+    `FUN_009da0b0("Patch2.dat")`: up to three patch archives, each `uint32 count` +
+    `{hash, offset, size}` table that the game qsorts itself. **`Patch2.dat` is not shipped.**
+    The lookup (`FUN_009da270(name)`) searches the patch archives newest first, then the main
+    one, so a `Patch2.dat` dropped into the game folder overrides any file by name hash with
+    hydro.dat and Patch.dat untouched; delete it and the game is stock. Two unshipped dev
+    paths exist in the same function: a global (`DAT_018b77b0`) that makes every open go to
+    `v:\rage\<name>` first, and a data-directory prefix (`DAT_018b772c` / `DAT_015dbd00`);
+    with no archive mounted at all it falls back to plain `fopen(name)`.
+  - **The name hash, cracked** (`FUN_009d8ea0`, the game's "mode 6"; 15 exe path strings
+    match the table, e.g. `GameSetup.cfg`, `iwStartup.txt`, `Act1.dat`,
+    `textures\EnvMaps\Baxter.dds`): case-insensitive, `.` and `\` are skipped (so slashes,
+    backslashes and the extension dot are all the same), a trailing `(ps2)`/`(gc)` is dropped;
+    `h = 0x71e315b1; per char v = (upper(c) - 0x20) & 0x3f: h += v * 0x20001;
+    h = ((h >> 2) ^ h) * 31 + v`. Tools in `Documents\Hydrophobia_research`:
+    `hydro_names.py` (hashes every path-like string in the exe and the archives, writes
+    `names.csv`; `hydro_hash()` importable) and `hydro_pack.py` (`build <folder> Patch2.dat`,
+    `list`, `get <archive> <name|hash> <out>` straight from the archive without a full unpack,
+    `hash <name>`). Verified: `get hydro.dat GameSetup.cfg` returns the 784-byte config. A scan of every path-like string in the exe and the archives names 251 of the 4,057 entries outright and 696 with the `--deep` prefix cross-product (Havok .hkx, .nmp, .dds, .frg shader sources, .lpkpc, .tga); the rest need draw-time dumps or the strings inside the model chunks.
+  - **Startup config in the archive, overridable:** `FUN_00d0cc50` reads `GameSetup.cfg`
+    (section `__Setup__`, `key = value` lines, parsed by `FUN_00d0c5f0`): `g_bDisableMainMenu`,
+    `g_bDisableSplash`, `g_bDisable3DMenu`, `g_bEnableJolt`, `g_bEnableInvincibilityToggle`,
+    `g_bEnableSecurityOverride`, `g_bEnableFullVersion`, `g_bEnableFullMAVI`,
+    `g_bUseEasyObjectives`, `g_bEnableFastRegenToggle`, `g_bEnableMaxItemStats`,
+    `g_bDemoBuild`, `g_bCaptureBuild`, `g_bAllCheckpointsSavedSeparately`, the reload-hammer
+    test switches... (shipped: all false except `g_bEnableFullVersion`,
+    `g_bUseAnimatedNormalMaps`, `g_bDontReduceCharacters`). Then `iwStartup.txt`
+    (`Map:%d`, a `Cam:` and a `Display:` line of hex floats: the editor's start map 25 and
+    camera). A Lua script named `Startup` is loaded from the archive too ("Script "Startup"
+    not found - falling back on defaults"); level scripts are `.lua` with a `ScriptVersion`
+    check, and `FUN_00be90f0` registers the `script_*` / `Game_*` API (381 `script_` names,
+    e.g. `script_CheatsEnabled`, `Game_GetRegionWaterHeight`, `Game_SetDrownParameters`).
+  - **Command line** (`FUN_00970a70`: switches start with `-` or `/`, case-insensitive,
+    `name:value` forms take the rest of the token): `darknrg` (developer mode; then `win x,y`
+    window position and `nopause` are read), `captureWindow`, `fs`, `f16`, `ct`, `video:<dir>`,
+    `screengrab:<dir>`, `joy:`, `DebugPorts`, and `640`/`800`/`1024`/`1280`/`1600`/`1920` for
+    the resolution (`FUN_00cb9f60`). `iwStartup.txt`'s existence and `hydro.setcam` /
+    `IWSetFreeCamera` suggest the editor camera survives in the shipped exe.
+  - **Console variables** (`BSLConsole*`; 170 `hydro.*`, 46 `bladegl.*`, plus `iw.*`), the
+    interesting ones: `hydro.infiniteammo`, `hydro.giveammo`, `hydro.givecollectible`,
+    `hydro.door_cheat`, `hydro.doorstatus`, `hydro.setdifficulty`, `hydro.setcam`/`getcam`,
+    `hydro.setframeratehack`, `hydro.dumpflowfield`, `hydro.getregionstats`,
+    `hydro.nearregions`, `hydro.dumpmodels`/`dumptextures`/`listtextures`/`grabmesh`,
+    `hydro.packfiledump`, `hydro.toggleprintpackfiles`, `hydro.togglehavokdebugger`,
+    `hydro.profilethreads`, `hydro.dof_params`, `hydro.postprocess`, the `hydro.wetbump*` and
+    `hydro.reflectionmap_*`/`refractionmap_*` tuning, `hydro.godraysoverwater`,
+    `bladegl.ambientocclusion`, `bladegl.gamma`, `bladegl.lensflare`, `bladegl.drawlod`,
+    `bladegl.dumptextures`. No in-game console UI was found (no key/toggle strings): the
+    way in is an injected DLL calling the dispatcher, still to be located (start from the
+    `Usage: bladegl.dumptextures` handler). `ded.ini` sections (`hydro.water.low/med/high`,
+    `bladegl.*shadowmaps.*`, `bladegl.config`) are read with `FUN_009ce720(key, default)`.
+  - **What transfers from the other games** (from the Advent and Unreal II sessions,
+    2026-10-09): the injector (`tools/C/U2EdBridge/src/u2edinject.c`, launch-suspended +
+    `LoadLibraryW`; or `AdventUCC/src/hook.c`) and the named-pipe command DLL shape
+    (`u2edbridge.c`: pipe, dispatch, run on the game thread from a hooked per-frame
+    function, never from the pipe thread); the byte-checked in-memory patch pattern
+    (`AdventMod/native/karmafix.c`) with addresses as module base + RVA since the exe exports
+    nothing; the D3D vtable tracer (`native/d3dtrace.c`, renumber the slots for
+    `IDirect3DDevice9`); for graphics a `d3d9.dll` proxy, not the d3d8to9 fork, but the
+    fork's passes (`source/u2shaders.hpp`, the `.hlsl` set, texture-hash rules, INTZ depth,
+    crash.hpp, hotswap) take an `IDirect3DDevice9*` and lift over; `U2Input`'s dinput8 proxy
+    for hidden test runs (check first how HydroPC reads input); `package.py` / RELEASE.md /
+    README.txt as the release shape, with `Patch2.dat` as the whole install. Warnings carried
+    over: never patch the Steam exe on disk (inject at run time), no leaked source, no AI
+    voices, assets out of git, one GPU shared by three chats (announce runs).
+  - **Housekeeping:** `Documents\Hydrophobia_research\unpacked\` was deleted (disk); `get`
+    now reads single files from the archives instead, and `names.csv` is the index. Decompiles
+    of the loader are in `loader_refs\` and `console_refs\`.
+
 ## 4. Rules we keep
 - Decompiled sources, extracted meshes/textures and other game assets stay out of git.
 - Don't ship other games' assets or code; mods are GPL / share-alike.
