@@ -1,5 +1,5 @@
-"""Builds the release zips in Downloads: AdventMod-<ver>.zip (with the installer)
-and AdventMod-<ver>-nexus.zip (no .bat files: Nexus quarantines them).
+"""Builds the release zips in Downloads: GoreOverhaul-<ver>.zip (the mod was AdventMod; its files keep that name) (with the installer)
+and GoreOverhaul-<ver>-nexus.zip (no .bat files: Nexus quarantines them).
 --graphics: AdventGraphicalMod-<ver>(-nexus).zip, the graphics-only edition for the
 Nexus page of that name: System\\AdventMod-graphics.u (build.ps1 -GraphicsOnly: gore,
 armour and combat off by default) and no KarmaData.
@@ -22,7 +22,7 @@ OUT = os.path.join(os.path.expanduser("~"), "Downloads")
 GRAPHICS = "--graphics" in sys.argv
 CHECK = "--check" in sys.argv
 GAME = sys.argv[sys.argv.index("--game") + 1] if "--game" in sys.argv else r"H:\SteamLibrary\steamapps\common\Advent Rising"
-TOP = ("AdventGraphicalMod-" if GRAPHICS else "AdventMod-") + VER
+TOP = ("AdventGraphicalMod-" if GRAPHICS else "GoreOverhaul-") + VER
 URL = "https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods/AdventMod"
 
 # System\U2Shaders: what the layer loads, nothing else (no compiler dumps, previews, game-derived maps)
@@ -88,7 +88,7 @@ def crlf(text):
 
 readme = open(os.path.join(HERE, "README.txt"), encoding="utf-8").read()
 NL = "\r\n" if "\r\n" in readme else "\n"
-TITLE = "AdventMod " + VER + " - shadows"
+TITLE = "GoreOverhaul " + VER + " - gore"
 if GRAPHICS:
     # the graphics edition: no Gore ... Death animations sections, no KarmaData / Armour steps, its own title
     a, b = readme.index("  Gore ("), readme.index("  Fixes" + NL)
@@ -101,7 +101,7 @@ if GRAPHICS:
     head = "AdventGraphicalMod " + VER + " - shadows, post-processing and in-game options for Advent Rising"
     readme = (head + NL + "=" * len(head) + NL + NL
               + "(The graphics edition of AdventMod: the same files with the gore, armour and" + NL
-              + "combat changes switched off. The full mod is on GitHub and on Nexus as AdventMod.)"
+              + "combat changes switched off. The full mod is on GitHub and on Nexus as GoreOverhaul.)"
               + readme[tend:])
 else:
     readme.index(TITLE)

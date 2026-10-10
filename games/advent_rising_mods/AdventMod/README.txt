@@ -1,5 +1,7 @@
-AdventMod 3.0 - shadows, post-processing, gore and in-game options for Advent Rising
+GoreOverhaul 3.0 - gore, graphics, destruction and in-game options for Advent Rising
 ====================================================================================
+(Formerly AdventMod. Its files and settings keep that name, so an older install
+and your settings carry over.)
 
 What it does:
 
@@ -44,7 +46,7 @@ What it does:
       on walls glow white-hot and cool to soot. Bodies come apart under heavy hits into pieces that
       settle in the blood; stumps, blood-soaked skins, screen blood, rubble
       from explosions and brass from guns. Ragdolls on the mod's own joint
-      limits, and new death animations by where the hit landed.
+      limits, pushed by the hit that killed them.
       Everything is adjustable in System\AdventMod.ini ([AdventMod.ModGore]).
 
   Blood that behaves like a liquid (new)
@@ -66,28 +68,6 @@ What it does:
       light, hum and sparks. A hit cuts: heads and limbs come off at the
       joint. It has 15 charges.
 
-  Enemies that think (new)
-      Enemies have feelings now: fear, anger and pressure from being shot at.
-      Suppressed ones duck into cover, frightened ones fall back or panic,
-      angry ones charge. Only a few shoot at once (the rest hold their fire
-      and move), the first shot after spotting you comes a beat late, and
-      squads push and flank along the level's own paths. Seekers raise their
-      front arms when angry and pull them in when afraid.
-
-  Hound packs (new)
-      Seeker hounds hunt as a pack: one holds the front and feints, the
-      others skip about to your sides, and only one leaps at a time. Backed
-      against a wall, you get pinned and two come at once. Hounds sometimes
-      leap to a wall and off it at you. Hounds snarl when angry, cower when
-      afraid, and stand level on slopes.
-
-  Needs (new)
-      Creatures have slow drives: hunger, fatigue, curiosity, safety and
-      aggression. In a lull a hungry hound feeds on a fallen mate (a starved
-      pack attacks sooner and from the front, a fed one stalks longer), tired
-      ones rest, curious ones walk toward a noise, frightened ones look for
-      cover or a mate.
-
   Armour (new)
       Seeker soldiers wear steel plates (helmet, chest, shoulders, thighs)
       that dent and are knocked off whole. Every hit on an enemy is tested
@@ -99,9 +79,14 @@ What it does:
       cover at a run, slams into a wall when a dodge runs into one, and
       shoulders breakable props out of the way. Seeker infantry have flesh
       that lags and settles with their movement and kicks on a hit (belly,
-      chest, throat, arms, thighs); their armour never deforms. Walking
-      characters' feet can stand on the floor that is really under them on
-      stairs and step edges (foot IK; off by default, see GOOD TO KNOW).
+      chest, throat, arms, thighs); their armour never deforms. Hounds stand
+      level on slopes. Walking characters' feet stand on the floor that is
+      really under them on stairs and step edges (foot IK).
+
+  Developer overlays (on)
+      A frame-time graph on screen, and debug lines on Gideon (collision,
+      velocity, facing, the foot IK traces). Both can be switched off, see
+      GOOD TO KNOW.
 
   Fixes
       The game ran its frames at a few hundred a second; the frame rate is now
@@ -225,24 +210,26 @@ GOOD TO KNOW
   bWallHoles, bBreaches, bCasings, bScreenBlood, bBlastShake, and the budgets
   MaxDecals (80), MaxGibs (60), MaxDrops (24), MaxFootprints (40). Blood on
   Gideon's hands and the lens: [AdventMod.ModPlayerBlood] bHands, bLens.
-  Decapitation and limbs: [AdventMod.ModSever] bSever. Death animations:
-  [AdventMod.ModReact] bDeathAnims (ragdolls: bDeathRagdoll). The blade:
+  Decapitation and limbs: [AdventMod.ModSever] bSever. Ragdolls:
+  [AdventMod.ModReact] bDeathRagdoll. The blade:
   [AdventMod.ModMelee] bBlades. The wet look, drying and reflections of blood
   are in U2Shaders.ini (gloss=, glossdry=, glossreflect=, streaks=, strings=,
   hands=, lens=).
-- Enemy AI: [AdventMod.ModMinds] bMinds=False gives you the stock AI back;
-  bHoundPack, bHoundWallKick and bLeapLinks switch the pack behaviours;
-  [AdventMod.ModNeeds] bNeeds switches the drives.
+- Enemies use the game's own AI. The mod's experimental enemy AI is in the
+  package but off ([AdventMod.ModMinds] bMinds, [AdventMod.ModNeeds] bNeeds);
+  it is unsupported.
 - Armour: [AdventMod.ModArmor] bArmor (the plates), bArmourHits and
   bArmourSparks (the per-hit armour test; ArmourFactor=1.0 means an armour
   hit does the same damage, lower it to make plates matter).
 - Bodies: [AdventMod.ModMoves] bLean; [AdventMod.ModAction] bVault, bSlam,
   bBarge; [AdventMod.ModBody] bSeekerArms, bHoundBody, bGroundPitch;
   [AdventMod.ModJiggle] bJiggle (Gain for more or less).
-- Foot IK is off by default; to try it add under [AdventMod.ModFeet]:
-      bFootIK=True
-  It bends the legs inside the engine so each foot stands on the floor under
-  it on stairs and step edges (humans only). New: see KNOWN LIMITS.
+- Foot IK bends the legs inside the engine so each foot stands on the floor
+  under it on stairs and step edges (humans only; see KNOWN LIMITS). Off:
+  bFootIK=False under [AdventMod.ModFeet].
+- The frame-time graph and the debug lines on Gideon are on. Off: under
+  [AdventMod.ModSettings] add bFpsGraph=False and bGizmos=False. The console
+  command "mutate gizmos" switches the lines while you play.
 - Fog, soft particles, terrain detail and sheen are lines in U2Shaders.ini
   (atmos=, soft=, terraindetail=, sheen=); set the first number to 0 to turn
   one off, or delete the line.
@@ -259,22 +246,18 @@ GOOD TO KNOW
 
 KNOWN LIMITS
 ------------
-- Hound wall-kicks are rare: a hound needs a wall within reach at the right
-  angle, and fights happen in the middle of rooms.
 - The Seeker flesh jiggle's amounts are set by hand, not measured against a
   real body; if it reads as too much, lower Gain under [AdventMod.ModJiggle].
-- Foot IK is new: the foot keeps the animation's tilt (it does not tilt to a
+- Foot IK: the foot keeps the animation's tilt (it does not tilt to a
   slope), only humans get it, and running on stairs dips the whole body a
   little with each stride. It was not tried in cutscenes or vehicles.
-- Hounds never ragdoll (the game crashes when they do); they die and are
-  knocked down with hand-keyed animations instead.
+- Hounds never ragdoll (the game crashes when they do); they keep the
+  game's own deaths.
 - The armour test reads AdventMod\Armour\*.amesh (in the zip); if that folder
   is missing it falls back to a per-bone table (less precise, same sparks).
 - The fog's light shafts were never seen in testing (the sun sits too high
   for the third-person camera on the levels tried).
 - Exclusive fullscreen, the GOG version and AMD/Intel GPUs were not tested.
-- The pack and needs behaviours were measured in automated runs, not tuned
-  by eye over a whole chapter; the switches above are there for a reason.
 
 
 UNINSTALL
@@ -293,8 +276,8 @@ HOW IT WORKS
 - AdventMod.u is an UnrealScript package. The game takes the class of its menu
   controller from its configuration; the mod's controller opens the mod's
   pages, which extend the game's own. A small mutator runs in every level: it
-  gives characters their light-following shadows, runs the gore, the enemy
-  minds and the body systems, and keeps the settings applied.
+  gives characters their light-following shadows, runs the gore and the
+  body systems, and keeps the settings applied.
 - AdventNative.dll does what script cannot: the shadow fixes inside the
   engine, the borderless window, the frame cap, writing the layer's settings,
   the foot IK and flesh springs inside the engine's pose build, and the
@@ -314,22 +297,17 @@ HOW IT WORKS
 
 CHANGES
 -------
-3.0 (2026-10), everything since 2.1:
-- Enemy minds: feelings, cover, suppression, fall-backs, panic, charges,
-  attack turns, a late first shot, pushes and flanks along the level's paths.
-- Hound packs: holder, flankers, one leaper at a time, pinning; wall-kicks.
-- Needs: hunger, fatigue, curiosity, safety, aggression; hounds feed on
-  fallen mates, marines investigate noises.
+3.0 (2026-10), everything since 2.1 (renamed GoreOverhaul: gore, graphics
+and destruction):
 - Blood as a liquid: wall runs, streaks down bodies, goo strings, falling
   drops, bloody footprints, blood on Gideon's hands and gun, lens drops, wet
   and drying blood, reflecting pools; wall bullet holes and breaches.
-- Bodies: leaning, vaults, wall slams, barging props; Seeker arms and hound
-  snarls that show feelings; hounds level on slopes; Seeker flesh jiggle;
-  foot IK (off by default).
+- Bodies: Gideon's leaning, vaults, wall slams, barging props; hounds level
+  on slopes; Seeker flesh jiggle; foot IK.
 - Armour: steel plates on Seekers that dent and fly off; sparks on armour
   hits.
-- Energy blade with hand-keyed swings; death animations by hit zone; hound
-  knockdowns and deaths; gib snapshots on the floor.
+- Energy blade with hand-keyed swings; gib snapshots on the floor.
+- Frame-time graph and debug lines on Gideon, on by default.
 - Graphics: height fog, soft particles, close-up terrain detail, sheen on
   metal and floors, skin shading with subsurface scattering, ambient
   occlusion, the crash level graded toward desert photos, 16x anisotropic
@@ -364,7 +342,6 @@ CREDITS AND LICENCES
   follows Jimenez's Separable Subsurface Scattering; the terrain tiling
   follows Mikkelsen's hex tiling; the global illumination follows Sannikov's
   radiance cascades.
-- The death animations were generated with NVIDIA's Kimodo and retargeted;
-  the blade swings and hound clips are hand-keyed.
-AdventMod itself is free software under the GPL-3.0 and non-commercial:
+- The blade swings are hand-keyed.
+GoreOverhaul itself is free software under the GPL-3.0 and non-commercial:
 share it, change it, keep the source open. See Licenses\CREDITS.txt.
