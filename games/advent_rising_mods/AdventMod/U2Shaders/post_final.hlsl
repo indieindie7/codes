@@ -4,7 +4,7 @@
 //   1. bloom added in linear light, and only the result's highlights rolled off
 //      (the shoulder of Khronos PBR Neutral, Apache-2.0), so the game's own look below the
 //      shoulder is kept and bright lamps glow instead of clipping flat;
-//   2. grade: exposure, colour balance, saturation, contrast (U2Shaders.ini grade=/colour=);
+//   2. grade: exposure (times the eye adaptation's, eyeadapt=), colour balance, saturation, contrast (U2Shaders.ini grade=/colour=);
 //   3. contrast-adaptive sharpening (AMD FidelityFX CAS, MIT; ported to ps_2): strong on soft
 //      detail, gentle on edges that are already crisp, so no halos (sharpen= is its strength);
 //   4. lens: a little chromatic aberration toward the screen's edges, and the vignette;
@@ -27,6 +27,8 @@ float4    Balance  : register(c3);   // colour balance r g b, sharpen (CAS stren
 float4    Fx       : register(c4);   // postfx=: aberration (screen widths), grain, dither (8-bit steps), shoulder
 float4    LutInfo  : register(c5);   // N, 1/width, 1/height, 1 = a LUT is loaded
 sampler2D Lut      : register(s2);   // N slices of NxN side by side: x = red, y = green, slice = blue
+float4    Eye      : register(c6);   // x = 1: s3 holds the eye adaptation's exposure (eyeadapt=)
+sampler2D EyeTex   : register(s3);   // 1x1, r = exposure (eye_adapt.hlsl)
 
 #define DESAT      0.15     // how much rolled-off highlights lose colour
 
@@ -130,7 +132,8 @@ float4 main(float2 uv : TEXCOORD0) : COLOR
 	c.b = lerp(c.b, tex2D(Scene, uv - ca).b, saturate(edge * 2));
 
 	// 1: bloom in linear light, then the highlights rolled off
-	float3 lin = ToLinear(c) * Grade.z * Balance.rgb + ToLinear(tex2D(BloomMap, uv).rgb) * Bloom.y;
+	float exposure = Grade.z * (Eye.x > 0.5 ? tex2D(EyeTex, float2(0.5, 0.5)).r : 1);
+	float3 lin = ToLinear(c) * exposure * Balance.rgb + ToLinear(tex2D(BloomMap, uv).rgb) * Bloom.y;
 	c = ToGamma(Shoulder(lin, Fx.w > 0 ? Fx.w : 0.76));
 
 	// 2: saturation and contrast (in gamma, where the game's look was made)
