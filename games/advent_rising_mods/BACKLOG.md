@@ -36,7 +36,7 @@ Sources: `research/black-ps2-destruction.md` (ranked list) and `GORE-DESIGN.md` 
 
 - Seeker armour plate look (user: "pink sheen"); hits and sparks still work. `AdventMod/ARMOUR.md`.
 - Light shafts in the atmos fog (never seen on camera). `GRAPHICS-PASS.md`.
-- MSAA in the d3d8 fork (doesn't smooth; blocks GI). SMAA covers it.
+- MSAA in the d3d8 fork: smooths since fork ba7b9df (stand-in padded 32 px past the NVIDIA screen-size cut-off); still blocks GI (needs a plain depth copy) and is not in a release yet. SMAA covers it.
 - GI ships off by default.
 - Squishing small gibs underfoot.
 
