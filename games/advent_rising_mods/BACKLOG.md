@@ -28,6 +28,10 @@ Then graphics (`UE4-RENDER-IDEAS.md`, d3d8to9 fork, each off by default):
 8. Shadow caching (user 10-11, video Ls4QS3F8rJU): first measure what the game's own shadows
    cost per frame; then keep static shadows cached instead of redrawn each frame, and leave
    floors/terrain out of the shadow pass where they can't cast onto anything.
+9. Geometric specular AA (user 10-11, video jNR5EiqA05c): Vlachos-style roughness boost from
+   normal derivatives (ddx/ddy, a few lines) in the pbr shaders, so shiny edges stop sparkling.
+10. Normal/roughness mip pre-filtering (same video): an offline texture pass that widens
+   roughness where a normal map's mips average out its bumps, so distant surfaces don't shimmer.
 Maybe later: rain wetness (lower roughness outdoors from a top-down depth map), lens drops.
 Animation ideas (video 52Zw5eHHjgQ, Skyrim "Fluid Motion"): smooth path following (no
 stop-and-go when fleeing), landing crouch, speed-synced legs, per-leg IK on surfaces for
