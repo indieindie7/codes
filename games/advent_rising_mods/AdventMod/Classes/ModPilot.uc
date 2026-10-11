@@ -41,7 +41,7 @@ var float BoneHead0, BoneHeadLag[4];                      // DASH: the dodge was
 // what ModInput adds each frame (class defaults: ModInput has no reference to us)
 var bool bActive;
 var float Forward, Strafe, Up;
-var float TurnAxis, LookAxis;          // added to aTurn / aLookUp while a turn step runs
+var float TurnAxis, LookAxis, SpinAxis;          // added to aTurn / aLookUp while a turn step runs
 var float MouseX;                       // MOUSE step: added to the raw mouse axis (before the engine's sensitivity and curve)
 var bool bHoldFire, bHoldFavoriteFire, bHoldWalk;
 
@@ -459,6 +459,7 @@ event PostBeginPlay()
 
 event Destroyed()
 {
+	class'ModPilot'.default.SpinAxis = 0;
 	ReleaseAll();
 	class'ModPilot'.default.bActive = false;
 	Super.Destroyed();
@@ -511,7 +512,7 @@ function ReleaseAll()
 	class'ModPilot'.default.bHoldFire = false;
 	class'ModPilot'.default.bHoldFavoriteFire = false;
 	class'ModPilot'.default.bHoldWalk = false;
-	class'ModPilot'.default.TurnAxis = 0;
+	class'ModPilot'.default.TurnAxis = class'ModPilot'.default.SpinAxis;     // SPIN outlasts steps
 	class'ModPilot'.default.LookAxis = 0;
 	class'ModPilot'.default.MouseX = 0;
 	TurnYaw = 0;
@@ -1323,6 +1324,12 @@ function StartStep()
 		// UE2 turns the view by 32 * DeltaTime * aTurn rotation units (65536 = 360 degrees)
 		class'ModPilot'.default.TurnAxis = TurnYaw * 65536.0 / 360.0 / 32.0;
 		class'ModPilot'.default.LookAxis = TurnPitch * 65536.0 / 360.0 / 32.0;
+		break;
+	case "SPIN":
+		// SPIN degrees-per-second: keeps turning the view while later steps run (SPIN 0 stops),
+		// so a shot can be taken mid-turn (motion blur tests)
+		class'ModPilot'.default.SpinAxis = ArgF(1, 0) * 65536.0 / 360.0 / 32.0;
+		class'ModPilot'.default.TurnAxis = class'ModPilot'.default.SpinAxis;
 		break;
 	case "SPAWN":
 		// SPAWN Package.Class ahead [right]: an actor that far in front of the player
