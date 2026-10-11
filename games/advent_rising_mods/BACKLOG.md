@@ -25,7 +25,13 @@ Then graphics (`UE4-RENDER-IDEAS.md`, d3d8to9 fork, each off by default):
 5. Temporal reject for the GI cascades.
 6. Burley-style skin SSS (red radius wider than blue).
 7. Small checks: MSAA edges vs our screen passes, linear-light MSAA resolve (video SxCMaTEoBoI).
+8. Shadow caching (user 10-11, video Ls4QS3F8rJU): first measure what the game's own shadows
+   cost per frame; then keep static shadows cached instead of redrawn each frame, and leave
+   floors/terrain out of the shadow pass where they can't cast onto anything.
 Maybe later: rain wetness (lower roughness outdoors from a top-down depth map), lens drops.
+Animation ideas (video 52Zw5eHHjgQ, Skyrim "Fluid Motion"): smooth path following (no
+stop-and-go when fleeing), landing crouch, speed-synced legs, per-leg IK on surfaces for
+hounds (extends ModFeet). Comments: big leans and bendy player legs read as goofy, so keep subtle.
 
 ## Destruction and gore still missing (feasible, cheapest first)
 
