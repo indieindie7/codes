@@ -165,12 +165,29 @@ typedef struct foam_snap {
     volatile DWORD tick; /* GetTickCount of the last step that filled it */
 } foam_snap;
 
+/* Kate: the game keeps its CPlayerPawn (vtable 0xe910f4) in the global at 0x1a817a4 (326 code
+ * references); pawn +0x2c/+0x30 is her position in the sheet plane, +0x34 her height. The game
+ * stamps her only into some sheets, and her wake on the pool is drawn, not simulated. */
+#define PLAYER_PTR   0x1a817a4u
+#define PAWN_VTABLE  0xe910f4u
+
+static const float *KatePos(void)
+{
+    const uint32_t *pawn;
+    if (IsBadReadPtr((const void *)PLAYER_PTR, 4)) return NULL;
+    pawn = *(const uint32_t *const *)PLAYER_PTR;
+    if (!pawn || IsBadReadPtr(pawn, 0x40) || pawn[0] != PAWN_VTABLE) return NULL;
+    return (const float *)((const BYTE *)pawn + 0x2c);
+}
+
 typedef struct bridge {
     uint32_t *S;        /* the game's sheet */
     int w, h;
     hw_sheet *hw;
     unsigned steps;
     float dm, du, dh;   /* largest outside change of momentum, velocity grid and depth since the last stats line */
+    float kx, kz;       /* where Kate was at this sheet's last step */
+    int kseen;
     foam_snap *volatile snap;
     struct bridge *next;
 } bridge;
@@ -227,6 +244,9 @@ static volatile LONG g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheet
 static const uint32_t *g_mesh_seen[256];
 static volatile LONG g_shader_calls, g_shader_water_noanchor;
 static volatile LONG g_foam_patched, g_foam_failed, g_foam_dumps;
+static volatile LONG g_body_foam;   /* steps where a moving body added foam, since the last stats line */
+static float g_body_vmax;           /* Kate's top speed over any sheet since the last stats line */
+static float g_kate_h, g_kate_bed, g_kate_depth;   /* her height and the bed and depth under her at the last foam add */
 
 /* the detour target: same contract as FUN_00d5c9d0, returns the consumed dt */
 __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
@@ -293,6 +313,36 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
         for (i = 0; i < cols; i++)   /* the 2-cell padding ring stays wall so nothing leaks off the sheet */
             hwall[r * hs + i] = (gwall[r * gs + i] != 0.0f || r < 2 || r >= rows - 2 || i < 2 || i >= cols - 2) ? 1.0f : 0.0f;
 
+    /* bodies moving through the water churn foam around them: the game stamps them only into
+       some sheets, and their wake on the pool is drawn, not simulated */
+    if (cfg.opts.foam) {
+        const float *kp = KatePos();
+        float ox = *(const float *)&S[0x1f], oz = *(const float *)&S[0x20], dxs = *(const float *)&S[4], rad = 2.0f * dxs;
+        if (!kp || kp[0] < ox - rad || kp[1] < oz - rad || kp[0] > ox + w * dxs + rad || kp[1] > oz + h * dxs + rad) b->kseen = 0;
+        else {
+            float x = kp[0], z = kp[1];
+            int ci = (int)((x - ox) / dxs) + 2, cj = (int)((z - oz) / dxs) + 2;
+            /* her height is negated against bed + depth (wading: -710 over bed 610, depth 110);
+               on a grating more than 80 above the surface she makes no foam */
+            int above = ci >= 2 && cj >= 2 && ci < w + 2 && cj < h + 2 && -kp[2] > gbed[cj * gs + ci] + gh[cj * gs + ci] + 80.0f;
+            if (b->kseen && !above) {
+                float vx = x - b->kx, vz = z - b->kz, v = sqrtf(vx * vx + vz * vz) / dt;
+                if (v > g_body_vmax) g_body_vmax = v;
+                if (v > 20.0f && v < 3000.0f) {   /* a jump in position is a respawn, not a wake */
+                    float a = (v - 20.0f) / 250.0f;
+                    if (a > 1.0f) a = 1.0f;
+                    /* foam_add skips dry cells, so walking on a floor over the sheet adds nothing */
+                    hw_foam_add(b->hw, x - ox, z - oz, rad, 3.0f * a * dt, 2.0f * a * dt);
+                    /* a thinner trail a little behind, so the wake is a streak, not a disc */
+                    hw_foam_add(b->hw, x - ox - vx * 0.5f, z - oz - vz * 0.5f, rad * 1.3f, 1.5f * a * dt, 0.5f * a * dt);
+                    g_body_foam++;
+                    g_kate_h = kp[2];
+                    if (ci >= 2 && cj >= 2 && ci < w + 2 && cj < h + 2) { g_kate_bed = gbed[cj * gs + ci]; g_kate_depth = gh[cj * gs + ci]; }
+                }
+            }
+            b->kx = x; b->kz = z; b->kseen = 1;
+        }
+    }
     if (cfg.opts.displacement) hw_bodies_begin(b->hw);   /* no bodies registered yet (stage 1 hook pending) */
     hw_step(b->hw, dt);
     if (cfg.opts.foam && b->snap) {
@@ -355,6 +405,18 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
             Log("sheet %p: foam max %.2f, %.1f cells above 0.1 per step; outside change: momentum %.1f, velocity %.1f, depth %.2f", (void *)S, b->snap->fmax, b->snap->fcells / (float)cfg.log_every, b->dm, b->du, b->dh);
             b->dm = b->du = b->dh = 0.0f;
             b->snap->fmax = 0.0f; b->snap->fcells = 0;
+        }
+        {   /* the body table, once per stats round (the first sheet to log prints it) */
+            static DWORD last;
+            DWORD now = GetTickCount();
+            if (now - last > 5000) {
+                const float *kp = KatePos();
+                last = now;
+                if (kp) Log("kate: at %.0f %.0f height %.0f; %ld foam adds, top speed over water %.0f (last add: bed %.0f depth %.1f height %.0f)",
+                            kp[0], kp[1], kp[2], g_body_foam, g_body_vmax, g_kate_bed, g_kate_depth, g_kate_h);
+                else Log("kate: no player pawn");
+                g_body_foam = 0; g_body_vmax = 0.0f;
+            }
         }
         Log("mesh hook: %ld rebuilds, %ld no bridge, %ld size mismatch, %ld sheets coloured; shaders %ld compiled, %ld patched, %ld water-like without anchor",
             g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheets, g_shader_calls, g_foam_patched, g_shader_water_noanchor);
