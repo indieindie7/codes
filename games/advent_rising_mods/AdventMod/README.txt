@@ -270,7 +270,8 @@ Double-click "Uninstall AdventMod.bat": it removes the configuration lines and
 the mod's files, puts back a d3d8.dll or U2Shaders.ini you had before, and
 leaves everything else as it was. By hand: remove the lines from steps 3-5,
 delete AdventMod.u, AdventMod.int, AdventNative.dll, d3d8.dll, U2Shaders.ini,
-AdventMod.ini, the logs and the U2Shaders folder from System, delete
+AdventMod.ini, GoreOverhaul-Gore.txt, GoreOverhaul-Graphics.txt, the logs
+and the U2Shaders folder from System, delete
 KarmaData\Advent.ka and the AdventMod folder, and rename your
 old d3d8.dll back if you had one.
 

@@ -95,6 +95,67 @@ static int SetU2(const char* Key, const char* Value)
 	return 1;
 }
 
+/* NativeCall("Has:<file>"): is there a file of that name in System\ (the edition markers
+   GoreOverhaul-Gore.txt and GoreOverhaul-Graphics.txt that the release zips carry) */
+static int HasFile(const wchar_t* Name)
+{
+	wchar_t Path[MAX_PATH], *Slash;
+	DWORD A;
+	GetModuleFileNameW(NULL, Path, MAX_PATH);
+	Slash = wcsrchr(Path, L'\\');
+	if (!Slash || wcslen(Name) > 64 || wcschr(Name, L'\\') || wcschr(Name, L'/')) return 0;
+	wcscpy(Slash + 1, Name);
+	A = GetFileAttributesW(Path);
+	return A != INVALID_FILE_ATTRIBUTES && !(A & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+/* NativeCall("U2GoreOnly"): the gore-only edition's look. Every zip ships the same full
+   U2Shaders.ini (so installing two editions never leaves a cut one behind); without the
+   graphics marker the mod cuts it here to the blood and decal rules, with the post pass kept
+   (the lens blood draws in it) at a neutral look. Done once: the cut file starts with a marker
+   line, and the Graphics page's own changes to it are kept after that. */
+static const char GoreOnlyHead[] = "; gore-only edition";
+static int U2GoreOnly(void)
+{
+	static const char* Keep[] = { "decal=", "bloodlive=", "gloss", "bloodrun=", "streak", "string", "hands", "lens", "#", ";" };
+	wchar_t Path[MAX_PATH], *Slash;
+	char Buf[16384], Out[17000];
+	FILE* F;
+	size_t Len, o = 0, i;
+	char* Line;
+
+	GetModuleFileNameW(NULL, Path, MAX_PATH);
+	Slash = wcsrchr(Path, L'\\');
+	if (!Slash) return 0;
+	wcscpy(Slash + 1, L"U2Shaders.ini");
+	F = _wfopen(Path, L"rb");
+	if (!F) return 0;
+	Len = fread(Buf, 1, sizeof(Buf) - 1, F);
+	fclose(F);
+	Buf[Len] = 0;
+	if (!strncmp(Buf, GoreOnlyHead, sizeof(GoreOnlyHead) - 1)) return 1;
+	o += sprintf(Out + o, "%s: only the blood and decal rules (the Graphics page can still turn the rest on;\r\n"
+		"; copy in the U2Shaders.ini of AdventMod/GoreOverhaul for the full look)\r\n"
+		"post=1\r\nbloom=0.75 0\r\ngrade=1.0 1.0 1.0 0.0\r\ncolour=1 1 1\r\nsharpen=0\r\npostfx=0 0 0 1\r\nlut=lut_neutral.bmp\r\n"
+		"smaa=0\r\npcss=0\r\nsss=0\r\natmos=0\r\nsoft=0\r\n", GoreOnlyHead);
+	for (Line = strtok(Buf, "\r\n"); Line; Line = strtok(NULL, "\r\n"))
+	{
+		const char* L = Line;
+		while (*L == ' ' || *L == '\t') L++;
+		for (i = 0; i < sizeof(Keep) / sizeof(Keep[0]); i++)
+			if (!_strnicmp(L, Keep[i], strlen(Keep[i]))) break;
+		if (i == sizeof(Keep) / sizeof(Keep[0])) continue;
+		if (o + strlen(Line) + 3 > sizeof(Out)) break;
+		o += sprintf(Out + o, "%s\r\n", Line);
+	}
+	F = _wfopen(Path, L"wb");
+	if (!F) return 0;
+	fwrite(Out, 1, o, F);
+	fclose(F);
+	Note(L"U2Shaders.ini cut to the gore-only rules (no graphics marker)");
+	return 1;
+}
+
 static int SetPcss(int On)
 {
 	static int Last = -1;
@@ -244,6 +305,8 @@ static int HandleCommand(const wchar_t* Cmd)
 	if (!_wcsicmp(Cmd, L"D3DZAlways")) { D3DZAlways = 1; Note(L"d3dtrace: projected draws now always pass the depth test"); return 1; }
 	if (!_wcsnicmp(Cmd, L"Pcss:", 5)) return SetPcss(Cmd[5] == L'1');
 	if (!_wcsnicmp(Cmd, L"U2Set:", 6)) return U2SetCommand(Cmd + 6);
+	if (!_wcsnicmp(Cmd, L"Has:", 4)) return HasFile(Cmd + 4);
+	if (!_wcsicmp(Cmd, L"U2GoreOnly")) return U2GoreOnly();
 	if (!_wcsnicmp(Cmd, L"Blood:", 6)) return BloodCommand(Cmd + 6);
 	if (!_wcsnicmp(Cmd, L"FootIK", 6)) return FootIKCommand(Cmd);
 	if (!_wcsnicmp(Cmd, L"Armour", 6)) return ArmourCommand(Cmd);

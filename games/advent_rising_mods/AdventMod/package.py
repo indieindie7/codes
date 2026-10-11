@@ -1,11 +1,14 @@
 """Builds the release zips in Downloads: GoreOverhaul-<ver>-experimental.zip (the mod was AdventMod; its files keep that name) (with the installer)
 and GoreOverhaul-<ver>-experimental-nexus.zip (no .bat files: Nexus quarantines them).
 --graphics: AdventGraphicalMod-<ver>(-nexus).zip, the graphics-only edition for the
-Nexus page of that name: System\\AdventMod-graphics.u (build.ps1 -GraphicsOnly: gore,
-armour and combat off by default) and no KarmaData.
---gore: GoreOverhaul-GoreOnly-<ver>-experimental(-nexus).zip: System\\AdventMod-gore.u
-(build.ps1 -GoreOnly: soft shadows off) and a U2Shaders.ini cut to the blood and decal
-rules (post stays on with a neutral look: the lens blood draws in the post pass); the README drops the Shadows ... Air and surfaces sections.
+Nexus page of that name: no KarmaData or Armour, marker System\\GoreOverhaul-Graphics.txt.
+--gore: GoreOverhaul-GoreOnly-<ver>-experimental(-nexus).zip, marker System\\GoreOverhaul-Gore.txt;
+the README drops the Shadows ... Air and surfaces sections.
+All editions carry the same AdventMod.u (a plain build.ps1) and the full U2Shaders.ini; the full
+zip has both markers. At startup the mod reads them (ModSettings.ApplyEdition): gore only cuts
+U2Shaders.ini to the blood rules (post kept at a neutral look: the lens blood draws in the post
+pass) and turns soft shadows off, graphics only skips gore. Both markers = the full mod, so the
+two Nexus editions installed together, in either order, make GoreOverhaul.
 --check: run every refusal and README anchor lookup, list what would go in, write no zip.
 --game <folder>: where build.ps1 wrote AdventMod\\Armour\\*.amesh (default: build.ps1's).
 Run build.ps1 first (plain, no switch) so System\\ has the compiled AdventMod.u and
@@ -50,12 +53,17 @@ def contains(path, needle):
 
 
 # refusals before anything else
-ufile = "System/AdventMod-graphics.u" if GRAPHICS else "System/AdventMod-gore.u" if GORE else "System/AdventMod.u"
+ufile = "System/AdventMod.u"   # one build for every edition: the markers pick the edition at startup
+MARKERS = {"GoreOverhaul-Gore.txt": "GoreOverhaul: this file switches the gore part on (blood, gibs, holes, armour).\n"
+                                    "With GoreOverhaul-Graphics.txt beside it you have the full mod.\n",
+           "GoreOverhaul-Graphics.txt": "GoreOverhaul: this file switches the graphics part on (shadows, post-processing).\n"
+                                        "With GoreOverhaul-Gore.txt beside it you have the full mod.\n"}
+MARK = ["GoreOverhaul-Graphics.txt"] if GRAPHICS else ["GoreOverhaul-Gore.txt"] if GORE else sorted(MARKERS)
 # the plain build names the texture in ModJiggle's code ("SeekerSkinJ" twice); only the -JiggleSkin
 # build carries the imported texture, whose source file name survives in the package
 if contains(os.path.join(HERE, ufile), "seeker_infantry_filled"):
     refuse(ufile + " is a build.ps1 -JiggleSkin build (it carries the filled Seeker skin, a game texture).\n"
-           "  Run build.ps1 with no switch (or -GraphicsOnly for the graphics edition) and try again.")
+           "  Run build.ps1 with no switch (every edition ships the plain build) and try again.")
 if not contains(os.path.join(HERE, "System", "d3d8.dll"), "atmos"):
     refuse("System\\d3d8.dll is a stale fork build (no atmos= code, which the shipped U2Shaders.ini turns on).\n"
            "  Copy the gi-cascades build (d3d8to9-gi\\bin\\Release\\d3d8.dll) into System\\ and try again.")
@@ -104,8 +112,9 @@ if GRAPHICS:
     title = readme.index(TITLE); tend = readme.index(NL + NL, title)
     head = "AdventGraphicalMod " + VER + " - shadows, post-processing and in-game options for Advent Rising"
     readme = (head + NL + "=" * len(head) + NL + NL
-              + "(The graphics edition of AdventMod: the same files with the gore, armour and" + NL
-              + "combat changes switched off. The full mod is on GitHub and on Nexus as GoreOverhaul.)"
+              + "(The graphics edition of GoreOverhaul: the same files with the gore, armour and" + NL
+              + "combat changes switched off. Install the gore-only edition as well, in either" + NL
+              + "order, and you have the full GoreOverhaul.)"
               + readme[tend:])
 elif GORE:
     # the gore edition: no Shadows ... Air and surfaces sections, its own title
@@ -116,7 +125,8 @@ elif GORE:
     readme = (head + NL + "=" * len(head) + NL + NL
               + "(The gore-only edition: GoreOverhaul without the post-processing, soft shadows," + NL
               + "terrain, fog and skin shading. The blood's wet look, the bullet holes and the" + NL
-              + "blood runs still use the d3d8.dll. Install the full GoreOverhaul for everything.)"
+              + "blood runs still use the d3d8.dll. Install AdventGraphicalMod as well, in either" + NL
+              + "order, and you have the full GoreOverhaul.)"
               + readme[tend:])
 else:
     readme.index(TITLE)
@@ -129,15 +139,6 @@ u2ini = open(os.path.join(HERE, "System", "U2Shaders.ini"), encoding="ascii").re
 kept = [l for l in u2ini.splitlines() if not any(l.startswith(d) for d in DROP_INI)]
 if len(kept) == len(u2ini.splitlines()):
     print("note: no", DROP_INI, "line in System\\U2Shaders.ini (nothing dropped)")
-if GORE:
-    # gore only: the blood, gloss and decal rules (holes, pools); no post chain, terrain, skin, fog or sheen
-    GORE_KEYS = ("decal=", "bloodlive=", "gloss", "bloodrun=", "streak", "string", "hands", "lens", "#", ";")
-    # post stays on (the lens blood draws inside the post pass) with the Off preset's neutral look
-    kept = (["; gore-only edition: only the blood and decal rules (the Graphics page can still turn the rest on)",
-             "post=1", "bloom=0.75 0", "grade=1.0 1.0 1.0 0.0", "colour=1 1 1", "sharpen=0",
-             "postfx=0 0 0 1", "lut=lut_neutral.bmp",
-             "smaa=0", "pcss=0", "sss=0", "atmos=0", "soft=0"]
-            + [l for l in kept if l.lstrip().startswith(GORE_KEYS)])
 u2ini = "\n".join(kept) + "\n"
 for f in NOT_SHIPPED:
     if f in u2ini:
@@ -157,5 +158,7 @@ for name, bats, text in ((TOP + ".zip", True, readme), (TOP + "-nexus.zip", Fals
                 continue
             z.write(src if os.path.isabs(src) else os.path.join(HERE, src), TOP + "/" + dst)
         z.writestr(TOP + "/System/U2Shaders.ini", crlf(u2ini))
+        for m in MARK:
+            z.writestr(TOP + "/System/" + m, crlf(MARKERS[m]))
         z.writestr(TOP + "/README.txt", crlf(text))
     print(path, os.path.getsize(path))
