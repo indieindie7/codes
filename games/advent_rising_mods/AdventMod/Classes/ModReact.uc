@@ -118,6 +118,7 @@ struct RagdollState
 	var float A[6];
 	var float SpasmT[6];
 	var bool bLimp;        // every region has gone limp: the push is over
+	var bool bSeeker;      // the Seeker skeleton: SeekerPowerBones, toward its own stock death clip
 };
 var array<RagdollState> Ragdolls;
 var config float RagdollTime;
@@ -132,6 +133,8 @@ var config float PowerSpring;      // per second squared: the pull toward the cl
 var config float PowerDamp;        // per second: resists the part's motion
 var config float PowerMaxAccel;    // the push is capped (units per second squared)
 var name PowerBones[12];           // the ragdoll's parts (tools/make_ka.py, humanMale2)
+var name SeekerPowerBones[12];     // the same parts on the seeker skeleton (front arms hang free)
+var config bool bPoweredSeekers;   // Seekers too, toward the game's own Seeker death clips
 var float PowerWeights[12];        // their share of the body's mass
 // Muscle tension (TENSION.md): six regions (torso, head, arms, legs) each have an activation
 // that follows a drive with muscle-like rise and fall times. The body fights for a moment
@@ -756,7 +759,7 @@ event Tick(float DeltaTime)
 				continue;
 			}
 		}
-		else if (P.IsInState('Dying') && bPoweredRagdoll && Gore != None && DeathAnim(P, Deaths[i].Spot, Deaths[i].Dir, Deaths[i].Type, Deaths[i].Length, true) > 0)
+		else if (P.IsInState('Dying') && bPoweredRagdoll && Gore != None && (SeekerClip(P) || DeathAnim(P, Deaths[i].Spot, Deaths[i].Dir, Deaths[i].Type, Deaths[i].Length, true) > 0))
 		{
 			// a powered ragdoll: limp now, pushed toward the clip's pose for a moment
 			Deaths[i].Start = P.Location;
@@ -770,6 +773,7 @@ event Tick(float DeltaTime)
 				Ragdolls[Ragdolls.Length - 1].Start = Deaths[i].Start;
 				Ragdolls[Ragdolls.Length - 1].Facing = Deaths[i].Facing;
 				Ragdolls[Ragdolls.Length - 1].Space = -1;
+				Ragdolls[Ragdolls.Length - 1].bSeeker = Gore.RagdollSkeleton(AdventPawn(P)) == "seeker";
 				if (class'ModSettings'.default.bGoreLog)
 					class'ModSettings'.static.Note("react: " $ P $ " powered ragdoll toward " $ ClipName);
 			}
@@ -1104,13 +1108,52 @@ function float HoundDeath(Pawn P, vector Spot, vector Dir, class<DamageType> Typ
 	return Length + 1;            // past its end: it never goes limp
 }
 
+// a powered ragdoll's part b: its bone on this body's skeleton
+function name PB(int i, int b)
+{
+	if (Ragdolls[i].bSeeker)
+		return SeekerPowerBones[b];
+	return PowerBones[b];
+}
+
+// a Seeker soldier's death: the game's own Seeker death clip as the powered ragdoll's target
+// (ClipName). False if the body isn't a Seeker or has none of them.
+function bool SeekerClip(Pawn P)
+{
+	local name Try[4];
+	local int i, n, Pick;
+
+	if (!bPoweredSeekers || IsHound(P) || AdventPawn(P) == None || Gore == None || Gore.RagdollSkeleton(AdventPawn(P)) != "seeker")
+		return false;
+	Try[0] = 'Death_Impact'; Try[1] = 'Death_ImpactF'; Try[2] = 'Death_Impact_B_Pose'; Try[3] = 'Knockdown';
+	for (i = 0; i < 4; i++)
+		if (P.HasAnim(Try[i]))
+			n++;
+	if (n == 0)
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("react: " $ P $ " (" $ P.Mesh $ ") has no Seeker death clip");
+		return false;
+	}
+	Pick = Rand(n);
+	for (i = 0; i < 4; i++)
+		if (P.HasAnim(Try[i]))
+		{
+			if (Pick == 0)
+				break;
+			Pick--;
+		}
+	ClipName = Try[i];
+	return true;
+}
+
 // where the clip puts a part at this moment, in the world: the clip's positions come in
 // one of a few spaces (found on the first tick by which one matches the body as it died)
 function vector ClipSpot(Pawn P, int i, int b, int Space)
 {
 	local vector Raw;
 
-	Raw = P.GetBoneLocationAtFrame(Ragdolls[i].Clip, PowerBones[b], Ragdolls[i].ClipT, false);
+	Raw = P.GetBoneLocationAtFrame(Ragdolls[i].Clip, PB(i, b), Ragdolls[i].ClipT, false);
 	switch (Space)
 	{
 		case 0: return Ragdolls[i].Start + (Raw >> Ragdolls[i].Facing);                 // the body's frame
@@ -1150,7 +1193,7 @@ function bool Spasm(Pawn P, vector HitLocation)
 	BestD = 1000000000.0;
 	for (b = 0; b < 12; b++)
 	{
-		D = VSize(P.GetBoneCoords(PowerBones[b]).Origin - HitLocation);
+		D = VSize(P.GetBoneCoords(PB(i, b)).Origin - HitLocation);
 		if (D < BestD)
 		{
 			BestD = D;
@@ -1226,8 +1269,8 @@ function Steer(int i, float Dt)
 		{
 			Err = 0;
 			for (b = 0; b < 12; b++)
-				if (PowerBones[b] != '')
-					Err += VSize(ClipSpot(P, i, b, sp) - P.GetBoneCoords(PowerBones[b]).Origin);
+				if (PB(i, b) != '')
+					Err += VSize(ClipSpot(P, i, b, sp) - P.GetBoneCoords(PB(i, b)).Origin);
 			Line = Line $ " " $ int(Err / 12);
 			if (Err < BestErr)
 			{
@@ -1237,8 +1280,8 @@ function Steer(int i, float Dt)
 		}
 		Ragdolls[i].Space = Best;
 		for (b = 0; b < 12; b++)
-			if (PowerBones[b] != '')
-				Ragdolls[i].Prev[b] = P.GetBoneCoords(PowerBones[b]).Origin;
+			if (PB(i, b) != '')
+				Ragdolls[i].Prev[b] = P.GetBoneCoords(PB(i, b)).Origin;
 		if (class'ModSettings'.default.bGoreLog)
 			class'ModSettings'.static.Note("react: powered " $ P $ " clip " $ Ragdolls[i].Clip $ ", mean errors by space" $ Line $ " -> space " $ Best $ ", mass " $ M);
 		return;
@@ -1248,9 +1291,9 @@ function Steer(int i, float Dt)
 	P.KWake();   // a sleeping ragdoll ignores impulses
 	for (b = 0; b < 12; b++)
 	{
-		if (PowerBones[b] == '')
+		if (PB(i, b) == '')
 			continue;
-		Cur = P.GetBoneCoords(PowerBones[b]).Origin;
+		Cur = P.GetBoneCoords(PB(i, b)).Origin;
 		Tgt = ClipSpot(P, i, b, Ragdolls[i].Space);
 		Vel = (Cur - Ragdolls[i].Prev[b]) / Dt;
 		Ragdolls[i].Prev[b] = Cur;
@@ -1269,7 +1312,7 @@ function Steer(int i, float Dt)
 				J = Normal(J) * PowerMaxAccel;
 			J = J * (Fade * M * PowerWeights[b] * Dt);
 		}
-		P.KAddImpulse(J, Cur, PowerBones[b]);
+		P.KAddImpulse(J, Cur, PB(i, b));
 		E += VSize(Tgt - Cur);
 		n++;
 	}
@@ -1426,6 +1469,19 @@ defaultproperties
      PowerBones(9)=leftLeg
      PowerBones(10)=rightUpLeg
      PowerBones(11)=rightLeg
+     SeekerPowerBones(0)=hips
+     SeekerPowerBones(1)=spine1
+     SeekerPowerBones(2)=spine2
+     SeekerPowerBones(3)=head
+     SeekerPowerBones(4)=leftArm
+     SeekerPowerBones(5)=leftForeArm
+     SeekerPowerBones(6)=rightArm
+     SeekerPowerBones(7)=rightForeArm
+     SeekerPowerBones(8)=leftUpLeg
+     SeekerPowerBones(9)=leftLeg
+     SeekerPowerBones(10)=rightUpLeg
+     SeekerPowerBones(11)=rightLeg
+     bPoweredSeekers=True
      PowerWeights(0)=0.166667
      PowerWeights(1)=0.142857
      PowerWeights(2)=0.166667

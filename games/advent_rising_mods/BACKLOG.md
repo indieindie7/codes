@@ -8,8 +8,8 @@ Shelved code is still in the repo, switched off by default.
 Ragdolls first (TENSION.md, `ModReact`; parts 1-2 built in 75f44ad, off by default):
 1. Make the tension readable: option SpasmU=1.0 so a reflex always shows; wincap clips of
    10 human deaths with bTension on vs off, side by side, for the user to judge.
-2. Seekers: powered ragdolls only start on the humanMale2 skeleton. Give Seeker skeletons
-   their own death-clip set so they fight and go limp too.
+2. DONE 10-11: Seekers are powered too (bPoweredSeekers, default on when bPoweredRagdoll is):
+   seeker skeleton, toward the game's own Death_Impact-family clips; front arms hang free.
 3. Per-region timing: legs keep tension longest (knees buckle last); per-class DeathEffort
    (Seekers 1.0, humans 0.8).
 4. TENSION.md part 3: flesh springs (ModJiggle) on Seeker corpses, softer when limp, a
