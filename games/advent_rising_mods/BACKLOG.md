@@ -45,3 +45,5 @@ Sources: `research/black-ps2-destruction.md` (ranked list) and `GORE-DESIGN.md` 
 - UniMate death clips for Seekers and hounds (not installed).
 - PAMI death animations (weights unreleased).
 - Hang at the level03sectionb -> 03c door transition (never reproduced).
+
+- 2026-10-10: SSAO uses characters' own normals (RT1 char-info target; ssaonormals=1 default). Fork b1dca96, shaders 38b60fe. Not in a release yet; only pbr=-ruled characters gain (world/terrain shaders have no normals).
