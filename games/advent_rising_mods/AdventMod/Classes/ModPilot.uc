@@ -41,7 +41,7 @@ var float BoneHead0, BoneHeadLag[4];                      // DASH: the dodge was
 // what ModInput adds each frame (class defaults: ModInput has no reference to us)
 var bool bActive;
 var float Forward, Strafe, Up;
-var float TurnAxis, LookAxis;          // added to aTurn / aLookUp while a turn step runs
+var float TurnAxis, LookAxis, SpinAxis;          // added to aTurn / aLookUp while a turn step runs
 var float MouseX;                       // MOUSE step: added to the raw mouse axis (before the engine's sensitivity and curve)
 var bool bHoldFire, bHoldFavoriteFire, bHoldWalk;
 
@@ -57,6 +57,8 @@ var string ReleaseCommand;             // console command that "lets go" of the 
 var bool bWantPause;
 var float JumpStartZ, JumpTopZ;       // JUMPTEST
 var float TopSpeed;                    // SPEEDTEST
+var int FpsFrames;                      // FPS: frames, summed and worst frame time over the step
+var float FpsSum, FpsWorst;
 var vector SpeedFrom;
 var float ControlTime;                   // the script itself paused the game (pause button, menu step)
 var float HoundT;                        // HOUNDTEST: time since the last report
@@ -417,6 +419,31 @@ function Note(string S)
 	class'ModSettings'.static.Note("pilot: " $ S);
 }
 
+function FpsReport()
+{
+	local Actor A;
+	local int Live, Dead, Karma, Proj, Emit, All;
+
+	ForEach DynamicActors(class'Actor', A)
+	{
+		All++;
+		if (Pawn(A) != None)
+		{
+			if (Pawn(A).Health > 0)
+				Live++;
+			else
+				Dead++;
+		}
+		if (A.Physics == PHYS_Karma || A.Physics == PHYS_KarmaRagDoll)
+			Karma++;
+		if (Projector(A) != None)
+			Proj++;
+		if (Emitter(A) != None)
+			Emit++;
+	}
+	Note("fps " $ Arg(2) $ ": avg " $ int(FpsFrames / FMax(FpsSum, 0.0001)) $ " (" $ int(1000 * FpsSum / Max(FpsFrames, 1)) $ " ms) worst " $ int(1000 * FpsWorst) $ " ms over " $ FpsFrames $ " frames; live " $ Live $ " dead " $ Dead $ " karma " $ Karma $ " projectors " $ Proj $ " emitters " $ Emit $ " actors " $ All);
+}
+
 function PlayerController PC()
 {
 	return Level.GetLocalPlayerController();
@@ -432,6 +459,7 @@ event PostBeginPlay()
 
 event Destroyed()
 {
+	class'ModPilot'.default.SpinAxis = 0;
 	ReleaseAll();
 	class'ModPilot'.default.bActive = false;
 	Super.Destroyed();
@@ -484,7 +512,7 @@ function ReleaseAll()
 	class'ModPilot'.default.bHoldFire = false;
 	class'ModPilot'.default.bHoldFavoriteFire = false;
 	class'ModPilot'.default.bHoldWalk = false;
-	class'ModPilot'.default.TurnAxis = 0;
+	class'ModPilot'.default.TurnAxis = class'ModPilot'.default.SpinAxis;     // SPIN outlasts steps
 	class'ModPilot'.default.LookAxis = 0;
 	class'ModPilot'.default.MouseX = 0;
 	TurnYaw = 0;
@@ -684,6 +712,32 @@ function ShootWall(float YawOff, float PitchOff)
 	if (A == None)
 		return;
 	G.ShotGone(HitL - Dir * 8, Dir * 2500);
+}
+
+function Blast(float Dist, string ClassName)
+{
+	local class<Projectile> C;
+	local Projectile P;
+	local vector Dir, Spot, HitL, HitN;
+
+	if (PC() == None || PC().Pawn == None)
+		return;
+	C = class<Projectile>(DynamicLoadObject(ClassName, class'Class', true));
+	if (C == None)
+	{
+		Note("blast: no class " $ ClassName);
+		return;
+	}
+	Dir = vector(PC().Rotation);
+	Dir.Z = 0;
+	Dir = Normal(Dir);
+	Spot = PC().Pawn.Location + Dir * Dist;
+	if (PC().Pawn.Trace(HitL, HitN, Spot - vect(0,0,300), Spot, false) != None)
+		Spot = HitL + vect(0,0,10);
+	P = Spawn(C,,, Spot);
+	Note("blast: " $ P $ " at " $ Spot);
+	if (P != None)
+		P.Explode(None, Spot, vect(0,0,1));
 }
 
 function Hurt(int Damage, string TypeName, optional string BoneName)
@@ -1271,6 +1325,12 @@ function StartStep()
 		class'ModPilot'.default.TurnAxis = TurnYaw * 65536.0 / 360.0 / 32.0;
 		class'ModPilot'.default.LookAxis = TurnPitch * 65536.0 / 360.0 / 32.0;
 		break;
+	case "SPIN":
+		// SPIN degrees-per-second: keeps turning the view while later steps run (SPIN 0 stops),
+		// so a shot can be taken mid-turn (motion blur tests)
+		class'ModPilot'.default.SpinAxis = ArgF(1, 0) * 65536.0 / 360.0 / 32.0;
+		class'ModPilot'.default.TurnAxis = class'ModPilot'.default.SpinAxis;
+		break;
 	case "SPAWN":
 		// SPAWN Package.Class ahead [right]: an actor that far in front of the player
 		// (unreal units), a pawn with its own AI
@@ -1310,10 +1370,33 @@ function StartStep()
 		ShootWall(ArgF(1, 0), ArgF(2, 0));
 		StepLength = 0.2;
 		break;
+	case "BLAST":
+		// BLAST [distance] [Package.ProjectileClass]: a grenade goes off that far in front of the
+		// player (its stock explosion and smoke), for frame-time tests of big smoke near the camera
+		Blast(ArgF(1, 200), Args.Length > 2 ? Args[2] : "EonWeapons.HumanGrenade_Proj");
+		StepLength = 0.2;
+		break;
 	case "HURT":
 		// HURT damage [Package.DamageType] [bone]: the nearest other character takes a shot from
 		// the player (at that bone if one is given)
 		Hurt(int(ArgF(1, 30)), Args.Length > 2 ? Args[2] : "EonWeapons.dmgType_HumanPistolFire", Args.Length > 3 ? Args[3] : "");
+		break;
+	case "HURTME":
+		// HURTME damage: the player takes a pistol hit from the nearest enemy (or itself), through
+		// TakeDamage, so the GameRules (ModPlayerBlood's hurt lens) see it
+		if (PC().Pawn != None)
+		{
+			PC().Pawn.TakeDamage(int(ArgF(1, 30)), PC().Pawn, PC().Pawn.Location, vect(0, 0, 0), class<DamageType>(DynamicLoadObject("EonWeapons.dmgType_HumanPistolFire", class'Class')));
+			Note("hurtme " $ int(ArgF(1, 30)) $ ", health " $ PC().Pawn.Health);
+		}
+		break;
+	case "FPS":
+		// FPS [seconds] [label]: stand and log the average and worst frame time over that long, with
+		// the counts of what has piled up (live and dead pawns, karma bodies, projectors, emitters)
+		FpsFrames = 0;
+		FpsSum = 0;
+		FpsWorst = 0;
+		StepLength = ArgF(1, 10);
 		break;
 	case "SPEEDTEST":
 		// SPEEDTEST [seconds] [walk]: run forward and log the top speed and what decides it
@@ -1534,6 +1617,22 @@ event Tick(float DeltaTime)
 		else if (StepTime > StepLength)
 		{
 			Note("waitcontrol timed out");
+			StartStep();
+		}
+		return;
+	}
+	if (Cmd == "FPS")
+	{
+		// the first frames of the step can still carry the last step's work
+		if (StepTime > 0.5)
+		{
+			FpsFrames++;
+			FpsSum += DeltaTime;
+			FpsWorst = FMax(FpsWorst, DeltaTime);
+		}
+		if (StepTime > StepLength)
+		{
+			FpsReport();
 			StartStep();
 		}
 		return;

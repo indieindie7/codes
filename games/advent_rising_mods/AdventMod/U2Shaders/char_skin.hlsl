@@ -31,7 +31,7 @@ static const float3 SKINWRAP = float3(0.75, 0.42, 0.32);
 struct Out
 {
 	float4 Colour : COLOR0;
-	float4 Skin   : COLOR1;   // the skin mask for sss.hlsl (render target 1 when sss=1; ignored otherwise)
+	float4 Skin   : COLOR1;   // the characters' info target (render target 1 when sss or ssao is on; ignored otherwise)
 };
 
 Out main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD2, float2 uv3 : TEXCOORD3,
@@ -88,6 +88,8 @@ Out main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD2, 
 	float3 c = t.rgb * saturate(ambient + direct + rim) * Setup.x + shine * 0.12 * Setup.z * Setup.x;
 	Out o;
 	o.Colour = float4(lerp(saturate(c), own, glow), t.a);
-	o.Skin = float4(1, 1 - glow, 1, t.a);       // glowing parts (lights on a suit) are not skin
+	// render target 1, the characters' info: r, b = the normal (for ssao), g = skin (glowing
+	// parts, lights on a suit, are not skin), a = drawn
+	o.Skin = float4(ng.x * 0.5 + 0.5, 1 - glow, ng.y * 0.5 + 0.5, t.a);
 	return o;
 }

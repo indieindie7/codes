@@ -58,6 +58,9 @@ the cloud can (Wine, headless Blender). The real check is the user's QA of the g
     Send the `U2Gore:` lines (survey, zone, learned, dying, dies) and the shots. Design and risks:
     `games/unreal2_mods/U2Gore/WOUNDS-AND-DYING.md`.
 
+16. **Avalon floor plans + facades (private repo):** follow the top entry of `unreal/U2Avalon/HANDOFF.md` in
+    indieindie7/avalon: import the 8 new kit ASEs, run rooms.py and `shells.py <run> all=1`, walk the houses.
+
 Before that: set up a way back in after reboots (Chrome Remote Desktop, or Claude Code starting
 with Windows). See "PC access" below.
 
@@ -164,6 +167,13 @@ the PC, per the depth probe).
 ### U2Pilot scripts
 
 `scripts/char_probe.txt`, `scripts/destruct_probe.txt`.
+
+### building-interiors skill (`.claude/skills/building-interiors`)
+
+Room sizes, door and wall sizes, which rooms connect and how deep they sit from the entrance,
+measured from 8,061 ResPlan plans (CC BY 4.0, South Asian listings; scale checked per plan by its
+doors), plus paraphrased rules (Blondel stairs, ceilings, daylight depth, Alexander, Lynch, shape
+grammars) and a game-scale note (1 m = 50 uu). For U2Avalon / generated buildings.
 
 ## Design notes
 

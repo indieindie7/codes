@@ -21,7 +21,8 @@ var config bool bNoGamePostFx;        // remove the game's own camera effects (b
 var config bool bSoftShadows;         // multi-light character shadows (ModShadowManager, ported from U2SoftShadows)
 var bool bStartedUp;                  // Startup has run (once per run of the game)
 var config bool bGraphicsOnly;        // the AdventGraphicalMod build: no gore, armour or combat changes (ModMutator never spawns ModGore); build.ps1 -GraphicsOnly flips the default
-var config bool bPadDriftFix;         // ignore stuck gamepad camera axes: the camera spinning on its own with a pad or receiver connected (ModInput)
+var config string Edition;            // the edition the markers said last run ("full", "gore", "graphics"; see ApplyEdition)
+var config bool bPadDriftFix;        // ignore stuck gamepad camera axes: the camera spinning on its own with a pad or receiver connected (ModInput)
 var config float PadCentre;           // an axis counts once it has been this close to the centre
 var config float StuckTime;           // an axis frozen off-centre this long (seconds) stops counting
 var config float DebugStuckTurn;      // testing: add a phantom axis value to the camera turn
@@ -40,7 +41,8 @@ var config float ExploreSpeed;        // running speed while no enemy is near (M
 var bool bInCombat;                   // a hostile within CombatRange (ModTargeting, twice a second)
 var config bool bGoreLog;             // testing: log every hit and blood mark (ModGore)
 var config string DebugDecalTexture;  // testing: every blood mark with this texture instead
-var config bool bFpsGraph;            // development: the frame-time graph overlay (ModFpsGraph); off in releases
+var config bool bFpsGraph;            // the frame-time graph overlay (ModFpsGraph); on by default since 10-10 (user)
+var config bool bGizmos;              // debug lines on the player (ModGizmos); "mutate gizmos" toggles
 var config bool bJumpLog;             // testing: log every jump (ModInput)
 var config bool bMouseLog;            // testing: log how much of the mouse movement the engine's curve keeps
 var config int PostPreset;            // post-processing look (ModGraphicsOptions): 0 off, 1 Natural, 2 Cinematic, 3 Gritty, 4 Clean
@@ -345,6 +347,41 @@ static function bool DebugStep(PlayerController PC, string Cmd)
 	return false;
 }
 
+// the Nexus editions are one build: each zip adds its marker to System\ (GoreOverhaul-Gore.txt,
+// GoreOverhaul-Graphics.txt; the full zip both), so installing the gore and the graphics zips
+// together, in either order, gives the full mod. No marker (a dev build or an old install): the
+// config decides, as before. Soft shadows follow a change of edition only, so a player's own
+// choice on the Graphics page stays.
+static function ApplyEdition()
+{
+	local bool bGore, bGraphics;
+	local string E;
+
+	bGore = NativeCall("Has:GoreOverhaul-Gore.txt");
+	bGraphics = NativeCall("Has:GoreOverhaul-Graphics.txt");
+	if (!bGore && !bGraphics)
+		return;
+	if (bGore && bGraphics)
+		E = "full";
+	else if (bGore)
+		E = "gore";
+	else
+		E = "graphics";
+	default.bGraphicsOnly = E == "graphics";
+	if (E == "gore")
+		NativeCall("U2GoreOnly");
+	if (E != default.Edition)
+	{
+		if (E == "gore")
+			default.bSoftShadows = false;
+		else if (default.Edition == "gore")
+			default.bSoftShadows = true;
+		Note("edition: " $ E $ " (was " $ default.Edition $ ")");
+		default.Edition = E;
+	}
+	StaticSaveConfig();
+}
+
 static function Startup(PlayerController PC)
 {
 	local bool bReset;
@@ -353,6 +390,7 @@ static function Startup(PlayerController PC)
 		return;
 	default.bStartedUp = true;
 	NativeCall("Init");
+	ApplyEdition();
 	if (default.bShadowFix)
 	{
 		NativeCall("ShadowFix");
@@ -406,6 +444,8 @@ static function Startup(PlayerController PC)
 
 defaultproperties
 {
+     bFpsGraph=True
+     bGizmos=False
      bShadowFix=True
      bSoftShadows=True
      bNoGamePostFx=True

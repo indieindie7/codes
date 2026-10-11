@@ -70,7 +70,8 @@ var config int KnockDamage;        // a single hit this big (after the game's sc
 var config float KnockChance;      // ...this often
 var config float KnockDown, KnockGetUp;   // seconds lying, seconds the get-up takes
 var config float KnockPush;
-var config float KnockLift;        // the throw's upward speed (the stock flying reaction)
+var config float KnockLift;
+var config float BigHeight, BigHeft;   // a pawn taller than BigHeight (collision height; humans 78) is heavier: knock and stagger need BigHeft * (height/BigHeight)^2 times the damage, and it is shoved that much less        // the throw's upward speed (the stock flying reaction)
 var int Impact;                   // the current hit before armour (ModGoreRules sets it)
 struct DownState
 {
@@ -113,6 +114,11 @@ struct RagdollState
 	var vector Prev[12];   // each part's position last tick (for its velocity)
 	var vector RestHips;   // where the hips were a moment ago, and how long they have barely moved
 	var float RestT;
+	// muscle tension (bTension): each region's activation, and how long a reflex from a hit lasts
+	var float A[6];
+	var float SpasmT[6];
+	var bool bLimp;        // every region has gone limp: the push is over
+	var bool bSeeker;      // the Seeker skeleton: SeekerPowerBones, toward its own stock death clip
 };
 var array<RagdollState> Ragdolls;
 var config float RagdollTime;
@@ -127,7 +133,19 @@ var config float PowerSpring;      // per second squared: the pull toward the cl
 var config float PowerDamp;        // per second: resists the part's motion
 var config float PowerMaxAccel;    // the push is capped (units per second squared)
 var name PowerBones[12];           // the ragdoll's parts (tools/make_ka.py, humanMale2)
+var name SeekerPowerBones[12];     // the same parts on the seeker skeleton (front arms hang free)
+var config bool bPoweredSeekers;   // Seekers too, toward the game's own Seeker death clips
 var float PowerWeights[12];        // their share of the body's mass
+// Muscle tension (TENSION.md): six regions (torso, head, arms, legs) each have an activation
+// that follows a drive with muscle-like rise and fall times. The body fights for a moment
+// (DeathEffort for EffortTime), then the drive falls to 0 over LimpTime; a shot on a region
+// still tense jerks it once. The activation scales the push's spring and cap, and the damping
+// keeps PassiveDamp of itself when limp. Off: the old linear fade over PowerTime.
+var config bool bTension;
+var config float TauUp, TauDown, DeathEffort, EffortTime, LimpTime, SpasmU, SpasmTime, PassiveDamp;
+var config float SeekerDeathEffort;   // a Seeker fights its death harder than a human (DeathEffort)
+var config float RegionLimp[6];       // LimpTime scale per region: trunk, head, left arm, right arm, left leg, right leg
+var int PowerRegion[12];           // each part's region
 
 struct DeathState
 {
@@ -167,6 +185,8 @@ function Hit(Pawn Victim, vector HitLocation, vector Momentum, int Damage, class
 
 	if (!Reacts(Victim) || Damage <= 0)
 		return;
+	if (bTension && Victim.Physics == PHYS_KarmaRagdoll && Spasm(Victim, HitLocation))
+		return;
 	Dir = ShotDir;
 	if (VSize(Momentum) > 1)
 		Dir = Normal(Momentum);
@@ -188,9 +208,9 @@ function Hit(Pawn Victim, vector HitLocation, vector Momentum, int Damage, class
 	}
 	if (bFlinch)
 		Flinch(Victim, HitLocation, Dir, Damage, false);
-	if (bKnockdown && Max(Damage, Impact) >= KnockDamage && Victim.iBaseTargetingPriority < 255 && FRand() < KnockChance && Knock(Victim, Dir))
+	if (bKnockdown && Max(Damage, Impact) >= KnockDamage * Heft(Victim) && Victim.iBaseTargetingPriority < 255 && FRand() < KnockChance && Knock(Victim, Dir))
 		return;
-	if (bStagger && Damage >= StaggerDamage && Victim.iBaseTargetingPriority < 255)
+	if (bStagger && Damage >= StaggerDamage * Heft(Victim) && Victim.iBaseTargetingPriority < 255)
 		Stagger(Victim, Dir);
 }
 
@@ -207,7 +227,8 @@ function bool Knock(Pawn P, vector Dir)
 		if (Downs[i].P == P)
 			return false;
 	D.P = P;
-	D.Speed = P.GroundSpeed;
+	D.Speed = BaseSpeed(P);
+	EndStagger(P);
 	if (IsHound(P))
 	{
 		// the hound's own: thrown onto the side the hit pushes it to
@@ -534,9 +555,13 @@ function Stagger(Pawn P, vector Dir)
 	local StaggerState S;
 	local vector L;
 
+	// no stagger on a pawn that is down (it would keep the down's zero speed as its own)
+	for (i = 0; i < Downs.Length; i++)
+		if (Downs[i].P == P)
+			return;
 	Dir.Z = 0;
 	if (P.Physics == PHYS_Walking)
-		P.Velocity += Normal(Dir) * StaggerPush;
+		P.Velocity += Normal(Dir) * StaggerPush / Heft(P);
 	// the lean: the spine bone (Bones[1]) turned away from the hit, the flinch's convention
 	L = Normal(Dir) << P.Rotation;
 	for (i = 0; i < Staggers.Length; i++)
@@ -556,6 +581,41 @@ function Stagger(Pawn P, vector Dir)
 	P.GroundSpeed = S.Speed * StaggerSlow;
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("react: " $ P $ " staggers");
+}
+
+// how much harder a big pawn is to stagger or knock down (1 for a human's size)
+function float Heft(Pawn P)
+{
+	if (BigHeight <= 0 || P.CollisionHeight <= BigHeight)
+		return 1.0;
+	return FMax(1.0, BigHeft) * Square(P.CollisionHeight / BigHeight);
+}
+
+// the pawn's own ground speed: the one a stagger or a down saved, not the slowed one it has now
+function float BaseSpeed(Pawn P)
+{
+	local int i;
+
+	for (i = 0; i < Downs.Length; i++)
+		if (Downs[i].P == P)
+			return Downs[i].Speed;
+	for (i = 0; i < Staggers.Length; i++)
+		if (Staggers[i].P == P)
+			return Staggers[i].Speed;
+	return P.GroundSpeed;
+}
+
+// a stagger cut short (a down takes over): the lean undone; the speed is the down's to restore
+function EndStagger(Pawn P)
+{
+	local int i;
+
+	for (i = Staggers.Length - 1; i >= 0; i--)
+		if (Staggers[i].P == P)
+		{
+			P.SetBoneRotation(Staggers[i].Bone, rot(0,0,0), 0, 0);
+			Staggers.Remove(i, 1);
+		}
 }
 
 function AddDeath(Pawn P, vector Dir, vector Spot, class<DamageType> Type)
@@ -701,7 +761,7 @@ event Tick(float DeltaTime)
 				continue;
 			}
 		}
-		else if (P.IsInState('Dying') && bPoweredRagdoll && Gore != None && DeathAnim(P, Deaths[i].Spot, Deaths[i].Dir, Deaths[i].Type, Deaths[i].Length, true) > 0)
+		else if (P.IsInState('Dying') && bPoweredRagdoll && Gore != None && (SeekerClip(P) || DeathAnim(P, Deaths[i].Spot, Deaths[i].Dir, Deaths[i].Type, Deaths[i].Length, true) > 0))
 		{
 			// a powered ragdoll: limp now, pushed toward the clip's pose for a moment
 			Deaths[i].Start = P.Location;
@@ -715,6 +775,7 @@ event Tick(float DeltaTime)
 				Ragdolls[Ragdolls.Length - 1].Start = Deaths[i].Start;
 				Ragdolls[Ragdolls.Length - 1].Facing = Deaths[i].Facing;
 				Ragdolls[Ragdolls.Length - 1].Space = -1;
+				Ragdolls[Ragdolls.Length - 1].bSeeker = Gore.RagdollSkeleton(AdventPawn(P)) == "seeker";
 				if (class'ModSettings'.default.bGoreLog)
 					class'ModSettings'.static.Note("react: " $ P $ " powered ragdoll toward " $ ClipName);
 			}
@@ -1049,13 +1110,52 @@ function float HoundDeath(Pawn P, vector Spot, vector Dir, class<DamageType> Typ
 	return Length + 1;            // past its end: it never goes limp
 }
 
+// a powered ragdoll's part b: its bone on this body's skeleton
+function name PB(int i, int b)
+{
+	if (Ragdolls[i].bSeeker)
+		return SeekerPowerBones[b];
+	return PowerBones[b];
+}
+
+// a Seeker soldier's death: the game's own Seeker death clip as the powered ragdoll's target
+// (ClipName). False if the body isn't a Seeker or has none of them.
+function bool SeekerClip(Pawn P)
+{
+	local name Try[4];
+	local int i, n, Pick;
+
+	if (!bPoweredSeekers || IsHound(P) || AdventPawn(P) == None || Gore == None || Gore.RagdollSkeleton(AdventPawn(P)) != "seeker")
+		return false;
+	Try[0] = 'Death_Impact'; Try[1] = 'Death_ImpactF'; Try[2] = 'Death_Impact_B_Pose'; Try[3] = 'Knockdown';
+	for (i = 0; i < 4; i++)
+		if (P.HasAnim(Try[i]))
+			n++;
+	if (n == 0)
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("react: " $ P $ " (" $ P.Mesh $ ") has no Seeker death clip");
+		return false;
+	}
+	Pick = Rand(n);
+	for (i = 0; i < 4; i++)
+		if (P.HasAnim(Try[i]))
+		{
+			if (Pick == 0)
+				break;
+			Pick--;
+		}
+	ClipName = Try[i];
+	return true;
+}
+
 // where the clip puts a part at this moment, in the world: the clip's positions come in
 // one of a few spaces (found on the first tick by which one matches the body as it died)
 function vector ClipSpot(Pawn P, int i, int b, int Space)
 {
 	local vector Raw;
 
-	Raw = P.GetBoneLocationAtFrame(Ragdolls[i].Clip, PowerBones[b], Ragdolls[i].ClipT, false);
+	Raw = P.GetBoneLocationAtFrame(Ragdolls[i].Clip, PB(i, b), Ragdolls[i].ClipT, false);
 	switch (Space)
 	{
 		case 0: return Ragdolls[i].Start + (Raw >> Ragdolls[i].Facing);                 // the body's frame
@@ -1081,12 +1181,80 @@ function bool AtRest(int i, float Dt)
 	return Ragdolls[i].RestT >= RestTime;
 }
 
+// a shot on a powered ragdoll: the region hit, if still tense, jerks once (true: the body was ours)
+function bool Spasm(Pawn P, vector HitLocation)
+{
+	local int i, b, Best;
+	local float D, BestD;
+
+	for (i = 0; i < Ragdolls.Length; i++)
+		if (Ragdolls[i].P == P)
+			break;
+	if (i >= Ragdolls.Length || !Ragdolls[i].bPowered)
+		return false;
+	BestD = 1000000000.0;
+	for (b = 0; b < 12; b++)
+	{
+		D = VSize(P.GetBoneCoords(PB(i, b)).Origin - HitLocation);
+		if (D < BestD)
+		{
+			BestD = D;
+			Best = PowerRegion[b];
+		}
+	}
+	if (Ragdolls[i].bLimp || Ragdolls[i].T >= PowerTime || Ragdolls[i].A[Best] <= 0.05)
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("react: tension " $ P $ " shot in region " $ Best $ ": limp, no reflex");
+		return true;
+	}
+	Ragdolls[i].SpasmT[Best] = SpasmTime;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("react: tension " $ P $ " shot in region " $ Best $ " (A " $ Ragdolls[i].A[Best] $ "): reflex");
+	return true;
+}
+
+// the activations follow the drive: quick to tense, slower to let go (first-order, Zajac 1989)
+function Tension(int i, float Dt)
+{
+	local int r;
+	local float T, U, Ur, Tau;
+	local bool bAll;
+
+	T = Ragdolls[i].T;
+	U = DeathEffort;
+	if (Ragdolls[i].bSeeker)
+		U = SeekerDeathEffort;
+	bAll = T > EffortTime;
+	for (r = 0; r < 6; r++)
+	{
+		// each region lets go over its own share of LimpTime: the legs last, so the knees buckle late
+		Ur = U;
+		if (T >= EffortTime)
+			Ur = U * FMax(0, 1 - (T - EffortTime) / FMax(LimpTime * RegionLimp[r], 0.01));
+		if (Ragdolls[i].SpasmT[r] > 0)
+		{
+			Ur = FMax(Ur, SpasmU);
+			Ragdolls[i].SpasmT[r] -= Dt;
+		}
+		if (Ur > Ragdolls[i].A[r])
+			Tau = TauUp;
+		else
+			Tau = TauDown;
+		Ragdolls[i].A[r] += (Ur - Ragdolls[i].A[r]) * FMin(1, Dt / FMax(Tau, 0.001));
+		if (Ragdolls[i].A[r] >= 0.02 || Ur > 0)
+			bAll = false;
+	}
+	if (bAll)
+		Ragdolls[i].bLimp = true;
+}
+
 // the powered ragdoll's push, each tick while it lasts
 function Steer(int i, float Dt)
 {
 	local Pawn P;
 	local int b, sp, Best, n;
-	local float M, Fade, Err, BestErr, E;
+	local float M, Fade, Err, BestErr, E, Act;
 	local vector Cur, Tgt, Vel, J;
 	local string Line;
 
@@ -1105,8 +1273,8 @@ function Steer(int i, float Dt)
 		{
 			Err = 0;
 			for (b = 0; b < 12; b++)
-				if (PowerBones[b] != '')
-					Err += VSize(ClipSpot(P, i, b, sp) - P.GetBoneCoords(PowerBones[b]).Origin);
+				if (PB(i, b) != '')
+					Err += VSize(ClipSpot(P, i, b, sp) - P.GetBoneCoords(PB(i, b)).Origin);
 			Line = Line $ " " $ int(Err / 12);
 			if (Err < BestErr)
 			{
@@ -1116,8 +1284,8 @@ function Steer(int i, float Dt)
 		}
 		Ragdolls[i].Space = Best;
 		for (b = 0; b < 12; b++)
-			if (PowerBones[b] != '')
-				Ragdolls[i].Prev[b] = P.GetBoneCoords(PowerBones[b]).Origin;
+			if (PB(i, b) != '')
+				Ragdolls[i].Prev[b] = P.GetBoneCoords(PB(i, b)).Origin;
 		if (class'ModSettings'.default.bGoreLog)
 			class'ModSettings'.static.Note("react: powered " $ P $ " clip " $ Ragdolls[i].Clip $ ", mean errors by space" $ Line $ " -> space " $ Best $ ", mass " $ M);
 		return;
@@ -1127,22 +1295,38 @@ function Steer(int i, float Dt)
 	P.KWake();   // a sleeping ragdoll ignores impulses
 	for (b = 0; b < 12; b++)
 	{
-		if (PowerBones[b] == '')
+		if (PB(i, b) == '')
 			continue;
-		Cur = P.GetBoneCoords(PowerBones[b]).Origin;
+		Cur = P.GetBoneCoords(PB(i, b)).Origin;
 		Tgt = ClipSpot(P, i, b, Ragdolls[i].Space);
 		Vel = (Cur - Ragdolls[i].Prev[b]) / Dt;
 		Ragdolls[i].Prev[b] = Cur;
-		J = (Tgt - Cur) * PowerSpring - Vel * PowerDamp;
-		if (VSize(J) > PowerMaxAccel)
-			J = Normal(J) * PowerMaxAccel;
-		J = J * (Fade * M * PowerWeights[b] * Dt);
-		P.KAddImpulse(J, Cur, PowerBones[b]);
+		if (bTension)
+		{
+			Act = Ragdolls[i].A[PowerRegion[b]];
+			J = (Tgt - Cur) * (PowerSpring * Act) - Vel * (PowerDamp * (PassiveDamp + (1 - PassiveDamp) * Act));
+			if (VSize(J) > PowerMaxAccel * FMax(Act, PassiveDamp))
+				J = Normal(J) * PowerMaxAccel * FMax(Act, PassiveDamp);
+			J = J * (M * PowerWeights[b] * Dt);
+		}
+		else
+		{
+			J = (Tgt - Cur) * PowerSpring - Vel * PowerDamp;
+			if (VSize(J) > PowerMaxAccel)
+				J = Normal(J) * PowerMaxAccel;
+			J = J * (Fade * M * PowerWeights[b] * Dt);
+		}
+		P.KAddImpulse(J, Cur, PB(i, b));
 		E += VSize(Tgt - Cur);
 		n++;
 	}
 	if (class'ModSettings'.default.bGoreLog && n > 0 && int(Ragdolls[i].T * 10) != int((Ragdolls[i].T + Dt) * 10))
-		class'ModSettings'.static.Note("react: powered " $ P $ " t " $ Ragdolls[i].T $ " mean error " $ int(E / n) $ " fade " $ Fade);
+	{
+		if (bTension)
+			class'ModSettings'.static.Note("react: powered " $ P $ " t " $ Ragdolls[i].T $ " mean error " $ int(E / n) $ " tension " $ int(Ragdolls[i].A[0] * 100) $ " " $ int(Ragdolls[i].A[1] * 100) $ " " $ int(Ragdolls[i].A[2] * 100) $ " " $ int(Ragdolls[i].A[3] * 100) $ " " $ int(Ragdolls[i].A[4] * 100) $ " " $ int(Ragdolls[i].A[5] * 100));
+		else
+			class'ModSettings'.static.Note("react: powered " $ P $ " t " $ Ragdolls[i].T $ " mean error " $ int(E / n) $ " fade " $ Fade);
+	}
 }
 
 function AddRagdoll(Pawn P)
@@ -1195,7 +1379,14 @@ function WatchRagdolls(float DeltaTime)
 		}
 		if (Ragdolls[i].bFrozen || P.Physics != PHYS_KarmaRagdoll)
 			continue;
-		if (Ragdolls[i].bPowered && Ragdolls[i].T < PowerTime)
+		if (Ragdolls[i].bPowered && bTension && !Ragdolls[i].bLimp && Ragdolls[i].T < PowerTime)
+		{
+			Tension(i, DeltaTime);
+			Steer(i, DeltaTime);
+			if (Ragdolls[i].bLimp && class'ModSettings'.default.bGoreLog)
+				class'ModSettings'.static.Note("react: tension " $ P $ " limp at t " $ Ragdolls[i].T);
+		}
+		else if (Ragdolls[i].bPowered && !bTension && Ragdolls[i].T < PowerTime)
 			Steer(i, DeltaTime);
 		// testing: how the ragdoll falls, twice a second
 		if (class'ModSettings'.default.bGoreLog && int(Ragdolls[i].T * 2) != int((Ragdolls[i].T + DeltaTime) * 2))
@@ -1228,30 +1419,32 @@ function WatchRagdolls(float DeltaTime)
 defaultproperties
 {
      RagdollTime=4.000000
-     bFlinch=True
+     bFlinch=False
      FlinchAngle=4500.000000
      FlinchTime=0.300000
      bSpringFlinch=True
-     bKnockdown=True
+     bKnockdown=False
      KnockDamage=30
      KnockChance=0.5
      KnockDown=1.300000
      KnockGetUp=1.400000
      KnockPush=260.000000
      KnockLift=280.000000
+     BigHeight=80.000000
+     BigHeft=2.000000
      SpringFreq=3.200000
      SpringDecay=5.500000
      SpringTime=0.900000
      RippleShare=0.550000
      RippleDelay=0.070000
-     bStagger=True
+     bStagger=False
      StaggerDamage=40
      StaggerPush=380.000000
      StaggerSlow=0.350000
      StaggerTime=0.600000
      StaggerLean=5500.000000
      bDeathRagdoll=True
-     bDeathAnims=True
+     bDeathAnims=False
      bClipFloor=True
      FloorBones(0)=hips
      FloorBones(1)=head
@@ -1280,6 +1473,19 @@ defaultproperties
      PowerBones(9)=leftLeg
      PowerBones(10)=rightUpLeg
      PowerBones(11)=rightLeg
+     SeekerPowerBones(0)=hips
+     SeekerPowerBones(1)=spine1
+     SeekerPowerBones(2)=spine2
+     SeekerPowerBones(3)=head
+     SeekerPowerBones(4)=leftArm
+     SeekerPowerBones(5)=leftForeArm
+     SeekerPowerBones(6)=rightArm
+     SeekerPowerBones(7)=rightForeArm
+     SeekerPowerBones(8)=leftUpLeg
+     SeekerPowerBones(9)=leftLeg
+     SeekerPowerBones(10)=rightUpLeg
+     SeekerPowerBones(11)=rightLeg
+     bPoweredSeekers=True
      PowerWeights(0)=0.166667
      PowerWeights(1)=0.142857
      PowerWeights(2)=0.166667
@@ -1292,6 +1498,30 @@ defaultproperties
      PowerWeights(9)=0.059524
      PowerWeights(10)=0.107143
      PowerWeights(11)=0.059524
+     TauUp=0.025000
+     TauDown=0.080000
+     DeathEffort=0.800000
+     SeekerDeathEffort=1.000000
+     RegionLimp(0)=1.000000
+     RegionLimp(1)=0.700000
+     RegionLimp(2)=0.600000
+     RegionLimp(3)=0.600000
+     RegionLimp(4)=1.600000
+     RegionLimp(5)=1.600000
+     EffortTime=0.150000
+     LimpTime=0.450000
+     SpasmU=0.700000
+     SpasmTime=0.060000
+     PassiveDamp=0.300000
+     PowerRegion(3)=1
+     PowerRegion(4)=2
+     PowerRegion(5)=2
+     PowerRegion(6)=3
+     PowerRegion(7)=3
+     PowerRegion(8)=4
+     PowerRegion(9)=4
+     PowerRegion(10)=5
+     PowerRegion(11)=5
      MaxRagdolls=12
      KarmaTimeScale=1.000000
      RagdollTimeScale=0.850000

@@ -21,9 +21,11 @@ float4    Info : register(c0);   // time, 1 = positions valid (fixed function), 
 float4    Mode : register(c1);   // x: 1 = projected texture coordinates (projector decals)
                                  // y: 0 alpha decal, 1 multiply, 2 multiply x2; z: neutral brightness
 
-#define DEPTH 3.0                 // how deep the deepest part looks, in world units
-#define STEPS 8                   // search steps into the surface
-#define CAVITY 0.5                // how much darker the bottom of the hole is (0-1)
+#define DEPTH 9.0                 // how deep the deepest part looks, in world units
+#define STEPS 16                  // search steps into the surface
+#define CAVITY 0.45               // how much darker the bottom of the hole is (0-1)
+#define TEXEL (1.0 / 128)         // step for the depth map's slope (the hole's inner walls)
+#define WALLLIGHT 0.9             // how strongly the inner walls catch light from above (0-1.5)
 
 float DepthOf(float4 t)
 {
@@ -74,5 +76,16 @@ float4 main(float3 t0 : TEXCOORD0, float3 pos : TEXCOORD2) : COLOR
 
 	float4 decal = tex2D(Tex, hit);
 	float shade = 1 - CAVITY * hitDepth;
+
+	// the inner walls: the depth map's slope at the hit gives the hole's own surface direction,
+	// lit from above the screen (view space up, a little toward the camera), so the upper rim
+	// falls into shadow and the lower inside catches light, as a real dent does under ceiling lights
+	float du = DepthOf(tex2D(Tex, hit + float2(TEXEL, 0))) - DepthOf(tex2D(Tex, hit - float2(TEXEL, 0)));
+	float dv = DepthOf(tex2D(Tex, hit + float2(0, TEXEL))) - DepthOf(tex2D(Tex, hit - float2(0, TEXEL)));
+	float3 slope = (du * gu + dv * gv) * (DEPTH / (2 * TEXEL));
+	float3 wallN = Info.y < 0.5 ? n : normalize(n + slope);
+	float3 light = normalize(float3(0, 0.8, -0.6));
+	float lit = saturate(dot(wallN, light)) / max(saturate(dot(n, light)), 0.3);
+	shade *= lerp(1, clamp(lit, 0.35, 1.6), WALLLIGHT * found);
 	return float4(decal.rgb * shade, decal.a);
 }

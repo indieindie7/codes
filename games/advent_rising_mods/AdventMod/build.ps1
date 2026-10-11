@@ -1,6 +1,6 @@
 ﻿# Builds AdventMod: compiles Classes\*.uc with AdventUCC, builds AdventNative.dll,
 # and installs AdventMod.u / AdventMod.int / AdventNative.dll into the game's System folder.
-param([string]$Game = 'H:\SteamLibrary\steamapps\common\Advent Rising', [switch]$GraphicsOnly, [switch]$JiggleSkin)
+param([string]$Game = 'H:\SteamLibrary\steamapps\common\Advent Rising', [switch]$GraphicsOnly, [switch]$GoreOnly, [switch]$JiggleSkin)
 $ErrorActionPreference = 'Stop'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Ucc = Join-Path (Split-Path -Parent $Here) 'AdventUCC'
@@ -27,6 +27,12 @@ Copy-Item "$Here\Classes\*.uc" "$Game\AdventMod\Classes"
 if ($GraphicsOnly) {
   $ms = "$Game\AdventMod\Classes\ModSettings.uc"
   (Get-Content $ms -Raw) -replace 'bGraphicsOnly=False', 'bGraphicsOnly=True' | Set-Content $ms -NoNewline -Encoding ascii
+}
+# -GoreOnly: the gore-only Nexus zip (package.py --gore): same classes, soft shadows off by default
+# (the shadow fix stays: it is a bug fix); kept as System\AdventMod-gore.u
+if ($GoreOnly) {
+  $ms = "$Game\AdventMod\Classes\ModSettings.uc"
+  (Get-Content $ms -Raw) -replace 'bSoftShadows=True', 'bSoftShadows=False' | Set-Content $ms -NoNewline -Encoding ascii
 }
 # -JiggleSkin: the Seeker skin with the plates filled from the flesh (tools/jiggle_fill.py, JIGGLE.md
 # phase B) goes into THIS build only: the .tga is copied beside the game's textures and the GAME-FOLDER
@@ -118,6 +124,7 @@ if ($LASTEXITCODE -ne 0) { throw 'native build failed' }
 
 # 3. install
 if ($GraphicsOnly) { Copy-Item "$Game\System\AdventMod.u" "$Here\System\AdventMod-graphics.u" -Force; "graphics-only build: the game now runs it too; build again without -GraphicsOnly for the full mod" }
+elseif ($GoreOnly) { Copy-Item "$Game\System\AdventMod.u" "$Here\System\AdventMod-gore.u" -Force; "gore-only build: the game now runs it too; build again without -GoreOnly for the full mod" }
 else { Copy-Item "$Game\System\AdventMod.u" "$Here\System\AdventMod.u" -Force }
 Copy-Item "$Here\System\AdventNative.dll", "$Here\System\AdventMod.int" "$Game\System" -Force
 'installed: ' + ((Get-ChildItem "$Game\System" | Where-Object { $_.Name -match '^Advent(Mod|Native)\.' }).Name -join ', ')

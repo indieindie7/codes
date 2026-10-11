@@ -1,5 +1,16 @@
 # AdventMod: release-readiness audit (2026-10-09)
 
+> **Scope cut (2026-10-10):** AdventMod is now gore, graphics, destruction and foot IK only.
+> The AI director and the custom animations are shelved: their code stays, but the defaults are off.
+> Shelved switches (set True in `System\AdventMod.ini` to bring one back):
+> ModMinds `bMinds` (waves, hound packs, wall-kicks, leap links), ModNeeds `bNeeds`,
+> ModReact `bFlinch` `bKnockdown` `bStagger` `bDeathAnims`, ModMoves `bAILean` (the AI's lean).
+> Kept on: ModFeet `bFootIK` (now default True), ModMoves `bStrideMatch`, ragdolls (`bDeathRagdoll`),
+> gore and sever, armour hits and sparks, jiggle, and all graphics.
+> Gideon's animation stays (user, 10-10): the lean (`bLean`, player only). The blade (`bBlades`) ships OFF since the 10-10 evening play-test (user: "remove the sword").
+> Dev aids on by default (user, 10-10): the FPS graph (`bFpsGraph`). The player gizmos (ModGizmos, `bGizmos`, "mutate gizmos") ship OFF since the 10-10 evening play-test (user: too distracting).
+
+
 The user's line: "if we can test everything and it's all done the mod will be finished." This file is
 the finish line: what ships on and off, what the zips must and must not carry, what the docs lacked
 (now added to README.txt / NEXUS.md), what the user has to have seen working, and the licences.
@@ -130,7 +141,7 @@ ship in the source (GPL) and are inert. `ModTestCommandlet` is a compiler-side c
 | ModReact | bDeathAnimRagdoll | False | ship off (a ragdoll begun from a clip crashed twice) |
 | ModReact | bPoweredRagdoll | False | ship off (calibration never finished) |
 | ModSever | bSever True, bStumps True | | ship on |
-| ModMelee | bBlades True, bBladeLight True, bSwingAnims True | | ship on (blade pickups: 2.1 shipped them undocumented; swings v2 "not yet judged by the user") → **needs verdict on the swings** |
+| ModMelee | bBlades **False**, bBladeLight True, bSwingAnims True | | ship OFF (user 10-10 evening: "remove the sword"); was ship on (blade pickups: 2.1 shipped them undocumented; swings v2 "not yet judged by the user") → **needs verdict on the swings** |
 | **ModArmor** | **bArmor True, bPlateActors True** (steel plates of our own on the Seekers), bPreserveTtk True, bPlates False, bExpose False | | **needs verdict**: the plate actors are the 2026-10-07 rebuild after the user parked the first version ("pink sheen"). ARMOUR.md says they work; no user verdict on the look is recorded. If they jar: `bArmor=False` keeps everything else |
 | **ModArmor** | **bArmourHits True, bArmourSparks True, ArmourFactor 1.0** | | **needs verdict** (new 2026-10-09): sparks instead of blood on an armour hit, no damage change at 1.0. Players get the bone-table fallback unless the .amesh files ship (blocker 5) |
 | ModGibAtlas | bGibCards True | | ship on (seen 2026-10-07) |

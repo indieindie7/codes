@@ -1,0 +1,905 @@
+{
+ "plans": 8061,
+ "dropped_bad_scale": 3037,
+ "rooms": {
+  "living": {
+   "count": 8222,
+   "area_m2": {
+    "p10": 20.39,
+    "p25": 26.2,
+    "p50": 33.45,
+    "p75": 41.77,
+    "p90": 52.35
+   },
+   "short_side_m": {
+    "p10": 4.61,
+    "p25": 5.52,
+    "p50": 6.56,
+    "p75": 7.65,
+    "p90": 8.75
+   },
+   "aspect": {
+    "p10": 1.05,
+    "p25": 1.15,
+    "p50": 1.33,
+    "p75": 1.66,
+    "p90": 2.04
+   },
+   "rectangular_fill": {
+    "p10": 0.44,
+    "p25": 0.49,
+    "p50": 0.56,
+    "p75": 0.65,
+    "p90": 0.75
+   },
+   "window_share": 0.754,
+   "window_width_m": {
+    "p10": 0.81,
+    "p25": 1.09,
+    "p50": 1.56,
+    "p75": 1.98,
+    "p90": 2.53
+   },
+   "depth_from_entry": {
+    "p10": 0,
+    "p25": 0,
+    "p50": 0,
+    "p75": 0,
+    "p90": 0
+   },
+   "mean_depth": 0.02
+  },
+  "bedroom": {
+   "count": 21493,
+   "area_m2": {
+    "p10": 10.93,
+    "p25": 12.58,
+    "p50": 14.62,
+    "p75": 17.15,
+    "p90": 19.92
+   },
+   "short_side_m": {
+    "p10": 3.08,
+    "p25": 3.28,
+    "p50": 3.54,
+    "p75": 3.86,
+    "p90": 4.23
+   },
+   "aspect": {
+    "p10": 1.03,
+    "p25": 1.1,
+    "p50": 1.2,
+    "p75": 1.33,
+    "p90": 1.48
+   },
+   "rectangular_fill": {
+    "p10": 0.81,
+    "p25": 0.91,
+    "p50": 1.0,
+    "p75": 1.0,
+    "p90": 1.0
+   },
+   "window_share": 0.821,
+   "window_width_m": {
+    "p10": 0.81,
+    "p25": 1.05,
+    "p50": 1.37,
+    "p75": 1.73,
+    "p90": 2.02
+   },
+   "depth_from_entry": {
+    "p10": 1,
+    "p25": 1,
+    "p50": 1,
+    "p75": 1,
+    "p90": 1
+   },
+   "mean_depth": 1.01
+  },
+  "bathroom": {
+   "count": 20589,
+   "area_m2": {
+    "p10": 2.6,
+    "p25": 3.17,
+    "p50": 3.85,
+    "p75": 4.57,
+    "p90": 5.71
+   },
+   "short_side_m": {
+    "p10": 1.25,
+    "p25": 1.39,
+    "p50": 1.57,
+    "p75": 1.73,
+    "p90": 1.94
+   },
+   "aspect": {
+    "p10": 1.23,
+    "p25": 1.41,
+    "p50": 1.59,
+    "p75": 1.78,
+    "p90": 2.05
+   },
+   "rectangular_fill": {
+    "p10": 0.96,
+    "p25": 1.0,
+    "p50": 1.0,
+    "p75": 1.0,
+    "p90": 1.0
+   },
+   "window_share": 0.922,
+   "window_width_m": {
+    "p10": 0.56,
+    "p25": 0.6,
+    "p50": 0.64,
+    "p75": 0.7,
+    "p90": 0.83
+   },
+   "depth_from_entry": {
+    "p10": 1,
+    "p25": 1,
+    "p50": 2,
+    "p75": 2,
+    "p90": 2
+   },
+   "mean_depth": 1.63
+  },
+  "kitchen": {
+   "count": 8044,
+   "area_m2": {
+    "p10": 5.32,
+    "p25": 6.65,
+    "p50": 8.21,
+    "p75": 10.03,
+    "p90": 12.2
+   },
+   "short_side_m": {
+    "p10": 1.93,
+    "p25": 2.24,
+    "p50": 2.56,
+    "p75": 2.87,
+    "p90": 3.27
+   },
+   "aspect": {
+    "p10": 1.06,
+    "p25": 1.15,
+    "p50": 1.3,
+    "p75": 1.49,
+    "p90": 1.73
+   },
+   "rectangular_fill": {
+    "p10": 0.92,
+    "p25": 0.95,
+    "p50": 0.97,
+    "p75": 0.99,
+    "p90": 1.0
+   },
+   "window_share": 0.922,
+   "window_width_m": {
+    "p10": 0.77,
+    "p25": 0.86,
+    "p50": 1.09,
+    "p75": 1.41,
+    "p90": 1.8
+   },
+   "depth_from_entry": {
+    "p10": 1,
+    "p25": 1,
+    "p50": 1,
+    "p75": 1,
+    "p90": 1
+   },
+   "mean_depth": 1.0
+  },
+  "storage": {
+   "count": 1075,
+   "area_m2": {
+    "p10": 1.23,
+    "p25": 1.76,
+    "p50": 2.66,
+    "p75": 4.96,
+    "p90": 7.52
+   },
+   "short_side_m": {
+    "p10": 0.91,
+    "p25": 1.13,
+    "p50": 1.38,
+    "p75": 1.9,
+    "p90": 2.44
+   },
+   "aspect": {
+    "p10": 1.06,
+    "p25": 1.15,
+    "p50": 1.33,
+    "p75": 1.63,
+    "p90": 2.0
+   },
+   "rectangular_fill": {
+    "p10": 0.95,
+    "p25": 1.0,
+    "p50": 1.0,
+    "p75": 1.0,
+    "p90": 1.0
+   },
+   "window_share": 0.407,
+   "window_width_m": {
+    "p10": 0.6,
+    "p25": 0.68,
+    "p50": 0.88,
+    "p75": 1.17,
+    "p90": 1.54
+   },
+   "depth_from_entry": {
+    "p10": 1,
+    "p25": 1,
+    "p50": 1,
+    "p75": 1,
+    "p90": 1
+   },
+   "mean_depth": 1.06
+  },
+  "stair": {
+   "count": 360,
+   "area_m2": {
+    "p10": 0.93,
+    "p25": 1.79,
+    "p50": 3.18,
+    "p75": 6.09,
+    "p90": 9.12
+   },
+   "short_side_m": {
+    "p10": 0.78,
+    "p25": 1.05,
+    "p50": 1.61,
+    "p75": 2.2,
+    "p90": 2.83
+   },
+   "aspect": {
+    "p10": 1.08,
+    "p25": 1.25,
+    "p50": 1.57,
+    "p75": 1.92,
+    "p90": 2.48
+   },
+   "rectangular_fill": {
+    "p10": 0.57,
+    "p25": 0.74,
+    "p50": 0.96,
+    "p75": 1.0,
+    "p90": 1.0
+   },
+   "window_share": 0.281,
+   "window_width_m": {
+    "p10": 0.58,
+    "p25": 0.62,
+    "p50": 0.69,
+    "p75": 0.82,
+    "p90": 1.43
+   },
+   "depth_from_entry": {
+    "p10": 1,
+    "p25": 1,
+    "p50": 1,
+    "p75": 1,
+    "p90": 1
+   },
+   "mean_depth": 1.08
+  },
+  "balcony": {
+   "count": 11653,
+   "area_m2": {
+    "p10": 2.23,
+    "p25": 3.05,
+    "p50": 4.33,
+    "p75": 6.17,
+    "p90": 9.13
+   },
+   "short_side_m": {
+    "p10": 0.91,
+    "p25": 1.15,
+    "p50": 1.42,
+    "p75": 1.73,
+    "p90": 2.19
+   },
+   "aspect": {
+    "p10": 1.24,
+    "p25": 1.63,
+    "p50": 2.29,
+    "p75": 3.11,
+    "p90": 4.07
+   },
+   "rectangular_fill": {
+    "p10": 0.88,
+    "p25": 1.0,
+    "p50": 1.0,
+    "p75": 1.0,
+    "p90": 1.0
+   },
+   "window_share": 0.502,
+   "window_width_m": {
+    "p10": 0.61,
+    "p25": 0.75,
+    "p50": 1.16,
+    "p75": 1.61,
+    "p90": 2.05
+   },
+   "depth_from_entry": {
+    "p10": 1,
+    "p25": 1,
+    "p50": 2,
+    "p75": 2,
+    "p90": 2
+   },
+   "mean_depth": 1.64
+  }
+ },
+ "doors_m": {
+  "p10": 0.74,
+  "p25": 0.8,
+  "p50": 0.86,
+  "p75": 0.92,
+  "p90": 0.99
+ },
+ "wall_thickness_m": {
+  "p10": 0.18,
+  "p25": 0.19,
+  "p50": 0.21,
+  "p75": 0.22,
+  "p90": 0.24
+ },
+ "door_pairs": [
+  [
+   [
+    "bedroom",
+    "living"
+   ],
+   20471
+  ],
+  [
+   [
+    "bathroom",
+    "bedroom"
+   ],
+   12696
+  ],
+  [
+   [
+    "balcony",
+    "bedroom"
+   ],
+   7937
+  ],
+  [
+   [
+    "bathroom",
+    "living"
+   ],
+   7315
+  ],
+  [
+   [
+    "balcony",
+    "living"
+   ],
+   4014
+  ],
+  [
+   [
+    "kitchen",
+    "living"
+   ],
+   1899
+  ],
+  [
+   [
+    "living",
+    "storage"
+   ],
+   435
+  ],
+  [
+   [
+    "bedroom",
+    "kitchen"
+   ],
+   84
+  ],
+  [
+   [
+    "living",
+    "stair"
+   ],
+   42
+  ],
+  [
+   [
+    "kitchen",
+    "storage"
+   ],
+   25
+  ],
+  [
+   [
+    "bathroom",
+    "kitchen"
+   ],
+   22
+  ],
+  [
+   [
+    "balcony",
+    "kitchen"
+   ],
+   10
+  ],
+  [
+   [
+    "kitchen",
+    "stair"
+   ],
+   5
+  ],
+  [
+   [
+    "bedroom",
+    "bedroom"
+   ],
+   3
+  ],
+  [
+   [
+    "balcony",
+    "bathroom"
+   ],
+   3
+  ],
+  [
+   [
+    "bathroom",
+    "bathroom"
+   ],
+   3
+  ],
+  [
+   [
+    "bathroom",
+    "storage"
+   ],
+   2
+  ],
+  [
+   [
+    "bedroom",
+    "storage"
+   ],
+   2
+  ],
+  [
+   [
+    "living",
+    "living"
+   ],
+   1
+  ]
+ ],
+ "open_pairs": [
+  [
+   [
+    "kitchen",
+    "living"
+   ],
+   6085
+  ],
+  [
+   [
+    "living",
+    "storage"
+   ],
+   531
+  ],
+  [
+   [
+    "bathroom",
+    "bedroom"
+   ],
+   280
+  ],
+  [
+   [
+    "living",
+    "stair"
+   ],
+   184
+  ],
+  [
+   [
+    "bathroom",
+    "living"
+   ],
+   91
+  ],
+  [
+   [
+    "bedroom",
+    "living"
+   ],
+   81
+  ],
+  [
+   [
+    "kitchen",
+    "storage"
+   ],
+   49
+  ],
+  [
+   [
+    "kitchen",
+    "kitchen"
+   ],
+   29
+  ],
+  [
+   [
+    "bathroom",
+    "bathroom"
+   ],
+   27
+  ],
+  [
+   [
+    "bedroom",
+    "storage"
+   ],
+   27
+  ],
+  [
+   [
+    "bedroom",
+    "bedroom"
+   ],
+   24
+  ],
+  [
+   [
+    "bedroom",
+    "kitchen"
+   ],
+   11
+  ],
+  [
+   [
+    "bathroom",
+    "kitchen"
+   ],
+   11
+  ],
+  [
+   [
+    "balcony",
+    "stair"
+   ],
+   9
+  ],
+  [
+   [
+    "living",
+    "living"
+   ],
+   9
+  ],
+  [
+   [
+    "balcony",
+    "balcony"
+   ],
+   5
+  ],
+  [
+   [
+    "kitchen",
+    "stair"
+   ],
+   5
+  ],
+  [
+   [
+    "balcony",
+    "living"
+   ],
+   2
+  ],
+  [
+   [
+    "balcony",
+    "bedroom"
+   ],
+   1
+  ],
+  [
+   [
+    "balcony",
+    "storage"
+   ],
+   1
+  ],
+  [
+   [
+    "bathroom",
+    "storage"
+   ],
+   1
+  ],
+  [
+   [
+    "stair",
+    "storage"
+   ],
+   1
+  ]
+ ],
+ "wall_pairs": [
+  [
+   [
+    "bathroom",
+    "bedroom"
+   ],
+   9362
+  ],
+  [
+   [
+    "bathroom",
+    "living"
+   ],
+   6864
+  ],
+  [
+   [
+    "bedroom",
+    "bedroom"
+   ],
+   5543
+  ],
+  [
+   [
+    "bedroom",
+    "kitchen"
+   ],
+   4188
+  ],
+  [
+   [
+    "balcony",
+    "bathroom"
+   ],
+   3554
+  ],
+  [
+   [
+    "balcony",
+    "bedroom"
+   ],
+   3387
+  ],
+  [
+   [
+    "bathroom",
+    "bathroom"
+   ],
+   3202
+  ],
+  [
+   [
+    "bathroom",
+    "kitchen"
+   ],
+   3119
+  ],
+  [
+   [
+    "bedroom",
+    "living"
+   ],
+   769
+  ],
+  [
+   [
+    "bedroom",
+    "storage"
+   ],
+   570
+  ],
+  [
+   [
+    "balcony",
+    "living"
+   ],
+   453
+  ],
+  [
+   [
+    "bathroom",
+    "storage"
+   ],
+   361
+  ],
+  [
+   [
+    "kitchen",
+    "storage"
+   ],
+   319
+  ],
+  [
+   [
+    "balcony",
+    "balcony"
+   ],
+   297
+  ],
+  [
+   [
+    "bathroom",
+    "stair"
+   ],
+   194
+  ],
+  [
+   [
+    "bedroom",
+    "stair"
+   ],
+   170
+  ],
+  [
+   [
+    "kitchen",
+    "living"
+   ],
+   156
+  ],
+  [
+   [
+    "balcony",
+    "storage"
+   ],
+   127
+  ],
+  [
+   [
+    "living",
+    "living"
+   ],
+   98
+  ],
+  [
+   [
+    "living",
+    "stair"
+   ],
+   81
+  ],
+  [
+   [
+    "living",
+    "storage"
+   ],
+   72
+  ],
+  [
+   [
+    "kitchen",
+    "stair"
+   ],
+   56
+  ],
+  [
+   [
+    "balcony",
+    "stair"
+   ],
+   32
+  ],
+  [
+   [
+    "balcony",
+    "kitchen"
+   ],
+   11
+  ],
+  [
+   [
+    "stair",
+    "storage"
+   ],
+   8
+  ],
+  [
+   [
+    "storage",
+    "storage"
+   ],
+   4
+  ],
+  [
+   [
+    "stair",
+    "stair"
+   ],
+   1
+  ]
+ ],
+ "entry_room": [
+  [
+   "living",
+   8058
+  ],
+  [
+   "kitchen",
+   1
+  ]
+ ],
+ "ensuite_share": 0.619,
+ "by_bedrooms": {
+  "1": {
+   "plans": 287,
+   "net_area_m2": {
+    "p10": 37.14,
+    "p25": 40.44,
+    "p50": 46.28,
+    "p75": 66.57,
+    "p90": 94.63
+   },
+   "bathrooms_median": 2,
+   "rooms_median": 6
+  },
+  "2": {
+   "plans": 3120,
+   "net_area_m2": {
+    "p10": 54.92,
+    "p25": 62.1,
+    "p50": 71.71,
+    "p75": 82.53,
+    "p90": 93.35
+   },
+   "bathrooms_median": 2.0,
+   "rooms_median": 7.0
+  },
+  "3": {
+   "plans": 3862,
+   "net_area_m2": {
+    "p10": 77.49,
+    "p25": 88.73,
+    "p50": 101.93,
+    "p75": 116.89,
+    "p90": 134.25
+   },
+   "bathrooms_median": 3.0,
+   "rooms_median": 9.0
+  },
+  "4": {
+   "plans": 588,
+   "net_area_m2": {
+    "p10": 104.77,
+    "p25": 120.51,
+    "p50": 140.69,
+    "p75": 163.91,
+    "p90": 190.52
+   },
+   "bathrooms_median": 4.0,
+   "rooms_median": 12.0
+  },
+  "5": {
+   "plans": 196,
+   "net_area_m2": {
+    "p10": 132.95,
+    "p25": 155.59,
+    "p50": 171.27,
+    "p75": 203.93,
+    "p90": 239.23
+   },
+   "bathrooms_median": 5.0,
+   "rooms_median": 15.0
+  }
+ },
+ "_source": "Derived by indieindie7/codes (tools/analyse.py) from ResPlan (github.com/m-agour/ResPlan, arXiv:2508.14006), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Changes: per-plan scale from the listed net area, plans whose median door width fell outside 0.7-1.05 m dropped, statistics computed; no plan geometry included."
+}

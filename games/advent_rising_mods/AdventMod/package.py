@@ -1,8 +1,14 @@
-"""Builds the release zips in Downloads: AdventMod-<ver>.zip (with the installer)
-and AdventMod-<ver>-nexus.zip (no .bat files: Nexus quarantines them).
+"""Builds the release zips in Downloads: GoreOverhaul-<ver>-experimental.zip (the mod was AdventMod; its files keep that name) (with the installer)
+and GoreOverhaul-<ver>-experimental-nexus.zip (no .bat files: Nexus quarantines them).
 --graphics: AdventGraphicalMod-<ver>(-nexus).zip, the graphics-only edition for the
-Nexus page of that name: System\\AdventMod-graphics.u (build.ps1 -GraphicsOnly: gore,
-armour and combat off by default) and no KarmaData.
+Nexus page of that name: no KarmaData or Armour, marker System\\GoreOverhaul-Graphics.txt.
+--gore: GoreOverhaul-GoreOnly-<ver>-experimental(-nexus).zip, marker System\\GoreOverhaul-Gore.txt;
+the README drops the Shadows ... Air and surfaces sections.
+All editions carry the same AdventMod.u (a plain build.ps1) and the full U2Shaders.ini; the full
+zip has both markers. At startup the mod reads them (ModSettings.ApplyEdition): gore only cuts
+U2Shaders.ini to the blood rules (post kept at a neutral look: the lens blood draws in the post
+pass) and turns soft shadows off, graphics only skips gore. Both markers = the full mod, so the
+two Nexus editions installed together, in either order, make GoreOverhaul.
 --check: run every refusal and README anchor lookup, list what would go in, write no zip.
 --game <folder>: where build.ps1 wrote AdventMod\\Armour\\*.amesh (default: build.ps1's).
 Run build.ps1 first (plain, no switch) so System\\ has the compiled AdventMod.u and
@@ -20,9 +26,10 @@ VER = "3.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.expanduser("~"), "Downloads")
 GRAPHICS = "--graphics" in sys.argv
+GORE = "--gore" in sys.argv
 CHECK = "--check" in sys.argv
 GAME = sys.argv[sys.argv.index("--game") + 1] if "--game" in sys.argv else r"H:\SteamLibrary\steamapps\common\Advent Rising"
-TOP = ("AdventGraphicalMod-" if GRAPHICS else "AdventMod-") + VER
+TOP = ("AdventGraphicalMod-" + VER) if GRAPHICS else ("GoreOverhaul-GoreOnly-" + VER + "-experimental") if GORE else ("GoreOverhaul-" + VER + "-experimental")
 URL = "https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods/AdventMod"
 
 # System\U2Shaders: what the layer loads, nothing else (no compiler dumps, previews, game-derived maps)
@@ -46,12 +53,17 @@ def contains(path, needle):
 
 
 # refusals before anything else
-ufile = "System/AdventMod-graphics.u" if GRAPHICS else "System/AdventMod.u"
+ufile = "System/AdventMod.u"   # one build for every edition: the markers pick the edition at startup
+MARKERS = {"GoreOverhaul-Gore.txt": "GoreOverhaul: this file switches the gore part on (blood, gibs, holes, armour).\n"
+                                    "With GoreOverhaul-Graphics.txt beside it you have the full mod.\n",
+           "GoreOverhaul-Graphics.txt": "GoreOverhaul: this file switches the graphics part on (shadows, post-processing).\n"
+                                        "With GoreOverhaul-Gore.txt beside it you have the full mod.\n"}
+MARK = ["GoreOverhaul-Graphics.txt"] if GRAPHICS else ["GoreOverhaul-Gore.txt"] if GORE else sorted(MARKERS)
 # the plain build names the texture in ModJiggle's code ("SeekerSkinJ" twice); only the -JiggleSkin
 # build carries the imported texture, whose source file name survives in the package
 if contains(os.path.join(HERE, ufile), "seeker_infantry_filled"):
     refuse(ufile + " is a build.ps1 -JiggleSkin build (it carries the filled Seeker skin, a game texture).\n"
-           "  Run build.ps1 with no switch (or -GraphicsOnly for the graphics edition) and try again.")
+           "  Run build.ps1 with no switch (every edition ships the plain build) and try again.")
 if not contains(os.path.join(HERE, "System", "d3d8.dll"), "atmos"):
     refuse("System\\d3d8.dll is a stale fork build (no atmos= code, which the shipped U2Shaders.ini turns on).\n"
            "  Copy the gi-cascades build (d3d8to9-gi\\bin\\Release\\d3d8.dll) into System\\ and try again.")
@@ -88,7 +100,7 @@ def crlf(text):
 
 readme = open(os.path.join(HERE, "README.txt"), encoding="utf-8").read()
 NL = "\r\n" if "\r\n" in readme else "\n"
-TITLE = "AdventMod " + VER + " - shadows"
+TITLE = "GoreOverhaul " + VER + " (Experimental) - gore"
 if GRAPHICS:
     # the graphics edition: no Gore ... Death animations sections, no KarmaData / Armour steps, its own title
     a, b = readme.index("  Gore ("), readme.index("  Fixes" + NL)
@@ -100,8 +112,21 @@ if GRAPHICS:
     title = readme.index(TITLE); tend = readme.index(NL + NL, title)
     head = "AdventGraphicalMod " + VER + " - shadows, post-processing and in-game options for Advent Rising"
     readme = (head + NL + "=" * len(head) + NL + NL
-              + "(The graphics edition of AdventMod: the same files with the gore, armour and" + NL
-              + "combat changes switched off. The full mod is on GitHub and on Nexus as AdventMod.)"
+              + "(The graphics edition of GoreOverhaul: the same files with the gore, armour and" + NL
+              + "combat changes switched off. Install the gore-only edition as well, in either" + NL
+              + "order, and you have the full GoreOverhaul.)"
+              + readme[tend:])
+elif GORE:
+    # the gore edition: no Shadows ... Air and surfaces sections, its own title
+    a, b = readme.index("  Shadows" + NL), readme.index("  Gore (")
+    readme = readme[:a] + readme[b:]
+    title = readme.index(TITLE); tend = readme.index(NL + NL, title)
+    head = "GoreOverhaul " + VER + " Gore Only (Experimental) - gore, blood and destruction for Advent Rising"
+    readme = (head + NL + "=" * len(head) + NL + NL
+              + "(The gore-only edition: GoreOverhaul without the post-processing, soft shadows," + NL
+              + "terrain, fog and skin shading. The blood's wet look, the bullet holes and the" + NL
+              + "blood runs still use the d3d8.dll. Install AdventGraphicalMod as well, in either" + NL
+              + "order, and you have the full GoreOverhaul.)"
               + readme[tend:])
 else:
     readme.index(TITLE)
@@ -133,5 +158,7 @@ for name, bats, text in ((TOP + ".zip", True, readme), (TOP + "-nexus.zip", Fals
                 continue
             z.write(src if os.path.isabs(src) else os.path.join(HERE, src), TOP + "/" + dst)
         z.writestr(TOP + "/System/U2Shaders.ini", crlf(u2ini))
+        for m in MARK:
+            z.writestr(TOP + "/System/" + m, crlf(MARKERS[m]))
         z.writestr(TOP + "/README.txt", crlf(text))
     print(path, os.path.getsize(path))
