@@ -23,6 +23,7 @@ struct hw_sheet {
     float smax, last_dt;
     /* stage 7 */
     float *foam, *air, *hprev, *impact, *ftmp, *atmp;
+    float *stir;             /* velocity change pushed in from outside since the last foam pass */
     float *spray; int nspray;
     hw_foam_params fp;
     unsigned rng;
@@ -44,7 +45,7 @@ HW_API hw_sheet *hw_create(int w, int h, float dx, float g, float cfl)
     s->u = plane(s); s->v = plane(s); s->c = plane(s);
     s->B = plane(s); s->wall = plane(s); s->b = plane(s); s->bprev = plane(s); s->edge = plane(s); s->Beff = plane(s);
     s->foam = plane(s); s->air = plane(s); s->hprev = plane(s); s->impact = plane(s);
-    s->ftmp = plane(s); s->atmp = plane(s);
+    s->ftmp = plane(s); s->atmp = plane(s); s->stir = plane(s);
     s->spray = (float *)calloc(HW_SPRAY_CAP * 8, sizeof(float));
     s->rng = 0x9e3779b9u;
     s->fp.foam_gain = 0.8f; s->fp.air_gain = 3.0f; s->fp.foam_life = 2.5f; s->fp.lace = 0.25f;
@@ -70,7 +71,7 @@ HW_API void hw_destroy(hw_sheet *s)
     free(s->hA); free(s->huA); free(s->hvA); free(s->hB); free(s->huB); free(s->hvB);
     free(s->hC); free(s->huC); free(s->hvC); free(s->u); free(s->v); free(s->c);
     free(s->B); free(s->wall); free(s->b); free(s->bprev); free(s->edge); free(s->Beff);
-    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->spray);
+    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->spray);
     free(s->wallx); free(s->wally); free(s);
 }
 
@@ -667,6 +668,10 @@ static void foam_pass(hw_sheet *s, float dt)
                 float im = s->impact[k];
                 for (q = 0; q < 4; q++) if (s->impact[kn[q]] > im) im = s->impact[kn[q]];
                 impact = smooth01(0.05f, 0.5f, im / (dt * c));
+                /* a body moving through the water (a velocity stamp from outside) churns it */
+                im = s->stir[k];
+                for (q = 0; q < 4; q++) if (s->stir[kn[q]] > im) im = s->stir[kn[q]];
+                impact += smooth01(0.05f, 0.4f, im / c);
             }
             src = brk + bore + 0.1f * rapid + slam + impact;
             if (src > 2) src = 2;
@@ -726,6 +731,20 @@ HW_API const float *hw_spray(const hw_sheet *s, int *count) { if (count) *count 
 HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p) { s->fp = *p; }
 HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p) { *p = s->fp; }
 
+HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stride)
+{
+    int i, j;
+    for (j = 0; j < s->h; j++)
+        for (i = 0; i < s->w; i++) {
+            int k = AT(s, i, j), e = (j + 2) * stride + i + 2;
+            float h = s->hA[k], du, dv, d;
+            if (!foam_cell(s, k)) continue;
+            du = hu[e] - s->huA[k]; dv = hv[e] - s->hvA[k];
+            d = sqrtf(du * du + dv * dv) / h;
+            if (d > s->stir[k]) s->stir[k] = d;
+        }
+}
+
 HW_API void hw_foam_add(hw_sheet *s, float x, float z, float r, float foam, float air)
 {
     int i, j, i0 = (int)floorf((x - r) / s->dx), i1 = (int)floorf((x + r) / s->dx);
@@ -779,7 +798,7 @@ HW_API int hw_step(hw_sheet *s, float dt)
         steps++;
     }
     prepare(s, s->hA, s->huA, s->hvA, s->last_dt);   /* u, v, c valid for queries */
-    if (s->o.foam && dt > 0) foam_pass(s, dt);
+    if (s->o.foam && dt > 0) { foam_pass(s, dt); memset(s->stir, 0, bytes); }
     return steps;
 }
 

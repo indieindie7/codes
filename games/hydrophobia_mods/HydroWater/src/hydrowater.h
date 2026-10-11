@@ -125,6 +125,11 @@ HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p);
 HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p);
 /* splash event (bullet, explosion, a body falling in): add foam and air within radius r */
 HW_API void hw_foam_add(hw_sheet *s, float x, float z, float r, float foam, float air);
+/* stir from outside: hu, hv are the momentum planes (same padded layout, row stride `stride`)
+ * after something outside the solver changed them, e.g. a game stamping body velocities into
+ * the sheet; the change against the last step churns foam and air there. Call before copying
+ * them in. */
+HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stride);
 
 /* advance by dt seconds (sub-stepped by CFL); returns the number of sub-steps */
 HW_API int hw_step(hw_sheet *s, float dt);

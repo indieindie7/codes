@@ -170,6 +170,7 @@ typedef struct bridge {
     int w, h;
     hw_sheet *hw;
     unsigned steps;
+    float dm, du, dh;   /* largest outside change of momentum, velocity grid and depth since the last stats line */
     foam_snap *volatile snap;
     struct bridge *next;
 } bridge;
@@ -243,8 +244,17 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
     w = (int)S[1]; h = (int)S[3];
     if (S[0x6b] != 0 || w <= 0 || h <= 0 || w * h > cfg.max_cells || S[0] > 1 ||
         !S[10] || !S[11] || !S[0xd] || !S[0xe] || !S[0xf] || !S[0x10] || !S[0x12] || !S[0x13] ||
-        !S[0x14] || !S[0x15] || !S[0x19] || !(dt > 0.0f))
+        !S[0x14] || !S[0x15] || !S[0x19] || !(dt > 0.0f)) {
+        static uint32_t *seen[32]; static volatile LONG nseen;
+        int q, n = (int)nseen, known = 0;
+        for (q = 0; q < n && q < 32; q++) if (seen[q] == S) known = 1;
+        if (!known && n < 32) {
+            seen[InterlockedIncrement(&nseen) - 1] = S;
+            Log("sheet %p left to the game's solver: %d x %d, flat %u, buffer %u, origin %.0f %.0f", (void *)S, w, h, S[0x6b], S[0],
+                *(const float *)&S[0x1f], *(const float *)&S[0x20]);
+        }
         return CallOrig(S, dt);
+    }
 
     b = Find(S, w, h);
     idx = S[0];
@@ -258,6 +268,23 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
     hs = hw_stride(b->hw);
     hh = hw_depth(b->hw); hhu = hw_hu(b->hw); hhv = hw_hv(b->hw);
     hbed = hw_bed(b->hw); hwall = hw_wall(b->hw);
+    /* the game stamped walking, swimming and falling bodies into its momentum since our last
+       step: that change is a foam source (skipped on the first step, nothing to compare) */
+    if (cfg.opts.foam && b->steps > 0) {
+        const float *pu = hw_u(b->hw), *pv = hw_v(b->hw);
+        int jj, ii;
+        hw_foam_stir(b->hw, ghu, ghv, gs);
+        for (jj = 2; jj < rows - 2; jj++)
+            for (ii = 2; ii < cols - 2; ii++) {
+                int e = jj * gs + ii, q = jj * hs + ii;
+                float d = fabsf(ghu[e] - hhu[q]) + fabsf(ghv[e] - hhv[q]);
+                if (d > b->dm) b->dm = d;
+                d = fabsf(((const float *)S[0x14])[e] - pu[q]) + fabsf(((const float *)S[0x12])[e] - pv[q]);
+                if (d > b->du) b->du = d;
+                d = fabsf(gh[e] - hh[q]);
+                if (d > b->dh) b->dh = d;
+            }
+    }
     CopyPlane(hh, hs, gh, gs, rows, cols);
     CopyPlane(hhu, hs, ghu, gs, rows, cols);
     CopyPlane(hhv, hs, ghv, gs, rows, cols);
@@ -325,7 +352,8 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
     {
         Log("sheet %p: step %u dt %.4f volume %.1f smax %.1f (presents %ld) [+60 %x +f8 %x +6c %x]", (void *)S, b->steps, dt, hw_volume(b->hw), hw_smax(b->hw), g_presents, S[0x18], S[0x3e], S[0x1b]);
         if (b->snap) {
-            Log("sheet %p: foam max %.2f, %.1f cells above 0.1 per step", (void *)S, b->snap->fmax, b->snap->fcells / (float)cfg.log_every);
+            Log("sheet %p: foam max %.2f, %.1f cells above 0.1 per step; outside change: momentum %.1f, velocity %.1f, depth %.2f", (void *)S, b->snap->fmax, b->snap->fcells / (float)cfg.log_every, b->dm, b->du, b->dh);
+            b->dm = b->du = b->dh = 0.0f;
             b->snap->fmax = 0.0f; b->snap->fcells = 0;
         }
         Log("mesh hook: %ld rebuilds, %ld no bridge, %ld size mismatch, %ld sheets coloured; shaders %ld compiled, %ld patched, %ld water-like without anchor",
