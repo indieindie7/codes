@@ -6,12 +6,16 @@
 //              contact under objects get darker. Scalable Ambient Obscurance (McGuire,
 //              Mara, Luebke, HPG 2012): samples on a spiral in a disc whose size on screen
 //              is a fixed distance in the world; each sample that rises above the surface
-//              occludes, less the further it is
-//   3 BlurPS   a depth-aware blur, once across and once down (no smearing over edges)
-//   4 ApplyPS  the frame darkened by it, full size, upsampled by depth (joint bilateral);
+//              occludes, less the further it is. Also the contact shadow (b): a short march
+//              toward the sun; a point is shadowed if the depth shows something in front of
+//              the ray, no thicker than ssaocontact's thickness (so it isn't a wall far behind)
+//   3 BlurPS   a depth-aware blur of both, once across and once down (no smearing over edges)
+//   4 ApplyPS  the frame darkened by them, full size, upsampled by depth (joint bilateral);
 //              the sky and a first-person weapon drawn after a depth clear are left alone
 // ssaofx=strength radius intensity debug: strength 0-1 (how much of the darkening shows),
-// radius in world units, intensity (how quickly it goes dark), debug 1 = the AO alone.
+// radius in world units, intensity (how quickly it goes dark), debug 1 = the AO alone,
+// 2 = the contact shadows alone.
+// ssaocontact=strength length thickness topfallback: the contact shadows (0 = off).
 
 float4 Px : register(c0);       // the target's 1/w, 1/h, w, h
 float4 Proj : register(c1);     // the scene projection's _11, _22, _33, _43
@@ -19,6 +23,8 @@ float4 Step : register(c2);     // blur: one texel's step (x, y); apply: the AO'
                                 // GBufPS: x = 1 if S2 holds the characters' normals
 float4 Scr : register(c3);      // the frame's 1/w, 1/h, w, h
 float4 Fx : register(c4);       // strength, radius, intensity, debug
+float4 SunV : register(c5);     // toward the sun, camera space; w = 1 if there is one
+float4 Contact : register(c6);  // contact shadows: strength (0 = off), length, thickness
 
 sampler S0 : register(s0);
 sampler S1 : register(s1);
@@ -84,6 +90,7 @@ float4 GBufPS(float2 uv : TEXCOORD0) : COLOR
 #define SAMPLES 16
 #define TURNS 7.0
 #define ANGLE_BIAS 0.2    // sine of the lowest rise that counts (about 12 degrees)
+#define CONTACT_STEPS 12
 // S0 = the depth + normal buffer (point)
 float4 AoPS(float2 uv : TEXCOORD0) : COLOR
 {
@@ -122,7 +129,31 @@ float4 AoPS(float2 uv : TEXCOORD0) : COLOR
 		sum += f * f * f * max(rise - ANGLE_BIAS, 0) * radius / (d + 0.15 * radius);
 	}
 	float ao = max(0, 1 - sum * Fx.z * 3.0 / SAMPLES);
-	return float4(ao, g.x, 0, 1);
+	// the contact shadow: only on the side facing the sun (the other is dark already)
+	float shadow = 0;
+	float facing = dot(n, SunV.xyz);
+	if (Contact.x > 0 && SunV.w > 0.5 && facing > 0.05)
+	{
+		// off the surface along its normal, more at grazing angles (the depth's steps there
+		// would otherwise shadow the surface by itself)
+		float3 start = p + n * (0.01 * g.x / max(facing, 0.25));
+		float jit = frac(phi * 0.1591549 + 0.5);
+		for (int k = 0; k < CONTACT_STEPS; k++)
+		{
+			float t = (k + jit) / CONTACT_STEPS * Contact.y;
+			float3 q = start + SunV.xyz * t;
+			if (q.z < 1)
+				continue;
+			float2 quv = float2(0.5 + 0.5 * q.x * Proj.x / q.z, 0.5 - 0.5 * q.y * Proj.y / q.z);
+			if (any(quv < 0) || any(quv > 1))
+				continue;
+			float4 gq = tex2Dlod(S0, float4(quv, 0, 0));
+			float behind = q.z - gq.x;                     // how far the ray is behind what's drawn
+			if (gq.w > 0 && behind > 0.006 * q.z && behind < Contact.z)
+				shadow = max(shadow, 1 - 0.5 * t / Contact.y);   // nearer hits, darker
+		}
+	}
+	return float4(ao, g.x, shadow * saturate(facing * 4), 1);   // fades as the sun grazes
 }
 #endif
 
@@ -133,7 +164,7 @@ float4 BlurPS(float2 uv : TEXCOORD0) : COLOR
 	float4 c = tex2Dlod(S0, float4(uv, 0, 0));
 	if (c.g <= 0)
 		return c;
-	float sum = c.r, wsum = 1;
+	float sum = c.r, sumc = c.b, wsum = 1;
 	for (int i = -4; i <= 4; i++)
 	{
 		if (i == 0)
@@ -141,9 +172,10 @@ float4 BlurPS(float2 uv : TEXCOORD0) : COLOR
 		float4 s = tex2Dlod(S0, float4(uv + i * Step.xy, 0, 0));
 		float w = exp(-i * i / 12.0) * (s.g > 0 ? 1 : 0) * saturate(1 - abs(s.g - c.g) / (0.04 * c.g));
 		sum += s.r * w;
+		sumc += s.b * w;
 		wsum += w;
 	}
-	return float4(sum / wsum, c.g, 0, 1);
+	return float4(sum / wsum, c.g, sumc / wsum, 1);
 }
 #endif
 
@@ -161,7 +193,7 @@ float4 ApplyPS(float2 uv : TEXCOORD0) : COLOR
 	float2 t = uv * Step.zw - 0.5;
 	float2 f = frac(t);
 	float2 base = (floor(t) + 0.5) * Step.xy;
-	float ao = 0, wsum = 0.0001;
+	float ao = 0, cs = 0, wsum = 0.0001;
 	for (int k = 0; k < 4; k++)
 	{
 		float2 o = float2(fmod(k, 2), floor(k / 2.0));
@@ -169,13 +201,19 @@ float4 ApplyPS(float2 uv : TEXCOORD0) : COLOR
 		float wb = (o.x > 0 ? f.x : 1 - f.x) * (o.y > 0 ? f.y : 1 - f.y);
 		float w = (wb + 0.001) * (s.g > 0 ? 1 : 0) / (0.001 + abs(s.g - z) / z);
 		ao += s.r * w;
+		cs += s.b * w;
 		wsum += w;
 	}
 	ao = wsum > 0.001 ? ao / wsum : 1;
+	cs = wsum > 0.001 ? cs / wsum : 0;
 	ao = lerp(1, ao, Fx.x);
 	// ambient light is what gets occluded: let bright, directly lit pixels keep more of theirs
 	float lum = dot(col.rgb, float3(0.299, 0.587, 0.114));
 	ao = lerp(ao, 1, 0.5 * smoothstep(0.6, 1.0, lum));
+	// the contact shadow takes the sun's light, which is most of a bright pixel
+	ao *= 1 - Contact.x * cs * lerp(0.6, 1.0, saturate(lum * 1.5));
+	if (Fx.w > 1.5)
+		return float4(1 - cs, 1 - cs, 1 - cs, 1);    // debug 2: the contact shadows alone
 	if (Fx.w > 0.5)
 		return float4(ao, ao, ao, 1);
 	return float4(col.rgb * ao, col.a);
