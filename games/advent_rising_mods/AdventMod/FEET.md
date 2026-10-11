@@ -132,3 +132,17 @@ are new ModPilot steps.
   delta and we would then subtract it back on release; harmless but worth a look), vehicles, the
   Seeker ragdoll handoff (the hook is released when
   Physics isn't Walking/Falling, and the DLL ignores PHYS_KarmaRagDoll anyway).
+
+## Future ideas (user 10-11: Skyrim "Fluid Motion", video 52Zw5eHHjgQ, Nexus SSE mod 194680)
+What that mod adds on top of plain foot placement, and what it would mean here:
+- Per-leg IK for many-legged creatures: each spider leg is traced and planted on the surface,
+  walls and ceilings included. Here: plant the hounds' and Seekers' legs with their own chains
+  (not the hound UpLegs, which EonEngine orients to the floor; see Open).
+- Landing crouch: a short knee/pelvis dip on landing, scaled by fall speed. Fits the Pivot base.
+- Speed sync: stride rate matched to ground speed, so feet stop sliding when AI speed changes.
+- Leans into turns and ducking under low cover (we have ModMoves bAILean).
+- Climbing over waist-high obstacles, NPCs jumping gaps to reach the player (ModMinds has leap
+  links and wall-kicks), smooth path following with no stop-and-go when fleeing.
+- Player motion matching from mocap: out of reach for this build, noted only.
+- Taste note from the comments: the creature IK and chasing NPCs were loved; the big player
+  leans and bendy legs read as goofy. Keep leans small and never let a knee over-bend.
