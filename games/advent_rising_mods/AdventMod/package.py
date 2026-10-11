@@ -3,6 +3,9 @@ and GoreOverhaul-<ver>-experimental-nexus.zip (no .bat files: Nexus quarantines 
 --graphics: AdventGraphicalMod-<ver>(-nexus).zip, the graphics-only edition for the
 Nexus page of that name: System\\AdventMod-graphics.u (build.ps1 -GraphicsOnly: gore,
 armour and combat off by default) and no KarmaData.
+--gore: GoreOverhaul-GoreOnly-<ver>-experimental(-nexus).zip: System\\AdventMod-gore.u
+(build.ps1 -GoreOnly: soft shadows off) and a U2Shaders.ini cut to the blood and decal
+rules (post stays on with a neutral look: the lens blood draws in the post pass); the README drops the Shadows ... Air and surfaces sections.
 --check: run every refusal and README anchor lookup, list what would go in, write no zip.
 --game <folder>: where build.ps1 wrote AdventMod\\Armour\\*.amesh (default: build.ps1's).
 Run build.ps1 first (plain, no switch) so System\\ has the compiled AdventMod.u and
@@ -20,9 +23,10 @@ VER = "3.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(os.path.expanduser("~"), "Downloads")
 GRAPHICS = "--graphics" in sys.argv
+GORE = "--gore" in sys.argv
 CHECK = "--check" in sys.argv
 GAME = sys.argv[sys.argv.index("--game") + 1] if "--game" in sys.argv else r"H:\SteamLibrary\steamapps\common\Advent Rising"
-TOP = ("AdventGraphicalMod-" + VER) if GRAPHICS else ("GoreOverhaul-" + VER + "-experimental")
+TOP = ("AdventGraphicalMod-" + VER) if GRAPHICS else ("GoreOverhaul-GoreOnly-" + VER + "-experimental") if GORE else ("GoreOverhaul-" + VER + "-experimental")
 URL = "https://github.com/indieindie7/codes/tree/master/games/advent_rising_mods/AdventMod"
 
 # System\U2Shaders: what the layer loads, nothing else (no compiler dumps, previews, game-derived maps)
@@ -46,7 +50,7 @@ def contains(path, needle):
 
 
 # refusals before anything else
-ufile = "System/AdventMod-graphics.u" if GRAPHICS else "System/AdventMod.u"
+ufile = "System/AdventMod-graphics.u" if GRAPHICS else "System/AdventMod-gore.u" if GORE else "System/AdventMod.u"
 # the plain build names the texture in ModJiggle's code ("SeekerSkinJ" twice); only the -JiggleSkin
 # build carries the imported texture, whose source file name survives in the package
 if contains(os.path.join(HERE, ufile), "seeker_infantry_filled"):
@@ -103,6 +107,17 @@ if GRAPHICS:
               + "(The graphics edition of AdventMod: the same files with the gore, armour and" + NL
               + "combat changes switched off. The full mod is on GitHub and on Nexus as GoreOverhaul.)"
               + readme[tend:])
+elif GORE:
+    # the gore edition: no Shadows ... Air and surfaces sections, its own title
+    a, b = readme.index("  Shadows" + NL), readme.index("  Gore (")
+    readme = readme[:a] + readme[b:]
+    title = readme.index(TITLE); tend = readme.index(NL + NL, title)
+    head = "GoreOverhaul " + VER + " Gore Only (Experimental) - gore, blood and destruction for Advent Rising"
+    readme = (head + NL + "=" * len(head) + NL + NL
+              + "(The gore-only edition: GoreOverhaul without the post-processing, soft shadows," + NL
+              + "terrain, fog and skin shading. The blood's wet look, the bullet holes and the" + NL
+              + "blood runs still use the d3d8.dll. Install the full GoreOverhaul for everything.)"
+              + readme[tend:])
 else:
     readme.index(TITLE)
 a, b = readme.index("Easy way:"), readme.index("Manual way:")
@@ -114,6 +129,15 @@ u2ini = open(os.path.join(HERE, "System", "U2Shaders.ini"), encoding="ascii").re
 kept = [l for l in u2ini.splitlines() if not any(l.startswith(d) for d in DROP_INI)]
 if len(kept) == len(u2ini.splitlines()):
     print("note: no", DROP_INI, "line in System\\U2Shaders.ini (nothing dropped)")
+if GORE:
+    # gore only: the blood, gloss and decal rules (holes, pools); no post chain, terrain, skin, fog or sheen
+    GORE_KEYS = ("decal=", "bloodlive=", "gloss", "bloodrun=", "streak", "string", "hands", "lens", "#", ";")
+    # post stays on (the lens blood draws inside the post pass) with the Off preset's neutral look
+    kept = (["; gore-only edition: only the blood and decal rules (the Graphics page can still turn the rest on)",
+             "post=1", "bloom=0.75 0", "grade=1.0 1.0 1.0 0.0", "colour=1 1 1", "sharpen=0",
+             "postfx=0 0 0 1", "lut=lut_neutral.bmp",
+             "smaa=0", "pcss=0", "sss=0", "atmos=0", "soft=0"]
+            + [l for l in kept if l.lstrip().startswith(GORE_KEYS)])
 u2ini = "\n".join(kept) + "\n"
 for f in NOT_SHIPPED:
     if f in u2ini:
