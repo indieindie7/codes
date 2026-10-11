@@ -36,7 +36,8 @@ Sources: `research/black-ps2-destruction.md` (ranked list) and `GORE-DESIGN.md` 
 
 - Seeker armour plate look (user: "pink sheen"); hits and sparks still work. `AdventMod/ARMOUR.md`.
 - Light shafts in the atmos fog (never seen on camera). `GRAPHICS-PASS.md`.
-- MSAA in the d3d8 fork: smooths since fork ba7b9df (stand-in padded 32 px past the NVIDIA screen-size cut-off); still blocks GI (needs a plain depth copy) and is not in a release yet. SMAA covers it.
+- MSAA in the d3d8 fork: smooths since fork ba7b9df (stand-in padded 32 px past the NVIDIA screen-size cut-off). Fork 6540a83: the whole post chain (bloom, grading, SMAA, gi, ssao) had been dead under msaa (Offscreen() saw the wider stand-in); fixed. Fork 80c934f: depth-writing draws are replayed into a readable INTZ depth (no RESZ, StretchRect refused on the 4070 Ti), so gi/ssao/atmos/sss run with msaa=4 (~58 fps level14sectiond). Not in a release yet.
+- UE4 4.27 render read (ideas only, own words): see UE4-RENDER-IDEAS.md. Top picks: contact shadows, height fog with sun inscatter, eye adaptation, filmic curve + 3D LUT strip.
 - GI ships off by default.
 - Squishing small gibs underfoot.
 
