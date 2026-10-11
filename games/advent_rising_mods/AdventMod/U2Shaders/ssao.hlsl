@@ -1,6 +1,7 @@
 // ssao.hlsl - screen-space ambient occlusion (ssao=1), compiled by the wrapper as
 // ps_3_0/vs_3_0 with SSAO_PASS set:
-//   1 GBufPS   the scene's depth -> view depth + normal (as gi.hlsl's), at the AO's size
+//   1 GBufPS   the scene's depth -> view depth + normal (as gi.hlsl's), at the AO's size;
+//              characters use the normal their shader wrote (ssaonormals=1, the default)
 //   2 AoPS     how much of the space around each point is filled: corners, wall feet,
 //              contact under objects get darker. Scalable Ambient Obscurance (McGuire,
 //              Mara, Luebke, HPG 2012): samples on a spiral in a disc whose size on screen
@@ -14,7 +15,8 @@
 
 float4 Px : register(c0);       // the target's 1/w, 1/h, w, h
 float4 Proj : register(c1);     // the scene projection's _11, _22, _33, _43
-float4 Step : register(c2);     // blur: one texel's step (x, y); apply: the AO's 1/w, 1/h, w, h
+float4 Step : register(c2);     // blur: one texel's step (x, y); apply: the AO's 1/w, 1/h, w, h;
+                                // GBufPS: x = 1 if S2 holds the characters' normals
 float4 Scr : register(c3);      // the frame's 1/w, 1/h, w, h
 float4 Fx : register(c4);       // strength, radius, intensity, debug
 
@@ -47,7 +49,8 @@ float3 Normal(float4 g)
 }
 
 #if SSAO_PASS == 1
-// S0 = the scene's depth, S1 = what was drawn after a mid-frame depth clear (or none)
+// S0 = the scene's depth, S1 = what was drawn after a mid-frame depth clear (or none),
+// S2 = the characters' info target (or none; ssaonormals=0 leaves it out)
 float4 GBufPS(float2 uv : TEXCOORD0) : COLOR
 {
 	float z = ViewZ(S0, uv);
@@ -65,6 +68,14 @@ float4 GBufPS(float2 uv : TEXCOORD0) : COLOR
 	float3 n = normalize(cross(ay, ax));
 	if (n.z > 0)
 		n = -n;                                     // towards the camera
+	// characters drawn by char_pbr / char_skin wrote their own normal (smooth, not stepped by
+	// the depth's precision): r, b = x, y (*0.5+0.5), a = drawn; Step.x = 1: S2 holds them
+	float4 ci = tex2Dlod(S2, float4(uv, 0, 0));
+	if (Step.x > 0.5 && ci.a > 0.5)
+	{
+		float2 xy = float2(ci.r, ci.b) * 2 - 1;
+		n = float3(xy, -sqrt(saturate(1 - dot(xy, xy))));
+	}
 	return float4(z, n.x, n.y, 1);
 }
 #endif

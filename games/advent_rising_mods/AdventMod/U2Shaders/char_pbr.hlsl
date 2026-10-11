@@ -32,12 +32,9 @@ float4    Lights[16] : register(c8);  // 4 per light (up to 4), see CharBegin
 #define SPEC Setup.z  // highlight strength (the rule's third value, 1 if left out)
 #define BUMP Setup.w  // normal map strength (its fourth)
 
-float4 main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD2, float2 uv3 : TEXCOORD3,
-	float3 normal : TEXCOORD4, float3 pos : TEXCOORD5) : COLOR
+float4 Shade(float2 uv, float2 uv1, float2 uv2, float2 uv3, float3 ng, float3 pos)
 {
-	float3 ng = normalize(normal);
 	float3 v = normalize(-pos);
-	ng = dot(ng, v) < -0.2 ? -ng : ng;       // back faces of two-sided parts face the camera
 
 	float4 m = Use.y > 0.5 ? tex2D(Maps, uv) : float4(0.5, 0.5, 0.5, 0);
 	// the texture's axes on the surface, from how position and texture coordinates change
@@ -104,4 +101,22 @@ float4 main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD
 	if (Use.w > 1.5) return float4(n * 0.5 + 0.5, 1);
 	if (Use.w > 0.5) return float4(saturate(ambient + direct), 1);
 	return float4(lerp(saturate(diffuse + spec), own, glow), t.a);
+}
+
+struct Out
+{
+	float4 Colour : COLOR0;
+	float4 Info   : COLOR1;   // the characters' info target (render target 1 when sss or ssao is on; ignored otherwise)
+};
+
+Out main(float2 uv : TEXCOORD0, float2 uv1 : TEXCOORD1, float2 uv2 : TEXCOORD2, float2 uv3 : TEXCOORD3,
+	float3 normal : TEXCOORD4, float3 pos : TEXCOORD5)
+{
+	float3 ng = normalize(normal);
+	ng = dot(ng, normalize(-pos)) < -0.2 ? -ng : ng;   // back faces of two-sided parts face the camera
+	Out o;
+	o.Colour = Shade(uv, uv1, uv2, uv3, ng, pos);
+	// r, b = the normal for ssao, g = 0 (not skin), a = drawn
+	o.Info = float4(ng.x * 0.5 + 0.5, 0, ng.y * 0.5 + 0.5, o.Colour.a);
+	return o;
 }
