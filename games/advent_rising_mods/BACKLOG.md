@@ -3,6 +3,30 @@
 Written when the user paused Advent Rising modding after GoreOverhaul 3.0 (Experimental).
 Shelved code is still in the repo, switched off by default.
 
+## Queue (user 2026-10-11: "lets queue up ragdolls improvements and ue4 ideas")
+
+Ragdolls first (TENSION.md, `ModReact`; parts 1-2 built in 75f44ad, off by default):
+1. Make the tension readable: option SpasmU=1.0 so a reflex always shows; wincap clips of
+   10 human deaths with bTension on vs off, side by side, for the user to judge.
+2. Seekers: powered ragdolls only start on the humanMale2 skeleton. Give Seeker skeletons
+   their own death-clip set so they fight and go limp too.
+3. Per-region timing: legs keep tension longest (knees buckle last); per-class DeathEffort
+   (Seekers 1.0, humans 0.8).
+4. TENSION.md part 3: flesh springs (ModJiggle) on Seeker corpses, softer when limp, a
+   wobble when a part hits the floor.
+5. A 2-minute fight with no crash; then decide whether bPoweredRagdoll/bTension ship on.
+
+Then graphics (`UE4-RENDER-IDEAS.md`, d3d8to9 fork, each off by default):
+1. Lens flare and glare (the fork has none).
+2. Half-res smoke/particle shading with a depth-aware upscale (Fox Engine: min/max depth,
+   two half-res targets; video ljWylilACdI). Aimed at the smoke fps dips from the play-test.
+3. Temporal SSAO using TAA's reprojection, plus GTAO's thickness heuristic.
+4. Local exposure (UE5 5.1).
+5. Temporal reject for the GI cascades.
+6. Burley-style skin SSS (red radius wider than blue).
+7. Small checks: MSAA edges vs our screen passes, linear-light MSAA resolve (video SxCMaTEoBoI).
+Maybe later: rain wetness (lower roughness outdoors from a top-down depth map), lens drops.
+
 ## Destruction and gore still missing (feasible, cheapest first)
 
 Sources: `research/black-ps2-destruction.md` (ranked list) and `GORE-DESIGN.md` ("Still to do").
