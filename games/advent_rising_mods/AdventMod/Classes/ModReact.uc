@@ -143,6 +143,8 @@ var float PowerWeights[12];        // their share of the body's mass
 // keeps PassiveDamp of itself when limp. Off: the old linear fade over PowerTime.
 var config bool bTension;
 var config float TauUp, TauDown, DeathEffort, EffortTime, LimpTime, SpasmU, SpasmTime, PassiveDamp;
+var config float SeekerDeathEffort;   // a Seeker fights its death harder than a human (DeathEffort)
+var config float RegionLimp[6];       // LimpTime scale per region: trunk, head, left arm, right arm, left leg, right leg
 var int PowerRegion[12];           // each part's region
 
 struct DeathState
@@ -1220,14 +1222,16 @@ function Tension(int i, float Dt)
 	local bool bAll;
 
 	T = Ragdolls[i].T;
-	if (T < EffortTime)
-		U = DeathEffort;
-	else
-		U = DeathEffort * FMax(0, 1 - (T - EffortTime) / FMax(LimpTime, 0.01));
+	U = DeathEffort;
+	if (Ragdolls[i].bSeeker)
+		U = SeekerDeathEffort;
 	bAll = T > EffortTime;
 	for (r = 0; r < 6; r++)
 	{
+		// each region lets go over its own share of LimpTime: the legs last, so the knees buckle late
 		Ur = U;
+		if (T >= EffortTime)
+			Ur = U * FMax(0, 1 - (T - EffortTime) / FMax(LimpTime * RegionLimp[r], 0.01));
 		if (Ragdolls[i].SpasmT[r] > 0)
 		{
 			Ur = FMax(Ur, SpasmU);
@@ -1496,7 +1500,14 @@ defaultproperties
      PowerWeights(11)=0.059524
      TauUp=0.025000
      TauDown=0.080000
-     DeathEffort=0.900000
+     DeathEffort=0.800000
+     SeekerDeathEffort=1.000000
+     RegionLimp(0)=1.000000
+     RegionLimp(1)=0.700000
+     RegionLimp(2)=0.600000
+     RegionLimp(3)=0.600000
+     RegionLimp(4)=1.600000
+     RegionLimp(5)=1.600000
      EffortTime=0.150000
      LimpTime=0.450000
      SpasmU=0.700000
