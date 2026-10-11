@@ -1374,6 +1374,15 @@ function StartStep()
 		// the player (at that bone if one is given)
 		Hurt(int(ArgF(1, 30)), Args.Length > 2 ? Args[2] : "EonWeapons.dmgType_HumanPistolFire", Args.Length > 3 ? Args[3] : "");
 		break;
+	case "HURTME":
+		// HURTME damage: the player takes a pistol hit from the nearest enemy (or itself), through
+		// TakeDamage, so the GameRules (ModPlayerBlood's hurt lens) see it
+		if (PC().Pawn != None)
+		{
+			PC().Pawn.TakeDamage(int(ArgF(1, 30)), PC().Pawn, PC().Pawn.Location, vect(0, 0, 0), class<DamageType>(DynamicLoadObject("EonWeapons.dmgType_HumanPistolFire", class'Class')));
+			Note("hurtme " $ int(ArgF(1, 30)) $ ", health " $ PC().Pawn.Health);
+		}
+		break;
 	case "FPS":
 		// FPS [seconds] [label]: stand and log the average and worst frame time over that long, with
 		// the counts of what has piled up (live and dead pawns, karma bodies, projectors, emitters)

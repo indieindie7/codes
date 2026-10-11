@@ -80,8 +80,21 @@ function int NetDamage(int OriginalDamage, int Damage, Pawn Injured, Pawn Instig
 {
 	if (NextGameRules != None)
 		Damage = NextGameRules.NetDamage(OriginalDamage, Damage, Injured, InstigatedBy, HitLocation, Momentum, DamageType);
+	Hurt(Injured, Damage);
 	Watch(Injured, InstigatedBy, HitLocation, Damage, DamageType);
 	return Damage;
+}
+
+// the player is hit: the layer's hurt lens (U2Shaders.ini hurtfx=; fringe, grain, red edges, fading)
+function Hurt(Pawn Injured, int Damage)
+{
+	local PlayerController PC;
+
+	if (Damage <= 0 || Injured == None)
+		return;
+	PC = Level.GetLocalPlayerController();
+	if (PC != None && Injured == PC.Pawn)
+		class'ModSettings'.static.NativeCall("Blood:hurt " $ FClamp(Damage / 40.0, 0.25, 1.0));
 }
 
 // a hit (before it is taken off the victim's health)

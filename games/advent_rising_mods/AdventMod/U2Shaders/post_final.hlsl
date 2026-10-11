@@ -16,6 +16,7 @@
 //   7. film grain (animated, stronger in the darks) and a triangular dither, last, so dark
 //      gradients don't band.
 // postfx=aberration grain dither shoulder (c4): 0 = that one off (shoulder 0 = 0.76).
+// hurtfx=aberration grain red fade (c7, scaled by how hurt): the player's hits, sent by the mod's script.
 // postsplit=1 leaves the right half untouched to compare.
 
 sampler2D Scene    : register(s0);   // the finished 3D frame
@@ -29,6 +30,7 @@ float4    LutInfo  : register(c5);   // N, 1/width, 1/height, 1 = a LUT is loade
 sampler2D Lut      : register(s2);   // N slices of NxN side by side: x = red, y = green, slice = blue
 float4    Eye      : register(c6);   // x = 1: s3 holds the eye adaptation's exposure (eyeadapt=)
 sampler2D EyeTex   : register(s3);   // 1x1, r = exposure (eye_adapt.hlsl)
+float4    Hurt     : register(c7);   // the player was just hit (hurtfx=, fading): extra aberration, extra grain, red edges
 
 #define DESAT      0.15     // how much rolled-off highlights lose colour
 
@@ -127,7 +129,7 @@ float4 main(float2 uv : TEXCOORD0) : COLOR
 	// 3 first, on the game's own pixels: CAS (with chromatic aberration taken from the
 	// neighbouring red/blue samples toward the edges)
 	float3 c = Balance.w > 0 ? Cas(uv, saturate(Balance.w)) : original;
-	float2 ca = d * Fx.x * edge * 4;
+	float2 ca = d * (Fx.x + Hurt.x) * edge * 4;
 	c.r = lerp(c.r, tex2D(Scene, uv + ca).r, saturate(edge * 2));
 	c.b = lerp(c.b, tex2D(Scene, uv - ca).b, saturate(edge * 2));
 
@@ -145,8 +147,9 @@ float4 main(float2 uv : TEXCOORD0) : COLOR
 	if (LutInfo.w > 0.5)
 		c = Graded(c);
 
-	// 4: vignette
+	// 4: vignette, and red creeping in from the edges while the player is hurt
 	c *= 1 - Grade.w * edge;
+	c = lerp(c, c * float3(1.0, 0.3, 0.25) + float3(0.12, 0, 0), saturate(Hurt.z * edge * 2.5));
 
 	// 6: colourblind mode
 	if (Bloom.z > 0.5)
@@ -155,7 +158,7 @@ float4 main(float2 uv : TEXCOORD0) : COLOR
 	// 7: grain (moves every frame, mostly in the darks), then the dither
 	float2 px = uv / Texel.xy;
 	luma = dot(c, float3(0.299, 0.587, 0.114));
-	c += Tri(px + frac(Texel.w * 7.13) * float2(1013, 719)) * Fx.y * (1 - 0.6 * luma);
+	c += Tri(px + frac(Texel.w * 7.13) * float2(1013, 719)) * (Fx.y + Hurt.y) * (1 - 0.6 * luma);
 	c += Tri(px) * (Fx.z / 255.0);
 
 	c = (Texel.z > 0.5 && uv.x > 0.5) ? original : c;
