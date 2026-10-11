@@ -51,7 +51,8 @@ static struct {
     float foam_p[8];    /* foam_gain air_gain foam_life lace bubble_rise air_to_foam spread spray_rate; < 0 = library default */
     int foam_test;      /* 1 = paint moving foam bands instead of the simulated foam (to see the look) */
     float foam_strength; /* how strongly thin foam and air show: 0 = linear (the field as is), 2 = default */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0 }, 2.0f };
+    int foam_tex;       /* 1 = foam also from a world-space texture filled from every sheet, so unrebuilt sheets show it */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0 }, 0, 2.0f, 1 };
 static const char *const FOAM_KEYS[8] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -117,6 +118,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "foam")) cfg.opts.foam = atoi(v);
         else if (!_stricmp(k, "foam_dump")) cfg.foam_dump = atoi(v);
         else if (!_stricmp(k, "foam_test")) cfg.foam_test = atoi(v);
+        else if (!_stricmp(k, "foam_tex")) cfg.foam_tex = atoi(v);
         else if (!_stricmp(k, "foam_strength")) cfg.foam_strength = (float)atof(v);
         else {
             int n;
@@ -159,6 +161,8 @@ typedef struct foam_snap {
     BYTE *foam, *air;   /* w*h each, cell (i,j) at j*w+i */
     float fmax;         /* largest shown foam since the last stats line (0..1, after foam_strength) */
     unsigned fcells;    /* cell-steps with shown foam above 0.1 since the last stats line */
+    float ox, oy, dx;   /* world position of cell (0,0) and cell size, copied each step (the sheet may be freed on a level change) */
+    volatile DWORD tick; /* GetTickCount of the last step that filled it */
 } foam_snap;
 
 typedef struct bridge {
@@ -287,6 +291,8 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                 sn->foam[j * w + i] = (BYTE)(f <= 0.0f ? 0 : f >= 1.0f ? 255 : (int)(f * 255.0f + 0.5f));
                 sn->air[j * w + i] = (BYTE)(a <= 0.0f ? 0 : a >= 1.0f ? 255 : (int)(a * 255.0f + 0.5f));
             }
+        sn->ox = *(const float *)&S[0x1f]; sn->oy = *(const float *)&S[0x20]; sn->dx = *(const float *)&S[4];
+        sn->tick = GetTickCount();
     }
 
     hh = hw_depth(b->hw); hhu = hw_hu(b->hw); hhv = hw_hv(b->hw);
@@ -479,8 +485,8 @@ static int Install(void)
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH2.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT2.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH4.bin";
+static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT4.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -497,15 +503,15 @@ static const char FOAM_HLSL[] =
     "  float hwLace = lerp(1.0f - abs(hwN - 0.5f) * 2.0f, diffuseMapSample.x, 0.2f);\n"
     "  float hwCov = saturate((hwF * 1.7f - (1.0f - hwLace)) * (1.0f / 0.22f)) * saturate(hwF * 8.0f);\n"
     "  hwCov = max(hwCov, saturate((hwF - 0.55f) * 3.0f));\n"
-    "  hwCov = max(hwCov, hwF * 0.35f);\n"
+    "  hwCov = max(hwCov, hwF * 0.2f) * 0.8f;\n"
     "  float hwLum = dot(vRefractionSample.rgb + vReflectionSample.rgb, float3(0.299f, 0.587f, 0.114f));\n"
-    "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 0.98f), vFogColour.rgb, 0.1f) * saturate(0.6f + 0.9f * hwLum);\n"
+    "  float3 hwFoam = lerp(float3(0.8f, 0.85f, 0.85f), vFogColour.rgb, 0.25f) * clamp(0.2f + 0.5f * hwLum, 0.2f, 0.7f);\n"
     "  float hwGrey = dot(refractionColour.rgb, float3(0.333f, 0.333f, 0.334f));\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwGrey * float3(0.85f, 1.0f, 1.0f) + 0.1f, hwA * 0.65f);\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwFoam, hwCov);\n"
-    "  reflectionColour *= 1.0f - hwCov;\n"
+    "  reflectionColour *= 1.0f - 0.6f * hwCov;\n"
     "  specularStrength *= 1.0f - hwCov;\n"
-    "  diffuseMapSample.a = max(diffuseMapSample.a, hwCov);\n"
+    "  diffuseMapSample.a = max(diffuseMapSample.a, hwCov * 0.5f);\n"
     "}\n";
 
 typedef HRESULT (WINAPI *Compile_t)(const char *, UINT, const void *, void *, const char *, const char *, DWORD, void **, void **, void **);
@@ -525,27 +531,45 @@ static const char *FindN(const char *s, size_t n, const char *pat, size_t m)
    mesh that never gets our colours from a surface that doesn't use the patched shader */
 static const char FOAM_F_LINE[] = "  float hwF = saturate(1.0f - vertexColour.r);\n";
 static const char FOAM_F_TEST[] = "  float hwF = pow(0.5f + 0.5f * sin((vertexPosition.x + vertexPosition.y) * 0.02f), 2.0f);\n";
-static char g_hlsl_t2[sizeof FOAM_HLSL + sizeof FOAM_F_TEST];
+static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g);\n";
+/* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
+static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\n";
+static const char FOAM_TEX_LINE[] =
+    "  float4 hwT = tex2Dlod(hwFoamTex, float4((vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw, 0.0f, 0.0f));\n"
+    "  hwF = max(hwF, hwT.r);\n"
+    "  hwA = max(hwA, hwT.g);\n";
+int g_inject_tex;   /* set by CompileHook for ps_3_0 shaders when the world foam texture is on */
+
+/* FOAM_HLSL with line `at` replaced by `with` (or `with` appended after it when keep is set) */
+static size_t SpliceLine(char *dst, const char *src, const char *at, const char *with, int keep)
+{
+    const char *f = strstr(src, at);
+    size_t a, n;
+    if (!f) { strcpy(dst, src); return strlen(dst); }
+    a = (size_t)(f - src) + (keep ? strlen(at) : 0);
+    memcpy(dst, src, a);
+    strcpy(dst + a, with);
+    strcat(dst, f + strlen(at));
+    n = strlen(dst);
+    return n;
+}
 
 __attribute__((used)) char *hw_foam_inject(const char *src, size_t len, size_t *outlen)
 {
-    size_t na = sizeof FOAM_ANCHOR - 1, nd = sizeof FOAM_DEFS - 1, nh = sizeof FOAM_HLSL - 1, k = 0, o = 0;
+    static char v1[sizeof FOAM_HLSL + 1024], v2[sizeof FOAM_HLSL + 1024];
+    size_t na = sizeof FOAM_ANCHOR - 1, nd = sizeof FOAM_DEFS - 1, nh, ng, k = 0, o = 0;
     const char *p = src, *q, *hl = FOAM_HLSL;
     char *out;
-    if (cfg.foam_test == 2) {
-        const char *f = strstr(FOAM_HLSL, FOAM_F_LINE);
-        if (f && !g_hlsl_t2[0]) {
-            size_t a = (size_t)(f - FOAM_HLSL);
-            memcpy(g_hlsl_t2, FOAM_HLSL, a);
-            strcpy(g_hlsl_t2 + a, FOAM_F_TEST);
-            strcat(g_hlsl_t2, f + sizeof FOAM_F_LINE - 1);
-        }
-        if (g_hlsl_t2[0]) { hl = g_hlsl_t2; nh = strlen(g_hlsl_t2); }
-    }
+    int tex = g_inject_tex;
+    if (cfg.foam_test == 2) { SpliceLine(v1, hl, FOAM_F_LINE, FOAM_F_TEST, 0); hl = v1; }
+    if (tex) { SpliceLine(v2, hl, FOAM_A_LINE, FOAM_TEX_LINE, 1); hl = v2; }
+    nh = strlen(hl);
+    ng = tex ? sizeof FOAM_TEX_GLOBALS - 1 : 0;
     while ((q = FindN(p, len - (size_t)(p - src), FOAM_ANCHOR, na)) != NULL) { k++; p = q + na; }
     if (!k) return NULL;
-    out = (char *)malloc(len + k * (nd + nh) + 1);
+    out = (char *)malloc(ng + len + k * (nd + nh) + 1);
     if (!out) return NULL;
+    memcpy(out, FOAM_TEX_GLOBALS, ng); o = ng;
     p = src;
     while ((q = FindN(p, len - (size_t)(p - src), FOAM_ANCHOR, na)) != NULL) {
         memcpy(out + o, p, (size_t)(q - p) + na); o += (size_t)(q - p) + na;
@@ -570,7 +594,9 @@ static HRESULT WINAPI CompileHook(const char *src, UINT len, const void *defs, v
 {
     typedef void *(WINAPI *Ptr_t)(void *);
     size_t n = 0, srclen = len ? len : (src ? strlen(src) : 0);
-    char *mod = (cfg.opts.foam && src) ? hw_foam_inject(src, srclen, &n) : NULL;
+    char *mod;
+    g_inject_tex = cfg.foam_tex && prof && !strcmp(prof, "ps_3_0");
+    mod = (cfg.opts.foam && src) ? hw_foam_inject(src, srclen, &n) : NULL;
     HRESULT hr;
     InterlockedIncrement(&g_shader_calls);
     if (!mod && src && FindN(src, srclen, "vReflectionSample", 17)) {
@@ -1115,25 +1141,108 @@ static void RunControlFile(IDirect3DDevice9 *dev)
 typedef HRESULT (WINAPI *SwapPresent_t)(IDirect3DSwapChain9 *, const RECT *, const RECT *, HWND, const RGNDATA *, DWORD);
 static SwapPresent_t g_orig_swap_present;
 static volatile LONG g_swap_presents;
+static void FoamTexUpdate(IDirect3DDevice9 *dev);
 static HRESULT WINAPI SwapPresentHook(IDirect3DSwapChain9 *self, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty, DWORD flags)
 {
     DWORD now = GetTickCount();
     IDirect3DDevice9 *dev = NULL;
     InterlockedIncrement(&g_swap_presents);
     InterlockedIncrement(&g_presents);
-    if (now - g_last_cmd_poll >= 250 && IDirect3DSwapChain9_GetDevice(self, &dev) == D3D_OK) {
-        g_last_cmd_poll = now;
-        RunControlFile(dev);
+    if (IDirect3DSwapChain9_GetDevice(self, &dev) == D3D_OK) {
+        FoamTexUpdate(dev);
+        if (cfg.control && now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(dev); }
         IDirect3DDevice9_Release(dev);
     }
     return g_orig_swap_present(self, src, dst, wnd, dirty, flags);
+}
+
+/* ---------------------------------------------------------------- world foam texture
+ * The game rebuilds only the sheet meshes on its render list (in the Practice pool one sheet of
+ * 80), so foam in vertex colours never reaches most water. Instead every sheet's foam and air are
+ * written into one texture laid over the world (a texel per cell, covering all bridged sheets) at
+ * each Present; the water shader reads it by world position (sampler s15, mapping in c223). The
+ * sheet origin is at S+0x7c/S+0x80 and cells are dx = S+0x10 apart (FUN_00bf0e20). */
+#define FOAM_TEX_N 512
+static IDirect3DTexture9 *g_foam_tex;
+static IDirect3DDevice9 *g_foam_tex_dev;
+static volatile LONG g_foam_tex_logged;
+
+static void FoamTexUpdate(IDirect3DDevice9 *dev)
+{
+    float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f, cell = 0.0f, inv, xf[4];
+    D3DLOCKED_RECT lr;
+    bridge *b;
+    int i, j, n = 0;
+    DWORD now = GetTickCount();
+    if (!cfg.foam_tex || !cfg.opts.foam) return;
+    if (g_foam_tex && g_foam_tex_dev != dev) { g_foam_tex = NULL; }   /* new device: the old texture went with it */
+    if (!g_foam_tex) {
+        if (IDirect3DDevice9_CreateTexture(dev, FOAM_TEX_N, FOAM_TEX_N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_foam_tex, NULL) != D3D_OK) {
+            g_foam_tex = NULL; return;
+        }
+        g_foam_tex_dev = dev;
+        Log("foam: world foam texture %dx%d created", FOAM_TEX_N, FOAM_TEX_N);
+    }
+    AcquireSRWLockShared(&g_lock);
+    for (b = g_bridges; b; b = b->next) {
+        float ox, oy, dx;
+        if (!b->snap || now - b->snap->tick > 1000) continue;
+        ox = b->snap->ox; oy = b->snap->oy; dx = b->snap->dx;
+        if (!(dx > 0.0f) || !(ox == ox) || !(oy == oy)) continue;
+        if (ox < x0) x0 = ox;
+        if (oy < y0) y0 = oy;
+        if (ox + dx * b->snap->w > x1) x1 = ox + dx * b->snap->w;
+        if (oy + dx * b->snap->h > y1) y1 = oy + dx * b->snap->h;
+        if (dx > cell) cell = dx;
+        n++;
+    }
+    if (!n) { ReleaseSRWLockShared(&g_lock); return; }
+    if ((x1 - x0) / FOAM_TEX_N > cell) cell = (x1 - x0) / FOAM_TEX_N;
+    if ((y1 - y0) / FOAM_TEX_N > cell) cell = (y1 - y0) / FOAM_TEX_N;
+    inv = 1.0f / cell;
+    if (IDirect3DTexture9_LockRect(g_foam_tex, 0, &lr, NULL, 0) == D3D_OK) {
+        for (j = 0; j < FOAM_TEX_N; j++) memset((BYTE *)lr.pBits + (size_t)j * lr.Pitch, 0, FOAM_TEX_N * 4);
+        for (b = g_bridges; b; b = b->next) {
+            const foam_snap *sn = b->snap;
+            float ox, oy, dx;
+            if (!sn || now - sn->tick > 1000) continue;
+            ox = sn->ox; oy = sn->oy; dx = sn->dx;
+            if (!(dx > 0.0f) || !(ox == ox) || !(oy == oy)) continue;
+            for (j = 0; j < sn->h; j++) {
+                int ty = (int)((oy + (j + 0.5f) * dx - y0) * inv);
+                BYTE *row;
+                if (ty < 0 || ty >= FOAM_TEX_N) continue;
+                row = (BYTE *)lr.pBits + (size_t)ty * lr.Pitch;
+                for (i = 0; i < sn->w; i++) {
+                    int tx = (int)((ox + (i + 0.5f) * dx - x0) * inv);
+                    BYTE f = sn->foam[j * sn->w + i], a = sn->air[j * sn->w + i];
+                    if (tx < 0 || tx >= FOAM_TEX_N) continue;
+                    if (f > row[tx * 4 + 2]) row[tx * 4 + 2] = f;   /* R: foam */
+                    if (a > row[tx * 4 + 1]) row[tx * 4 + 1] = a;   /* G: air */
+                }
+            }
+        }
+        IDirect3DTexture9_UnlockRect(g_foam_tex, 0);
+    }
+    ReleaseSRWLockShared(&g_lock);
+    xf[0] = x0; xf[1] = y0; xf[2] = 1.0f / (cell * FOAM_TEX_N); xf[3] = xf[2];
+    IDirect3DDevice9_SetTexture(dev, 15, (IDirect3DBaseTexture9 *)g_foam_tex);
+    IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+    IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+    IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+    IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+    IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 223, xf, 1);
+    if (InterlockedIncrement(&g_foam_tex_logged) == 1 || g_foam_tex_logged % 2000 == 0)
+        Log("foam: world texture over %d sheets, x %.0f..%.0f y %.0f..%.0f, texel %.1f", n, x0, x1, y0, y1, cell);
 }
 
 static HRESULT WINAPI PresentHook(IDirect3DDevice9 *self, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty)
 {
     DWORD now = GetTickCount();
     InterlockedIncrement(&g_presents);
-    if (now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(self); }
+    FoamTexUpdate(self);
+    if (cfg.control && now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(self); }
     return g_orig_present(self, src, dst, wnd, dirty);
 }
 
@@ -1161,7 +1270,7 @@ static HRESULT WINAPI CreateDeviceHook(void *self, UINT adapter, UINT type, HWND
     hr = g_orig_create_device(self, adapter, type, focus, flags, pp, dev);
     if (hr == 0 && dev && *dev) {
         if (!g_orig_reset) PatchVtable(*dev, 16, (void *)ResetHook, (void **)&g_orig_reset);
-        if (cfg.control && !g_orig_present) {
+        if ((cfg.control || (cfg.foam_tex && cfg.opts.foam)) && !g_orig_present) {
             PatchVtable(*dev, 17, (void *)PresentHook, (void **)&g_orig_present);
             Log("control: Present hooked (orig %p)", (void *)g_orig_present);
             {
