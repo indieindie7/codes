@@ -1463,7 +1463,12 @@ function CorpseHit(Pawn P, vector Spot, vector Dir)
 		return;
 	// no ragdolls in this release (no KarmaData): the body twitches instead
 	if (P.Physics == PHYS_KarmaRagdoll)
+	{
 		P.KAddImpulse(Dir * CorpseKick, Spot);
+		// a body still dying jerks the hit limb once (TENSION.md)
+		if (React != None && React.bTension)
+			React.Spasm(P, Spot);
+	}
 	else if (React != None)
 		React.CorpseFlinch(P, Spot, Dir);
 }

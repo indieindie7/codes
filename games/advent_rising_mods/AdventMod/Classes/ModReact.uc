@@ -114,6 +114,10 @@ struct RagdollState
 	var vector Prev[12];   // each part's position last tick (for its velocity)
 	var vector RestHips;   // where the hips were a moment ago, and how long they have barely moved
 	var float RestT;
+	// muscle tension (bTension): each region's activation, and how long a reflex from a hit lasts
+	var float A[6];
+	var float SpasmT[6];
+	var bool bLimp;        // every region has gone limp: the push is over
 };
 var array<RagdollState> Ragdolls;
 var config float RagdollTime;
@@ -129,6 +133,14 @@ var config float PowerDamp;        // per second: resists the part's motion
 var config float PowerMaxAccel;    // the push is capped (units per second squared)
 var name PowerBones[12];           // the ragdoll's parts (tools/make_ka.py, humanMale2)
 var float PowerWeights[12];        // their share of the body's mass
+// Muscle tension (TENSION.md): six regions (torso, head, arms, legs) each have an activation
+// that follows a drive with muscle-like rise and fall times. The body fights for a moment
+// (DeathEffort for EffortTime), then the drive falls to 0 over LimpTime; a shot on a region
+// still tense jerks it once. The activation scales the push's spring and cap, and the damping
+// keeps PassiveDamp of itself when limp. Off: the old linear fade over PowerTime.
+var config bool bTension;
+var config float TauUp, TauDown, DeathEffort, EffortTime, LimpTime, SpasmU, SpasmTime, PassiveDamp;
+var int PowerRegion[12];           // each part's region
 
 struct DeathState
 {
@@ -167,6 +179,8 @@ function Hit(Pawn Victim, vector HitLocation, vector Momentum, int Damage, class
 	local vector Dir;
 
 	if (!Reacts(Victim) || Damage <= 0)
+		return;
+	if (bTension && Victim.Physics == PHYS_KarmaRagdoll && Spasm(Victim, HitLocation))
 		return;
 	Dir = ShotDir;
 	if (VSize(Momentum) > 1)
@@ -1122,12 +1136,78 @@ function bool AtRest(int i, float Dt)
 	return Ragdolls[i].RestT >= RestTime;
 }
 
+// a shot on a powered ragdoll: the region hit, if still tense, jerks once (true: the body was ours)
+function bool Spasm(Pawn P, vector HitLocation)
+{
+	local int i, b, Best;
+	local float D, BestD;
+
+	for (i = 0; i < Ragdolls.Length; i++)
+		if (Ragdolls[i].P == P)
+			break;
+	if (i >= Ragdolls.Length || !Ragdolls[i].bPowered)
+		return false;
+	BestD = 1000000000.0;
+	for (b = 0; b < 12; b++)
+	{
+		D = VSize(P.GetBoneCoords(PowerBones[b]).Origin - HitLocation);
+		if (D < BestD)
+		{
+			BestD = D;
+			Best = PowerRegion[b];
+		}
+	}
+	if (Ragdolls[i].bLimp || Ragdolls[i].T >= PowerTime || Ragdolls[i].A[Best] <= 0.05)
+	{
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("react: tension " $ P $ " shot in region " $ Best $ ": limp, no reflex");
+		return true;
+	}
+	Ragdolls[i].SpasmT[Best] = SpasmTime;
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("react: tension " $ P $ " shot in region " $ Best $ " (A " $ Ragdolls[i].A[Best] $ "): reflex");
+	return true;
+}
+
+// the activations follow the drive: quick to tense, slower to let go (first-order, Zajac 1989)
+function Tension(int i, float Dt)
+{
+	local int r;
+	local float T, U, Ur, Tau;
+	local bool bAll;
+
+	T = Ragdolls[i].T;
+	if (T < EffortTime)
+		U = DeathEffort;
+	else
+		U = DeathEffort * FMax(0, 1 - (T - EffortTime) / FMax(LimpTime, 0.01));
+	bAll = T > EffortTime;
+	for (r = 0; r < 6; r++)
+	{
+		Ur = U;
+		if (Ragdolls[i].SpasmT[r] > 0)
+		{
+			Ur = FMax(Ur, SpasmU);
+			Ragdolls[i].SpasmT[r] -= Dt;
+		}
+		if (Ur > Ragdolls[i].A[r])
+			Tau = TauUp;
+		else
+			Tau = TauDown;
+		Ragdolls[i].A[r] += (Ur - Ragdolls[i].A[r]) * FMin(1, Dt / FMax(Tau, 0.001));
+		if (Ragdolls[i].A[r] >= 0.02 || Ur > 0)
+			bAll = false;
+	}
+	if (bAll)
+		Ragdolls[i].bLimp = true;
+}
+
 // the powered ragdoll's push, each tick while it lasts
 function Steer(int i, float Dt)
 {
 	local Pawn P;
 	local int b, sp, Best, n;
-	local float M, Fade, Err, BestErr, E;
+	local float M, Fade, Err, BestErr, E, Act;
 	local vector Cur, Tgt, Vel, J;
 	local string Line;
 
@@ -1174,16 +1254,32 @@ function Steer(int i, float Dt)
 		Tgt = ClipSpot(P, i, b, Ragdolls[i].Space);
 		Vel = (Cur - Ragdolls[i].Prev[b]) / Dt;
 		Ragdolls[i].Prev[b] = Cur;
-		J = (Tgt - Cur) * PowerSpring - Vel * PowerDamp;
-		if (VSize(J) > PowerMaxAccel)
-			J = Normal(J) * PowerMaxAccel;
-		J = J * (Fade * M * PowerWeights[b] * Dt);
+		if (bTension)
+		{
+			Act = Ragdolls[i].A[PowerRegion[b]];
+			J = (Tgt - Cur) * (PowerSpring * Act) - Vel * (PowerDamp * (PassiveDamp + (1 - PassiveDamp) * Act));
+			if (VSize(J) > PowerMaxAccel * FMax(Act, PassiveDamp))
+				J = Normal(J) * PowerMaxAccel * FMax(Act, PassiveDamp);
+			J = J * (M * PowerWeights[b] * Dt);
+		}
+		else
+		{
+			J = (Tgt - Cur) * PowerSpring - Vel * PowerDamp;
+			if (VSize(J) > PowerMaxAccel)
+				J = Normal(J) * PowerMaxAccel;
+			J = J * (Fade * M * PowerWeights[b] * Dt);
+		}
 		P.KAddImpulse(J, Cur, PowerBones[b]);
 		E += VSize(Tgt - Cur);
 		n++;
 	}
 	if (class'ModSettings'.default.bGoreLog && n > 0 && int(Ragdolls[i].T * 10) != int((Ragdolls[i].T + Dt) * 10))
-		class'ModSettings'.static.Note("react: powered " $ P $ " t " $ Ragdolls[i].T $ " mean error " $ int(E / n) $ " fade " $ Fade);
+	{
+		if (bTension)
+			class'ModSettings'.static.Note("react: powered " $ P $ " t " $ Ragdolls[i].T $ " mean error " $ int(E / n) $ " tension " $ int(Ragdolls[i].A[0] * 100) $ " " $ int(Ragdolls[i].A[1] * 100) $ " " $ int(Ragdolls[i].A[2] * 100) $ " " $ int(Ragdolls[i].A[3] * 100) $ " " $ int(Ragdolls[i].A[4] * 100) $ " " $ int(Ragdolls[i].A[5] * 100));
+		else
+			class'ModSettings'.static.Note("react: powered " $ P $ " t " $ Ragdolls[i].T $ " mean error " $ int(E / n) $ " fade " $ Fade);
+	}
 }
 
 function AddRagdoll(Pawn P)
@@ -1236,7 +1332,14 @@ function WatchRagdolls(float DeltaTime)
 		}
 		if (Ragdolls[i].bFrozen || P.Physics != PHYS_KarmaRagdoll)
 			continue;
-		if (Ragdolls[i].bPowered && Ragdolls[i].T < PowerTime)
+		if (Ragdolls[i].bPowered && bTension && !Ragdolls[i].bLimp && Ragdolls[i].T < PowerTime)
+		{
+			Tension(i, DeltaTime);
+			Steer(i, DeltaTime);
+			if (Ragdolls[i].bLimp && class'ModSettings'.default.bGoreLog)
+				class'ModSettings'.static.Note("react: tension " $ P $ " limp at t " $ Ragdolls[i].T);
+		}
+		else if (Ragdolls[i].bPowered && !bTension && Ragdolls[i].T < PowerTime)
 			Steer(i, DeltaTime);
 		// testing: how the ragdoll falls, twice a second
 		if (class'ModSettings'.default.bGoreLog && int(Ragdolls[i].T * 2) != int((Ragdolls[i].T + DeltaTime) * 2))
@@ -1335,6 +1438,23 @@ defaultproperties
      PowerWeights(9)=0.059524
      PowerWeights(10)=0.107143
      PowerWeights(11)=0.059524
+     TauUp=0.025000
+     TauDown=0.080000
+     DeathEffort=0.900000
+     EffortTime=0.150000
+     LimpTime=0.450000
+     SpasmU=0.700000
+     SpasmTime=0.060000
+     PassiveDamp=0.300000
+     PowerRegion(3)=1
+     PowerRegion(4)=2
+     PowerRegion(5)=2
+     PowerRegion(6)=3
+     PowerRegion(7)=3
+     PowerRegion(8)=4
+     PowerRegion(9)=4
+     PowerRegion(10)=5
+     PowerRegion(11)=5
      MaxRagdolls=12
      KarmaTimeScale=1.000000
      RagdollTimeScale=0.850000
