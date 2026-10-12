@@ -65,6 +65,7 @@ Destruction look (user 10-11, video il-TXbn5iMA, Mike Turitzin's dynamic SDF eng
    10-12 step 0 done: world_parallax self-shadow (fork `surfacelight=X Y Z S`, S<0 = debug tint).
    Works, but the level-1 ship panels have so little relief that the shadow is a thin line at
    the strip edges; overhead light gives almost none. Needs deeper height textures to pay off.
+   10-12 rocks + terrain (level04sectiona): rock_tone_parallax.hlsl (rock_tone grading + depth + self-shadow; the name needs `_tone` for the fork to take the TFACTOR stage setup) and sand_tone_parallax.hlsl (same, no grading, for texgrade= textures). The spawn's rocks are 58fc527c (8ba83c44/0847dd68 are drawn elsewhere on the level); ini rule `surface=58fc527c sand_tone_parallax.hlsl`. Terrain: TERRAIN_SHADOW in terrain_src.hlsl, 2 steps toward the fixed sun (4 steps = 485/495 slots and the driver's CreatePixelShader fails, so the stock terrain draws; 471/481 load). Result: rocks get the depth; the self-shadow is faint (the texture spans only 0.51-0.32 brightness), terrain change barely visible. Ini rules not shipped yet.
 Maybe later: rain wetness (lower roughness outdoors from a top-down depth map), lens drops.
 Animation ideas (video 52Zw5eHHjgQ, Skyrim "Fluid Motion"): smooth path following (no
 stop-and-go when fleeing), landing crouch, speed-synced legs, per-leg IK on surfaces for

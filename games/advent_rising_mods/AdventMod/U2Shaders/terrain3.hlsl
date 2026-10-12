@@ -42,6 +42,10 @@ float4 Fx2     : register(c7);   // terrainfx2= relief strength, relief scale, s
 float4 Tone    : register(c8);   // terraintone= ground lift (x brightness, 0 = off), desaturate 0..1, rock brightness
 float4 Det     : register(c9);   // terraindetailfx= strength, near repeat, far repeat (world units), fade distance
 sampler2D Detail : register(s6); // terraindetail= (make_terrain_detail.py): R fine, G coarse, 0.5 = no change
+#ifndef TERRAIN_SHADOW
+#define TERRAIN_SHADOW 1   // gravel/rock self-shadow in the relief step (0 = off)
+#endif
+#define SHADOW_RISE 4.0     // how fast the ray toward the sun climbs (per texture unit, in brightness)
 
 struct In
 {
@@ -219,6 +223,22 @@ float4 main(In I) : COLOR
 			c.rgb *= 1 + fine * Fx2.x * 0.8;
 			float3 L = normalize(float3(-0.55, -0.4, 0.73));
 			c.rgb *= saturate(1 + (dot(nt, L) - L.z) * 1.6);
+#if TERRAIN_SHADOW
+			// self-shadow (10-12): walk 2 steps from this texel toward the same sun over the layer's
+			// brightness read as height; a brighter (higher) stone in the way, above the rising ray,
+			// shades this spot, so gravel and rock get small cast shadows on their sun-away side
+			float h0 = dot(tex2Dbias(Layer1, float4(I.U1, 0, 3.0)).rgb, lum3);
+			float under = 0;
+			float2 at = I.U1;
+			float rise = h0;                                  // the ray's height, running
+			for (int j = 0; j < 2; j++)                       // stepped by adding: no new constants
+			{                                                  // (ps_2_a has 2 constant registers left)
+				at += L.xy * e * 2;
+				rise += e * (SHADOW_RISE * 2);
+				under = max(under, dot(tex2Dbias(Layer1, float4(at, 0, 3.0)).rgb, lum3) - rise);
+			}
+			c.rgb *= 1 - saturate(Fx2.x) * saturate(under * 4);
+#endif
 		}
 		if (Fx2.z > 0)
 		{
