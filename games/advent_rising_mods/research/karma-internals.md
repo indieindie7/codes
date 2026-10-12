@@ -268,3 +268,17 @@ a null joint, a NaN body, and the joint separation per bone.
 ## Tested in game (2026-10-08)
 - **The one-byte KFreezeRagdoll patch (push 2 -> push 0) is harmful.** With it, a frozen ragdoll loses its pose and stands back up in its animation (heads 121-130 units over the floor after the freeze, in prints and in corpselist). Without it, ModReact's script hold (PHYS_None once the body is PHYS_Falling with no world collision) keeps bodies lying (heads -6 to 8 over the floor). karmafix.c stays in AdventNative behind `[AdventMod.ModGore] bKarmaFreezeFix`, default False.
 - **The Epic-style .ka** (mass 0.2, twist 1.57, from make_ka.py) works: soldiers fall and lie flat, with no crash in two kills per run.
+
+## Ragdoll posing and bone directors (10-11, for R4 corpse jiggle)
+
+- `postKarmaStep_skeletal` (0x10411a70) does not write the pose itself: per body bone it calls the
+  instance's bone controllers (vtbl 0x110 / 0x114, by the ref bone's FName from mesh+0x1dc, stride
+  0x40). So a ragdoll is posed by the normal `GetFrame` hierarchy walk.
+- `KInitSkeletonKarma` (0x10412b20) sets instance +0x1b4 = 1. `GetFrame` reads +0x1b4 only to take
+  the ref pose (not the animation) as the base for each bone. Instance vtbl 0x138 is `GetFrame`.
+- `GetFrame`'s bone loop is 0x105637a0..0x105643d5 (count = instance +0xb8). The director loop sits
+  inside it with no ragdoll check: array instance +0x138, count +0x13c, entry stride 0x3c, matched to
+  the bone by FName at entry +0, skipped when alpha (entry +0x30) is not above the constant at
+  0x106af06c; Space 99 calls the world-spacer at entry +0x38 (call at 0x1056427c).
+- So world-spacer callbacks should still run on ragdolls; jiggle.c's probe (wt9 0b51fc2) checks
+  why R4's corpse springs stop.
