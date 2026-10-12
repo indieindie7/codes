@@ -925,6 +925,7 @@ static HRESULT WINAPI CompileHook(const char *src, UINT len, const void *defs, v
             _snwprintf(path, MAX_PATH, L"%ls\\HydroWater_shader%ld.hlsl", g_dir, d);
             if ((f = _wfopen(path, L"wb")) != NULL) { fwrite(mod, 1, n, f); fclose(f); }
         }
+        if (wet && g_wet_patched < 2) Log("wet surfaces: compiling a deferred shader (%u bytes, flags %08lx)", (unsigned)n, (unsigned long)flags);
         hr = g_orig_compile(mod, (UINT)n, defs, inc, fn, prof, flags, shader, &e, ctab);
         if (hr >= 0) {
             free(mod);
@@ -1903,6 +1904,49 @@ int hw_test_install(void) { return Install(); }
 void hw_test_mode(int mode) { cfg.mode = mode; }
 #endif
 
+/* ---------------------------------------------------------------- crash log */
+/* the first few access violations go to the log with the module and offset of the fault and of the
+   return addresses found on the stack, so a crash report says where it happened */
+static const char *ModOff(DWORD a, DWORD *off)
+{
+    static char name[4][64];
+    static int r;
+    HMODULE m = NULL;
+    char path[MAX_PATH], *s, *n = name[r++ & 3];
+    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)(uintptr_t)a, &m) || !m) return NULL;
+    if (!GetModuleFileNameA(m, path, sizeof path)) return NULL;
+    s = strrchr(path, '\\');
+    snprintf(n, 64, "%s", s ? s + 1 : path);
+    *off = a - (DWORD)(uintptr_t)m;
+    return n;
+}
+
+static LONG WINAPI CrashLog(EXCEPTION_POINTERS *ep)
+{
+    static volatile LONG seen;
+    DWORD code = ep->ExceptionRecord->ExceptionCode, off = 0, *sp;
+    const char *m;
+    char line[1024];
+    int i, n = 0, o;
+    if ((code != EXCEPTION_ACCESS_VIOLATION && code != 0xC0000374u) || InterlockedIncrement(&seen) > 8) return EXCEPTION_CONTINUE_SEARCH;
+    m = ModOff((DWORD)(uintptr_t)ep->ExceptionRecord->ExceptionAddress, &off);
+    o = snprintf(line, sizeof line, "exception %08lx at %s+%lx (thread %lu), stack:", (unsigned long)code, m ? m : "?", (unsigned long)off, GetCurrentThreadId());
+#ifdef _M_IX86
+    sp = (DWORD *)(uintptr_t)ep->ContextRecord->Esp;
+#else
+    sp = NULL;
+#endif
+    for (i = 0; sp && i < 256 && n < 16 && o < (int)sizeof line - 80; i++) {
+        DWORD v;
+        if (IsBadReadPtr(sp + i, 4)) break;
+        v = sp[i];
+        if (v < 0x10000 || !(m = ModOff(v, &off)) || off < 0x1000) continue;
+        o += snprintf(line + o, sizeof line - o, " %s+%lx", m, (unsigned long)off); n++;
+    }
+    Log("%s", line);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 /* ---------------------------------------------------------------- entry */
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
 {
@@ -1916,6 +1960,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         if (p) *p = 0;
         Log("HydroWater mod loaded into %ls (exe base %p)", g_dir, (void *)GetModuleHandleW(NULL));
         ReadIni();
+        AddVectoredExceptionHandler(0, CrashLog);
         CreateThread(NULL, 0, Installer, NULL, 0, NULL);
     }
     else if (reason == DLL_PROCESS_DETACH) {
