@@ -51,6 +51,17 @@ Destruction look (user 10-11, video il-TXbn5iMA, Mike Turitzin's dynamic SDF eng
    separate things, his main lesson). Start with craters on walls/floors from explosions;
    compare against `decal_parallax` and the blood-fluid parallax plan. Real breakables stay
    destruction item 7 (pre-broken mesh swap).
+16. Parallax that writes depth (user 10-11, video TUAyiCswYt4, Crimson Desert: most likely
+   silhouette parallax occlusion mapping). Our `decal_parallax.hlsl` and the world parallax only
+   shift the colour: the depth they show never reaches the depth buffer, so edges stay flat, SSAO,
+   fog, SSR and the SDF craters see a flat wall, and the effect holds at any distance. Steps:
+   (a) output the marched depth (`DEPTH` register; ps_2_0 has oDepth) where the parallax hit lands,
+   only on draws that write depth (decals usually don't: then feed the hit depth to the fork's
+   kept depth copy instead); (b) silhouettes: `clip()` pixels whose march leaves the texture's
+   0..1 range at a decal/surface edge, so edges show real notches; (c) fade the depth scale and
+   step count with distance (full near, flat past ~1500 u), which also saves cost. Check
+   that early-Z is lost only on the parallax draws. Pairs with item 15: a crater's rim can then
+   use the same depth.
 Maybe later: rain wetness (lower roughness outdoors from a top-down depth map), lens drops.
 Animation ideas (video 52Zw5eHHjgQ, Skyrim "Fluid Motion"): smooth path following (no
 stop-and-go when fleeing), landing crouch, speed-synced legs, per-leg IK on surfaces for
