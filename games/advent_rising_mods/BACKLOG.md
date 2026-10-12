@@ -71,6 +71,22 @@ Animation ideas (video 52Zw5eHHjgQ, Skyrim "Fluid Motion"): smooth path followin
 stop-and-go when fleeing), landing crouch, speed-synced legs, per-leg IK on surfaces for
 hounds (extends ModFeet). Comments: big leans and bendy player legs read as goofy, so keep subtle.
 
+## Try later: rendering ideas from Threat Interactive + GI talks (10-12)
+Source and per-video notes: research/threat-interactive-videos.md. Cheapest / most likely first:
+1. **Narrow SMAA T2x**: blend only this frame's and last frame's SMAA output, temporal blend only
+   inside the SMAA edge mask, small resolve. Compare against our TAA (light share 0.1).
+2. **GI cascades upsample**: weight by plane distance + normal; one jittered probe pixel per
+   16x16 tile accumulated through TAA; reject samples whose visibility test fails (leaks);
+   YCoCg box clamp on the history.
+3. **GTAO** (skips directly lit pixels) plus a small-radius HBAO-style pass against halos;
+   temporal filter instead of a wide blur; Kawase blur for bloom and AO denoise.
+4. **Floor SSR**: stretch reflections by view angle and roughness (Frostbite NFS 2015).
+5. **Surface shaders**: few texture taps (fetch-bound), BC1/BC3, height in DXT5 alpha;
+   Burley/Oren-Nayar diffuse + smooth terminator in replaced shaders.
+6. **Post**: GT tone curve; auto exposure from diffuse-only luminance; LOD dither fades jittered
+   per object (two-position alternation is stable without TAA).
+7. **Shadows**: ~30% more shadow texel density than on-screen size; floors out of the caster pass.
+
 ## Destruction and gore still missing (feasible, cheapest first)
 
 Sources: `research/black-ps2-destruction.md` (ranked list) and `GORE-DESIGN.md` ("Still to do").
