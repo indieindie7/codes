@@ -1,0 +1,10 @@
+<!-- branch of skill drawing-to-building (root: ~/.claude/skills/drawing-to-building/SKILL.md); paths are relative to the skill folder -->
+## Steps
+1. **Page -> crops.** PDF: `pdf2png.ps1 -pdf <f> -outDir <d>`. Crop each part's views (front/side/top/angled) by hand into `crop_<part>_<view>.png`; the angled sketch of the whole thing = `crop_whole.png`.
+2. **Colour the views** (pen outlines alone build sticks/slabs): write `shapes.json` polygons per view (wall, wall2 = shaded side, roof, chimney, post, dark), `flat_colour.py shapes.json colour\`.
+3. **Build parts** (GPU, ~2-3 min each): `img2shape_mv.py out2\<part>.glb front=colour\<part>_front.png right=colour\<part>_side.png`.
+4. **Depth pass on the angled sketch** (CPU, seconds): `house_depth.py crop_whole.png depth\` (Depth Anything V2 Small relative = good on ink; metric Indoor = mushy). Pick corners by eye into `depth\points.json` (peak, eaveL/N/R, midL/N/R = floor line between storeys, botL/N/R, awning tops, chim). `depth\measure2.py` -> `measure.json`: walls are square, so the two walls' depth slopes give the turn (k^2*gf*gs=1, phi=atan(k*gf); 41.3 deg on housePlan1); widths = pixel width / cos or sin(phi); heights from pixels; all as ratios to the ground storey. A full 3D plane fit from sketch depth (measure.py) FAILED - don't retry.
+5. **Paint each part from its own elevations** (before resizing - the measured sizes no longer match the elevations): `project_drawings.py out2\<part>.glb tex\<part>_drawn.glb tex\views_<part>.json`.
+6. **Assemble at measured sizes:** `assemble_measured.py -- tex\house_staged.glb tex\B_drawn.glb tex\F_drawn.glb tex\A_drawn.glb depth\measure.json` (ground storey = 3 m; B on top; one awning per wall at the near corner). House-specific: new buildings need their own placement lines.
+7. **Angled sketch over it:** `project_drawings.py tex\house_staged.glb tex\house_drawn2.glb tex\views_angled.json keep=0.2` (yaw/pitch from step 4, e.g. 41/10). Its windows/hatching win where it sees the wall squarely; elevations fill the rest.
+8. **Look:** `turn_view.py -- <png> <glbs> n=8 size=320 color=texture`.
