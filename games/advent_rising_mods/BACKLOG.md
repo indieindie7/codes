@@ -27,11 +27,30 @@ Then graphics (`UE4-RENDER-IDEAS.md`, d3d8to9 fork, each off by default):
 7. Small checks: MSAA edges vs our screen passes, linear-light MSAA resolve (video SxCMaTEoBoI).
 8. Shadow caching (user 10-11, video Ls4QS3F8rJU): first measure what the game's own shadows
    cost per frame; then keep static shadows cached instead of redrawn each frame, and leave
-   floors/terrain out of the shadow pass where they can't cast onto anything.
+   floors/terrain out of the shadow pass where they can't cast onto anything. Fox Engine trick
+   (video aB5qxp6SPPQ): per-draw cull flip, floors front-face culled, characters back-face
+   (front-face culling on faces gives light leaks/glow).
 9. Geometric specular AA (user 10-11, video jNR5EiqA05c): Vlachos-style roughness boost from
    normal derivatives (ddx/ddy, a few lines) in the pbr shaders, so shiny edges stop sparkling.
 10. Normal/roughness mip pre-filtering (same video): an offline texture pass that widens
    roughness where a normal map's mips average out its bumps, so distant surfaces don't shimmer.
+Fox Engine / MGSV (user 10-11, video aB5qxp6SPPQ):
+11. SSAO blur in one fetch: pack depth next to AO in the same target, so the bilateral blur
+   reads both with one sample.
+12. Rough SSR: blur reflections through a mip chain picked by roughness; stencil-mask the sky
+   out of the trace.
+13. One resolve pass: fog + AO + GT tonemap merged into a single full-screen pass, then the
+   colour grade as a LUT lookup (fewer full-screen passes).
+14. Shadow cascade edges: noise-dither the cascade blend so the seams stop banding.
+Destruction look (user 10-11, video il-TXbn5iMA, Mike Turitzin's dynamic SDF engine):
+15. SDF craters, wanted as a better replacement for our parallax holes ("our parallax system is
+   not that great"). Each hit/blast adds an SDF edit (sphere/capsule carve) in a small list; a
+   fork pass ray-marches the edits against the depth buffer and redraws the pixels inside as a
+   crater with a fake interior (own normals, depth-correct, lit, rim and debris shading).
+   Visual only: no see-through holes, game collision unchanged (visual hole and physics hole are
+   separate things, his main lesson). Start with craters on walls/floors from explosions;
+   compare against `decal_parallax` and the blood-fluid parallax plan. Real breakables stay
+   destruction item 7 (pre-broken mesh swap).
 Maybe later: rain wetness (lower roughness outdoors from a top-down depth map), lens drops.
 Animation ideas (video 52Zw5eHHjgQ, Skyrim "Fluid Motion"): smooth path following (no
 stop-and-go when fleeing), landing crouch, speed-synced legs, per-leg IK on surfaces for
