@@ -103,7 +103,7 @@ var config float RunSize;                            // a run region's width (wo
 var config float RunChance;                          // the share of wall sprays that run
 var int NextLive;
 var config bool bLivePools;
-var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long
+var config float LivePour, LivePourSecs;            // how much blood a body gives its pool, over how long (0.7: 1.4 spread too wide, user 10-11)
 var config float RegionSize;                        // a live sheet covers a floor square this wide: every body in it pours into the same sheet (pools run together, prints everywhere in it)
 // bloody footprints: whoever walks through blood (a live pool, a fresh floor mark, a body) leaves prints for FootprintSteps steps
 var Material FootTex[3], AlienFootTex[3];           // fresh, fading, nearly gone (the right boot)
@@ -3191,7 +3191,7 @@ defaultproperties
      DropSize=0.150000
      DripReach=2000.000000
      DropPour=0.040000
-     LivePour=1.400000
+     LivePour=0.700000
      LivePourSecs=2.600000
      RegionSize=640.000000
      PoolFrames(0)=Texture'AdventMod.Blood.BloodPoolF0'
