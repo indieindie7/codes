@@ -65,7 +65,9 @@ static struct {
     float wake_length;  /* length (world units) of each arm at full speed */
     float splotch;      /* big slow patches that break up wide thin foam: 0 = off, 1 = default */
     float foam_normals; /* foam lit as if raised (Crest's foam-gradient normals): 0 = off, 1 = default, at most 2 */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f };
+    float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
+    float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -145,6 +147,8 @@ static void ReadIni(void)
         else if (!_stricmp(k, "wake_length")) cfg.wake_length = (float)atof(v);
         else if (!_stricmp(k, "splotch")) cfg.splotch = (float)atof(v);
         else if (!_stricmp(k, "foam_normals")) cfg.foam_normals = (float)atof(v);
+        else if (!_stricmp(k, "wet")) cfg.wet = (float)atof(v);
+        else if (!_stricmp(k, "wet_dry")) cfg.wet_dry = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
@@ -188,6 +192,7 @@ typedef struct foam_snap {
     BYTE *flowu, *flowv;        /* w*h each: flow direction times streak amount, 128 + 127 x (-1..1) */
     BYTE *dye;                  /* w*h: the dye carried by the flow (world texture alpha only; the mesh has no free channel) */
     BYTE *crest;                /* w*h: crest glow, how far the surface stands above its neighbours (world texture only) */
+    float *surf;                /* w*h: water surface height (bed + depth, the sheet's up axis), -1e30 where dry */
     float fmax;         /* largest shown foam since the last stats line (0..1, after foam_strength) */
     unsigned fcells;    /* cell-steps with shown foam above 0.1 since the last stats line */
     float ox, oy, dx;   /* world position of cell (0,0) and cell size, copied each step (the sheet may be freed on a level change) */
@@ -247,14 +252,14 @@ static bridge *Find(uint32_t *S, int w, int h)
             hw_foam_params fp;
             float *f = &fp.foam_gain;   /* the first seven floats, in FOAM_KEYS order */
             int n;
-            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * 7);
+            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * (7 + sizeof(float)));
             hw_get_foam_params(b->hw, &fp);
             for (n = 0; n < 7; n++) if (cfg.foam_p[n] >= 0.0f) f[n] = cfg.foam_p[n];
             if (cfg.foam_p[7] >= 0.0f) fp.spray_rate = cfg.foam_p[7];   /* drops aren't drawn in the game yet: 0 by default */
             if (cfg.foam_p[8] >= 0.0f) fp.dye_gain = cfg.foam_p[8];
             if (cfg.foam_p[9] >= 0.0f) fp.dye_life = cfg.foam_p[9];
             hw_set_foam_params(b->hw, &fp);
-            if (sn) { sn->w = w; sn->h = h; sn->foam = (BYTE *)(sn + 1); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; sn->dye = sn->flowv + (size_t)w * h; sn->crest = sn->dye + (size_t)w * h; }
+            if (sn) { sn->w = w; sn->h = h; sn->surf = (float *)(sn + 1); sn->foam = (BYTE *)(sn->surf + (size_t)w * h); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; sn->dye = sn->flowv + (size_t)w * h; sn->crest = sn->dye + (size_t)w * h; }
             b->snap = sn;
         }
         Log("sheet %p: %d x %d cells (stride %u), dx %.1f g %.1f cfl %.2f, now on HydroWater (%d sheets)",
@@ -274,7 +279,7 @@ static void CopyPlane(float *dst, int dstride, const float *src, int sstride, in
 static volatile LONG g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheets;
 static const uint32_t *g_mesh_seen[256];
 static volatile LONG g_shader_calls, g_shader_water_noanchor;
-static volatile LONG g_foam_patched, g_foam_failed, g_foam_dumps;
+static volatile LONG g_foam_patched, g_foam_failed, g_foam_dumps, g_wet_patched;
 static volatile LONG g_body_foam;   /* steps where a moving body added foam, since the last stats line */
 static float g_body_vmax;           /* Kate's top speed over any sheet since the last stats line */
 static float g_kate_h, g_kate_bed, g_kate_depth;   /* her height and the bed and depth under her at the last foam add */
@@ -432,6 +437,8 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                 }
                 {   float y = py[(j + 2) * hs + i + 2];
                     sn->dye[j * w + i] = (BYTE)(y <= 0.0f ? 0 : y >= 1.0f ? 255 : (int)(y * 255.0f + 0.5f)); }
+                {   int c = (j + 2) * hs + i + 2;
+                    sn->surf[j * w + i] = pd[c] > 0.5f ? pd[c] + pb[c] : -1e30f; }
                 {   /* crest glow: the surface above the mean of its wet neighbours, 1 - exp(-bump / crest_height) */
                     int c = (j + 2) * hs + i + 2, nb[4], q, nw = 0;
                     float e = 0.0f, g = 0.0f;
@@ -651,8 +658,8 @@ static int Install(void)
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHD.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheTD.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHE.bin";
+static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheTE.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -786,6 +793,44 @@ static const char FOAM_TEX_LINE[] =
     "    refractionColour.rgb *= 1.0f - 0.15f * hwSl;\n"
     "    specularStrength *= 1.0f + 0.5f * saturate(hwSl);\n"
     "  }\n";
+/* wet surfaces: the deferred shaders that know their world position all end with this call; the mark
+   the water left (s15 right half alpha, decoded with c219 = (lowest mark, mark range, up sign, strength))
+   darkens the albedo and raises the gloss below it, fading over 25 units */
+static const char WET_ANCHOR[] = "\tDS_WriteColour( wv, specularStrength";
+static const char WET_NEED[] = "float4 vertexPosition = vIn.m_vVertexPosition;";
+static const char WET_GLOBALS[] = "float4 hwWet : register(c219);\n";
+static const char WET_HLSL[] =
+    "  { /* HydroWater wet surfaces: darker and glossier below the high-water mark */\n"
+    "    float2 hwWu = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
+    "    if (hwWet.w > 0.0f && hwWu.x > 0.0f && hwWu.x < 1.0f && hwWu.y > 0.0f && hwWu.y < 1.0f) {\n"
+    "      float hwWa = tex2Dlod(hwFoamTex, float4(0.5f + hwWu.x * 0.5f, hwWu.y, 0.0f, 0.0f)).a * 255.0f;\n"
+    "      float hwWm = hwWet.x + (hwWa - 1.0f) * (1.0f / 254.0f) * hwWet.y;\n"
+    "      float hwWt = hwWa > 0.5f ? saturate((hwWm - hwWet.z * vertexPosition.z) * (1.0f / 25.0f)) * hwWet.w : 0.0f;\n"
+    "      diffuseMapSample.rgb *= 1.0f - 0.4f * hwWt;\n"
+    "      specularStrength = lerp(specularStrength, saturate(specularStrength * 1.5f + 0.3f), hwWt);\n"
+    "      specularPower *= 1.0f + 0.5f * hwWt;\n"
+    "    }\n"
+    "  }\n"
+    ;
+
+__attribute__((used)) char *hw_wet_inject(const char *src, size_t len, size_t *outlen)
+{
+    size_t na = sizeof WET_ANCHOR - 1, ng = sizeof FOAM_TEX_GLOBALS - 1, nw = sizeof WET_GLOBALS - 1, nh = sizeof WET_HLSL - 1, o;
+    const char *q = FindN(src, len, WET_ANCHOR, na);
+    char *out;
+    if (!q || FindN(q + na, len - (size_t)(q + na - src), WET_ANCHOR, na) || !FindN(src, len, WET_NEED, sizeof WET_NEED - 1)
+        || FindN(src, len, "vReflectionSample", 17)) return NULL;
+    out = (char *)malloc(ng + nw + len + nh + 1);
+    if (!out) return NULL;
+    memcpy(out, FOAM_TEX_GLOBALS, ng); memcpy(out + ng, WET_GLOBALS, nw); o = ng + nw;
+    memcpy(out + o, src, (size_t)(q - src)); o += (size_t)(q - src);
+    memcpy(out + o, WET_HLSL, nh); o += nh;
+    memcpy(out + o, q, len - (size_t)(q - src)); o += len - (size_t)(q - src);
+    out[o] = 0;
+    *outlen = o;
+    return out;
+}
+
 int g_inject_tex;   /* set by CompileHook for ps_3_0 shaders when the world foam texture is on */
 
 /* FOAM_HLSL with line `at` replaced by `with` (or `with` appended after it when keep is set) */
@@ -843,8 +888,10 @@ static HRESULT WINAPI CompileHook(const char *src, UINT len, const void *defs, v
     typedef void *(WINAPI *Ptr_t)(void *);
     size_t n = 0, srclen = len ? len : (src ? strlen(src) : 0);
     char *mod;
+    int wet = 0;
     g_inject_tex = cfg.foam_tex && prof && !strcmp(prof, "ps_3_0");
     mod = (cfg.opts.foam && src) ? hw_foam_inject(src, srclen, &n) : NULL;
+    if (!mod && g_inject_tex && cfg.opts.foam && cfg.wet > 0.0f && src && (mod = hw_wet_inject(src, srclen, &n)) != NULL) wet = 1;
     if (cfg.foam_dump >= 2 && src && prof && prof[0] == 'p') {   /* foam_dump 2: every pixel shader, to find splice anchors */
         static volatile LONG all;
         LONG d = InterlockedIncrement(&all);
@@ -882,12 +929,13 @@ static HRESULT WINAPI CompileHook(const char *src, UINT len, const void *defs, v
         if (hr >= 0) {
             free(mod);
             if (errs) *errs = e; else ReleaseCom(&e);
-            if (InterlockedIncrement(&g_foam_patched) <= 3) Log("foam shader patched (%s %s)", fn ? fn : "?", prof ? prof : "?");
+            if (wet) { if (InterlockedIncrement(&g_wet_patched) <= 2) Log("wet surfaces: deferred shader patched (%s %s)", fn ? fn : "?", prof ? prof : "?"); }
+            else if (InterlockedIncrement(&g_foam_patched) <= 3) Log("foam shader patched (%s %s)", fn ? fn : "?", prof ? prof : "?");
             return hr;
         }
         if (InterlockedIncrement(&g_foam_failed) <= 3) {
             const char *msg = e ? (const char *)((Ptr_t)(*(void ***)e)[3])(e) : NULL;   /* ID3DXBuffer::GetBufferPointer */
-            Log("foam shader did not compile (%08lx, %s %s), the game's water is kept: %.600s", (unsigned long)hr,
+            Log("%s shader did not compile (%08lx, %s %s), the game's shader is kept: %.600s", wet ? "wet" : "foam", (unsigned long)hr,
                 fn ? fn : "?", prof ? prof : "?", msg ? msg : "(no message)");
         }
         ReleaseCom(&e);
@@ -1431,6 +1479,37 @@ static IDirect3DTexture9 *g_foam_tex;
 static IDirect3DDevice9 *g_foam_tex_dev;
 static volatile LONG g_foam_tex_logged;
 
+/* wet surfaces: per texel of the world texture, the highest water surface seen (the sheet's up axis),
+ * sinking by wet_dry units a second so walls dry from the top and floors after the water has gone.
+ * g_wet_lo is the last surface seen there; a mark 80 below it is dropped. Kate carries her own mark
+ * (how far above her the water was) out of the water, so she stays wet and leaves a wet trail. */
+static float *g_wet_m, *g_wet_lo;
+static float g_wet_x0, g_wet_y0, g_wet_cell, g_wet_sink, g_kate_wet = -1e30f, g_kate_surf = -1e30f;
+static int g_kate_k = -1;   /* Kate's texel this frame, and (g_kate_surf) the highest water surface in it */
+static DWORD g_wet_tick;
+
+static void WetRemap(float x0, float y0, float cell)
+{
+    float *m, *lo;
+    int i, j;
+    if (g_wet_m && x0 == g_wet_x0 && y0 == g_wet_y0 && cell == g_wet_cell) return;
+    m = (float *)malloc(sizeof(float) * FOAM_TEX_N * FOAM_TEX_N * 2);
+    if (!m) return;
+    lo = m + FOAM_TEX_N * FOAM_TEX_N;
+    for (j = 0; j < FOAM_TEX_N; j++)
+        for (i = 0; i < FOAM_TEX_N; i++) {   /* the old marks, nearest texel, so a change of the sheet set keeps them */
+            int k = j * FOAM_TEX_N + i, oi, oj;
+            m[k] = lo[k] = -1e30f;
+            if (!g_wet_m || !(g_wet_cell > 0.0f)) continue;
+            oi = (int)floorf((x0 + (i + 0.5f) * cell - g_wet_x0) / g_wet_cell);
+            oj = (int)floorf((y0 + (j + 0.5f) * cell - g_wet_y0) / g_wet_cell);
+            if (oi < 0 || oj < 0 || oi >= FOAM_TEX_N || oj >= FOAM_TEX_N) continue;
+            m[k] = g_wet_m[oj * FOAM_TEX_N + oi]; lo[k] = g_wet_lo[oj * FOAM_TEX_N + oi];
+        }
+    free(g_wet_m);
+    g_wet_m = m; g_wet_lo = lo; g_wet_x0 = x0; g_wet_y0 = y0; g_wet_cell = cell;
+}
+
 static void FoamTexUpdate(IDirect3DDevice9 *dev)
 {
     float x0 = 1e30f, y0 = 1e30f, x1 = -1e30f, y1 = -1e30f, cell = 0.0f, inv, xf[4];
@@ -1464,6 +1543,20 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     if ((x1 - x0) / FOAM_TEX_N > cell) cell = (x1 - x0) / FOAM_TEX_N;
     if ((y1 - y0) / FOAM_TEX_N > cell) cell = (y1 - y0) / FOAM_TEX_N;
     inv = 1.0f / cell;
+    if (cfg.wet > 0.0f) {
+        float dt = g_wet_tick ? (float)(now - g_wet_tick) * 0.001f : 0.0f, sink;
+        int k;
+        if (dt > 0.5f) dt = 0.5f;
+        g_wet_tick = now;
+        WetRemap(x0, y0, cell);
+        sink = g_wet_sink = (cfg.wet_dry > 0.0f ? cfg.wet_dry : 0.0f) * dt;
+        {   const float *kp = KatePos();
+            int ki = kp ? (int)((kp[0] - x0) * inv) : -1, kj = kp ? (int)((kp[1] - y0) * inv) : -1;
+            g_kate_k = ki >= 1 && kj >= 1 && ki < FOAM_TEX_N - 1 && kj < FOAM_TEX_N - 1 ? kj * FOAM_TEX_N + ki : -1;
+            g_kate_surf = -1e30f; }
+        if (g_wet_m) for (k = 0; k < FOAM_TEX_N * FOAM_TEX_N; k++)
+            if (g_wet_m[k] > -1e29f) { g_wet_m[k] -= sink; if (g_wet_m[k] < g_wet_lo[k] - 80.0f) g_wet_m[k] = -1e30f; }
+    }
     if (IDirect3DTexture9_LockRect(g_foam_tex, 0, &lr, NULL, 0) == D3D_OK) {
         for (j = 0; j < FOAM_TEX_N; j++) {
             memset((BYTE *)lr.pBits + (size_t)j * lr.Pitch, 0, FOAM_TEX_N * 4);
@@ -1494,10 +1587,50 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                         if (nu * nu + nv * nv > ou * ou + ov * ov) { fl[2] = (BYTE)(nu + 128); fl[1] = (BYTE)(nv + 128); }
                         if (128 + (sn->crest[j * sn->w + i] >> 1) > fl[0]) fl[0] = (BYTE)(128 + (sn->crest[j * sn->w + i] >> 1));   /* B: crest glow */
                     }
+                    if (g_wet_m && cfg.wet > 0.0f && sn->surf[j * sn->w + i] > -1e29f) {   /* the high-water mark */
+                        int k = ty * FOAM_TEX_N + tx;
+                        float sf = sn->surf[j * sn->w + i];
+                        if (sf > g_wet_m[k]) g_wet_m[k] = sf;
+                        g_wet_lo[k] = sf;
+                        if (k == g_kate_k && sf > g_kate_surf) g_kate_surf = sf;
+                    }
                 }
             }
         }
+        if (g_wet_m && cfg.wet > 0.0f) {
+            const float *kp = KatePos();
+            float zlo = 1e30f, zhi = -1e30f, sc;
+            int k;
+            if (kp) {   /* Kate: how far above her the water reaches, carried out of the water and sinking like a mark */
+                int ki = (int)((kp[0] - x0) * inv), kj = (int)((kp[1] - y0) * inv), di, dj;
+                float kh = -kp[2];
+                if (ki >= 1 && kj >= 1 && ki < FOAM_TEX_N - 1 && kj < FOAM_TEX_N - 1) {
+                    if (g_kate_wet > -1e29f) g_kate_wet -= g_wet_sink;
+                    if (g_kate_surf > -1e29f && g_kate_surf - kh > g_kate_wet) g_kate_wet = g_kate_surf - kh;   /* real water only, not her own trail */
+                    if (g_kate_wet > 400.0f) g_kate_wet = 400.0f;
+                    if (g_kate_wet > -150.0f)
+                        for (dj = -1; dj <= 1; dj++)
+                            for (di = -1; di <= 1; di++) {
+                                int q = (kj + dj) * FOAM_TEX_N + ki + di;
+                                if (kh + g_kate_wet > g_wet_m[q]) { g_wet_m[q] = kh + g_kate_wet; if (g_wet_lo[q] < -1e29f) g_wet_lo[q] = kh - 150.0f; }
+                            }
+                }
+            }
+            for (k = 0; k < FOAM_TEX_N * FOAM_TEX_N; k++)
+                if (g_wet_m[k] > -1e29f) { if (g_wet_m[k] < zlo) zlo = g_wet_m[k]; if (g_wet_m[k] > zhi) zhi = g_wet_m[k]; }
+            if (zhi < zlo) { zlo = 0.0f; zhi = 1.0f; }
+            if (zhi - zlo < 1.0f) zhi = zlo + 1.0f;
+            sc = 254.0f / (zhi - zlo);
+            for (j = 0; j < FOAM_TEX_N; j++) {   /* right half alpha: 0 = never wet, 1..255 = the mark from zlo to zhi */
+                BYTE *row = (BYTE *)lr.pBits + (size_t)j * lr.Pitch + FOAM_TEX_N * 4;
+                const float *m = g_wet_m + (size_t)j * FOAM_TEX_N;
+                for (i = 0; i < FOAM_TEX_N; i++) row[i * 4 + 3] = (BYTE)(m[i] > -1e29f ? 1 + (int)((m[i] - zlo) * sc + 0.5f) : 0);
+            }
+            xf[0] = zlo; xf[1] = zhi - zlo; xf[2] = -1.0f;   /* the world z axis points down the sheet's up axis */
+            xf[3] = cfg.wet > 1.5f ? 1.5f : cfg.wet;
+        } else { xf[0] = xf[1] = xf[2] = xf[3] = 0.0f; }
         IDirect3DTexture9_UnlockRect(g_foam_tex, 0);
+        IDirect3DDevice9_SetPixelShaderConstantF(dev, 219, xf, 1);
     }
     ReleaseSRWLockShared(&g_lock);
     xf[0] = x0; xf[1] = y0; xf[2] = 1.0f / (cell * FOAM_TEX_N); xf[3] = xf[2];

@@ -18,6 +18,7 @@ void *hw_test_compile_hook(void);
 void hw_test_mesh_foam(BYTE *job);
 int hw_test_foam_fill(const uint32_t *S, int foam, int air);
 char *hw_foam_inject(const char *src, size_t len, size_t *outlen);
+char *hw_wet_inject(const char *src, size_t len, size_t *outlen);
 
 /* the fake game solver: same prologue as FUN_00d5c9d0, counts calls in sheet[0x90],
    returns dt * 0.5 in xmm0 */
@@ -179,6 +180,38 @@ int main(void)
                 while (f && fgets(line, sizeof line, f)) if (strstr(line, "foam shader patched")) seen = 1;
                 if (f) fclose(f);
                 CHECK(seen, "log says the foam shader was patched (not the fallback)");
+            }
+            {   /* wet surfaces: a G-buffer shader shaped like the game's */
+                static const char gsrc[] =
+                    "float4 g_c;\n"
+                    "void DS_WriteColour( float4 wv, float1 specularStrength, float specularPower, float4 diffuseMapSample, out float4 o0, out float4 o1 )\n"
+                    "{ o0 = diffuseMapSample; o1 = float4( specularStrength, specularPower, 0.0f, 1.0f ); }\n"
+                    "struct PS_INPUT { float4 m_vVertexPosition : TEXCOORD0; };\n"
+                    "struct PS_OUTPUT { float4 a : COLOR0; float4 b : COLOR1; };\n"
+                    "PS_OUTPUT main( PS_INPUT vIn )\n{\n"
+                    "\tfloat4 vertexPosition = vIn.m_vVertexPosition;\n"
+                    "\tfloat4 diffuseMapSample = g_c;\n\tfloat1 specularStrength = 0.2f;\n\tfloat specularPower = 0.5f;\n\tfloat4 wv = g_c;\n"
+                    "\tPS_OUTPUT p;\n"
+                    "\tDS_WriteColour( wv, specularStrength, specularPower, diffuseMapSample, p.a, p.b );\n"
+                    "\treturn p;\n}\n";
+                size_t n1 = 0;
+                char *w = hw_wet_inject(gsrc, sizeof gsrc - 1, &n1);
+                const char *at = w ? strstr(w, "HydroWater wet surfaces") : NULL, *call = w ? strstr(w, "\tDS_WriteColour( wv") : NULL;
+                CHECK(w && at && call && at < call && n1 > sizeof gsrc, "wet block inserted before the G-buffer write");
+                free(w);
+                CHECK(hw_wet_inject(src, sizeof src - 1, &n1) == NULL, "the water shader gets no wet block");
+                shader = errs = ctab = NULL;
+                hr = ((Compile_t)hw_test_compile_hook())(gsrc, sizeof gsrc - 1, NULL, NULL, "main", "ps_3_0", 0, &shader, &errs, &ctab);
+                if (errs) printf("  d3dx: %s\n", (const char *)((void *(WINAPI *)(void *))(*(void ***)errs)[3])(errs));
+                CHECK(hr >= 0 && shader, "wet G-buffer shader compiles for ps_3_0 (%08lx)", (unsigned long)hr);
+                {
+                    FILE *f = _wfopen(L"HydroWater.log", L"r");
+                    char line[512];
+                    int seen = 0;
+                    while (f && fgets(line, sizeof line, f)) if (strstr(line, "wet surfaces: deferred shader patched")) seen = 1;
+                    if (f) fclose(f);
+                    CHECK(seen, "log says the wet shader was patched (not the fallback)");
+                }
             }
         }
     }
