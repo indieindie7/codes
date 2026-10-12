@@ -120,6 +120,12 @@ var Material WallBreaches[3];
 var config bool bBreaches;
 var config int BreachHits, BreachHits2;              // holes within BreachReach that open a breach, and grow it
 var config float BreachReach;
+// SDF craters (BACKLOG graphics 15): breaches and blast craters are also sent to the d3d8 layer
+// as spheres, which cuts them into the surface on screen with a real-looking inside (fork
+// craters.hpp/craters.hlsl, needs craters= in U2Shaders.ini). Visual only: collision unchanged.
+var config bool bSdfCraters;
+var config bool bSdfBulletHoles;                    // every wall/floor hit too (small holes)
+var config float CraterScale;                       // size of the SDF holes
 var array<vector> HoleAt, HoleNorm;
 var array<float> HoleTime;
 struct BreachState
@@ -277,6 +283,7 @@ event PostBeginPlay()
 	Super.PostBeginPlay();
 	if (Level.Game == None)
 		return;
+	class'ModSettings'.static.NativeCall("Blood:craterclear");    // the last level's holes
 	// clamped, not tiled: a projector wider than its picture would repeat it
 	for (i = 0; i < 4; i++)
 	{
@@ -1695,6 +1702,8 @@ function ShotGone(vector Loc, vector Vel)
 			if (bBreaches)
 				WallHit(HitL, HitN);
 		}
+		if (bSdfCraters && bSdfBulletHoles)
+			SdfCrater(HitL, HitN, 5 * (0.8 + 0.4 * FRand()), -1);
 		if (bImpactSmoke)
 			ImpactPuff(HitL, HitN);
 		if (FRand() < BurnChance)
@@ -1758,6 +1767,8 @@ function Breach(vector Spot, vector N, int Lvl)
 	local Emitter E;
 
 	AddDirt(WallBreaches[Rand(3)], Spot, N, DecalScale * (Lvl >= 2 ? 0.68 : 0.42) * (0.9 + 0.2 * FRand()), 900);
+	if (bSdfCraters)
+		SdfCrater(Spot, N, (Lvl >= 2 ? 30 : 18) * (0.9 + 0.2 * FRand()), -0.3);
 	for (i = 0; i < 3 * Lvl; i++)
 		Chips(Spot, N);
 	if (RockFx == None)
@@ -1782,6 +1793,16 @@ function Breach(vector Spot, vector N, int Lvl)
 	}
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("dirt: breach level " $ Lvl $ " at " $ Spot);
+}
+
+// an SDF hole (see bSdfCraters): a sphere of radius R * CraterScale on the surface at Spot,
+// its centre Lift * radius off the surface (negative: deeper than wide; positive: a bowl)
+function SdfCrater(vector Spot, vector N, float R, float Lift)
+{
+	R *= CraterScale;
+	class'ModSettings'.static.NativeCall("Blood:crater " $ Spot.X $ " " $ Spot.Y $ " " $ Spot.Z $ " " $ N.X $ " " $ N.Y $ " " $ N.Z $ " " $ R $ " " $ (Lift * R));
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("dirt: sdf crater r " $ int(R) $ " at " $ Spot);
 }
 
 // a shot's puff of dust and smoke out of where it landed (near the player only, as the marks)
@@ -2098,6 +2119,8 @@ function BlastMarks(vector Loc, float Radius)
 		AddDirt(CraterTex, HitL, HitN, DecalScale * FClamp(Radius / 260.0, 0.9, 2.2), 600);
 		AddDirt(RubbleTex, HitL + VRand() * vect(1,1,0) * 40, HitN, DecalScale * 1.6, 600);
 		ThrowRubble(HitL, HitN, Radius);
+		if (bSdfCraters)
+			SdfCrater(HitL, HitN, FClamp(Radius * 0.3, 40, 120), 0.35);
 	}
 	// cracks where the blast reached a wall or the ceiling
 	for (i = 0; i < 6; i++)
@@ -3250,6 +3273,7 @@ defaultproperties
      BreachHits=3
      BreachHits2=7
      BreachReach=28.000000
+     CraterScale=1.000000
      WallBreaches(0)=Texture'AdventMod.Dirt.WallBreach0'
      WallBreaches(1)=Texture'AdventMod.Dirt.WallBreach1'
      WallBreaches(2)=Texture'AdventMod.Dirt.WallBreach2'
