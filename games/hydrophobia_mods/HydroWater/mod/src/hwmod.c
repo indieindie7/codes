@@ -63,7 +63,8 @@ static struct {
     float crest_height; /* how far (world units) a crest stands above its neighbours to glow about two thirds of full */
     float wake;         /* V wake behind Kate (Kelvin angle arms of foam): 0 = off, 1 = default */
     float wake_length;  /* length (world units) of each arm at full speed */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f };
+    float splotch;      /* big slow patches that break up wide thin foam: 0 = off, 1 = default */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -141,6 +142,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "crest_height")) cfg.crest_height = (float)atof(v);
         else if (!_stricmp(k, "wake")) cfg.wake = (float)atof(v);
         else if (!_stricmp(k, "wake_length")) cfg.wake_length = (float)atof(v);
+        else if (!_stricmp(k, "splotch")) cfg.splotch = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
@@ -647,8 +649,8 @@ static int Install(void)
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHA.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheTA.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHB.bin";
+static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheTB.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -665,6 +667,7 @@ static const char FOAM_HLSL[] =
     "  float2 hwV = float2(0.0f, 0.0f);\n"
     "  float hwDy = 0.0f;\n"
     "  float hwCr = 0.0f;\n"
+    "  float hwSp = 0.0f;\n"
     "  float3 hwDyC = float3(0.0f, 0.0f, 0.0f);\n"
     "  float hwA = saturate(1.0f - vertexColour.g);\n"
     "  float2 hwP = vertexPosition.xy * (1.0f / 34.0f);\n"
@@ -682,6 +685,11 @@ static const char FOAM_HLSL[] =
     "  }\n"
     "  float hwN2 = HW_VN(hwP * 2.7f + float2(17.0f, 5.0f));\n"
     "  float hwLace = saturate(0.65f * (1.0f - abs(hwN1 - 0.5f) * 2.0f) + 0.35f * hwN2);\n"
+    "  if (hwSp > 0.0f) { /* splotch mask: big slow patches thin the lace so wide foam fields are not even;\n"
+    "     thick foam (F above 0.6) is left whole */\n"
+    "    float hwM = smoothstep(0.2f, 0.7f, HW_VN(hwP * 0.11f + float2(71.0f, 23.0f)));\n"
+    "    hwF *= lerp(1.0f, 0.3f + 0.7f * hwM, hwSp * (1.0f - saturate((hwF - 0.6f) * 2.5f)));\n"
+    "  }\n"
     "  float hwCov = saturate((hwF * 1.25f - (1.0f - hwLace)) * (1.0f / 0.08f));\n"
     "  hwCov = max(hwCov, saturate((hwF - 0.7f) * 4.0f)) * saturate(hwF * 6.0f);\n"
     "  float hwLum = dot(vRefractionSample.rgb + vReflectionSample.rgb, float3(0.299f, 0.587f, 0.114f));\n"
@@ -719,7 +727,7 @@ static const char FOAM_F_LINE[] = "  float hwF = saturate(1.0f - vertexColour.r)
 static const char FOAM_F_TEST[] = "  float hwF = pow(0.5f + 0.5f * sin((vertexPosition.x + vertexPosition.y) * 0.02f), 2.0f);\n";
 static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g);\n";
 /* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
-/* c222 = (seconds, ripple strength, crest glow on, 0), c221 = (dye colour, dye strength) */
+/* c222 = (seconds, ripple strength, crest glow on, splotch strength), c221 = (dye colour, dye strength) */
 static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\n";
 static const char FOAM_TEX_LINE[] =
     "  float2 hwU = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
@@ -727,6 +735,7 @@ static const char FOAM_TEX_LINE[] =
     "  float4 hwFl = tex2Dlod(hwFoamTex, float4(0.5f + hwU.x * 0.5f, hwU.y, 0.0f, 0.0f));\n"
     "  hwV = hwFl.rg * 2.0f - 1.0f;\n"
     "  hwCr = saturate(hwFl.b * 2.0f - 1.0f) * hwTime.z;\n"
+    "  hwSp = hwTime.w;\n"
     "  hwF = max(hwF, hwT.r);\n"
     "  hwA = max(hwA, hwT.g);\n"
     "  hwD = max(hwD, hwT.b);\n"
@@ -1462,7 +1471,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 223, xf, 1);
-    xf[0] = (float)(GetTickCount() % 600000u) * 0.001f; xf[1] = cfg.ripples; xf[2] = cfg.crest_glow > 0.0f ? 1.0f : 0.0f; xf[3] = 0.0f;
+    xf[0] = (float)(GetTickCount() % 600000u) * 0.001f; xf[1] = cfg.ripples; xf[2] = cfg.crest_glow > 0.0f ? 1.0f : 0.0f; xf[3] = cfg.splotch > 1.0f ? 1.0f : cfg.splotch < 0.0f ? 0.0f : cfg.splotch;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 222, xf, 1);
     xf[0] = cfg.dye_colour[0]; xf[1] = cfg.dye_colour[1]; xf[2] = cfg.dye_colour[2]; xf[3] = cfg.dye;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 221, xf, 1);
