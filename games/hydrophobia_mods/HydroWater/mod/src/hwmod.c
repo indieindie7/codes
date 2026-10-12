@@ -566,17 +566,17 @@ static int Install(void)
 /* ---------------------------------------------------------------- stage 7: the foam shader
  * The game composes its shaders as HLSL text at run time and compiles them through its
  * D3DXCompileShader import. That import slot is pointed at CompileHook, which looks for the end
- * of the water's reflect/refract pixel code (FOAM_ANCHOR) and adds the foam after it: lace from
- * two octaves of value noise on the world position, coverage growing with the foam the mesh
- * carries in red, the foam lit from the scene behind it, and milky water where green says there
- * is air. If the patched text fails to compile, the original is compiled instead.
+ * of the water's reflect/refract pixel code (FOAM_ANCHOR) and adds the foam after it: a lace
+ * web of value noise on the world position sets a threshold that the foam the mesh carries in
+ * red pushes past, giving opaque bright foam with crisp edges over the water, lit from the
+ * scene, and slightly lighter water where green says there is air. If the patched text fails to compile, the original is compiled instead.
  * Compiled shaders are cached in shaderCacheDX.bin, which would keep the unpatched water; with
  * foam on, the exe's file name string is changed to shaderCacheHW.bin (same length) before the
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH4.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT4.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH5.bin";
+static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT5.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -585,23 +585,24 @@ static const char FOAM_DEFS[] =
     "lerp(HW_H(floor(p) + float2(0.0f, 1.0f)), HW_H(floor(p) + float2(1.0f, 1.0f)), smoothstep(0.0f, 1.0f, frac(p).x)), smoothstep(0.0f, 1.0f, frac(p).y))\n"
     "#endif\n";
 static const char FOAM_HLSL[] =
-    "{ /* HydroWater foam */\n"
+    "{ /* HydroWater foam: opaque bright foam laid over the water with crisp feathered edges (the threshold\n"
+    "     idea of Crest, MIT), no grey tint on what is seen through it; aerated water a little lighter */\n"
     "  float hwF = saturate(1.0f - vertexColour.r);\n"
     "  float hwA = saturate(1.0f - vertexColour.g);\n"
-    "  float2 hwP = vertexPosition.xy * (1.0f / 10.0f);\n"
-    "  float hwN = 0.6f * HW_VN(hwP) + 0.4f * HW_VN(hwP * 0.4f + float2(17.0f, 5.0f));\n"
-    "  float hwLace = lerp(1.0f - abs(hwN - 0.5f) * 2.0f, diffuseMapSample.x, 0.2f);\n"
-    "  float hwCov = saturate((hwF * 1.7f - (1.0f - hwLace)) * (1.0f / 0.22f)) * saturate(hwF * 8.0f);\n"
-    "  hwCov = max(hwCov, saturate((hwF - 0.55f) * 3.0f));\n"
-    "  hwCov = max(hwCov, hwF * 0.2f) * 0.8f;\n"
+    "  float2 hwP = vertexPosition.xy * (1.0f / 34.0f);\n"
+    "  float hwN1 = HW_VN(hwP);\n"
+    "  float hwN2 = HW_VN(hwP * 2.7f + float2(17.0f, 5.0f));\n"
+    "  float hwLace = saturate(0.65f * (1.0f - abs(hwN1 - 0.5f) * 2.0f) + 0.35f * hwN2);\n"
+    "  float hwCov = saturate((hwF * 1.25f - (1.0f - hwLace)) * (1.0f / 0.08f));\n"
+    "  hwCov = max(hwCov, saturate((hwF - 0.7f) * 4.0f)) * saturate(hwF * 6.0f);\n"
     "  float hwLum = dot(vRefractionSample.rgb + vReflectionSample.rgb, float3(0.299f, 0.587f, 0.114f));\n"
-    "  float3 hwFoam = lerp(float3(0.8f, 0.85f, 0.85f), vFogColour.rgb, 0.25f) * clamp(0.2f + 0.5f * hwLum, 0.2f, 0.7f);\n"
-    "  float hwGrey = dot(refractionColour.rgb, float3(0.333f, 0.333f, 0.334f));\n"
-    "  refractionColour.rgb = lerp(refractionColour.rgb, hwGrey * float3(0.85f, 1.0f, 1.0f) + 0.1f, hwA * 0.65f);\n"
+    "  float hwLit = clamp(0.45f + 0.9f * hwLum, 0.45f, 1.15f);\n"
+    "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 1.0f), vFogColour.rgb, 0.12f) * hwLit * (0.85f + 0.15f * hwN2);\n"
+    "  refractionColour.rgb = lerp(refractionColour.rgb, refractionColour.rgb * 0.8f + float3(0.06f, 0.11f, 0.11f) * hwLit, hwA * 0.5f);\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwFoam, hwCov);\n"
-    "  reflectionColour *= 1.0f - 0.6f * hwCov;\n"
+    "  reflectionColour *= 1.0f - 0.9f * hwCov;\n"
     "  specularStrength *= 1.0f - hwCov;\n"
-    "  diffuseMapSample.a = max(diffuseMapSample.a, hwCov * 0.5f);\n"
+    "  diffuseMapSample.a = max(diffuseMapSample.a, hwCov * 0.95f);\n"
     "}\n";
 
 typedef HRESULT (WINAPI *Compile_t)(const char *, UINT, const void *, void *, const char *, const char *, DWORD, void **, void **, void **);
