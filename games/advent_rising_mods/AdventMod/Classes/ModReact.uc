@@ -430,15 +430,12 @@ function Flinch(Pawn P, vector HitLocation, vector Dir, int Damage, optional boo
 	local FlinchState F;
 	local float A;
 
-	// the flesh swings away from the hit (ModJiggle, JIGGLE.md)
-	if (!bCorpse)
-	{
-		if (Jiggle == None)
-			foreach DynamicActors(class'ModJiggle', Jiggle)
-				break;
-		if (Jiggle != None)
-			Jiggle.Hit(P, Dir, Damage);
-	}
+	// the flesh swings away from the hit (ModJiggle, JIGGLE.md; a corpse only while bCorpseJiggle keeps it hooked)
+	if (Jiggle == None)
+		foreach DynamicActors(class'ModJiggle', Jiggle)
+			break;
+	if (Jiggle != None)
+		Jiggle.Hit(P, Dir, Damage);
 	BestD = 1000000;
 	Best = -1;
 	for (i = 0; i < 12; i++)
@@ -1383,6 +1380,20 @@ function WatchRagdolls(float DeltaTime)
 		{
 			Tension(i, DeltaTime);
 			Steer(i, DeltaTime);
+			// the Seeker's flesh lets go with its torso (ModJiggle corpses, TENSION.md part 3)
+			if (Ragdolls[i].bSeeker)
+			{
+				if (Jiggle == None)
+					foreach DynamicActors(class'ModJiggle', Jiggle)
+						break;
+				if (Jiggle != None)
+				{
+					if (Ragdolls[i].bLimp)
+						Jiggle.SetTension(P, 0);
+					else
+						Jiggle.SetTension(P, Ragdolls[i].A[0]);
+				}
+			}
 			if (Ragdolls[i].bLimp && class'ModSettings'.default.bGoreLog)
 				class'ModSettings'.static.Note("react: tension " $ P $ " limp at t " $ Ragdolls[i].T);
 		}

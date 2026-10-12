@@ -60,6 +60,8 @@ static LARGE_INTEGER Freq;
 
 /* config */
 static float GlobalGain = 1.0f, MaxAccel = 30000.0f;
+/* corpses (TENSION.md part 3): relaxed flesh is softer and swings more; a part that hits the floor wobbles */
+static float LimpStiff = 0.35f, LimpGain = 0.5f, LandDrop = 150.0f, LandStrength = 1.5f;
 static int LogOn;
 
 /* the bone FCoords convention (as footik.c): 1 = rows are basis vectors, 2 = rows of the rotation */
@@ -82,6 +84,8 @@ typedef struct {
 	LARGE_INTEGER LastT;
 	float AmpMax, AmpSum; int AmpN; /* log */
 	Vec Impulse;                    /* pending hit impulse (parent frame, rad/s) */
+	float LandWait;                 /* seconds before another landing kick */
+	float LastSpeed; Vec LastVel;   /* last step's velocity, for the landing test */
 } JBone;
 
 typedef struct {
@@ -91,6 +95,9 @@ typedef struct {
 	int NB;
 	JBone B[16];
 	int Calls, Faults;
+	int Corpse;                     /* 1: keep springing in a ragdoll (JiggleCorpse) */
+	float A;                        /* torso tension 0..1 (JiggleTension), 1 = alive */
+	int Lands;
 	double SolveUs;
 	DWORD LastLog;
 } JPawn;
@@ -285,7 +292,7 @@ static void Spring(JPawn* P, JBone* B, FCoords* Ret, const FCoords* Cur, void* I
 	BoneParam* K = B->P;
 	Mat3 Rp;
 	Vec c, centre, cw, a, al, drive;
-	float M[16], dt, len, l2;
+	float M[16], dt, len, l2, kk, gg;
 	LARGE_INTEGER Now;
 	int sub, n;
 	*Ret = *Cur;
@@ -320,7 +327,31 @@ static void Spring(JPawn* P, JBone* B, FCoords* Ret, const FCoords* Cur, void* I
 	/* into the parent's frame: a_l = Rp^T a_mesh */
 	al = DirToMesh(M, a);
 	al = MV(Tr(Rp), al);
-	drive = Mul(Cross(c, Mul(al, -1.0f)), K->Gain * GlobalGain / l2);
+	/* a corpse letting go: the spring softens and the drive grows as the tension falls */
+	kk = K->K * (LimpStiff + (1 - LimpStiff) * P->A);
+	gg = K->Gain * (1 + LimpGain * (1 - P->A));
+	{
+		drive = Mul(Cross(c, Mul(al, -1.0f)), gg * GlobalGain / l2);
+		/* the landing: the part lost more than LandDrop u/s in one step (it hit the floor), so the
+		   flesh keeps going the way it was moving */
+		if (P->Corpse && dt > 0)
+		{
+			B->LandWait -= dt;
+			if (B->History >= 2 && B->LandWait <= 0 && B->LastSpeed - Len(B->VelW) > LandDrop)
+			{
+				float drop = B->LastSpeed - Len(B->VelW);
+				Vec dl = MV(Tr(Rp), DirToMesh(M, B->LastVel));
+				if (Len(dl) > 1e-6f)
+				{
+					dl = Mul(dl, 1.0f / Len(dl));
+					B->Impulse = Add(B->Impulse, Mul(Cross(c, dl), LandStrength * fminf(drop / 300.0f, 2.0f) / (sqrtf(l2) + 1e-3f)));
+					B->LandWait = 0.25f;
+					P->Lands++;
+				}
+			}
+			B->LastSpeed = Len(B->VelW); B->LastVel = B->VelW;
+		}
+	}
 	/* the impulse of a hit */
 	if (Len(B->Impulse) > 0) { B->Omega = Add(B->Omega, B->Impulse); B->Impulse = V(0, 0, 0); }
 	/* integrate (semi-implicit Euler, substeps so a stiff spring stays stable) */
@@ -331,7 +362,7 @@ static void Spring(JPawn* P, JBone* B, FCoords* Ret, const FCoords* Cur, void* I
 		for (sub = 0; sub < n; sub++)
 		{
 			float h = dt / n;
-			Vec acc = Sub(Sub(drive, Mul(B->Theta, K->K)), Mul(B->Omega, K->D));
+			Vec acc = Sub(Sub(drive, Mul(B->Theta, kk)), Mul(B->Omega, K->D));
 			B->Omega = Add(B->Omega, Mul(acc, h));
 			B->Theta = Add(B->Theta, Mul(B->Omega, h));
 		}
@@ -366,7 +397,7 @@ static void LogPawn(JPawn* P)
 		swprintf(Line + wcslen(Line), 60, L" %ls %.1f/%.1f", B->P ? B->P->Name : L"?", B->AmpN ? B->AmpSum / B->AmpN * 57.2958f : 0.0f, B->AmpMax * 57.2958f);
 		B->AmpSum = 0; B->AmpN = 0; B->AmpMax = 0;
 	}
-	Note(L"jiggle: %ls: %d callbacks, %.1f us each, faults %d; amplitude mean/max (deg):%ls", P->Name, P->Calls, P->Calls ? P->SolveUs / P->Calls : 0.0, P->Faults, Line);
+	Note(L"jiggle: %ls: %d callbacks, %.1f us each, faults %d, corpse %d A %.2f lands %d; amplitude mean/max (deg):%ls", P->Name, P->Calls, P->Calls ? P->SolveUs / P->Calls : 0.0, P->Faults, P->Corpse, P->A, P->Lands, Line);
 	P->Calls = 0; P->SolveUs = 0;
 }
 
@@ -377,7 +408,7 @@ static FCoords* Solve(FCoords* Ret, void* Owner, int Bone, int Dir, void* Inst)
 	LARGE_INTEGER T0, T1;
 	int i;
 	if (!P || !Cur || P->Actor != Owner) { Identity(Ret, Inst, Bone); return Ret; }
-	if (*((BYTE*)Owner + 0x55) == 0xF || (*(DWORD*)((BYTE*)Owner + 0x34) & 0x80)) { *Ret = *Cur; return Ret; }
+	if ((*((BYTE*)Owner + 0x55) == 0xF && !P->Corpse) || (*(DWORD*)((BYTE*)Owner + 0x34) & 0x80)) { *Ret = *Cur; return Ret; }
 	QueryPerformanceCounter(&T0);
 	P->Calls++;
 	for (i = 0; i < P->NB; i++) if (P->B[i].Bone == Bone) { Spring(P, &P->B[i], Ret, Cur, Inst); break; }
@@ -464,7 +495,7 @@ static int Install(const wchar_t* Arg)
 		if (!B->P) { Note(L"jiggle: %ls: no parameters for %ls (JiggleBone first)", Name, bn); return 0; }
 		P->NB++;
 	}
-	P->Active = 1;
+	P->Active = 1; P->A = 1;
 	for (i = 0; i < P->NB; i++)
 		if (!Hook(P, &P->B[i], WorldSpacer, 1.0f)) { P->Active = 0; return 0; }
 	if (LogOn) Note(L"jiggle: hooked %ls (%ls): %d bones, %d posed", Name, Class, P->NB, *(int*)((BYTE*)Inst + 0xB8));
@@ -536,6 +567,46 @@ static int BoneCmd(const wchar_t* Arg)
 	return 1;
 }
 
+/* JiggleCorpse <name> <class> <on>: keep springing after the pawn goes ragdoll */
+static int CorpseCmd(const wchar_t* Arg)
+{
+	wchar_t Name[48], Class[48];
+	int on, i;
+	if (swscanf(Arg, L"%47s %47s %d", Name, Class, &on) != 3) return 0;
+	for (i = 0; i < NPawns; i++)
+		if (Pawns[i].Active && !_wcsicmp(Pawns[i].Name, Name))
+		{
+			Pawns[i].Corpse = on;
+			if (LogOn) Note(L"jiggle: %ls corpse %d", Name, on);
+			return 1;
+		}
+	return 0;
+}
+
+/* JiggleTension <name> <class> <A>: the torso's tension, 1 alive .. 0 limp */
+static int TensionCmd(const wchar_t* Arg)
+{
+	wchar_t Name[48], Class[48];
+	float a;
+	int i;
+	if (swscanf(Arg, L"%47s %47s %f", Name, Class, &a) != 3) return 0;
+	for (i = 0; i < NPawns; i++)
+		if (Pawns[i].Active && !_wcsicmp(Pawns[i].Name, Name))
+		{
+			Pawns[i].A = a < 0 ? 0 : a > 1 ? 1 : a;
+			return 1;
+		}
+	return 0;
+}
+
+/* JiggleLimp <stiff> <gain> <drop> <land>: the corpse parameters */
+static int LimpCmd(const wchar_t* Arg)
+{
+	if (swscanf(Arg, L"%f %f %f %f", &LimpStiff, &LimpGain, &LandDrop, &LandStrength) != 4) return 0;
+	Note(L"jiggle: corpses: stiff x%.2f when limp, gain +%.2f, landing at %.0f u/s drop, kick %.2f", LimpStiff, LimpGain, LandDrop, LandStrength);
+	return 1;
+}
+
 static int Config(const wchar_t* Arg)
 {
 	float g, ma; int lg;
@@ -551,6 +622,9 @@ int JiggleCommand(const wchar_t* Cmd)
 	if (!_wcsnicmp(Cmd, L"JiggleBone ", 11)) return BoneCmd(Cmd + 11);
 	if (!_wcsnicmp(Cmd, L"JiggleOff ", 10)) return Remove(Cmd + 10);
 	if (!_wcsnicmp(Cmd, L"JiggleHit ", 10)) return HitCmd(Cmd + 10);
+	if (!_wcsnicmp(Cmd, L"JiggleCorpse ", 13)) return CorpseCmd(Cmd + 13);
+	if (!_wcsnicmp(Cmd, L"JiggleTension ", 14)) return TensionCmd(Cmd + 14);
+	if (!_wcsnicmp(Cmd, L"JiggleLimp ", 11)) return LimpCmd(Cmd + 11);
 	if (!_wcsnicmp(Cmd, L"Jiggle ", 7)) return Install(Cmd + 7);
 	return 0;
 }

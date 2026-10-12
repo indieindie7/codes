@@ -13,6 +13,10 @@
 // 20 damage), MaxAccel (units/s^2 the driver is clamped to), bRelink (Seeker infantry in range
 // get LinkMesh to the jiggle mesh, once each), bJiggleSkin (the filled skin on Skins[0] when the
 // build carried it), the Over* arrays.
+// Corpses (TENSION.md part 3): bCorpseJiggle keeps a dead Seeker's springs going in its ragdoll for
+// CorpseTime seconds; ModReact sends the torso's tension (SetTension), and as it falls the springs
+// soften (LimpStiff) and swing more (LimpGain); a part that stops by more than LandDrop u/s in one
+// step (the floor) gets a kick of LandStrength.
 //=============================================================================
 class ModJiggle extends Info
 	config(AdventMod);
@@ -31,12 +35,17 @@ var config float OverK[16];
 var config float OverD[16];
 var config float OverGain[16];
 var config float OverMaxDeg[16];
+var config bool bCorpseJiggle;
+var config float CorpseTime, LimpStiff, LimpGain, LandDrop, LandStrength;
 
 struct Hooked
 {
 	var Pawn P;
 	var bool bHooked;
 	var int Tries;
+	var bool bCorpse;           // dead and still springing
+	var float DeadT;            // seconds since it died
+	var float SentA;            // the tension last sent
 };
 var array<Hooked> Hooks;
 var float SweepWait;
@@ -91,6 +100,8 @@ function bool SendConfig()
 
 	if (!class'ModSettings'.static.NativeCall("JiggleConfig " $ Gain $ " " $ Eval2(bJiggleLog, "1", "0") $ " " $ MaxAccel))
 		return false;
+	if (bCorpseJiggle && !class'ModSettings'.static.NativeCall("JiggleLimp " $ LimpStiff $ " " $ LimpGain $ " " $ LandDrop $ " " $ LandStrength))
+		class'ModSettings'.static.Note("jiggle: the DLL has no JiggleLimp (an old AdventNative.dll?): corpses stay as they were");
 	for (i = 0; i < class'ModJiggleBones'.default.Count; i++)
 	{
 		K = class'ModJiggleBones'.default.K[i] * StiffScale;
@@ -205,6 +216,47 @@ function Release(int i)
 	if (Hooks[i].bHooked && Hooks[i].P != None && !Hooks[i].P.bDeleteMe)
 		class'ModSettings'.static.NativeCall("JiggleOff " $ Hooks[i].P.Name $ " " $ Hooks[i].P.Class.Name);
 	Hooks[i].bHooked = false;
+	Hooks[i].bCorpse = false;
+}
+
+// a hooked Seeker died: its springs keep going in the ragdoll, for CorpseTime seconds
+function bool Corpse(int i, float Dt)
+{
+	local Pawn P;
+
+	P = Hooks[i].P;
+	if (!bCorpseJiggle || P.Health > 0 || P.Mesh != JMesh)
+		return false;
+	Hooks[i].DeadT += Dt;
+	if (Hooks[i].DeadT > CorpseTime)
+		return false;
+	if (!Hooks[i].bCorpse && P.Physics == PHYS_KarmaRagdoll)
+	{
+		if (!class'ModSettings'.static.NativeCall("JiggleCorpse " $ P.Name $ " " $ P.Class.Name $ " 1"))
+			return false;
+		Hooks[i].bCorpse = true;
+		Hooks[i].SentA = 1;
+	}
+	// a death clip first, then the ragdoll: hold on while it plays; any other state lets go
+	return Hooks[i].bCorpse || P.Physics == PHYS_Walking || P.Physics == PHYS_Falling || P.Physics == PHYS_RootMotion || P.Physics == PHYS_KarmaRagdoll;
+}
+
+// the torso's tension from ModReact's powered ragdoll (1 alive .. 0 limp)
+function SetTension(Pawn P, float A)
+{
+	local int i;
+
+	if (!bCorpseJiggle || !bNativeOk)
+		return;
+	for (i = 0; i < Hooks.Length; i++)
+		if (Hooks[i].P == P && Hooks[i].bCorpse)
+		{
+			if (Abs(A - Hooks[i].SentA) < 0.05 && !(A == 0 && Hooks[i].SentA != 0))
+				return;
+			Hooks[i].SentA = A;
+			class'ModSettings'.static.NativeCall("JiggleTension " $ P.Name $ " " $ P.Class.Name $ " " $ A);
+			return;
+		}
 }
 
 function Sweep()
@@ -248,7 +300,7 @@ function Sweep()
 			Hooks.Remove(i, 1);
 			continue;
 		}
-		if (Hooks[i].bHooked && !Alive(Hooks[i].P))
+		if (Hooks[i].bHooked && !Alive(Hooks[i].P) && !Corpse(i, 0.5))
 			Release(i);
 	}
 }
@@ -293,4 +345,10 @@ defaultproperties
      MaxAccel=30000.000000
      bRelink=True
      bJiggleSkin=False
+     bCorpseJiggle=False
+     CorpseTime=8.000000
+     LimpStiff=0.350000
+     LimpGain=0.500000
+     LandDrop=150.000000
+     LandStrength=1.500000
 }
