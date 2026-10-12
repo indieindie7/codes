@@ -17,7 +17,7 @@ float4    Combine : register(c2);  // x: vertex colour factor, y: stage 1 factor
 float4    Levels  : register(c3);  // the texture's surface brightness, deepest brightness, 0, 1 = measured
 float4    Light   : register(c8);  // xyz: towards the light, camera space; w: shadow strength (0 = off)
 
-#define DEPTH 0.05                 // how deep the deepest part looks, as a fraction of the
+#define DEPTH 0.12                 // how deep the deepest part looks, as a fraction of the
                                    // texture's size on the wall (one repeat): 0.04 of a 512-unit
                                    // tile is 20 units; the same on any texture scale
 #define STEPS 8                    // search steps into the surface
@@ -25,7 +25,7 @@ float4    Light   : register(c8);  // xyz: towards the light, camera space; w: s
 #define FLAT_ABOVE 0.45            // brightness at or above this is the surface itself
 #define DEEP_BELOW 0.12            // brightness at or below this is the deepest
 #define HEIGHT_BLUR 1.0            // read the height from a smaller mip: smooths texture noise
-#define CAVITY 0.3                 // how much darker the deepest parts are (0-1)
+#define CAVITY 0.45                // how much darker the deepest parts are (0-1)
 #define LIFT       1.0              // rock_tone grading: brightness of the texture
 #define DESAT      0.0              // 0 = the game's colour, 1 = grey
 #define TINT       float3(1, 1, 1)   // warm sandstone, not orange
@@ -33,7 +33,7 @@ float4    Light   : register(c8);  // xyz: towards the light, camera space; w: s
 #define FADE_START 1500.0          // distance (world units) where the effect starts to fade
 #define FADE_END 4000.0            // and where it is gone (far away it only shimmers)
 #define SHADOW_STEPS 6             // steps from the hit towards the light (0 = no self-shadow)
-#define SHADOW_SOFT 4.0            // how fast the shadow gets dark with depth under the height map
+#define SHADOW_SOFT 10.0           // how fast the shadow gets dark with depth under the height map
 
 float DepthOf(float2 uv, float2 levels)
 {
