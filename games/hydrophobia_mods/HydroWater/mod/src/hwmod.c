@@ -61,7 +61,9 @@ static struct {
     float dye_colour[3]; /* its colour (murky silt by default) */
     float crest_glow;   /* light through the thin tops of waves (Sea of Thieves): 0 = off, 1 = default */
     float crest_height; /* how far (world units) a crest stands above its neighbours to glow about two thirds of full */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f };
+    float wake;         /* V wake behind Kate (Kelvin angle arms of foam): 0 = off, 1 = default */
+    float wake_length;  /* length (world units) of each arm at full speed */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -137,6 +139,8 @@ static void ReadIni(void)
         else if (!_stricmp(k, "dye")) cfg.dye = (float)atof(v);
         else if (!_stricmp(k, "crest_glow")) cfg.crest_glow = (float)atof(v);
         else if (!_stricmp(k, "crest_height")) cfg.crest_height = (float)atof(v);
+        else if (!_stricmp(k, "wake")) cfg.wake = (float)atof(v);
+        else if (!_stricmp(k, "wake_length")) cfg.wake_length = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
@@ -359,6 +363,22 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                     hw_dye_add(b->hw, x - ox, z - oz, rad, 0.8f * a * dt);   /* silt kicked up by her feet */
                     /* a thinner trail a little behind, so the wake is a streak, not a disc */
                     hw_foam_add(b->hw, x - ox - vx * 0.5f, z - oz - vz * 0.5f, rad * 1.3f, 1.5f * a * dt, 0.5f * a * dt);
+                    if (cfg.wake > 0.0f && cfg.wake_length > 0.0f) {
+                        /* V wake: two arms trailing at the Kelvin angle (19.5 degrees each side of her
+                           heading), longer the faster she goes, thinning toward the tips; each frame's
+                           stamps stay where they land and fade, so the V follows her */
+                        float bx = -vx / (v * dt), bz = -vz / (v * dt), len = cfg.wake_length * (0.4f + 0.6f * a);
+                        float wg = cfg.wake > 1.0f ? 1.0f : cfg.wake;
+                        int k, sd;
+                        for (sd = -1; sd <= 1; sd += 2) {
+                            float ax = 0.9428f * bx - sd * 0.3333f * bz, az = 0.9428f * bz + sd * 0.3333f * bx;
+                            for (k = 1; k <= 5; k++) {
+                                float d = len * k * 0.2f, t = 1.0f - 0.15f * k;
+                                hw_foam_add(b->hw, x - ox + ax * d, z - oz + az * d, rad * (0.5f + 0.1f * k),
+                                            1.2f * wg * a * t * dt, 0.3f * wg * a * t * dt);
+                            }
+                        }
+                    }
                     g_body_foam++;
                     g_kate_h = kp[2];
                     if (ci >= 2 && cj >= 2 && ci < w + 2 && cj < h + 2) { g_kate_bed = gbed[cj * gs + ci]; g_kate_depth = gh[cj * gs + ci]; }
