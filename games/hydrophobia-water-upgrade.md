@@ -320,3 +320,4 @@ Collected from the Crimson Desert water breakdown, the KWS2 videos and Sea of Th
 6. Spray drops drawn as particles from the spray plane (the library already makes it).
 7. Bioluminescent foam as an option (KWS2): foam that glows faintly in the dark scenes.
 8. Foam-gradient normals (Crest, MIT): bend the normal along the foam edge so foam looks raised.
+9. Floaters carried by the flow (FluidNinja demo): debris that drifts with (u, v), and a surface layer (algae, oil) that parts around Kate and closes again, sharing the dye plane of idea 2.
