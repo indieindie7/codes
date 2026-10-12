@@ -113,7 +113,7 @@ int main(void)
     ret = CallXmm(hw_test_target, S, 0.04f);
     CHECK(S[0] == 0 && S[0x43] == 2, "second step flipped back");
 
-    /* stage 7: the step left a foam snapshot; the mesh writer puts it into red/green only */
+    /* stage 7: the step left a foam snapshot; the mesh writer puts it into red/green/blue only */
     {
         BYTE job[0x14], *vb;
         size_t nv = (size_t)(w + 1) * (h + 1), k;
@@ -128,7 +128,8 @@ int main(void)
         CHECK(vb[34] == 0 && vb[33] == 127, "vertex (0,0): R = 255 - foam, G = 255 - air (%u %u)", vb[34], vb[33]);
         k = nv - 1;   /* last vertex maps to the last cell */
         CHECK(vb[k * 36 + 34] == 191 && vb[k * 36 + 33] == 127, "last vertex coloured (%u %u)", vb[k * 36 + 34], vb[k * 36 + 33]);
-        for (k = 0; k < nv * 36; k++) if (k % 36 != 33 && k % 36 != 34 && vb[k] != 0xEE) others = 0;
+        CHECK(vb[32] == 223 && vb[k * 36 + 32] == 223, "blue = 255 - depth tint (%u)", vb[32]);
+        for (k = 0; k < nv * 36; k++) if (k % 36 != 32 && k % 36 != 33 && k % 36 != 34 && vb[k] != 0xEE) others = 0;
         CHECK(others, "no other vertex bytes touched");
         *(uint32_t **)(job + 0xc) = NULL;
         hw_test_mesh_foam(job);   /* no sheet: nothing happens */
