@@ -401,14 +401,49 @@ static void LogPawn(JPawn* P)
 	P->Calls = 0; P->SolveUs = 0;
 }
 
+static FCoords* __cdecl WorldSpacer(FCoords* Ret, void* Owner, int Bone, int Dir, void* Inst);
+
+/* R4 probe: why a corpse's springs stop (callback counts by outcome, and whether the directors survive) */
+static int RawCalls, RejPawn, RejOwner, RejRagdoll, RejDead;
+static DWORD LastProbe;
+
+static void Probe(const wchar_t* Why)
+{
+	DWORD Now = GetTickCount();
+	int i, j;
+	if (!LogOn || Now - LastProbe < 1000) return;
+	LastProbe = Now;
+	Note(L"jiggle probe (%ls): callbacks %d, no pawn %d, other owner %d, ragdoll %d, deleted %d", Why, RawCalls, RejPawn, RejOwner, RejRagdoll, RejDead);
+	for (i = 0; i < NPawns; i++)
+	{
+		JPawn* P = &Pawns[i];
+		BYTE* Dirs; int ND, Ours = 0; float Alpha = -1;
+		if (!P->Corpse) continue;
+		__try
+		{
+			Dirs = *(BYTE**)((BYTE*)P->Inst + 0x138);
+			ND = *(int*)((BYTE*)P->Inst + 0x13C);
+			for (j = 0; Dirs && j < ND; j++)
+				if (*(void**)(Dirs + j * 0x3C + 0x38) == (void*)WorldSpacer) { Ours++; Alpha = *(float*)(Dirs + j * 0x3C + 0x30); }
+			Note(L"jiggle probe: %ls active %d, instance now %p was %p, ragdoll flag %d, physics %d, directors %d (ours %d, alpha %.2f), posed %d", P->Name, P->Active,
+				InstanceOf(P->Actor, NULL), P->Inst, *(int*)((BYTE*)P->Inst + 0x1B4), *((BYTE*)P->Actor + 0x55), ND, Ours, Alpha, *(int*)((BYTE*)P->Inst + 0xB8));
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER) { Note(L"jiggle probe: %ls: fault reading the instance", P->Name); }
+	}
+	RawCalls = RejPawn = RejOwner = RejRagdoll = RejDead = 0;
+}
+
 static FCoords* Solve(FCoords* Ret, void* Owner, int Bone, int Dir, void* Inst)
 {
 	JPawn* P = PawnByInst(Inst);
 	FCoords* Cur = BoneCoords(Inst, Bone);
 	LARGE_INTEGER T0, T1;
 	int i;
-	if (!P || !Cur || P->Actor != Owner) { Identity(Ret, Inst, Bone); return Ret; }
-	if ((*((BYTE*)Owner + 0x55) == 0xF && !P->Corpse) || (*(DWORD*)((BYTE*)Owner + 0x34) & 0x80)) { *Ret = *Cur; return Ret; }
+	RawCalls++;
+	if (!P || !Cur) { RejPawn++; Identity(Ret, Inst, Bone); return Ret; }
+	if (P->Actor != Owner) { RejOwner++; Identity(Ret, Inst, Bone); return Ret; }
+	if (*(DWORD*)((BYTE*)Owner + 0x34) & 0x80) { RejDead++; *Ret = *Cur; return Ret; }
+	if (*((BYTE*)Owner + 0x55) == 0xF && !P->Corpse) { RejRagdoll++; *Ret = *Cur; return Ret; }
 	QueryPerformanceCounter(&T0);
 	P->Calls++;
 	for (i = 0; i < P->NB; i++) if (P->B[i].Bone == Bone) { Spring(P, &P->B[i], Ret, Cur, Inst); break; }
@@ -578,6 +613,7 @@ static int CorpseCmd(const wchar_t* Arg)
 		{
 			Pawns[i].Corpse = on;
 			if (LogOn) Note(L"jiggle: %ls corpse %d", Name, on);
+			LastProbe = 0; Probe(L"corpse");
 			return 1;
 		}
 	return 0;
@@ -594,6 +630,7 @@ static int TensionCmd(const wchar_t* Arg)
 		if (Pawns[i].Active && !_wcsicmp(Pawns[i].Name, Name))
 		{
 			Pawns[i].A = a < 0 ? 0 : a > 1 ? 1 : a;
+			Probe(L"tension");
 			return 1;
 		}
 	return 0;
