@@ -845,6 +845,18 @@ static HRESULT WINAPI CompileHook(const char *src, UINT len, const void *defs, v
     char *mod;
     g_inject_tex = cfg.foam_tex && prof && !strcmp(prof, "ps_3_0");
     mod = (cfg.opts.foam && src) ? hw_foam_inject(src, srclen, &n) : NULL;
+    if (cfg.foam_dump >= 2 && src && prof && prof[0] == 'p') {   /* foam_dump 2: every pixel shader, to find splice anchors */
+        static volatile LONG all;
+        LONG d = InterlockedIncrement(&all);
+        if (d <= 600) {
+            wchar_t path[MAX_PATH];
+            FILE *f;
+            _snwprintf(path, MAX_PATH, L"%ls\\HydroWater_shaders", g_dir);
+            CreateDirectoryW(path, NULL);
+            _snwprintf(path, MAX_PATH, L"%ls\\HydroWater_shaders\\%03ld_%hs.hlsl", g_dir, d, prof);
+            if ((f = _wfopen(path, L"wb")) != NULL) { fwrite(src, 1, srclen, f); fclose(f); }
+        }
+    }
     HRESULT hr;
     InterlockedIncrement(&g_shader_calls);
     if (!mod && src && FindN(src, srclen, "vReflectionSample", 17)) {
