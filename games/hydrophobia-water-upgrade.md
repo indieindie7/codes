@@ -312,7 +312,7 @@ Depth colour (2026-10-11, commit fc81684): each cell's depth gives a tint `depth
 
 Collected from the Crimson Desert water breakdown, the KWS2 videos and Sea of Thieves. Rough order of value per effort:
 
-1. Ripples that follow the flow: scroll the surface normal maps by `(u, v)` with the two-phase reset of stage 11, so rivers and outflows read as moving water even without foam.
+1. (Done 2026-10-11, shading version: three fixed waves carried by the flow, two phases cross-faded, `ripples = 1`; the slope shades the already-sampled reflection and refraction because the patch point comes after the samples. Bending the samples needs the normal code before the anchor, from a `foam_dump`.) Ripples that follow the flow: scroll the surface normal maps by `(u, v)` with the two-phase reset of stage 11, so rivers and outflows read as moving water even without foam.
 2. Dye or blood carried by the flow: a fourth plane in the library, advected like foam with slow decay, written into the free alpha channel of the world texture and tinted in the shader.
 3. Crest glow (Sea of Thieves): light passing through thin wave crests, a green-blue lift where the surface faces the light and the depth is small.
 4. Wakes that stop when the body stops: tie Kate's foam to her speed only (already), and add a V-shaped wake from her heading.

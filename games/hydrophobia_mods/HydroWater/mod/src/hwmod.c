@@ -56,7 +56,8 @@ static struct {
     float depth_scale;  /* depth (world units) at which the tint is about two thirds of full */
     float foam_streaks; /* how strongly foam is drawn as streaks along the flow: 0 = off, 1 = default */
     float streak_speed; /* flow speed (world units/s) at which streaks are about two thirds of full */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f };
+    float ripples;      /* strength of the ripples carried along by the flow: 0 = off, 1 = default */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f };
 static const char *const FOAM_KEYS[8] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -128,6 +129,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "depth_scale")) cfg.depth_scale = (float)atof(v);
         else if (!_stricmp(k, "foam_streaks")) cfg.foam_streaks = (float)atof(v);
         else if (!_stricmp(k, "streak_speed")) cfg.streak_speed = (float)atof(v);
+        else if (!_stricmp(k, "ripples")) cfg.ripples = (float)atof(v);
         else {
             int n;
             for (n = 0; n < 8; n++) if (!_stricmp(k, FOAM_KEYS[n])) cfg.foam_p[n] = (float)atof(v);
@@ -599,8 +601,8 @@ static int Install(void)
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH7.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT7.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH8.bin";
+static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT8.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -665,14 +667,35 @@ static const char FOAM_F_LINE[] = "  float hwF = saturate(1.0f - vertexColour.r)
 static const char FOAM_F_TEST[] = "  float hwF = pow(0.5f + 0.5f * sin((vertexPosition.x + vertexPosition.y) * 0.02f), 2.0f);\n";
 static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g);\n";
 /* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
-static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\n";
+/* c222 = (seconds, ripple strength, 0, 0) */
+static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\n";
 static const char FOAM_TEX_LINE[] =
     "  float2 hwU = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "  float4 hwT = tex2Dlod(hwFoamTex, float4(hwU.x * 0.5f, hwU.y, 0.0f, 0.0f));\n"
     "  hwV = tex2Dlod(hwFoamTex, float4(0.5f + hwU.x * 0.5f, hwU.y, 0.0f, 0.0f)).rg * 2.0f - 1.0f;\n"
     "  hwF = max(hwF, hwT.r);\n"
     "  hwA = max(hwA, hwT.g);\n"
-    "  hwD = max(hwD, hwT.b);\n";
+    "  hwD = max(hwD, hwT.b);\n"
+    "  if (hwTime.y > 0.0f && dot(hwV, hwV) > 0.0025f) {\n"
+    "    /* ripples carried along by the flow: three fixed waves whose pattern moves with (u, v), drawn twice\n"
+    "       half a cycle apart and cross-faded so the pattern can reset without a jump (stage 11). The\n"
+    "       reflection and refraction are already sampled here, so the slope shades them instead of bending them */\n"
+    "    float2 hwRg = float2(0.0f, 0.0f);\n"
+    "    float hwK, hwPh, hwRw;\n"
+    "    float2 hwQ;\n"
+    "    for (hwK = 0.0f; hwK < 1.0f; hwK += 0.5f) {\n"
+    "      hwPh = frac(hwTime.x * 0.5f + hwK);\n"
+    "      hwRw = 1.0f - abs(2.0f * hwPh - 1.0f);\n"
+    "      hwQ = vertexPosition.xy - hwV * (240.0f * hwPh) + hwK * float2(37.0f, 91.0f);\n"
+    "      hwRg += hwRw * (float2(0.8f, 0.6f) * cos(dot(hwQ, float2(0.8f, 0.6f)) * 0.2732f)\n"
+    "        + float2(-0.5f, 0.866f) * cos(dot(hwQ, float2(-0.5f, 0.866f)) * 0.2027f + 1.7f)\n"
+    "        + float2(0.96f, -0.28f) * cos(dot(hwQ, float2(0.96f, -0.28f)) * 0.3696f + 4.1f));\n"
+    "    }\n"
+    "    float hwSl = dot(hwRg, float2(0.6f, 0.8f)) * 0.45f * saturate(length(hwV)) * hwTime.y;\n"
+    "    reflectionColour.rgb *= 1.0f + 0.35f * hwSl;\n"
+    "    refractionColour.rgb *= 1.0f - 0.15f * hwSl;\n"
+    "    specularStrength *= 1.0f + 0.5f * saturate(hwSl);\n"
+    "  }\n";
 int g_inject_tex;   /* set by CompileHook for ps_3_0 shaders when the world foam texture is on */
 
 /* FOAM_HLSL with line `at` replaced by `with` (or `with` appended after it when keep is set) */
@@ -691,7 +714,7 @@ static size_t SpliceLine(char *dst, const char *src, const char *at, const char 
 
 __attribute__((used)) char *hw_foam_inject(const char *src, size_t len, size_t *outlen)
 {
-    static char v1[sizeof FOAM_HLSL + 1024], v2[sizeof FOAM_HLSL + 1024];
+    static char v1[sizeof FOAM_HLSL + sizeof FOAM_F_TEST], v2[sizeof FOAM_HLSL + sizeof FOAM_F_TEST + sizeof FOAM_TEX_LINE];
     size_t na = sizeof FOAM_ANCHOR - 1, nd = sizeof FOAM_DEFS - 1, nh, ng, k = 0, o = 0;
     const char *p = src, *q, *hl = FOAM_HLSL;
     char *out;
@@ -1380,6 +1403,8 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 223, xf, 1);
+    xf[0] = (float)(GetTickCount() % 600000u) * 0.001f; xf[1] = cfg.ripples; xf[2] = xf[3] = 0.0f;
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 222, xf, 1);
     if (InterlockedIncrement(&g_foam_tex_logged) == 1 || g_foam_tex_logged % 2000 == 0)
         Log("foam: world texture over %d sheets, x %.0f..%.0f y %.0f..%.0f, texel %.1f", n, x0, x1, y0, y1, cell);
 }
