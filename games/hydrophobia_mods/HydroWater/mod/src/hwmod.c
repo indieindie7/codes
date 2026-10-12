@@ -48,7 +48,7 @@ static struct {
     int background;     /* keep the game running when its window is not in the foreground */
     int control;        /* poll HydroWater.cmd for test-pilot commands (shot ...) */
     int foam_dump;      /* write the first few foam-patched water shaders next to the DLL (debugging) */
-    float foam_p[8];    /* foam_gain air_gain foam_life lace bubble_rise air_to_foam spread spray_rate; < 0 = library default */
+    float foam_p[10];   /* foam_gain air_gain foam_life lace bubble_rise air_to_foam spread spray_rate dye_gain dye_life; < 0 = library default */
     int foam_test;      /* 1 = paint moving foam bands instead of the simulated foam (to see the look) */
     float foam_strength; /* how strongly thin foam and air show: 0 = linear (the field as is), 2 = default */
     int foam_tex;       /* 1 = foam also from a world-space texture filled from every sheet, so unrebuilt sheets show it */
@@ -57,8 +57,10 @@ static struct {
     float foam_streaks; /* how strongly foam is drawn as streaks along the flow: 0 = off, 1 = default */
     float streak_speed; /* flow speed (world units/s) at which streaks are about two thirds of full */
     float ripples;      /* strength of the ripples carried along by the flow: 0 = off, 1 = default */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f };
-static const char *const FOAM_KEYS[8] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate" };
+    float dye;          /* how strongly the dye carried by the flow tints the water: 0 = off, 1 = default */
+    float dye_colour[3]; /* its colour (murky silt by default) */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f } };
+static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
 static volatile LONG g_presents;    /* IDirect3DDevice9::Present calls (control = 1) */
@@ -130,9 +132,11 @@ static void ReadIni(void)
         else if (!_stricmp(k, "foam_streaks")) cfg.foam_streaks = (float)atof(v);
         else if (!_stricmp(k, "streak_speed")) cfg.streak_speed = (float)atof(v);
         else if (!_stricmp(k, "ripples")) cfg.ripples = (float)atof(v);
+        else if (!_stricmp(k, "dye")) cfg.dye = (float)atof(v);
+        else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
-            for (n = 0; n < 8; n++) if (!_stricmp(k, FOAM_KEYS[n])) cfg.foam_p[n] = (float)atof(v);
+            for (n = 0; n < 10; n++) if (!_stricmp(k, FOAM_KEYS[n])) cfg.foam_p[n] = (float)atof(v);
         }
     }
     fclose(f);
@@ -170,6 +174,7 @@ typedef struct foam_snap {
     int w, h;
     BYTE *foam, *air, *depth;   /* w*h each, cell (i,j) at j*w+i; depth is the tint amount (depth_colour, depth_scale) */
     BYTE *flowu, *flowv;        /* w*h each: flow direction times streak amount, 128 + 127 x (-1..1) */
+    BYTE *dye;                  /* w*h: the dye carried by the flow (world texture alpha only; the mesh has no free channel) */
     float fmax;         /* largest shown foam since the last stats line (0..1, after foam_strength) */
     unsigned fcells;    /* cell-steps with shown foam above 0.1 since the last stats line */
     float ox, oy, dx;   /* world position of cell (0,0) and cell size, copied each step (the sheet may be freed on a level change) */
@@ -229,12 +234,14 @@ static bridge *Find(uint32_t *S, int w, int h)
             hw_foam_params fp;
             float *f = &fp.foam_gain;   /* the first seven floats, in FOAM_KEYS order */
             int n;
-            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * 5);
+            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * 6);
             hw_get_foam_params(b->hw, &fp);
             for (n = 0; n < 7; n++) if (cfg.foam_p[n] >= 0.0f) f[n] = cfg.foam_p[n];
             if (cfg.foam_p[7] >= 0.0f) fp.spray_rate = cfg.foam_p[7];   /* drops aren't drawn in the game yet: 0 by default */
+            if (cfg.foam_p[8] >= 0.0f) fp.dye_gain = cfg.foam_p[8];
+            if (cfg.foam_p[9] >= 0.0f) fp.dye_life = cfg.foam_p[9];
             hw_set_foam_params(b->hw, &fp);
-            if (sn) { sn->w = w; sn->h = h; sn->foam = (BYTE *)(sn + 1); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; }
+            if (sn) { sn->w = w; sn->h = h; sn->foam = (BYTE *)(sn + 1); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; sn->dye = sn->flowv + (size_t)w * h; }
             b->snap = sn;
         }
         Log("sheet %p: %d x %d cells (stride %u), dx %.1f g %.1f cfl %.2f, now on HydroWater (%d sheets)",
@@ -344,6 +351,7 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                     if (a > 1.0f) a = 1.0f;
                     /* foam_add skips dry cells, so walking on a floor over the sheet adds nothing */
                     hw_foam_add(b->hw, x - ox, z - oz, rad, 3.0f * a * dt, 2.0f * a * dt);
+                    hw_dye_add(b->hw, x - ox, z - oz, rad, 0.8f * a * dt);   /* silt kicked up by her feet */
                     /* a thinner trail a little behind, so the wake is a streak, not a disc */
                     hw_foam_add(b->hw, x - ox - vx * 0.5f, z - oz - vz * 0.5f, rad * 1.3f, 1.5f * a * dt, 0.5f * a * dt);
                     g_body_foam++;
@@ -363,7 +371,7 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
            scaled to reach 1 at f = 1 */
         float k = 3.0f * cfg.foam_strength, kn = k > 0.01f ? 1.0f / (1.0f - expf(-k)) : 0.0f;
         float dk = cfg.depth_scale > 1.0f ? 1.0f / cfg.depth_scale : 0.0f, dc = cfg.depth_colour > 1.0f ? 1.0f : cfg.depth_colour;
-        const float *pd = hw_depth(b->hw), *pu = hw_u(b->hw), *pv = hw_v(b->hw);
+        const float *pd = hw_depth(b->hw), *pu = hw_u(b->hw), *pv = hw_v(b->hw), *py = hw_dye(b->hw);
         float sk = cfg.streak_speed > 1.0f ? 1.0f / cfg.streak_speed : 0.0f, sc = cfg.foam_streaks > 1.0f ? 1.0f : cfg.foam_streaks;
         int j;
         for (j = 0; j < h; j++)
@@ -392,6 +400,8 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                     sn->flowu[j * w + i] = (BYTE)(128 + (int)(127.0f * u * m));
                     sn->flowv[j * w + i] = (BYTE)(128 + (int)(127.0f * v * m));
                 }
+                {   float y = py[(j + 2) * hs + i + 2];
+                    sn->dye[j * w + i] = (BYTE)(y <= 0.0f ? 0 : y >= 1.0f ? 255 : (int)(y * 255.0f + 0.5f)); }
             }
         sn->ox = *(const float *)&S[0x1f]; sn->oy = *(const float *)&S[0x20]; sn->dx = *(const float *)&S[4];
         sn->tick = GetTickCount();
@@ -601,8 +611,8 @@ static int Install(void)
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH8.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT8.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheH9.bin";
+static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheT9.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -617,6 +627,8 @@ static const char FOAM_HLSL[] =
     "  float hwF = saturate(1.0f - vertexColour.r);\n"
     "  float hwD = saturate(1.0f - vertexColour.b);\n"
     "  float2 hwV = float2(0.0f, 0.0f);\n"
+    "  float hwDy = 0.0f;\n"
+    "  float3 hwDyC = float3(0.0f, 0.0f, 0.0f);\n"
     "  float hwA = saturate(1.0f - vertexColour.g);\n"
     "  float2 hwP = vertexPosition.xy * (1.0f / 34.0f);\n"
     "  float hwN1 = HW_VN(hwP);\n"
@@ -640,6 +652,7 @@ static const char FOAM_HLSL[] =
     "  float3 hwTr = exp(-float3(2.0f, 0.85f, 0.65f) * hwD);\n"
     "  float3 hwDeep = lerp(float3(0.03f, 0.10f, 0.10f), vFogColour.rgb * 0.5f, 0.3f) * saturate(0.25f + 0.75f * hwLum);\n"
     "  refractionColour.rgb = refractionColour.rgb * hwTr + hwDeep * (1.0f - hwTr.g) * fFresRefr;\n"
+    "  refractionColour.rgb = lerp(refractionColour.rgb, hwDyC * hwLit * fFresRefr, saturate(hwDy) * 0.8f);\n"
     "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 1.0f), vFogColour.rgb, 0.12f) * hwLit * (0.85f + 0.15f * hwN2);\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, refractionColour.rgb * 0.8f + float3(0.06f, 0.11f, 0.11f) * hwLit, hwA * 0.5f);\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwFoam, hwCov);\n"
@@ -667,8 +680,8 @@ static const char FOAM_F_LINE[] = "  float hwF = saturate(1.0f - vertexColour.r)
 static const char FOAM_F_TEST[] = "  float hwF = pow(0.5f + 0.5f * sin((vertexPosition.x + vertexPosition.y) * 0.02f), 2.0f);\n";
 static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g);\n";
 /* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
-/* c222 = (seconds, ripple strength, 0, 0) */
-static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\n";
+/* c222 = (seconds, ripple strength, 0, 0), c221 = (dye colour, dye strength) */
+static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\n";
 static const char FOAM_TEX_LINE[] =
     "  float2 hwU = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "  float4 hwT = tex2Dlod(hwFoamTex, float4(hwU.x * 0.5f, hwU.y, 0.0f, 0.0f));\n"
@@ -676,6 +689,8 @@ static const char FOAM_TEX_LINE[] =
     "  hwF = max(hwF, hwT.r);\n"
     "  hwA = max(hwA, hwT.g);\n"
     "  hwD = max(hwD, hwT.b);\n"
+    "  hwDy = hwT.a * hwDyeCol.a;\n"
+    "  hwDyC = hwDyeCol.rgb;\n"
     "  if (hwTime.y > 0.0f && dot(hwV, hwV) > 0.0025f) {\n"
     "    /* ripples carried along by the flow: three fixed waves whose pattern moves with (u, v), drawn twice\n"
     "       half a cycle apart and cross-faded so the pattern can reset without a jump (stage 11). The\n"
@@ -1383,6 +1398,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                     if (tx < 0 || tx >= FOAM_TEX_N) continue;
                     if (f > row[tx * 4 + 2]) row[tx * 4 + 2] = f;   /* R: foam */
                     if (a > row[tx * 4 + 1]) row[tx * 4 + 1] = a;   /* G: air */
+                    if (sn->dye[j * sn->w + i] > row[tx * 4 + 3]) row[tx * 4 + 3] = sn->dye[j * sn->w + i];   /* A: dye */
                     if (d > row[tx * 4 + 0]) row[tx * 4 + 0] = d;   /* B: depth tint */
                     {   /* right half, R/G: flow; the stronger one wins where sheets overlap */
                         BYTE *fl = row + (FOAM_TEX_N + tx) * 4;
@@ -1405,6 +1421,8 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 223, xf, 1);
     xf[0] = (float)(GetTickCount() % 600000u) * 0.001f; xf[1] = cfg.ripples; xf[2] = xf[3] = 0.0f;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 222, xf, 1);
+    xf[0] = cfg.dye_colour[0]; xf[1] = cfg.dye_colour[1]; xf[2] = cfg.dye_colour[2]; xf[3] = cfg.dye;
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 221, xf, 1);
     if (InterlockedIncrement(&g_foam_tex_logged) == 1 || g_foam_tex_logged % 2000 == 0)
         Log("foam: world texture over %d sheets, x %.0f..%.0f y %.0f..%.0f, texel %.1f", n, x0, x1, y0, y1, cell);
 }
