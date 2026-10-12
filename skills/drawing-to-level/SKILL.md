@@ -58,3 +58,9 @@ Write the generated town into the same layout.json shape (buildings as rectangle
 and use visible %, first-seen distance, release count and min clearance as extra scores next to the generator's own.
 
 Related: `drawing-to-building` (single buildings; its tree/04-level-map.md is the first write-up), `goobi-scan-cutout`, `sketch-concept-art`, `avalon-town-generator`.
+
+## Reference: Drelvak's first-person Diablo Tristram (youtu.be/dhzCSubTDl8, 10-12)
+Same idea from the other end: DevilutionX reads Diablo's tiles + collision grid and builds the 3D in code, so the original collision stays the truth.
+Takeaways for this skill: (1) the layout/collision is the source, geometry follows it; (2) blocked cells with nothing drawn get boulders/trees so the block reads in 3D;
+(3) check every view against the top/iso view (his rocks were re-tessellated until the horizon read sharp); (4) a live key toggle between top/iso and first person, facing kept in sync,
+is the best review tool; (5) first person in crowded areas needs a side/behind enemy marker.
