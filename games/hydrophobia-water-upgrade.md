@@ -319,6 +319,6 @@ Collected from the Crimson Desert water breakdown, the KWS2 videos and Sea of Th
 5. Level pools and steps: where the bed drops sharply, mark the cell edge as a small waterfall (stage 6) so the foam piles up at the bottom.
 6. Spray drops drawn as particles from the spray plane (the library already makes it).
 7. Bioluminescent foam as an option (KWS2): foam that glows faintly in the dark scenes.
-8. Foam-gradient normals (Crest, MIT): bend the normal along the foam edge so foam looks raised.
+8. DONE (2026-10-12, ini foam_normals; slope of the world foam texture R over 1.5 texels as 10 world units of height plus 1.5 of lace detail, lit from a fixed high light, faint contact shadow on the water beside thick foam). Foam-gradient normals (Crest, MIT): bend the normal along the foam edge so foam looks raised.
 9. Floaters carried by the flow (FluidNinja demo): debris that drifts with (u, v), and a surface layer (algae, oil) that parts around Kate and closes again, sharing the dye plane of idea 2.
 10. DONE (2026-10-12, ini splotch; noise at world/34 x 0.11, thick foam above F 0.6 left whole; contrast cut not done). Foam splotch mask (Emil J, Godot Jacobian foam video): multiply the lace by a big low-frequency noise, smoothstep(0.2, 0.7), so wide foam fields break into patches instead of an even sheet; a smoothstep(0.4, 1) contrast cut on thin foam. Shader only. (Their Jacobian compression source is our converging-flow source already.)
