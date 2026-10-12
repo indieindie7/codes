@@ -62,6 +62,9 @@ Destruction look (user 10-11, video il-TXbn5iMA, Mike Turitzin's dynamic SDF eng
    step count with distance (full near, flat past ~1500 u), which also saves cost. Check
    that early-Z is lost only on the parallax draws. Pairs with item 15: a crater's rim can then
    use the same depth.
+   10-12 step 0 done: world_parallax self-shadow (fork `surfacelight=X Y Z S`, S<0 = debug tint).
+   Works, but the level-1 ship panels have so little relief that the shadow is a thin line at
+   the strip edges; overhead light gives almost none. Needs deeper height textures to pay off.
 Maybe later: rain wetness (lower roughness outdoors from a top-down depth map), lens drops.
 Animation ideas (video 52Zw5eHHjgQ, Skyrim "Fluid Motion"): smooth path following (no
 stop-and-go when fleeing), landing crouch, speed-synced legs, per-leg IK on surfaces for
