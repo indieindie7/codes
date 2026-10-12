@@ -651,8 +651,8 @@ static int Install(void)
  * cache is opened, so the game's own cache stays untouched and a second one is built. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHC.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheTC.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHD.bin";
+static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheTD.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -661,7 +661,7 @@ static const char FOAM_DEFS[] =
     "lerp(HW_H(floor(p) + float2(0.0f, 1.0f)), HW_H(floor(p) + float2(1.0f, 1.0f)), smoothstep(0.0f, 1.0f, frac(p).x)), smoothstep(0.0f, 1.0f, frac(p).y))\n"
     "#endif\n";
 static const char FOAM_HLSL[] =
-    "{ /* HydroWater foam: opaque bright foam laid over the water with crisp feathered edges (the threshold\n"
+    "{ /* HydroWater foam: foam toned to the scene laid over the water with crisp feathered edges (the threshold\n"
     "     idea of Crest, MIT), no grey tint on what is seen through it; aerated water a little lighter;\n"
     "     deep water (blue) loses red first, then green, and fills with the water colour; foam drawn as streaks along the flow; wave crests glow green-blue; foam lit as if raised */\n"
     "  float hwF = saturate(1.0f - vertexColour.r);\n"
@@ -694,8 +694,11 @@ static const char FOAM_HLSL[] =
     "    float hwM = smoothstep(0.2f, 0.7f, HW_VN(hwP * 0.11f + float2(71.0f, 23.0f)));\n"
     "    hwF *= lerp(1.0f, 0.3f + 0.7f * hwM, hwSp * (1.0f - saturate((hwF - 0.6f) * 2.5f)));\n"
     "  }\n"
-    "  float hwCov = saturate((hwF * 1.25f - (1.0f - hwLace)) * (1.0f / 0.08f));\n"
-    "  hwCov = max(hwCov, saturate((hwF - 0.7f) * 4.0f)) * saturate(hwF * 6.0f);\n"
+    "  /* coverage: foam where F is above the lace threshold, a soft band, holes kept even in thick foam;\n"
+    "     opacity at most 0.88 so the water still shows through */\n"
+    "  float hwTh = 1.0f - hwLace;\n"
+    "  float hwCov = smoothstep(hwTh - 0.14f, hwTh + 0.14f, hwF * 0.97f) * saturate(hwF * 6.0f);\n"
+    "  hwCov *= 0.55f + 0.33f * saturate(hwF);\n"
     "  float hwLum = dot(vRefractionSample.rgb + vReflectionSample.rgb, float3(0.299f, 0.587f, 0.114f));\n"
     "  float hwLit = clamp(0.45f + 0.9f * hwLum, 0.45f, 1.15f);\n"
     "  float3 hwTr = exp(-float3(2.0f, 0.85f, 0.65f) * hwD);\n"
@@ -704,13 +707,13 @@ static const char FOAM_HLSL[] =
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwDyC * hwLit * fFresRefr, saturate(hwDy) * 0.8f);\n"
     "  /* crest glow: light through the thin top of a wave, a green-blue lift, more where the water is shallow */\n"
     "  refractionColour.rgb += float3(0.07f, 0.40f, 0.34f) * (hwCr * hwLit * fFresRefr * (0.55f + 0.45f * hwTr.g));\n"
-    "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 1.0f), vFogColour.rgb, 0.12f) * hwLit * (0.85f + 0.15f * hwN2);\n"
+    "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 1.0f), vFogColour.rgb, 0.12f) * (hwLit * 0.5f) * (0.8f + 0.2f * hwN2);\n"
     "  if (hwFn > 0.0f) { /* foam normals (Crest, MIT): the foam stands up as a height, so its edges catch and lose light */\n"
     "    float2 hwPl = hwP * 2.7f + float2(17.0f, 5.0f);\n"
     "    float2 hwGl = float2(HW_VN(hwPl + float2(0.25f, 0.0f)) - hwN2, HW_VN(hwPl + float2(0.0f, 0.25f)) - hwN2) * (2.7f / (34.0f * 0.25f));\n"
     "    float2 hwSf = -(hwG * 10.0f + hwGl * 1.5f * hwCov) * hwFn;\n"
     "    float3 hwNf = normalize(float3(hwSf, 1.0f));\n"
-    "    hwFoam *= clamp(dot(hwNf, float3(0.36f, 0.48f, 0.8f)) * 1.25f, 0.6f, 1.25f);\n"
+    "    hwFoam *= clamp(dot(hwNf, float3(0.36f, 0.48f, 0.8f)) * 1.2f, 0.6f, 1.15f);\n"
     "    refractionColour.rgb *= 1.0f - 0.15f * saturate(length(hwG) * 10.0f * hwFn) * (1.0f - hwCov);\n"
     "  }\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, refractionColour.rgb * 0.8f + float3(0.06f, 0.11f, 0.11f) * hwLit, hwA * 0.5f);\n"
