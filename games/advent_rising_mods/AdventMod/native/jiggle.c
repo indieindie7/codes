@@ -602,6 +602,25 @@ static int BoneCmd(const wchar_t* Arg)
 	return 1;
 }
 
+/* R4 (10-12): going ragdoll empties the instance's director list (count 0 at the corpse call), so
+   our springs stopped there. Put them back on a corpse whenever they are missing. */
+static void Rehook(JPawn* P)
+{
+	BYTE* Dirs; int ND, j, Ours = 0;
+	if (!P->Active || !P->Corpse || (*(DWORD*)((BYTE*)P->Actor + 0x34) & 0x80) || InstanceOf(P->Actor, NULL) != P->Inst) return;
+	__try
+	{
+		Dirs = *(BYTE**)((BYTE*)P->Inst + 0x138);
+		ND = *(int*)((BYTE*)P->Inst + 0x13C);
+		for (j = 0; Dirs && j < ND; j++)
+			if (*(void**)(Dirs + j * 0x3C + 0x38) == (void*)WorldSpacer) Ours++;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) { return; }
+	if (Ours >= P->NB) return;
+	for (j = 0; j < P->NB; j++) Hook(P, &P->B[j], WorldSpacer, 1.0f);
+	if (LogOn) Note(L"jiggle: %ls rehooked (%d of %d directors were ours, %d in the list)", P->Name, Ours, P->NB, ND);
+}
+
 /* JiggleCorpse <name> <class> <on>: keep springing after the pawn goes ragdoll */
 static int CorpseCmd(const wchar_t* Arg)
 {
@@ -614,6 +633,23 @@ static int CorpseCmd(const wchar_t* Arg)
 			Pawns[i].Corpse = on;
 			if (LogOn) Note(L"jiggle: %ls corpse %d", Name, on);
 			LastProbe = 0; Probe(L"corpse");
+			Rehook(&Pawns[i]);
+			return 1;
+		}
+	return 0;
+}
+
+/* JiggleKeep <name> <class>: sent a few times a second while a corpse springs; re-adds lost directors */
+static int KeepCmd(const wchar_t* Arg)
+{
+	wchar_t Name[48], Class[48];
+	int i;
+	if (swscanf(Arg, L"%47s %47s", Name, Class) != 2) return 0;
+	for (i = 0; i < NPawns; i++)
+		if (Pawns[i].Active && !_wcsicmp(Pawns[i].Name, Name))
+		{
+			Rehook(&Pawns[i]);
+			Probe(L"keep");
 			return 1;
 		}
 	return 0;
@@ -662,6 +698,7 @@ int JiggleCommand(const wchar_t* Cmd)
 	if (!_wcsnicmp(Cmd, L"JiggleCorpse ", 13)) return CorpseCmd(Cmd + 13);
 	if (!_wcsnicmp(Cmd, L"JiggleTension ", 14)) return TensionCmd(Cmd + 14);
 	if (!_wcsnicmp(Cmd, L"JiggleLimp ", 11)) return LimpCmd(Cmd + 11);
+	if (!_wcsnicmp(Cmd, L"JiggleKeep ", 11)) return KeepCmd(Cmd + 11);
 	if (!_wcsnicmp(Cmd, L"Jiggle ", 7)) return Install(Cmd + 7);
 	return 0;
 }

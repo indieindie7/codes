@@ -1679,10 +1679,11 @@ function ShotGone(vector Loc, vector Vel)
 {
 	local vector HitL, HitN;
 	local Actor A;
+	local Material M;
 
 	ShotThroughCorpses(Loc, Loc + Vel * 0.1);
 
-	A = Trace(HitL, HitN, Loc + Vel * 0.1, Loc - Normal(Vel) * 20, false);
+	A = Trace(HitL, HitN, Loc + Vel * 0.1, Loc - Normal(Vel) * 20, false,, M);
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: shot gone at " $ Loc $ " hit " $ A $ " at " $ HitL);
 	// a scorch on walls, floors and level meshes; nothing on characters (they bleed instead)
@@ -1705,7 +1706,7 @@ function ShotGone(vector Loc, vector Vel)
 		if (bSdfCraters && bSdfBulletHoles)
 			SdfCrater(HitL, HitN, 5 * (0.8 + 0.4 * FRand()), -1);
 		if (bImpactSmoke)
-			ImpactPuff(HitL, HitN);
+			ImpactPuff(HitL, HitN, A, M);
 		if (FRand() < BurnChance)
 			Burn(HitL, HitN, DecalScale * (0.34 + 0.12 * FRand()));
 		else if (!bWallHoles || HitN.Z >= 0.5 || FRand() < 0.5)
@@ -1805,21 +1806,64 @@ function SdfCrater(vector Spot, vector N, float R, float Lift)
 		class'ModSettings'.static.Note("dirt: sdf crater r " $ int(R) $ " at " $ Spot);
 }
 
-// a shot's puff of dust and smoke out of where it landed (near the player only, as the marks)
-function ImpactPuff(vector Spot, vector N)
+// a shot's puff of dust and smoke out of where it landed (near the player only, as the marks),
+// coloured by what was hit: grey stone, brown dirt, pale sand, tan wood, white snow; hard or wet
+// surfaces (metal, glass, water, shields, lava) throw no dust
+function ImpactPuff(vector Spot, vector N, Actor A, Material M)
 {
 	local ModImpactPuff P;
 	local color Tint;
+	local ESurfaceTypes T;
+	local float Size, v;
 
+	T = EST_Default;
+	if (M != None)
+		T = M.SurfaceType;
+	else if (TerrainInfo(A) != None)
+		T = EST_Dirt;
+	switch (T)
+	{
+	case EST_Metal:
+	case EST_Glass:
+	case EST_Water:
+	case EST_ForceShield:
+	case EST_Lava:
+	case EST_VehicleDefault:
+		if (class'ModSettings'.default.bGoreLog)
+			class'ModSettings'.static.Note("gore: impact puff skipped on " $ GetEnum(enum'ESurfaceTypes', T) $ " (" $ M $ ")");
+		return;
+	}
 	P = Spawn(class'ModImpactPuff',,, Spot + N * 3, rotator(N));
 	if (P == None)
 		return;
-	Tint.R = 150 + Rand(20);
-	Tint.G = Tint.R - 5;
-	Tint.B = Tint.R - 12;
-	P.Aim(N, Tint, N.Z >= 0.5 ? 1.25 : 1.0);
+	v = Rand(20);
+	Size = 1.0;
+	switch (T)
+	{
+	case EST_Dirt:
+	case EST_Grass:
+	case EST_Plant:
+		Tint.R = 125 + v; Tint.G = 100 + v; Tint.B = 72 + v;
+		Size = 1.15;
+		break;
+	case EST_Sand:
+		Tint.R = 180 + v; Tint.G = 155 + v; Tint.B = 115 + v;
+		Size = 1.2;
+		break;
+	case EST_Wood:
+		Tint.R = 150 + v; Tint.G = 118 + v; Tint.B = 80 + v;
+		Size = 0.8;
+		break;
+	case EST_Snow:
+	case EST_Ice:
+		Tint.R = 215 + v; Tint.G = 220 + v; Tint.B = 228 + v;
+		break;
+	default:
+		Tint.R = 150 + v; Tint.G = Tint.R - 5; Tint.B = Tint.R - 12;
+	}
+	P.Aim(N, Tint, (N.Z >= 0.5 ? 1.25 : 1.0) * Size);
 	if (class'ModSettings'.default.bGoreLog)
-		class'ModSettings'.static.Note("gore: impact puff " $ P $ " texture " $ P.default.SmokeTex $ " " $ P.default.SmokeU $ "x" $ P.default.SmokeV $ " grit " $ P.default.GritTex
+		class'ModSettings'.static.Note("gore: impact puff " $ P $ " on " $ GetEnum(enum'ESurfaceTypes', T) $ " (" $ M $ ") texture " $ P.default.SmokeTex $ " " $ P.default.SmokeU $ "x" $ P.default.SmokeV $ " grit " $ P.default.GritTex
 			$ " emitters " $ P.Emitters.Length $ " size " $ P.Emitters[0].StartSizeRange.X.Min);
 }
 

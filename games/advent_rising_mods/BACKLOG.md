@@ -73,7 +73,9 @@ Sources: `research/black-ps2-destruction.md` (ranked list) and `GORE-DESIGN.md` 
 
 1. **Dust per surface**: every hit throws the same grey puff (`ModImpactPuff`). Pick an
    emitter by hit material: concrete grey, dirt brown, wood tan. Small script job.
+   DONE 10-12: `ImpactPuff` tints/sizes by `Material.SurfaceType`, skips metal/glass/water/shield/lava; seen on terrain dirt in a pilot run.
 2. **Armour dust**: a dust/padding puff on Seeker armour hits, next to the sparks.
+   BUILT 10-12 (`ModArmor.bArmourDust`, `Dust()` after `Sparks`), not yet seen in game: needs an armour-plate hit.
 3. **Blast bloom flash**: brief post-shader bloom gain spike (~0.5 s) on explosions.
 4. **Cheap smoke**: smaller, shorter-lived sprites, fade near the camera, cap explosion
    emitters, early alpha discard. Aimed at the big-explosion fps dips (cause unconfirmed).

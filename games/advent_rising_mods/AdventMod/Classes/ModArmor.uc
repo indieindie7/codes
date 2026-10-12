@@ -75,6 +75,7 @@ var float Sweep;
 var config bool bArmourHits;        // classify every hit (log line "armour hit: ...")
 var config float ArmourFactor;      // damage x this when the shot lands on armour (1.0: no change)
 var config bool bArmourSparks;      // sparks instead of blood where a shot meets armour
+var config bool bArmourDust;        // and a small puff of grit and padding out of the dent
 var config float RayBack;           // the ray starts this far back along the shot (outside the body)
 var config float TableLevel;        // bone table: a bone with this armour share or more counts as armour
 var int LastClass;                  // the last hit: 0 not classified, 1 flesh, 2 armour
@@ -180,6 +181,26 @@ function Sparks(vector Spot, vector Dir)
 	E = Spawn(SparkFx,,, Spot - Dir * 6, rotator(-Dir));
 	if (E != None)
 		E.LifeSpan = 1.5;
+	if (bArmourDust)
+		Dust(Spot - Dir * 6, -Dir);
+}
+
+// a small, dark puff off the plate, back toward the shooter: chipped coating and padding, not
+// rock dust (greyer and smaller than ModGore's wall puffs)
+function Dust(vector Spot, vector N)
+{
+	local ModImpactPuff P;
+	local color Tint;
+	local int v;
+
+	P = Spawn(class'ModImpactPuff',,, Spot, rotator(N));
+	if (P == None)
+		return;
+	v = Rand(15);
+	Tint.R = 95 + v;
+	Tint.G = 92 + v;
+	Tint.B = 98 + v;
+	P.Aim(N, Tint, 0.6);
 }
 
 // which side of the body carries more armour, from the bone table: +1 its right, -1 its left,
@@ -677,6 +698,7 @@ defaultproperties
      bArmourHits=True
      ArmourFactor=1.0
      bArmourSparks=True
+     bArmourDust=True
      RayBack=150.0
      TableLevel=0.5
      WearBone(0)=head

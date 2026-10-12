@@ -237,6 +237,9 @@ function bool Corpse(int i, float Dt)
 		Hooks[i].bCorpse = true;
 		Hooks[i].SentA = 1;
 	}
+	// the engine can drop our bone directors while the ragdoll runs: have them put back (4 times a second)
+	else if (Hooks[i].bCorpse && int(Hooks[i].DeadT * 4) != int((Hooks[i].DeadT - Dt) * 4))
+		class'ModSettings'.static.NativeCall("JiggleKeep " $ P.Name $ " " $ P.Class.Name);
 	// a death clip first, then the ragdoll: hold on while it plays; any other state lets go
 	return Hooks[i].bCorpse || P.Physics == PHYS_Walking || P.Physics == PHYS_Falling || P.Physics == PHYS_RootMotion || P.Physics == PHYS_KarmaRagdoll;
 }
