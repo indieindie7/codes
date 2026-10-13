@@ -71,7 +71,7 @@ static struct {
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
-static volatile LONG g_presents;    /* IDirect3DDevice9::Present calls (control = 1) */
+static volatile LONG g_presents;    /* frames seen by the EndScene hook */
 
 /* ---------------------------------------------------------------- logging */
 static CRITICAL_SECTION g_logcs;
@@ -1227,12 +1227,12 @@ static void PatchVtable(void *obj, int idx, void *hook, void **orig)
 }
 
 /* ---------------------------------------------------------------- control file (control = 1)
- * IDirect3DDevice9::Present (slot 17) is hooked as well. Every 250 ms it looks for
+ * IDirect3DDevice9::EndScene (slot 42) is hooked as well. Every 250 ms it looks for
  * HydroWater.cmd next to the DLL, reads it, deletes it and runs its lines:
  *   shot <file.bmp>   dump the back buffer (works hidden, off-screen, any mode)
  * This is the test-pilot channel; it costs one file probe every quarter second. */
-typedef HRESULT (WINAPI *Present_t)(IDirect3DDevice9 *, const RECT *, const RECT *, HWND, const RGNDATA *);
-static Present_t g_orig_present;
+typedef HRESULT (WINAPI *EndScene_t)(IDirect3DDevice9 *);
+static EndScene_t g_orig_endscene;
 static DWORD g_last_cmd_poll;
 
 static void SaveBackbuffer(IDirect3DDevice9 *dev, const char *path)
@@ -1448,31 +1448,13 @@ static void RunControlFile(IDirect3DDevice9 *dev)
     DeleteFileW(path);
 }
 
-/* After the intro the engine presents through the implicit swap chain
- * (IDirect3DSwapChain9::Present, slot 3), so that is hooked too. */
-typedef HRESULT (WINAPI *SwapPresent_t)(IDirect3DSwapChain9 *, const RECT *, const RECT *, HWND, const RGNDATA *, DWORD);
-static SwapPresent_t g_orig_swap_present;
-static volatile LONG g_swap_presents;
 static void FoamTexUpdate(IDirect3DDevice9 *dev);
-static HRESULT WINAPI SwapPresentHook(IDirect3DSwapChain9 *self, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty, DWORD flags)
-{
-    DWORD now = GetTickCount();
-    IDirect3DDevice9 *dev = NULL;
-    InterlockedIncrement(&g_swap_presents);
-    InterlockedIncrement(&g_presents);
-    if (IDirect3DSwapChain9_GetDevice(self, &dev) == D3D_OK) {
-        FoamTexUpdate(dev);
-        if (cfg.control && now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(dev); }
-        IDirect3DDevice9_Release(dev);
-    }
-    return g_orig_swap_present(self, src, dst, wnd, dirty, flags);
-}
 
 /* ---------------------------------------------------------------- world foam texture
  * The game rebuilds only the sheet meshes on its render list (in the Practice pool one sheet of
  * 80), so foam in vertex colours never reaches most water. Instead every sheet's foam and air are
  * written into one texture laid over the world (a texel per cell, covering all bridged sheets) at
- * each Present; the water shader reads it by world position (sampler s15, mapping in c223). The
+ * each frame; the water shader reads it by world position (sampler s15, mapping in c223). The
  * texture is twice as wide: the right half holds the flow direction for the foam streaks. The
  * sheet origin is at S+0x7c/S+0x80 and cells are dx = S+0x10 apart (FUN_00bf0e20). */
 #define FOAM_TEX_N 512
@@ -1652,13 +1634,40 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
         Log("foam: world texture over %d sheets, x %.0f..%.0f y %.0f..%.0f, texel %.1f", n, x0, x1, y0, y1, cell);
 }
 
-static HRESULT WINAPI PresentHook(IDirect3DDevice9 *self, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty)
+/* The per-frame work (foam texture, control file) runs in EndScene, at most once per 10 ms. It
+ * used to hook Present on the device and the swap chain, but the Steam overlay hooks those too,
+ * and now and then the two hooks called each other until the stack ran out (a startup crash in
+ * about one launch in three). The overlay leaves EndScene alone. For the first 20 seconds the log
+ * says once a second how many scenes ended and how many drew into the back buffer (in game
+ * about 180 a second, none into the back buffer; the shots still come out whole). */
+static HRESULT WINAPI EndSceneHook(IDirect3DDevice9 *self)
 {
+    static DWORD last, stat_tick, scenes, to_bb, logged;
     DWORD now = GetTickCount();
-    InterlockedIncrement(&g_presents);
-    FoamTexUpdate(self);
-    if (cfg.control && now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(self); }
-    return g_orig_present(self, src, dst, wnd, dirty);
+    IDirect3DSurface9 *rt = NULL, *bb = NULL;
+    scenes++;
+    if (logged < 20 && IDirect3DDevice9_GetRenderTarget(self, 0, &rt) == D3D_OK && rt) {
+        if (IDirect3DDevice9_GetBackBuffer(self, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb) == D3D_OK && bb) {
+            if (rt == bb) to_bb++;
+            if (now - stat_tick >= 1000) {
+                D3DSURFACE_DESC dr, db;
+                IDirect3DSurface9_GetDesc(rt, &dr); IDirect3DSurface9_GetDesc(bb, &db);
+                if (stat_tick) Log("endscene: %lu scenes/s, %lu into the back buffer; last rt %p %ux%u fmt %d ms %d, back buffer %p %ux%u fmt %d ms %d",
+                                   scenes, to_bb, (void *)rt, dr.Width, dr.Height, (int)dr.Format, (int)dr.MultiSampleType,
+                                   (void *)bb, db.Width, db.Height, (int)db.Format, (int)db.MultiSampleType), logged++;
+                stat_tick = now; scenes = to_bb = 0;
+            }
+            IDirect3DSurface9_Release(bb);
+        }
+        IDirect3DSurface9_Release(rt);
+    }
+    if (now - last >= 10) {
+        last = now;
+        InterlockedIncrement(&g_presents);
+        FoamTexUpdate(self);
+        if (cfg.control && now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(self); }
+    }
+    return g_orig_endscene(self);
 }
 
 static HRESULT WINAPI ResetHook(void *self, HW_D3DPP *pp)
@@ -1677,6 +1686,7 @@ static HRESULT WINAPI CreateDeviceHook(void *self, UINT adapter, UINT type, HWND
     HRESULT hr;
     HWND h = focus;
     if (pp && pp->hDeviceWindow) h = pp->hDeviceWindow;
+    Log("modules: overlay %p d3d9 %p user32 %p", (void *)GetModuleHandleW(L"gameoverlayrenderer.dll"), (void *)GetModuleHandleW(L"d3d9.dll"), (void *)GetModuleHandleW(L"user32.dll"));
     if (pp) Log("D3D device requested: %ux%u windowed=%d interval=%08lx swap=%u", pp->BackBufferWidth, pp->BackBufferHeight,
                 (int)pp->Windowed, (unsigned long)pp->PresentationInterval, pp->SwapEffect);
     AdoptWindow(h);
@@ -1685,17 +1695,9 @@ static HRESULT WINAPI CreateDeviceHook(void *self, UINT adapter, UINT type, HWND
     hr = g_orig_create_device(self, adapter, type, focus, flags, pp, dev);
     if (hr == 0 && dev && *dev) {
         if (!g_orig_reset) PatchVtable(*dev, 16, (void *)ResetHook, (void **)&g_orig_reset);
-        if ((cfg.control || (cfg.foam_tex && cfg.opts.foam)) && !g_orig_present) {
-            PatchVtable(*dev, 17, (void *)PresentHook, (void **)&g_orig_present);
-            Log("control: Present hooked (orig %p)", (void *)g_orig_present);
-            {
-                IDirect3DSwapChain9 *sc = NULL;
-                if (IDirect3DDevice9_GetSwapChain((IDirect3DDevice9 *)*dev, 0, &sc) == D3D_OK && sc) {
-                    PatchVtable(sc, 3, (void *)SwapPresentHook, (void **)&g_orig_swap_present);
-                    Log("control: swap chain Present hooked (orig %p)", (void *)g_orig_swap_present);
-                    IDirect3DSwapChain9_Release(sc);
-                }
-            }
+        if ((cfg.control || (cfg.foam_tex && cfg.opts.foam)) && !g_orig_endscene) {
+            PatchVtable(*dev, 42, (void *)EndSceneHook, (void **)&g_orig_endscene);
+            Log("control: EndScene hooked (orig %p)", (void *)g_orig_endscene);
         }
     }
     Log("CreateDevice -> %08lx", (unsigned long)hr);
@@ -1921,6 +1923,8 @@ static const char *ModOff(DWORD a, DWORD *off)
     return n;
 }
 
+static HANDLE g_crashf = INVALID_HANDLE_VALUE;   /* HydroWater_crash.txt, opened at load so a crash needs no heap */
+
 static LONG WINAPI CrashLog(EXCEPTION_POINTERS *ep)
 {
     static volatile LONG seen;
@@ -1928,7 +1932,37 @@ static LONG WINAPI CrashLog(EXCEPTION_POINTERS *ep)
     const char *m;
     char line[1024];
     int i, n = 0, o;
-    if ((code != EXCEPTION_ACCESS_VIOLATION && code != 0xC0000374u) || InterlockedIncrement(&seen) > 8) return EXCEPTION_CONTINUE_SEARCH;
+    if ((code != EXCEPTION_ACCESS_VIOLATION && code != 0xC0000374u && code != EXCEPTION_STACK_OVERFLOW) || InterlockedIncrement(&seen) > 8) return EXCEPTION_CONTINUE_SEARCH;
+#ifdef _M_IX86
+    if (g_crashf != INVALID_HANDLE_VALUE) {   /* raw first, no heap, no locks: the module names below may hang */
+        const CONTEXT *c = ep->ContextRecord;
+        const DWORD *st = (const DWORD *)(uintptr_t)c->Esp;
+        DWORD w;
+        o = wsprintfA(line, "exc %08lx eip %08lx addr %08lx tid %lu eax %08lx ebx %08lx ecx %08lx edx %08lx esi %08lx edi %08lx ebp %08lx esp %08lx\r\n",
+                      code, c->Eip, ep->ExceptionRecord->NumberParameters > 1 ? (DWORD)ep->ExceptionRecord->ExceptionInformation[1] : 0,
+                      GetCurrentThreadId(), c->Eax, c->Ebx, c->Ecx, c->Edx, c->Esi, c->Edi, c->Ebp, c->Esp);
+        WriteFile(g_crashf, line, (DWORD)o, &w, NULL);
+        for (i = 0, o = 0; i < 64 && !IsBadReadPtr(st + i, 4); i++) o += wsprintfA(line + o, "%08lx%s", st[i], (i & 7) == 7 ? "\r\n" : " ");
+        WriteFile(g_crashf, line, (DWORD)o, &w, NULL);
+        WriteFile(g_crashf, "\r\n", 2, &w, NULL);
+        if (code == EXCEPTION_STACK_OVERFLOW) {   /* which return addresses repeat down the whole stack: the recursion cycle */
+            static DWORD key[4096], cnt[4096];
+            const DWORD *top = (const DWORD *)(uintptr_t)__readfsdword(4), *q;
+            for (q = st; q < top; q++) {
+                DWORD v = *q, h;
+                if (v < 0x00400000u || v >= 0x80000000u) continue;
+                for (h = (v * 2654435761u) >> 20; key[h] && key[h] != v; h = (h + 1) & 4095) ;
+                key[h] = v; cnt[h]++;
+            }
+            o = wsprintfA(line, "stack %08lx..%08lx, values seen 100+ times:\r\n", (DWORD)(uintptr_t)st, (DWORD)(uintptr_t)top);
+            for (i = 0, n = 0; i < 4096 && n < 48; i++)
+                if (cnt[i] >= 100) o += wsprintfA(line + o, "%08lx x%lu%s", key[i], cnt[i], (++n & 3) ? "  " : "\r\n");
+            WriteFile(g_crashf, line, (DWORD)o, &w, NULL);
+            WriteFile(g_crashf, "\r\n", 2, &w, NULL);
+            n = 0;
+        }
+    }
+#endif
     m = ModOff((DWORD)(uintptr_t)ep->ExceptionRecord->ExceptionAddress, &off);
     o = snprintf(line, sizeof line, "exception %08lx at %s+%lx (thread %lu), stack:", (unsigned long)code, m ? m : "?", (unsigned long)off, GetCurrentThreadId());
 #ifdef _M_IX86
@@ -1960,6 +1994,12 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         if (p) *p = 0;
         Log("HydroWater mod loaded into %ls (exe base %p)", g_dir, (void *)GetModuleHandleW(NULL));
         ReadIni();
+        {   wchar_t cp[MAX_PATH + 32]; char hd[160]; DWORD w; int k;
+            _snwprintf(cp, MAX_PATH + 32, L"%ls\\HydroWater_crash.txt", g_dir);
+            g_crashf = CreateFileW(cp, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            k = wsprintfA(hd, "start pid %lu: exe %p ntdll %p kernelbase %p mod %p\r\n", GetCurrentProcessId(), (void *)GetModuleHandleW(NULL),
+                          (void *)GetModuleHandleW(L"ntdll.dll"), (void *)GetModuleHandleW(L"kernelbase.dll"), (void *)inst);
+            if (g_crashf != INVALID_HANDLE_VALUE) WriteFile(g_crashf, hd, (DWORD)k, &w, NULL); }
         AddVectoredExceptionHandler(0, CrashLog);
         CreateThread(NULL, 0, Installer, NULL, 0, NULL);
     }
