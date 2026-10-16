@@ -67,7 +67,8 @@ static struct {
     float foam_normals; /* foam lit as if raised (Crest's foam-gradient normals): 0 = off, 1 = default, at most 2 */
     float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f };
+    float drench;       /* Kate just out of the water: wet skin sheen, soaked cloth, running water, drips */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -149,6 +150,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "foam_normals")) cfg.foam_normals = (float)atof(v);
         else if (!_stricmp(k, "wet")) cfg.wet = (float)atof(v);
         else if (!_stricmp(k, "wet_dry")) cfg.wet_dry = (float)atof(v);
+        else if (!_stricmp(k, "drench")) cfg.drench = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
@@ -798,7 +800,7 @@ static const char FOAM_TEX_LINE[] =
    darkens the albedo and raises the gloss below it, fading over 25 units */
 static const char WET_ANCHOR[] = "\tDS_WriteColour( wv, specularStrength";
 static const char WET_NEED[] = "float4 vertexPosition = vIn.m_vVertexPosition;";
-static const char WET_GLOBALS[] = "float4 hwWet : register(c219);\n";
+static const char WET_GLOBALS[] = "float4 hwWet : register(c219);\nfloat4 hwKate : register(c218);\n";
 static const char WET_HLSL[] =
     "  { /* HydroWater wet surfaces: darker and glossier below the high-water mark */\n"
     "    float2 hwWu = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
@@ -809,6 +811,37 @@ static const char WET_HLSL[] =
     "      diffuseMapSample.rgb *= 1.0f - 0.4f * hwWt;\n"
     "      specularStrength = lerp(specularStrength, saturate(specularStrength * 1.5f + 0.3f), hwWt);\n"
     "      specularPower *= 1.0f + 0.5f * hwWt;\n"
+    "    }\n"
+    "    if (hwKate.w > 0.0f) { /* drenched Kate: c218 = (x, y, world z of her wet line, freshness) */\n"
+    "      float2 hwKd = vertexPosition.xy - hwKate.xy;\n"
+    "      float hwKr = dot(hwKd, hwKd);\n"
+    "      if (hwKr < 3600.0f) {\n"
+    "        float hwKw = saturate((vertexPosition.z - hwKate.z) * 0.1f) * saturate(2.0f - hwKr * (1.0f / 1800.0f)) * hwKate.w;\n"
+    "        float3 hwC = diffuseMapSample.rgb;\n"
+    "        float hwSk = (hwC.r > hwC.g && hwC.g > hwC.b) ? saturate(((hwC.r - hwC.b) / max(hwC.r, 0.01f) - 0.12f) * 6.0f) * saturate((0.65f - (hwC.r - hwC.b) / max(hwC.r, 0.01f)) * 6.0f) : 0.0f;\n"
+    "        float hwL = dot(hwC, float3(0.3f, 0.59f, 0.11f));\n"
+    "        float3 hwCl = lerp(hwL.xxx, hwC, 1.25f) * 0.7f;\n"
+    "        diffuseMapSample.rgb = lerp(hwC, lerp(hwCl, hwC * 0.95f, hwSk), hwKw);\n"
+    "        specularStrength = lerp(specularStrength, lerp(saturate(specularStrength + 0.25f), saturate(specularStrength * 2.0f + 0.45f), hwSk), hwKw);\n"
+    "        specularPower *= 1.0f + hwKw * (0.5f + 2.5f * hwSk);\n"
+    "        float hwCol = floor(dot(vertexPosition.xy, float2(0.7071f, 0.7071f)) * 0.6f);\n"
+    "        float hwH = frac(sin(hwCol * 12.9898f) * 43758.547f);\n"
+    "        float hwS = frac(vertexPosition.z * 0.04f + hwTime.x * (0.5f + hwH) + hwH * 7.0f);\n"
+    "        float hwRv = smoothstep(0.85f, 0.97f, hwS) * (1.0f - smoothstep(0.97f, 1.0f, hwS)) * step(hwH, 0.45f) * hwKw * hwKate.w;\n"
+    "        specularStrength = saturate(specularStrength + 0.6f * hwRv);\n"
+    "        diffuseMapSample.rgb *= 1.0f - 0.15f * hwRv;\n"
+    "      }\n"
+    "      if (hwKr < 6400.0f) { /* drips: round wet spots on flat ground around her */\n"
+    "        float3 hwNg = normalize(cross(ddx(vertexPosition.xyz), ddy(vertexPosition.xyz)));\n"
+    "        float2 hwG = vertexPosition.xy * (1.0f / 6.0f);\n"
+    "        float2 hwGi = floor(hwG);\n"
+    "        float hwR = frac(sin(dot(hwGi, float2(127.1f, 311.7f))) * 43758.547f);\n"
+    "        float2 hwGc = hwGi + 0.25f + 0.5f * frac(hwR * float2(17.0f, 31.0f));\n"
+    "        float hwDs = 1.0f - smoothstep(0.08f + 0.12f * hwR, 0.12f + 0.12f * hwR, length(hwG - hwGc));\n"
+    "        float hwDw = hwDs * step(0.55f, hwR) * saturate(abs(hwNg.z) * 4.0f - 3.0f) * saturate(1.0f - hwKr * (1.0f / 6400.0f)) * hwKate.w;\n"
+    "        diffuseMapSample.rgb *= 1.0f - 0.35f * hwDw;\n"
+    "        specularStrength = lerp(specularStrength, saturate(specularStrength * 1.5f + 0.35f), hwDw);\n"
+    "      }\n"
     "    }\n"
     "  }\n"
     ;
@@ -1474,7 +1507,7 @@ static volatile LONG g_foam_tex_logged;
  * g_wet_lo is the last surface seen there; a mark 80 below it is dropped. Kate carries her own mark
  * (how far above her the water was) out of the water, so she stays wet and leaves a wet trail. */
 static float *g_wet_m, *g_wet_lo;
-static float g_wet_x0, g_wet_y0, g_wet_cell, g_wet_sink, g_kate_wet = -1e30f, g_kate_surf = -1e30f;
+static float g_wet_x0, g_wet_y0, g_wet_cell, g_wet_sink, g_kate_wet = -1e30f, g_kate_surf = -1e30f, g_kate_fresh, g_wet_dt;
 static int g_kate_k = -1;   /* Kate's texel this frame, and (g_kate_surf) the highest water surface in it */
 static DWORD g_wet_tick;
 
@@ -1540,6 +1573,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
         g_wet_tick = now;
         WetRemap(x0, y0, cell);
         sink = g_wet_sink = (cfg.wet_dry > 0.0f ? cfg.wet_dry : 0.0f) * dt;
+        g_wet_dt = dt;
         {   const float *kp = KatePos();
             int ki = kp ? (int)((kp[0] - x0) * inv) : -1, kj = kp ? (int)((kp[1] - y0) * inv) : -1;
             g_kate_k = ki >= 1 && kj >= 1 && ki < FOAM_TEX_N - 1 && kj < FOAM_TEX_N - 1 ? kj * FOAM_TEX_N + ki : -1;
@@ -1598,6 +1632,10 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                     if (g_kate_wet > -1e29f) g_kate_wet -= g_wet_sink;
                     if (g_kate_surf > -1e29f && g_kate_surf - kh > g_kate_wet) g_kate_wet = g_kate_surf - kh;   /* real water only, not her own trail */
                     if (g_kate_wet > 400.0f) g_kate_wet = 400.0f;
+                    /* drench freshness: full while the water reaches above her middle, then fades over ~40 s */
+                    if (g_kate_surf > -1e29f && g_kate_surf - kh > 60.0f) g_kate_fresh = 1.0f;
+                    else if (g_kate_fresh > 0.0f) g_kate_fresh -= g_wet_dt * (1.0f / 40.0f);
+                    if (g_kate_fresh < 0.0f) g_kate_fresh = 0.0f;
                     if (g_kate_wet > -150.0f)
                         for (dj = -1; dj <= 1; dj++)
                             for (di = -1; di <= 1; di++) {
@@ -1621,6 +1659,14 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
         } else { xf[0] = xf[1] = xf[2] = xf[3] = 0.0f; }
         IDirect3DTexture9_UnlockRect(g_foam_tex, 0);
         IDirect3DDevice9_SetPixelShaderConstantF(dev, 219, xf, 1);
+        {   const float *kp = KatePos();
+            float kc[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            if (kp && cfg.wet > 0.0f && cfg.drench > 0.0f && g_kate_wet > -150.0f && g_kate_fresh > 0.0f) {
+                kc[0] = kp[0]; kc[1] = kp[1]; kc[2] = -(-kp[2] + g_kate_wet);   /* world z of her wet line (z points down) */
+                kc[3] = g_kate_fresh * (cfg.drench > 1.5f ? 1.5f : cfg.drench);
+            }
+            IDirect3DDevice9_SetPixelShaderConstantF(dev, 218, kc, 1);
+        }
     }
     ReleaseSRWLockShared(&g_lock);
     xf[0] = x0; xf[1] = y0; xf[2] = 1.0f / (cell * FOAM_TEX_N); xf[3] = xf[2];
