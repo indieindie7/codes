@@ -23,6 +23,7 @@ var float MarkSize;        // the splat it leaves (a DrawScale for ModGore.Mark)
 var float Age;
 var bool bFlying;          // false: idle in ModGore's pool, hidden
 var bool bFast;            // drawn as the streak
+var bool bSpray;           // thrown from an exit wound: marks walls too (ModGore.ExitDrops)
 var Material DropTex[2], AlienDropTex[2];
 
 // thrown from Spot: V its starting velocity, G the gravity, Size the sprite's scale
@@ -35,6 +36,7 @@ function Fall(vector Spot, vector V, float G, int K, float Size, float SplatSize
 	MarkSize = SplatSize;
 	Age = 0;
 	bFast = false;
+	bSpray = false;
 	Texture = Pick(false);
 	SetDrawScale(Size);
 	bHidden = false;

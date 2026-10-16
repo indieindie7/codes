@@ -110,6 +110,15 @@ var Material FootTex[3], AlienFootTex[3];           // fresh, fading, nearly gon
 var Material FootTexL[3], AlienFootTexL[3];         // the left boot, mirrored
 var Material Burns[4];                               // a plasma burn cooling: white-hot, orange, ember, soot
 var config float BurnChance;                        // the share of wall hits that burn (glow and cool) rather than scorch
+// plasma and bullets (PLASMA-AND-PENETRATION.md): which damage types are which, by a part of the type's name
+var config string PlasmaTypes[8], BulletTypes[8];   // fixed: a config array<> loads empty when the ini lacks it
+var config bool bPlasmaBurns;        // plasma sears the body (little blood, a glow that cools) and chars instead of gibbing
+var config float PlasmaBleed;        // the share of the blood a plasma hit still makes
+var config bool bPenetration;        // bullets go on through the body: an exit wound, and the next body or wall behind
+var config float PenetrateKeep;      // the share of the damage left after one body
+var config float PenetrateReach;     // how far past the body the shot still goes
+var config bool bExitDrops;          // the exit spray thrown as flying drops (ModBloodDrop) that splat where they land
+var bool bPenetrating;               // a pass-through shot is being dealt (so it chains once)
 var Material WallHoles[6];                           // bullet holes dug into walls: the layer's parallax rule reads their darkness as depth
 var config bool bWallHoles;                         // walls take holes (parallax) and lose chips where shots land
 var config bool bImpactSmoke;                        // a small puff of dust and smoke where shots land (walls and floors)
@@ -374,6 +383,24 @@ function bool Bleeds(Pawn P, class<DamageType> DamageType)
 	if (P.IsA('Vehicle') || P.IsA('Turret'))
 		return false;
 	return BloodKind(P) != 0;
+}
+
+// which list a damage type is on: 1 plasma, 2 bullet, 0 neither (a part of its name, PlasmaTypes / BulletTypes)
+function int ShotKind(class<DamageType> DamageType)
+{
+	local string N;
+	local int i;
+
+	if (DamageType == None)
+		return 0;
+	N = Caps(string(DamageType.Name));
+	for (i = 0; i < ArrayCount(PlasmaTypes); i++)
+		if (PlasmaTypes[i] != "" && InStr(N, Caps(PlasmaTypes[i])) >= 0)
+			return 1;
+	for (i = 0; i < ArrayCount(BulletTypes); i++)
+		if (BulletTypes[i] != "" && InStr(N, Caps(BulletTypes[i])) >= 0)
+			return 2;
+	return 0;
 }
 
 // the colour of a character's blood, as the game's hit particles have it (the level's
@@ -795,11 +822,14 @@ function Material PoolTex(Pawn P)
 // a hit: Damage after the game's scaling, the victim still standing or not
 function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, int Damage, class<DamageType> DamageType)
 {
-	local vector Dir, HitL, HitN;
+	local vector Dir, HitL, HitN, Exit, ShotDir;
 	local float Size;
+	local int Shot, FullDamage;
+	local bool bSeared, bThrown;
 
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: hit " $ Victim $ " " $ Damage $ " " $ DamageType $ " bleeds " $ Bleeds(Victim, DamageType));
+	FullDamage = Damage;
 	if (Damage <= 0 || !Bleeds(Victim, DamageType))
 		return;
 	Hits++;
@@ -826,9 +856,32 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 
 	if (class'ModSettings'.default.bGoreLog)
 		class'ModSettings'.static.Note("gore: dir " $ Dir $ " from " $ HitLocation $ " texture " $ Sprays[0] $ " floor " $ Trace(HitL, HitN, HitLocation - vect(0,0,400), HitLocation, false) $ " at " $ HitL);
-	// the spray behind the victim, along the shot (a little downward: blood falls)
+	// what hit it (PLASMA-AND-PENETRATION.md): a plasma bolt sears the wound shut (a glow, a
+	// little blood, no spray out the back); a bullet goes through (an exit wound, the shot goes on)
+	Shot = ShotKind(DamageType);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: shot kind " $ Shot);
+	if (Shot == 1 && bPlasmaBurns)
+	{
+		Sear(Victim, HitLocation, Dir, Damage);
+		Damage = Max(1, int(Damage * PlasmaBleed));
+		Size *= PlasmaBleed + 0.2;
+	}
+	ShotDir = Dir;
+	if (Shot == 2 && bPenetration && !bPenetrating)
+	{
+		Exit = ExitSpot(Victim, HitLocation, Dir);
+		if (bWounds && Damage >= 8 && !Victim.IsHumanControlled())
+			AddWound(Victim, Exit);
+	}
+	else
+		Exit = HitLocation + Dir * Victim.CollisionRadius;
+	// the spray behind the victim, along the shot (a little downward: blood falls): thrown as
+	// drops that fly on and mark what they hit, else one trace marks it at once
 	Dir = Normal(Dir + vect(0,0,-0.25));
-	if (Trace(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius, false) != None)
+	bSeared = Shot == 1 && bPlasmaBurns;
+	bThrown = !bSeared && Shot == 2 && ExitDrops(Exit, Dir, BloodKind(Victim), Damage);
+	if (!bSeared && !bThrown && Trace(HitL, HitN, HitLocation + Dir * SprayReach, HitLocation + Dir * Victim.CollisionRadius, false) != None)
 	{
 		Mark(SprayTex(Victim), HitL, HitN, Dir, Size * (0.8 + 0.6 * VSize(HitL - HitLocation) / SprayReach));
 		// on a wall the spray runs down it (WallRun: the d3d8 layer's running drops), and drips
@@ -842,7 +895,7 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	// drips under the hit
 	if (FRand() < 0.85 && Trace(HitL, HitN, HitLocation - vect(0,0,400), HitLocation, false) != None)
 		Mark(SplatTex(Victim), HitL + VRand() * vect(1,1,0) * 30, HitN, vect(0,0,0), Size * 0.6);
-	if (bBleedTrail && Victim.Health > Damage && !Victim.IsHumanControlled())
+	if (bBleedTrail && !bSeared && Victim.Health > FullDamage && !Victim.IsHumanControlled())
 		Bleed(Victim, Damage);
 	if (bBloodCoats)
 		Spatter(Victim, HitLocation, 0.2 + Damage / 150.0, 130);
@@ -852,18 +905,26 @@ function Hit(Pawn Victim, Pawn Instigator, vector HitLocation, vector Momentum, 
 	// blood runs down the body from the hit (from the wound, if it got one)
 	AddStreak(Victim, HitLocation, LastWound, FClamp(Damage / 40.0, 0.3, 1.5));
 	// a pool under a fresh body
-	if (Victim.Health <= 0 || Damage >= Victim.Health)
+	if (Victim.Health <= 0 || FullDamage >= Victim.Health)
 	{
 		ScreenSplash(Victim.Location, BloodKind(Victim), 0.3 + FClamp(Damage / 150.0, 0, 0.4));
 		if (Melee != None && class'ModTargeting'.static.IsHostile(Victim) && FRand() < Melee.BladeDropChance)
 			Melee.Drop(Victim.Location);
 		AddDying(Victim);
-		// (a blade's kill cuts: it doesn't blow the body apart)
-		if (bGibs && !(Severer != None && Severer.bForce) && WantsGib(Victim, Damage, DamageType))
-			Gib(Victim, Dir, Damage);
+		// (a blade's kill cuts: it doesn't blow the body apart; a bullet's pieces go on along the shot)
+		if (bGibs && !(Severer != None && Severer.bForce) && WantsGib(Victim, FullDamage, DamageType))
+		{
+			if (Shot == 2)
+				Gib(Victim, Normal(ShotDir * 2 + Dir), FullDamage);
+			else
+				Gib(Victim, Dir, FullDamage);
+		}
 		else if (Severer != None)
-			Severer.Kill(Victim, HitLocation, Dir, Damage);
+			Severer.Kill(Victim, HitLocation, Dir, FullDamage);
 	}
+	// a bullet goes on through the body into what is behind it
+	if (Shot == 2)
+		PassThrough(Victim, Instigator, Exit, ShotDir, FullDamage, Momentum, DamageType);
 }
 
 // an explosion (the game's dmgType_Explosion family, less the push/pull powers that
@@ -874,7 +935,12 @@ function bool WantsGib(Pawn P, int Damage, class<DamageType> DamageType)
 
 	if (P.bHidden || GibSet(P) < 0)
 		return false;
-	if (Damage - Max(P.Health, 0) >= GibOverkill || DamageType.default.bAlwaysGibs)
+	if (DamageType.default.bAlwaysGibs)
+		return true;
+	// plasma cooks a body rather than bursting it: only twice the overkill
+	if (bPlasmaBurns && ShotKind(DamageType) == 1)
+		return Damage - Max(P.Health, 0) >= 2 * GibOverkill;
+	if (Damage - Max(P.Health, 0) >= GibOverkill)
 		return true;
 	N = Caps(string(DamageType.Name));
 	if (InStr(N, "PUSH") >= 0 || InStr(N, "PULL") >= 0 || InStr(N, "LEVITATE") >= 0 || InStr(N, "SHATTER") >= 0 || InStr(N, "SPEEDBURST") >= 0 || InStr(N, "SHIELD") >= 0)
@@ -1923,6 +1989,144 @@ function Burn(vector Spot, vector N, float Size)
 	D.Grow(D.DrawScale, D.DrawScale * 1.12, 2.5 + FRand());
 }
 
+// a plasma bolt on a body: a glow on the bone nearest the hit that cools in ~3 s, and a wisp
+// of smoke (the wound is seared shut: Hit makes only PlasmaBleed of the blood)
+function Sear(Pawn P, vector Spot, vector Dir, int Damage)
+{
+	local ModSear S;
+	local ModImpactPuff F;
+	local color Tint;
+	local coords BC;
+	local float D, BestD;
+	local int i, Best;
+
+	if (P == None || P.bHidden)
+		return;
+	Best = -1;
+	BestD = 1000000;
+	if (React != None)
+		for (i = 0; i < 12; i++)
+		{
+			BC = P.GetBoneCoords(React.Bones[i]);
+			if (BC.Origin == vect(0,0,0))
+				continue;
+			D = VSize(BC.Origin - Spot);
+			if (D < BestD)
+			{
+				BestD = D;
+				Best = i;
+			}
+		}
+	S = Spawn(class'ModSear', P,, Spot - Dir * 4);
+	if (S != None)
+	{
+		S.Start(Burns[0], Burns[1], Burns[2], 0.06 + FClamp(Damage / 600.0, 0, 0.08), 2.5 + FRand());
+		if (Best >= 0 && !P.AttachToBone(S, React.Bones[Best]))
+			S.SetBase(P);
+		else if (Best < 0)
+			S.SetBase(P);
+	}
+	if (bImpactSmoke)
+	{
+		F = Spawn(class'ModImpactPuff',,, Spot - Dir * 6, rotator(-Dir));
+		if (F != None)
+		{
+			Tint.R = 70; Tint.G = 66; Tint.B = 62; Tint.A = 255;
+			F.Aim(-Dir, Tint, 0.6);
+		}
+	}
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: plasma sear on " $ P $ " bone " $ Best $ " (" $ Damage $ ")");
+}
+
+// where a shot along Dir leaves the body: the far side of its collision cylinder
+function vector ExitSpot(Pawn P, vector HitLocation, vector Dir)
+{
+	local vector Flat, Rel;
+	local float b, c, t;
+
+	Flat = Dir * vect(1,1,0);
+	if (VSize(Flat) < 0.01)
+		return HitLocation + Dir * P.CollisionRadius;
+	// solve |Rel + Flat t| = R in the floor plane, the larger root
+	Rel = (HitLocation - P.Location) * vect(1,1,0);
+	b = 2 * (Rel Dot Flat);
+	c = (Rel Dot Rel) - P.CollisionRadius * P.CollisionRadius;
+	t = (-b + Sqrt(FMax(b * b - 4 * (Flat Dot Flat) * c, 0))) / (2 * (Flat Dot Flat));
+	return HitLocation + Dir * FMax(t, P.CollisionRadius * 0.5);
+}
+
+// the exit spray thrown as drops: they fly on from the exit wound and splat (or run down a
+// wall) where they land. False when no drop could go (the pool is busy or the player is far):
+// Hit then marks the old way, with one trace.
+function bool ExitDrops(vector Spot, vector Dir, int Kind, int Damage)
+{
+	local int i, n, Thrown;
+	local vector V;
+
+	if (!bExitDrops || Kind == 0)
+		return false;
+	n = Clamp(3 + Damage / 12, 3, 8);
+	for (i = 0; i < n; i++)
+	{
+		V = Normal(Dir + VRand() * 0.35) * (600 + 400 * FRand());
+		if (SprayDrip(Spot, V, Kind, DecalScale * (0.3 + 0.25 * FRand())))
+			Thrown++;
+	}
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: exit drops " $ Thrown $ " of " $ n $ " from " $ Spot);
+	return Thrown > 0;
+}
+
+// a spray drop: like Drip, but it marks walls too (DropLanded, bSpray)
+function bool SprayDrip(vector Spot, vector V, int Kind, float SplatSize)
+{
+	local ModBloodDrop D;
+	local PlayerController C;
+
+	if (!bBlood || Kind == 0)
+		return false;
+	C = Level.GetLocalPlayerController();
+	if (C == None || C.Pawn == None || VSize(Spot - C.Pawn.Location) > DripReach)
+		return false;
+	D = FreeDrop();
+	if (D == None)
+		return false;
+	D.Fall(Spot, V, PhysicsVolume.Gravity.Z, Kind, DropSize * (0.75 + 0.5 * FRand()), SplatSize);
+	D.bSpray = true;
+	DropsThrown++;
+	return true;
+}
+
+// a bullet goes on past the body: the next body in line takes PenetrateKeep of the damage
+// (once: bPenetrating), a wall gets the usual impact (hole, chips, puff)
+function PassThrough(Pawn Victim, Pawn Instigator, vector Exit, vector Dir, int Damage, vector Momentum, class<DamageType> DamageType)
+{
+	local Actor A;
+	local vector HitL, HitN, End;
+	local Material M;
+	local int Left;
+
+	if (!bPenetration || bPenetrating)
+		return;
+	Left = int(Damage * PenetrateKeep);
+	if (Left <= 0)
+		return;
+	End = Exit + Dir * PenetrateReach;
+	A = Trace(HitL, HitN, End, Exit + Dir * 2, true,, M);
+	if (class'ModSettings'.default.bGoreLog)
+		class'ModSettings'.static.Note("gore: pass-through from " $ Victim $ " hits " $ A $ " (" $ Left $ ")");
+	// (the player's shots don't go on into friends: the game has no friendly fire for them)
+	if (Pawn(A) != None && A != Victim && Pawn(A).Health > 0 && !(Instigator != None && Instigator.IsHumanControlled() && !class'ModTargeting'.static.IsHostile(Pawn(A))))
+	{
+		bPenetrating = true;
+		Pawn(A).TakeDamage(Left, Instigator, HitL, Momentum * PenetrateKeep, DamageType);
+		bPenetrating = false;
+	}
+	else if (A != None)
+		ShotGone(HitL - Dir * 2, Dir * 1000);
+}
+
 event Tick(float DeltaTime)
 {
 	local int i;
@@ -2897,8 +3101,17 @@ function DropLanded(ModBloodDrop D, vector HitL, vector HitN)
 	local int i;
 
 	DropsLanded++;
+	// a spray drop on a wall or ceiling: a small spray mark, running down a wall
 	if (HitN.Z < 0.5)
+	{
+		if (D.bSpray)
+		{
+			Mark(KindSpray(D.Kind), HitL, HitN, Normal(D.Vel), D.MarkSize * 1.4);
+			if (Abs(HitN.Z) < 0.5)
+				WallRun(HitL, HitN, int(D.Kind == 2), 0.35 + 0.3 * FRand());
+		}
 		return;
+	}
 	if (bLivePools)
 	{
 		R = RegionAt(HitL);
@@ -3306,6 +3519,20 @@ defaultproperties
      Burns(2)=Texture'AdventMod.Blood.Burn2'
      Burns(3)=Texture'AdventMod.Blood.Burn3'
      BurnChance=0.35
+     PlasmaTypes(0)="SEEKERPULSE"
+     PlasmaTypes(1)="SEEKERASSAULT"
+     PlasmaTypes(2)="AURELIANLASER"
+     PlasmaTypes(3)="ENERGYBLAST"
+     PlasmaTypes(4)="HUMANBLASTERALT"
+     BulletTypes(0)="PISTOLFIRE"
+     BulletTypes(1)="XJ9FIRE"
+     BulletTypes(2)="PHOTONFIRE"
+     bPlasmaBurns=True
+     PlasmaBleed=0.3
+     bPenetration=True
+     PenetrateKeep=0.5
+     PenetrateReach=1500.0
+     bExitDrops=True
      WallHoles(0)=Texture'AdventMod.Dirt.WallHole0'
      WallHoles(1)=Texture'AdventMod.Dirt.WallHole1'
      WallHoles(2)=Texture'AdventMod.Dirt.WallHole2'
