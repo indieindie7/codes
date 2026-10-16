@@ -68,7 +68,8 @@ static struct {
     float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
     float drench;       /* Kate just out of the water: wet skin sheen, soaked cloth, running water, drips */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f };
+    float drench_splash; /* how much of her the spray wets in patches when she runs through shallow water (0..1) */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -151,6 +152,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "wet")) cfg.wet = (float)atof(v);
         else if (!_stricmp(k, "wet_dry")) cfg.wet_dry = (float)atof(v);
         else if (!_stricmp(k, "drench")) cfg.drench = (float)atof(v);
+        else if (!_stricmp(k, "drench_splash")) cfg.drench_splash = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
@@ -812,7 +814,7 @@ static const char WET_HLSL[] =
     "      specularStrength = lerp(specularStrength, saturate(specularStrength * 1.5f + 0.3f), hwWt);\n"
     "      specularPower *= 1.0f + 0.5f * hwWt;\n"
     "    }\n"
-    "    if (hwKate.w > 0.0f) { /* drenched Kate: c218 = (x, y, world z of her wet line, freshness), c217.x = how much of her is soaked */\n"
+    "    if (hwKate.w > 0.0f) { /* drenched Kate: c218 = (x, y, world z of her wet line, freshness), c217 = (how much of her is soaked, world z of the splash top, splash density, 0) */\n"
     "      float2 hwKd = vertexPosition.xy - hwKate.xy;\n"
     "      float hwKr = dot(hwKd, hwKd);\n"
     "      if (hwKr < 3600.0f) {\n"
@@ -820,6 +822,13 @@ static const char WET_HLSL[] =
     "        float hwDz = vertexPosition.z - (hwKate.z + 3.0f * sin(hwKd.x * 0.35f + hwKd.y * 0.21f) + 2.0f * sin(hwKd.y * 0.53f - hwKd.x * 0.17f));\n" /* ragged line, not a level cut */
     "        float hwKw = saturate(hwDz * 0.1f) * hwRad;\n"
     "        float hwKc = saturate((hwDz + 14.0f) * (1.0f / 14.0f)) * hwRad;\n" /* cloth wicks a little above the line */
+    "        float hwSf = saturate(-hwDz / max(hwKate.z - hwKate2.y, 1.0f));\n" /* splashes: 0 at the wet line, 1 at the top of the spray */
+    "        float3 hwPc = floor(vertexPosition.xyz * (1.0f / 3.0f));\n"
+    "        float hwPh = frac(sin(dot(hwPc, float3(127.1f, 311.7f, 74.7f))) * 43758.547f);\n"
+    "        float3 hwPf = frac(vertexPosition.xyz * (1.0f / 3.0f)) - 0.5f;\n"
+    "        float hwPs = (1.0f - smoothstep(0.25f, 0.45f, length(hwPf))) * step(hwPh + 0.001f, hwKate2.z * (1.0f - hwSf)) * step(hwDz, 0.0f) * hwRad;\n"
+    "        hwKw = max(hwKw, 0.8f * hwPs);\n"
+    "        hwKc = max(hwKc, hwPs);\n"
     "        float3 hwC = diffuseMapSample.rgb;\n"
     "        float hwSk = (hwC.r > hwC.g && hwC.g > hwC.b) ? saturate(((hwC.r - hwC.b) / max(hwC.r, 0.01f) - 0.12f) * 6.0f) * saturate((0.65f - (hwC.r - hwC.b) / max(hwC.r, 0.01f)) * 6.0f) : 0.0f;\n"
     "        float hwL = dot(hwC, float3(0.3f, 0.59f, 0.11f));\n"
@@ -1510,7 +1519,7 @@ static volatile LONG g_foam_tex_logged;
  * g_wet_lo is the last surface seen there; a mark 80 below it is dropped. Kate carries her own mark
  * (how far above her the water was) out of the water, so she stays wet and leaves a wet trail. */
 static float *g_wet_m, *g_wet_lo;
-static float g_wet_x0, g_wet_y0, g_wet_cell, g_wet_sink, g_kate_wet = -1e30f, g_kate_surf = -1e30f, g_kate_fresh, g_wet_dt;
+static float g_wet_x0, g_wet_y0, g_wet_cell, g_wet_sink, g_kate_wet = -1e30f, g_kate_surf = -1e30f, g_kate_fresh, g_wet_dt, g_kate_spl = -1e30f, g_kate_spd;
 static int g_kate_k = -1;   /* Kate's texel this frame, and (g_kate_surf) the highest water surface in it */
 static DWORD g_wet_tick;
 
@@ -1639,6 +1648,27 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                     if (g_kate_surf > -1e29f && g_kate_surf - kh > -140.0f) g_kate_fresh = 1.0f;   /* any water above her ankles; the wet line limits how much of her */
                     else if (g_kate_fresh > 0.0f) g_kate_fresh -= g_wet_dt * (1.0f / 40.0f);
                     if (g_kate_fresh < 0.0f) g_kate_fresh = 0.0f;
+                    {   /* splashes: running through shallow water throws spray up her legs and body in patches;
+                           g_kate_spl is the spray top above her (like g_kate_wet), g_kate_spd how many patches are wet */
+                        static float px, py;
+                        static int pv;
+                        float d = g_kate_surf > -1e29f ? g_kate_surf - kh : -1e30f;
+                        if (pv && g_wet_dt > 0.0f && d > -140.0f && d < 60.0f) {   /* wading, not swimming */
+                            float vx = kp[0] - px, vy = kp[1] - py, v = sqrtf(vx * vx + vy * vy) / g_wet_dt;
+                            if (v > 60.0f && v < 3000.0f) {   /* a jump in position is a respawn */
+                                float a = (v - 60.0f) * (1.0f / 300.0f), top;
+                                if (a > 1.0f) a = 1.0f;
+                                top = d + 40.0f + 120.0f * a;
+                                if (top > g_kate_spl) g_kate_spl = top;
+                                g_kate_spd += a * g_wet_dt * 0.5f;
+                                if (g_kate_spd > 1.0f) g_kate_spd = 1.0f;
+                            }
+                        }
+                        px = kp[0]; py = kp[1]; pv = 1;
+                        if (g_kate_spl > -1e29f) g_kate_spl -= g_wet_sink;
+                        if (g_kate_spl > 400.0f) g_kate_spl = 400.0f;
+                        if (g_kate_fresh <= 0.0f) { g_kate_spd = 0.0f; g_kate_spl = -1e30f; }
+                    }
                     if (g_kate_wet > -150.0f)
                         for (dj = -1; dj <= 1; dj++)
                             for (di = -1; di <= 1; di++) {
@@ -1671,7 +1701,11 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
             IDirect3DDevice9_SetPixelShaderConstantF(dev, 218, kc, 1);
             kc[0] = kc[3] > 0.0f ? (g_kate_wet + 150.0f) * (1.0f / 250.0f) : 0.0f;   /* soaked share: 0 feet only, 1 to the chest; scales the drips */
             if (kc[0] > 1.0f) kc[0] = 1.0f;
-            kc[1] = kc[2] = kc[3] = 0.0f;
+            if (kc[3] > 0.0f && g_kate_spl > g_kate_wet && cfg.drench_splash > 0.0f) {
+                kc[1] = -(-kp[2] + g_kate_spl);   /* world z of the spray top */
+                kc[2] = g_kate_spd * (cfg.drench_splash > 1.0f ? 1.0f : cfg.drench_splash);
+            } else { kc[1] = kc[2] = 0.0f; }
+            kc[3] = 0.0f;
             IDirect3DDevice9_SetPixelShaderConstantF(dev, 217, kc, 1);
         }
     }
