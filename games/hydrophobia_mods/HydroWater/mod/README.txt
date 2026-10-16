@@ -40,6 +40,9 @@ Notes
 * With foam on, the first level load is slower while the game compiles its shaders into
   shaderCacheHE.bin. The game's own shaderCacheDX.bin is not touched.
 * If another mod already uses dinput8.dll in this folder, they cannot both load.
+* Fixed: earlier builds could crash at startup (about one launch in three) when the Steam
+  overlay was on, because both hooked the same Direct3D call. Update to this build. If a
+  crash still happens, HydroWater_crash.txt next to the game says where.
 * If the game crashes with the mod, set mode = passthrough and post the HydroWater.log.
 
 License
