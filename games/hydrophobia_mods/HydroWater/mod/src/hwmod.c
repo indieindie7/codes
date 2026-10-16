@@ -1416,6 +1416,8 @@ static void InjectLook(const char *args)
 }
 
 static void InjectKey(const char *args);
+static float g_kate_wet;   /* defined with the wet surfaces below */
+
 static void RunControlFile(IDirect3DDevice9 *dev)
 {
     ClickTick();
@@ -1442,6 +1444,11 @@ static void RunControlFile(IDirect3DDevice9 *dev)
         else if (!_strnicmp(line, "look ", 5)) InjectLook(line + 5);
         else if (!_strnicmp(line, "click", 5)) InjectClick(line[5] ? line + 6 : "");
         else if (!_stricmp(line, "state")) GameStateLog("now");
+        else if (!_stricmp(line, "kate")) {
+            const float *kp = KatePos();
+            if (kp) Log("control: kate at %.0f %.0f height %.0f, wet %.0f", kp[0], kp[1], kp[2], g_kate_wet);
+            else Log("control: kate: no player pawn");
+        }
         else Log("control: unknown command '%s'", line);
     }
     fclose(f);
