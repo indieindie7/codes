@@ -25,6 +25,8 @@ var config float SeeOfficerRange;
 var config float MindWeight;       // 0 = stock score, 1 = emotion score only
 var config float AllyFearRange;    // allies within this range (and in sight) feel a hit/down
 var config float CloseRange;       // officer this close and in sight = being yelled at / cornered
+var config float HearRange;        // allies within this range hear a hit/down through walls
+var config float HearFactor;       // heard (not seen) events scare this much of a seen one
 
 var array<Mind> Minds;
 
@@ -198,16 +200,23 @@ function SpreadFear(Pawn Victim, float Amount, string Why)
 {
     local int j;
     local Pawn A;
+    local float Dist, K;
+    local string How;
     for (j = 0; j < Minds.Length; j++)
     {
         A = Minds[j].P;
         if (A == None || A == Victim || Minds[j].bDown || !A.IsConscious())
             continue;
-        if (VSize(A.Location - Victim.Location) > AllyFearRange || !FastTrace(Victim.Location, A.Location))
+        Dist = VSize(A.Location - Victim.Location);
+        if (Dist <= AllyFearRange && FastTrace(Victim.Location, A.Location))
+            { K = 1.0; How = "saw"; }
+        else if (Dist <= HearRange)
+            { K = HearFactor * (1.0 - 0.5 * Dist / HearRange); How = "heard"; }   // fainter with distance
+        else
             continue;
-        AddFear(j, Amount * (1.5 - Minds[j].Nerve));
-        Minds[j].Anger = FMin(1.0, Minds[j].Anger + Amount * 0.5 * Minds[j].Nerve);
-        Log("SwatMinds feel "$A.Name$" "$Why$" ("$Victim.Name$") fear="$Minds[j].Fear$" anger="$Minds[j].Anger, 'SwatMinds');
+        AddFear(j, Amount * K * (1.5 - Minds[j].Nerve));
+        Minds[j].Anger = FMin(1.0, Minds[j].Anger + Amount * K * 0.5 * Minds[j].Nerve);
+        Log("SwatMinds feel "$A.Name$" "$How$" "$Why$" ("$Victim.Name$") dist="$int(Dist)$" fear="$Minds[j].Fear$" anger="$Minds[j].Anger, 'SwatMinds');
     }
 }
 
@@ -268,4 +277,6 @@ defaultproperties
     MindWeight=0.5
     AllyFearRange=1200.0
     CloseRange=400.0
+    HearRange=3000.0
+    HearFactor=0.6
 }
