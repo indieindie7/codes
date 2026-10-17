@@ -1,5 +1,8 @@
 # AdventMod hand-off (2026-10-12): Advent Rising modding on a break
 
+> **ARCHIVED 2026-10-17.** The user moved all modding to SWAT 4. The tech stack hand-off is in
+> `games/swat4_mods/HANDOFF-FROM-ADVENT.md`. Last Advent work: plasma sears + bullet pass-through (f47c3ec).
+
 The user is moving most modding work to Scorcher (user, 10-12: "i am going to move right now to modding
 mostly just scorcher"). They will still play Advent Rising. This file is the way back in. It has two parts:
 **graphics** and **gameplay**. Each part lists what is built and what is not.
