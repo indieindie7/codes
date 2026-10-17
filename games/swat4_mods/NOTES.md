@@ -241,3 +241,34 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
 - Run: `Content\System\Swat4.exe SP-FoodWall?Mutator=SwatMinds.SwatMindsMutator` from `SwatMinds\System` (GameInfo.uc:719 parses ?Mutator=). Log `SwatMinds\System\Swat4.log`, tag `SwatMinds:` (probe / add / swapped / hit / score lines).
 - Verified 10-17: compiles 0/0; on SP-FoodWall, 3 suspects each got 4 abilities swapped, probe logs every 1 s, fear 0 at rest, no SwatMinds script warnings. NOT yet verified: combat (score/hit lines) needs a played engagement. Menu-started missions don't add the mutator yet (ServerActors untested).
 - Devastation update 10-17 (HANDOFF-SWAT4.md last section): bots see a standing teammate in their line of fire, but rapid-fire teammates refuse crouch requests and the 100 uu sidestep fails from cover, so the shooter just stops; cover swap bug: a bot asked to give up its point found no other and lost its own. Fixes for an officer port: let any officer crouch on request (whatever the weapon), try several strafe distances, and keep the old cover point when the swap search fails. Final handoff 10-17 (all tests done; run data in C:edevastationNOTES.md runs 1-18).
+
+## PCGamingWiki notes (user pasted, 10-17)
+- `-nointro` skips the intro videos and fixes some fullscreen flicker. LaunchSwatMinds.bat passes it now.
+- FOV is 85 and Vert- on widescreen. The FirstPersonFOV setting is [SwatGame.SwatPawn] in SwatPawn.ini; per the wiki it changes only the viewmodel and can break MP joins. Widescreen stretches the HUD.
+- Above 150 FPS the player gets stuck on map geometry (enlarged hitboxes). Cap the FPS for playtests if this shows up.
+- The "insufficient onboard video memory" error with >4 GB VRAM is a false positive; it can be skipped.
+- The executables are 32-bit, and the LAA flag may help on modern PCs.
+- Prior art: **Enhanced SWAT 4** (unofficial patch: widescreen HUD/FOV, raw input, borderless, AA). **SWAT: Elite Force (SEF)** is a total overhaul that needs TSS: cut content, better AI, a merged campaign, and an official GOG release since 2025-09-02. SEF-FR and SEF-FR Tactical derive from it. Before tuning SwatMinds further, check what SEF changed in the suspect AI, so we don't duplicate it and stay compatible. SEF targets the expansion while SwatMinds targets the base game.
+
+## Launch fixes (10-17, playtest 1)
+- ServerActors=SwatMinds.SwatMindsMutator does NOT survive map travel in SP. It spawned in Entry only, and no "SwatMinds up" line appeared on SP-Training.
+- The `Mutator=` option in User.ini [DefaultPlayer] reaches only the first Entry URL; later travel URLs drop it.
+- WORKING ROUTE: SP missions load through SwatRepo.uc:133, `"start" @ MapName`, where MapName comes from SwatMissions.ini. The mod copy of `SwatMinds\System\SwatMissions.ini` now has all 15 `MapName=SP-X?Mutator=SwatMinds.SwatMindsMutator`. Not yet verified in a mission.
+- Resolution: the game reset to 800x600 because 1920x1080 was not in SwatGUIState.ini ScreenResolutionChoices. Added 1280x720 and 1920x1080, and set the Swat4.ini viewports to 1920x1080. The log still says "SetRes 1920x1080 Fullscreen 0" (windowed); Alt+Enter toggles fullscreen, since Suppress=WindowedMode is commented out.
+- Playtest 1 was SP-Training: no suspects, so no data.
+
+## Existing mods (10-17 survey; ModDB and Nexus both return 403 to fetches, so this was gathered by search and is partial)
+- SWAT: Elite Force (needs TSS): suspect personalities (Insane/Polite), flee-and-shoot, officers keep their orders while engaging. Source reportedly ships with v7.2 (CompileSource.bat); licence not confirmed. https://www.moddb.com/mods/swat-elite-force
+- SEF First Responders / FR Tactical Edition: tougher suspects and ROE changes.
+- Suspect Invasion: 150 suspects per map, using the archetype morale. https://www.moddb.com/mods/suspect-invasion
+- No standalone morale or compliance mod was found, so SwatMinds' emotion layer is new for the base game. Mark it incompatible with SEF.
+
+## Playtest 2 results (10-17, SP-FoodWall from the menu)
+- VERIFIED: the SwatMissions.ini `MapName=SP-X?Mutator=SwatMinds.SwatMindsMutator` route works. Log: `start SP-FoodWall?Mutator=...`, then "Add mutator", "up", 3 suspects each with 4 abilities swapped (nerve 0.44, 0.68, 0.35; none aggressive).
+- Line counts: 251 probe, 10 score, **0 hit**. Mission completed: 0/3 suspects arrested, 1/3 incapacitated.
+- Stress works: SwatEnemy2 saw 5 officers and reached stress 1.00 within 2 s. SwatEnemy1 reached 0.24.
+- Fear stayed at 0.00 the whole time, because hits are its only source.
+- **Bug: the hit was missed.** Timer skips non-conscious pawns, so a hit that incapacitates in one go never gets compared with LastHealth. Fix: run the health-delta check before the conscious filter, and log incapacitated/killed as their own events.
+- **Design: mind scores flatten stock intent.** Examples: cover stock 0.91 became 0.31; flee stock 0.80 became 0.13; attack stock 1.00 became 0.45. The stock score encodes situation (cover available, escape route), but the mind score ignores it except when stock is 0. Next: blend, e.g. `mind = lerp(stock, emotion, 0.5)`, or scale stock by an emotion multiplier.
+- **Design: fear needs non-hit sources.** Candidates: a nearby ally hit or down, officer shouts/compliance orders, gunfire nearby, flashbang/gas/pepper. Stress could also feed into fear when nerve is low.
+- Only 10 action choices in about 140 s. Choices are rare events, so emotions must already be high when a choice happens.

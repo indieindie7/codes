@@ -26,7 +26,16 @@ var array<Mind> Minds;
 
 function PostBeginPlay()
 {
+    local SwatMindsMutator Other;
+
     Super.PostBeginPlay();
+    // URL ?Mutator= and ServerActors can both spawn us; keep one
+    foreach DynamicActors(class'SwatMindsMutator', Other)
+        if (Other != self)
+        {
+            Destroy();
+            return;
+        }
     SetTimer(TickInterval, true);
     Log("SwatMinds up: enabled="$bEnabled$" probe="$bProbe, 'SwatMinds');
 }
