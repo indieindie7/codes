@@ -321,3 +321,7 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
 - 15 feel lines, all "heard" (dist 310-804), 0 "saw": FastTrace from pawn centre fails even at 310 units, so the sight check may be too strict (try eye height).
 - Max fear: SwatEnemy1 0.87 (3 hits of 26 dmg), others 0.16-0.22. Heard-down adds ~0.10-0.17.
 - Recording `C:\Users\john\Videos\2026-10-17 14-09-56.mp4` (170 s): Food Wall, squad command menu used, sniper picture-in-picture, player wounded, suspect by the van in the back alley.
+
+## Instant Action fix 2 (10-17, built 14:17)
+- First version never ran: PC.Player.GUIController is None during PostBeginPlay (no "instant action next" lines). Now uses SwatRepo(Level.GetRepo()).GuiConfig (engine-level, LevelInfo.uc:406) and logs "instant action: no Repo/GuiConfig" on failure. Picks from all 13 campaign MissionName entries (no unlock check). A command-line map URL is ignored (game goes to splash), so test from the menu.
+- Research added: research/tactical-fps-ai.md, research/ai-communication.md, plan research/swatminds-plan.md.

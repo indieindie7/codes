@@ -265,19 +265,19 @@ function float Score(Pawn P, int Kind, float Stock)
 // next Instant Action click goes somewhere new. The fields are private: SetPropertyText.
 function RandomizeInstantAction()
 {
-    local PlayerController PC;
-    local SwatGUIControllerBase GC;
+    local SwatRepo Repo;
     local SwatGUIConfig Cfg;
     local int k, n, Tries;
     local string Cur;
 
-    PC = Level.GetLocalPlayerController();
-    if (PC == None || PC.Player == None)
+    // the local PlayerController does not exist yet in PostBeginPlay; the Repo does
+    Repo = SwatRepo(Level.GetRepo());
+    if (Repo == None || Repo.GuiConfig == None)
+    {
+        Log("SwatMinds instant action: no Repo/GuiConfig", 'SwatMinds');
         return;
-    GC = SwatGUIControllerBase(PC.Player.GUIController);
-    if (GC == None || GC.GuiConfig == None)
-        return;
-    Cfg = GC.GuiConfig;
+    }
+    Cfg = Repo.GuiConfig;
     n = Min(Cfg.MissionName.Length, Cfg.FriendlyName.Length);
     if (n < 2)
         return;
