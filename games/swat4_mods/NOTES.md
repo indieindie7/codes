@@ -312,6 +312,12 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
 ## Fix pass 2 (10-17, SwatMinds.u built 14:08): hearing
 - SpreadFear: seen (<= AllyFearRange 1200 + FastTrace) = full amount, logged "saw"; else within HearRange=3000 = HearFactor 0.6 x (1 - 0.5 x dist/HearRange), logged "heard". Feel lines now carry dist=.
 
-## Random Instant Action (10-17, source done, NOT built yet: game was running playtest 4)
+## Random Instant Action (10-17, SwatMinds.u built 14:13, 0 errors; in-game check pending)
 - Instant Action (SwatMainMenu.uc:91-106) calls GuiConfig.LoadLastMissionPlayed() (SwatGUIConfig.uc:352), which replays the private config LastMissionPlayed*; GameStart() (SwatGUIControllerBase.uc:241) saves it just before LoadLevel.
 - SwatMindsMutator.RandomizeInstantAction (bRandomInstantAction=true): on each map load, PC.Player.GUIController -> SwatGUIControllerBase.GuiConfig, picks a random other MissionName[k], SetPropertyText on the three private fields, SaveConfig. Log "instant action next:". First click after a fresh install still replays the stored mission once.
+
+## Playtest 4 results (10-17, SP-FoodWall, hearing pass)
+- 4 suspects (nerve 0.78/0.58/0.96/0.59, two aggressive); 5 hit, 4 down (all suspects), 22 score lines.
+- 15 feel lines, all "heard" (dist 310-804), 0 "saw": FastTrace from pawn centre fails even at 310 units, so the sight check may be too strict (try eye height).
+- Max fear: SwatEnemy1 0.87 (3 hits of 26 dmg), others 0.16-0.22. Heard-down adds ~0.10-0.17.
+- Recording `C:\Users\john\Videos\2026-10-17 14-09-56.mp4` (170 s): Food Wall, squad command menu used, sniper picture-in-picture, player wounded, suspect by the van in the back alley.
