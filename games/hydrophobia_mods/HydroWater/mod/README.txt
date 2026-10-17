@@ -20,7 +20,8 @@ Install
 The mod writes HydroWater.log in the game folder: "solver hooked" and
 "sheet ...: now on HydroWater" mean it is working.
 
-Uninstall: delete dinput8.dll (and HydroWater.ini, HydroWater.log, shaderCacheHE.bin).
+Uninstall: delete dinput8.dll (and HydroWater.ini, HydroWater.log and the shaderCache??.bin files
+  other than the game's own shaderCacheDX.bin).
 
 Options (HydroWater.ini)
 ------------------------
@@ -41,7 +42,9 @@ Notes
 * Only dinput8.dll's DirectInput8Create is proxied to the Windows copy; controllers and
   keyboard work as before.
 * With foam on, the first level load is slower while the game compiles its shaders into
-  shaderCacheHE.bin. The game's own shaderCacheDX.bin is not touched.
+  its own shaderCache??.bin (the two letters change with each version and with the wet
+  switch, so old shaders are never reused). The game's own shaderCacheDX.bin is not touched;
+  older mod caches can be deleted.
 * If another mod already uses dinput8.dll in this folder, they cannot both load.
 * Fixed: earlier builds could crash at startup (about one launch in three) when the Steam
   overlay was on, because both hooked the same Direct3D call. Update to this build. If a

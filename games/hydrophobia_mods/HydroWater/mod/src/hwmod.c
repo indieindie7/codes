@@ -660,12 +660,13 @@ static int Install(void)
  * red pushes past, giving opaque bright foam with crisp edges over the water, lit from the
  * scene, and slightly lighter water where green says there is air. If the patched text fails to compile, the original is compiled instead.
  * Compiled shaders are cached in shaderCacheDX.bin, which would keep the unpatched water; with
- * foam on, the exe's file name string is changed to shaderCacheHW.bin (same length) before the
- * cache is opened, so the game's own cache stays untouched and a second one is built. */
+ * foam on, the exe's file name string is changed to shaderCacheXY.bin (same length) before the
+ * cache is opened, so the game's own cache stays untouched and a second one is built. XY is a hash
+ * of every bit of HLSL the mod adds (and of the switches that decide what gets added), so a new
+ * build or a changed ini never picks up shaders compiled from older text. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHE.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheTE.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static char CACHE_NAME_HW[] = "shaderCacheHW.bin";   /* the two letters after "shaderCache" are set by PatchCacheName */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
@@ -1039,7 +1040,15 @@ static void PatchCacheName(void)
     static int done;
     char *s = (char *)Exe(VA_SHADER_CACHE_NAME);
     if (done || !cfg.opts.foam || !Readable(s, sizeof CACHE_NAME_GAME)) return;
-    const char *name = cfg.foam_test == 2 ? CACHE_NAME_T2 : CACHE_NAME_HW;
+    static const char abc[] = "ABCEFGHIJKLMNOPQRSTUVWYZ0123456789";   /* no D or X: never the game's own "DX" */
+    const char *parts[] = { FOAM_DEFS, FOAM_HLSL, FOAM_TEX_GLOBALS, WET_GLOBALS, WET_HLSL };
+    const char *name = CACHE_NAME_HW;
+    unsigned h = 2166136261u, k;
+    for (k = 0; k < sizeof parts / sizeof parts[0]; k++)
+        for (const char *c = parts[k]; *c; c++) h = (h ^ (unsigned char)*c) * 16777619u;
+    h = (h ^ (unsigned)(cfg.foam_test == 2) ^ (unsigned)(cfg.wet > 0.0f) << 1) * 16777619u;
+    CACHE_NAME_HW[11] = abc[h % (sizeof abc - 1)];
+    CACHE_NAME_HW[12] = abc[(h / (sizeof abc - 1)) % (sizeof abc - 1)];
     if (!memcmp(s, name, sizeof CACHE_NAME_HW)) { done = 1; return; }
     if (memcmp(s, CACHE_NAME_GAME, sizeof CACHE_NAME_GAME)) return;    /* not unpacked yet */
     if (PatchBytes(s, name, sizeof CACHE_NAME_HW)) { done = 1; Log("foam: shader cache is %s (the game's %s is left alone)", name, CACHE_NAME_GAME); }
