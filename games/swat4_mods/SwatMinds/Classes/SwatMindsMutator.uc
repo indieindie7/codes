@@ -12,6 +12,7 @@ struct Mind
     var float StartMorale;      // first non-zero morale; low morale is measured against it
     var int   LastHealth;
     var float NextProbe;
+    var bool  bDown;            // incapacitated/killed already reported
 };
 
 var config bool  bEnabled;         // false = stock FRand choice
@@ -21,6 +22,9 @@ var config float TickInterval;
 var config float NoiseWeight;      // random part added to every score
 var config float MoraleFromFear;   // extra morale loss per point of fear from a hit
 var config float SeeOfficerRange;
+var config float MindWeight;       // 0 = stock score, 1 = emotion score only
+var config float AllyFearRange;    // allies within this range (and in sight) feel a hit/down
+var config float CloseRange;       // officer this close and in sight = being yelled at / cornered
 
 var array<Mind> Minds;
 
@@ -99,7 +103,7 @@ function Timer()
 {
     local Pawn E;
     local Pawn O;
-    local int i, Dmg, Seen;
+    local int i, Dmg, Seen, Close;
     local float FearAdd, MoraleFrac;
     local CommanderAction CA;
 
@@ -110,14 +114,25 @@ function Timer()
         i = FindMind(E);
         if (i < 0)
             i = AddMind(E);
-        if (!E.IsConscious() || E.IsCompliant() || ISwatAI(E).IsArrested())
+
+        // hits are checked before the conscious filter so one-shot downs count
+        Dmg = Minds[i].LastHealth - E.Health;
+        Minds[i].LastHealth = E.Health;
+        if (Minds[i].bDown)
+            continue;
+        if (!E.IsConscious() || E.Health <= 0)
+        {
+            Minds[i].bDown = true;
+            Log("SwatMinds down "$E.Name$" dmg="$Dmg$" hp="$E.Health, 'SwatMinds');
+            SpreadFear(E, 0.25, "ally down");
+            continue;
+        }
+        if (E.IsCompliant() || ISwatAI(E).IsArrested())
             continue;
 
         CA = ISwatAI(E).GetCommanderAction();
 
         // hits: Devastation hide-when-hit numbers (fear +0.1, +0.2 more if dmg > 20)
-        Dmg = Minds[i].LastHealth - E.Health;
-        Minds[i].LastHealth = E.Health;
         if (Dmg > 0)
         {
             FearAdd = 0.1;
@@ -128,17 +143,31 @@ function Timer()
             if (bEnabled && CA != None && MoraleFromFear > 0.0)
                 CA.ChangeMorale(-FearAdd * MoraleFromFear, "SwatMinds fear");
             Log("SwatMinds hit "$E.Name$" dmg="$Dmg$" fear="$Minds[i].Fear$" anger="$Minds[i].Anger, 'SwatMinds');
+            SpreadFear(E, 0.08, "ally hit");
         }
 
-        // stress: officers in sight
-        Seen = 0;
+        // stress: officers in sight; close ones also scare (shouting, cornered)
+        Seen = 0; Close = 0;
         foreach E.VisibleCollidingActors(class'Pawn', O, SeeOfficerRange)
             if (O != E && IsOfficerSide(O) && O.IsConscious())
+            {
                 Seen++;
+                if (VSize(O.Location - E.Location) < CloseRange)
+                    Close++;
+            }
         if (Seen > 0)
             Minds[i].Stress = FMin(1.0, Minds[i].Stress + 0.08 * Seen);
         else
             Minds[i].Stress = FMax(0.0, Minds[i].Stress - 0.04);
+        if (Close > 0)
+            AddFear(i, 0.03 * Close * (1.0 - Minds[i].Nerve));
+        // high stress wears down low nerve
+        if (Minds[i].Stress > 0.6 && Minds[i].Nerve < 0.5)
+            AddFear(i, 0.02);
+        // less-lethal effects
+        if (ISwatPawn(E).IsFlashbanged() || ISwatPawn(E).IsGassed() || ISwatPawn(E).IsPepperSprayed()
+            || ISwatPawn(E).IsStung() || ISwatPawn(E).IsTased())
+            AddFear(i, 0.05 * (1.5 - Minds[i].Nerve));
 
         // decay, with low morale holding fear up
         Minds[i].Fear  = FMax(0.0, Minds[i].Fear - 0.02);
@@ -156,6 +185,29 @@ function Timer()
             Minds[i].NextProbe = Level.TimeSeconds + ProbeInterval;
             Probe(i, CA, Seen);
         }
+    }
+}
+
+function AddFear(int i, float Amount)
+{
+    Minds[i].Fear = FMin(1.0, Minds[i].Fear + Amount);
+}
+
+// Allies who can see Victim get scared; low nerve feels it more, high nerve gets angry.
+function SpreadFear(Pawn Victim, float Amount, string Why)
+{
+    local int j;
+    local Pawn A;
+    for (j = 0; j < Minds.Length; j++)
+    {
+        A = Minds[j].P;
+        if (A == None || A == Victim || Minds[j].bDown || !A.IsConscious())
+            continue;
+        if (VSize(A.Location - Victim.Location) > AllyFearRange || !FastTrace(Victim.Location, A.Location))
+            continue;
+        AddFear(j, Amount * (1.5 - Minds[j].Nerve));
+        Minds[j].Anger = FMin(1.0, Minds[j].Anger + Amount * 0.5 * Minds[j].Nerve);
+        Log("SwatMinds feel "$A.Name$" "$Why$" ("$Victim.Name$") fear="$Minds[j].Fear$" anger="$Minds[j].Anger, 'SwatMinds');
     }
 }
 
@@ -190,7 +242,8 @@ function float Score(Pawn P, int Kind, float Stock)
         case 2: Base = 0.70 * F * (1.0 - N) + 0.20 * S;        KindName = "flee";    break;
         case 3: Base = 0.40 * F + 0.20 * S;                    KindName = "regroup"; break;
     }
-    Result = FClamp(Base + FRand() * NoiseWeight, 0.0, 1.0);
+    // blend: stock keeps the situation (cover/escape available), emotion tilts it
+    Result = FClamp(Stock * (1.0 - MindWeight) + Base * MindWeight + (FRand() - 0.5) * NoiseWeight, 0.0, 1.0);
     Log("SwatMinds score "$P.Name$" "$KindName$" stock="$Stock$" mind="$Result$" f="$F$" a="$A$" s="$S$" n="$N, 'SwatMinds');
     return Result;
 }
@@ -212,4 +265,7 @@ defaultproperties
     NoiseWeight=0.2
     MoraleFromFear=0.25
     SeeOfficerRange=1500.0
+    MindWeight=0.5
+    AllyFearRange=1200.0
+    CloseRange=400.0
 }

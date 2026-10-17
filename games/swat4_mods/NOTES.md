@@ -272,3 +272,23 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
 - **Design: mind scores flatten stock intent.** Examples: cover stock 0.91 became 0.31; flee stock 0.80 became 0.13; attack stock 1.00 became 0.45. The stock score encodes situation (cover available, escape route), but the mind score ignores it except when stock is 0. Next: blend, e.g. `mind = lerp(stock, emotion, 0.5)`, or scale stock by an emotion multiplier.
 - **Design: fear needs non-hit sources.** Candidates: a nearby ally hit or down, officer shouts/compliance orders, gunfire nearby, flashbang/gas/pepper. Stress could also feed into fear when nerve is low.
 - Only 10 action choices in about 140 s. Choices are rare events, so emotions must already be high when a choice happens.
+
+## Fix pass 1 (10-17, SwatMinds.u built 13:55)
+- Hits are now checked BEFORE the conscious filter. A suspect's first incapacitated/dead tick logs `SwatMinds down` and sets bDown.
+- New fear sources:
+  - `SpreadFear`: allies within AllyFearRange=1200 with FastTrace line of sight get fear +amount×(1.5−nerve) and anger +amount×0.5×nerve. Amount is 0.25 for an ally down and 0.08 for an ally hit. Logged as `SwatMinds feel`.
+  - An officer within CloseRange=400 and in sight adds 0.03×(1−nerve) per tick.
+  - Stress > 0.6 with nerve < 0.5 adds 0.02 per tick.
+  - Flashbang, gas, pepper, sting or taser (ISwatPawn.uc:26-30) adds 0.05×(1.5−nerve) per tick.
+- Score is now `stock×(1−MindWeight) + emotion×MindWeight + (FRand−0.5)×NoiseWeight`, with MindWeight=0.5.
+- Gotcha: CompileSwatMinds.bat cannot replace System\SwatMinds.u while Swat4.exe is running, so close the game first. Run it as `Start-Process cmd '/c "...bat"' -WindowStyle Hidden -Wait`.
+
+## Nexus mods installed (10-17, user downloads)
+- **Remove Reticles**: Content\Textures\HUD.utx replaced; the original is kept as HUD.utx.orig. Applies to all launches, including SwatMinds.
+- **Edit AI Data (Nikolay97)** is made for SEF_FR. Its 33 listed values were applied by key to the vanilla Content\System and ContentExpansion\System AI.ini, SwatGame.ini and SwatPawn.ini; originals are in *.orig. The SwatMinds\System ini copies are NOT changed, so playtests stay clean.
+  - Suspect fire delays are 0.4-0.6 s.
+  - Aim error is 4 for all skills.
+  - Initial reaction chance is 0.10.
+  - Hard/Elite damage multiplier is 1.0.
+  - Toolkit qualify time is 4 s.
+- **NOT installed:** RFS Audio Overhaul (needs SEF v7.2) and SEF Real Time Mirror Reflections (needs SEF; it replaces Engine.dll and Engine.u). SWAT: Elite Force is not installed on this PC.
