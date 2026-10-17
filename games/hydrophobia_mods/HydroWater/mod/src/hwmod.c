@@ -1663,12 +1663,12 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                 int ki = (int)((kp[0] - x0) * inv), kj = (int)((kp[1] - y0) * inv), di, dj;
                 float kh = -kp[2];
                 if (ki >= 1 && kj >= 1 && ki < FOAM_TEX_N - 1 && kj < FOAM_TEX_N - 1) {
-                    if (g_kate_wet > -1e29f) g_kate_wet -= g_wet_sink;
+                    if (g_kate_wet > -1e29f) g_kate_wet -= g_wet_sink * 0.3f;   /* clothes on her hold water longer than walls */
                     if (g_kate_surf > -1e29f && g_kate_surf - kh > g_kate_wet) g_kate_wet = g_kate_surf - kh;   /* real water only, not her own trail */
                     if (g_kate_wet > 400.0f) g_kate_wet = 400.0f;
-                    /* drench freshness: full while she stands in water, then fades over ~40 s */
+                    /* drench freshness: full while she stands in water, then fades over ~2.5 min */
                     if (g_kate_surf > -1e29f && g_kate_surf - kh > -140.0f) g_kate_fresh = 1.0f;   /* any water above her ankles; the wet line limits how much of her */
-                    else if (g_kate_fresh > 0.0f) g_kate_fresh -= g_wet_dt * (1.0f / 40.0f);
+                    else if (g_kate_fresh > 0.0f) g_kate_fresh -= g_wet_dt * (1.0f / 150.0f);
                     if (g_kate_fresh < 0.0f) g_kate_fresh = 0.0f;
                     {   /* splashes: running through shallow water throws spray up her legs and body in patches;
                            g_kate_spl is the spray top above her (like g_kate_wet), g_kate_spd how many patches are wet */
@@ -1718,7 +1718,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
             float kc[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
             if (kp && cfg.wet > 0.0f && cfg.drench > 0.0f && g_kate_wet > -150.0f && g_kate_fresh > 0.0f) {
                 kc[0] = kp[0]; kc[1] = kp[1]; kc[2] = -(-kp[2] + g_kate_wet);   /* world z of her wet line (z points down) */
-                kc[3] = g_kate_fresh * (cfg.drench > 1.5f ? 1.5f : cfg.drench);
+                kc[3] = sqrtf(g_kate_fresh) * (cfg.drench > 1.5f ? 1.5f : cfg.drench);   /* stays strong, then goes at the end */
             }
             IDirect3DDevice9_SetPixelShaderConstantF(dev, 218, kc, 1);
             kc[0] = kc[3] > 0.0f ? (g_kate_wet + 150.0f) * (1.0f / 250.0f) : 0.0f;   /* soaked share: 0 feet only, 1 to the chest; scales the drips */
