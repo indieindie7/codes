@@ -49,9 +49,11 @@ build; the five tests together run in about two seconds.
 
 ## Next
 
-- Stage 5 (Kurganov–Petrova reconstruction) and 7 (splash and foam from the field) are the next
-  visible gains; 9 (tile sleeping) and 10 (SSE/AVX2) once a real room is hooked up.
-- Hooking into the game: the sheet layout is the game's (planes with a two-cell border, cell
-  size 20), so the step can replace `FUN_00d5c9d0(sheet, dt)` from an injected DLL once the
-  sheet struct offsets in `games/REVERSE-ENGINEERING.md` are mapped onto `hw_sheet`; the
-  stamping (`FUN_00c12880`) and Havok buoyancy are the other two hook points.
+- Stage 5 is in as `recon` (minmod-limited reconstruction of eta, u, v at faces; all five
+  milestone tests pass with it on, dam front 1120 vs 1300 units at 3 s, still water exact).
+  Stage 7 (splash and foam from the field) is the next visible gain; 9 (tile sleeping) and 10 (SSE/AVX2) once a real room is hooked up.
+- Hooking into the game: done in `mod/` (a `dinput8.dll` proxy that detours `FUN_00d5c9d0`
+  and copies the sheet planes through `hw_sheet` each step; `mod/README.txt` is the Nexus
+  readme, `mod/build.ps1` builds, `mod/tests/build.ps1` runs the hook test,
+  `mod/package.ps1` zips the release). The stamping (`FUN_00c12880`) and Havok buoyancy are
+  the next two hook points (stages 1-3). Details in `games/REVERSE-ENGINEERING.md`.
