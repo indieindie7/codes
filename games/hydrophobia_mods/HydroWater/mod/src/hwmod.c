@@ -69,7 +69,8 @@ static struct {
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
     float drench;       /* Kate just out of the water: wet skin sheen, soaked cloth, running water, drips */
     float drench_splash; /* how much of her the spray wets in patches when she runs through shallow water (0..1) */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f };
+    float drench_mask;  /* 1 = soak only where the game's own wetness mask (spec map .z) allows, 0 = everywhere, 2 = show the mask in red */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -153,6 +154,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "wet_dry")) cfg.wet_dry = (float)atof(v);
         else if (!_stricmp(k, "drench")) cfg.drench = (float)atof(v);
         else if (!_stricmp(k, "drench_splash")) cfg.drench_splash = (float)atof(v);
+        else if (!_stricmp(k, "drench_mask")) cfg.drench_mask = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
@@ -814,7 +816,7 @@ static const char WET_HLSL[] =
     "      specularStrength = lerp(specularStrength, saturate(specularStrength * 1.5f + 0.3f), hwWt);\n"
     "      specularPower *= 1.0f + 0.5f * hwWt;\n"
     "    }\n"
-    "    if (hwKate.w > 0.0f) { /* drenched Kate: c218 = (x, y, world z of her wet line, freshness), c217 = (how much of her is soaked, world z of the splash top, splash density, 0) */\n"
+    "    if (hwKate.w > 0.0f) { /* drenched Kate: c218 = (x, y, world z of her wet line, freshness), c217 = (how much of her is soaked, world z of the splash top, splash density, drench_mask) */\n"
     "      float2 hwKd = vertexPosition.xy - hwKate.xy;\n"
     "      float hwKr = dot(hwKd, hwKd);\n"
     "      if (hwKr < 3600.0f) {\n"
@@ -829,13 +831,19 @@ static const char WET_HLSL[] =
     "        float hwPs = (1.0f - smoothstep(0.25f, 0.45f, length(hwPf))) * step(hwPh + 0.001f, hwKate2.z * (1.0f - hwSf)) * step(hwDz, 0.0f) * hwRad;\n"
     "        hwKw = max(hwKw, 0.8f * hwPs);\n"
     "        hwKc = max(hwKc, hwPs);\n"
+    "        float hwB = 1.0f;\n" /* the game's wetness mask: spec map .z, how wet the artists let this texel get */
+    "#if defined(_SpecSamplersOn) && _SpecSamplersOn\n"
+    "        if (g_bSpecularMapOn) hwB = HW_BETA;\n"
+    "#endif\n"
+    "        hwB = lerp(1.0f, hwB, saturate(hwKate2.w));\n"
     "        float3 hwC = diffuseMapSample.rgb;\n"
     "        float hwSk = (hwC.r > hwC.g && hwC.g > hwC.b) ? saturate(((hwC.r - hwC.b) / max(hwC.r, 0.01f) - 0.12f) * 6.0f) * saturate((0.65f - (hwC.r - hwC.b) / max(hwC.r, 0.01f)) * 6.0f) : 0.0f;\n"
     "        float hwL = dot(hwC, float3(0.3f, 0.59f, 0.11f));\n"
     "        float3 hwCl = lerp(hwL.xxx, hwC, 1.25f) * 0.7f;\n"
-    "        diffuseMapSample.rgb = lerp(hwC, lerp(hwCl, hwC * 0.95f, hwSk), lerp(hwKc, hwKw, hwSk));\n"
-    "        specularStrength = lerp(specularStrength, lerp(saturate(specularStrength + 0.25f), saturate(specularStrength * 2.0f + 0.45f), hwSk), hwKw);\n"
-    "        specularPower *= 1.0f + hwKw * (0.5f + 2.5f * hwSk);\n"
+    "        diffuseMapSample.rgb = lerp(hwC, lerp(hwCl, hwC * 0.95f, hwSk), lerp(hwKc, hwKw, hwSk) * hwB);\n"
+    "        specularStrength = lerp(specularStrength, lerp(saturate(specularStrength + 0.25f), saturate(specularStrength * 2.0f + 0.45f), hwSk), hwKw * lerp(0.4f, 1.0f, hwB));\n"
+    "        specularPower *= 1.0f + hwKw * lerp(0.4f, 1.0f, hwB) * (0.5f + 2.5f * hwSk);\n"
+    "        if (hwKate2.w > 1.5f) diffuseMapSample.rgb = lerp(diffuseMapSample.rgb, float3(1.0f, 0.0f, 0.0f), 0.8f * hwB * hwRad);\n" /* drench_mask 2: show the mask in red */
     "        float hwCol = floor(dot(vertexPosition.xy, float2(0.7071f, 0.7071f)) * 0.6f);\n"
     "        float hwH = frac(sin(hwCol * 12.9898f) * 43758.547f);\n"
     "        float hwS = frac(vertexPosition.z * 0.04f + hwTime.x * (0.5f + hwH) + hwH * 7.0f);\n"
@@ -860,14 +868,16 @@ static const char WET_HLSL[] =
 
 __attribute__((used)) char *hw_wet_inject(const char *src, size_t len, size_t *outlen)
 {
-    size_t na = sizeof WET_ANCHOR - 1, ng = sizeof FOAM_TEX_GLOBALS - 1, nw = sizeof WET_GLOBALS - 1, nh = sizeof WET_HLSL - 1, o;
-    const char *q = FindN(src, len, WET_ANCHOR, na);
+    size_t na = sizeof WET_ANCHOR - 1, ng = sizeof FOAM_TEX_GLOBALS - 1, nw = sizeof WET_GLOBALS - 1, nh = sizeof WET_HLSL - 1, nb, o;
+    const char *q = FindN(src, len, WET_ANCHOR, na), *beta;
     char *out;
     if (!q || FindN(q + na, len - (size_t)(q + na - src), WET_ANCHOR, na) || !FindN(src, len, WET_NEED, sizeof WET_NEED - 1)
         || FindN(src, len, "vReflectionSample", 17)) return NULL;
-    out = (char *)malloc(ng + nw + len + nh + 1);
+    beta = FindN(src, len, "float2 fBetaControl = ", 22) ? "#define HW_BETA fBetaControl.x\n" : "#define HW_BETA 1.0f\n";
+    nb = strlen(beta);
+    out = (char *)malloc(ng + nw + nb + len + nh + 1);
     if (!out) return NULL;
-    memcpy(out, FOAM_TEX_GLOBALS, ng); memcpy(out + ng, WET_GLOBALS, nw); o = ng + nw;
+    memcpy(out, FOAM_TEX_GLOBALS, ng); memcpy(out + ng, WET_GLOBALS, nw); memcpy(out + ng + nw, beta, nb); o = ng + nw + nb;
     memcpy(out + o, src, (size_t)(q - src)); o += (size_t)(q - src);
     memcpy(out + o, WET_HLSL, nh); o += nh;
     memcpy(out + o, q, len - (size_t)(q - src)); o += len - (size_t)(q - src);
@@ -1705,7 +1715,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                 kc[1] = -(-kp[2] + g_kate_spl);   /* world z of the spray top */
                 kc[2] = g_kate_spd * (cfg.drench_splash > 1.0f ? 1.0f : cfg.drench_splash);
             } else { kc[1] = kc[2] = 0.0f; }
-            kc[3] = 0.0f;
+            kc[3] = cfg.drench_mask;
             IDirect3DDevice9_SetPixelShaderConstantF(dev, 217, kc, 1);
         }
     }

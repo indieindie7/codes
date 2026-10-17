@@ -31,6 +31,7 @@ foam                foam and air bubbles on the water (1 = on)
 wet, wet_dry        wet surfaces where the water has been, and how fast they dry
 drench              Kate soaked after a swim: wet skin, dark cloth, running water, drips
 drench_splash       running through shallow water splashes her higher up in wet patches
+drench_mask         1 = soak only where the game's wetness mask allows, 0 = everywhere, 2 = show it
 foam_dump           1 = write the patched water shader to HydroWater_shaderN.hlsl
 alpha, c_adapt, edge_damp  tuning, see the comments in the file
 max_cells           grids with more cells than this stay on the game's solver
