@@ -328,18 +328,35 @@ static void PatchSlot(void **vtbl, int slot, void *fn, void **orig)
 	VirtualProtect(&vtbl[slot], sizeof(void *), old, &old);
 }
 
+/* SWAT 4 releases and re-creates its devices (the keyboard can land on the freed mouse's
+   address), so forget a device when its last reference goes: "focus on" calls through these. */
+enum { DEV_Release = 2 };
+typedef ULONG (WINAPI *ReleaseFn)(void *self);
+static ReleaseFn g_realRelease;
+static ULONG WINAPI HookRelease(void *self)
+{
+	ULONG n = g_realRelease(self);
+	if (n == 0)
+	{
+		if (self == g_mouse) { g_mouse = NULL; Log("mouse device %p released", self); }
+		if (self == g_keyboard) { g_keyboard = NULL; Log("keyboard device %p released", self); }
+	}
+	return n;
+}
+
 static HRESULT WINAPI HookCreateDevice(void *self, REFGUID guid, void **dev, void *outer)
 {
 	HRESULT hr = g_realCreateDevice(self, guid, dev, outer);
 	if (SUCCEEDED(hr) && dev && *dev)
 	{
 		void **vtbl = *(void ***)*dev;
-		if (IsEqualGUID(guid, &GUID_SysMouse_)) { g_mouse = *dev; Log("mouse device %p", *dev); }
-		else if (IsEqualGUID(guid, &GUID_SysKeyboard_)) { g_keyboard = *dev; Log("keyboard device %p", *dev); }
+		if (IsEqualGUID(guid, &GUID_SysMouse_)) { if (g_keyboard == *dev) g_keyboard = NULL; g_mouse = *dev; Log("mouse device %p", *dev); }
+		else if (IsEqualGUID(guid, &GUID_SysKeyboard_)) { if (g_mouse == *dev) g_mouse = NULL; g_keyboard = *dev; Log("keyboard device %p", *dev); }
 		else return hr;
 		PatchSlot(vtbl, DEV_GetDeviceState, (void *)HookGetState, (void **)&g_realGetState);
 		PatchSlot(vtbl, DEV_GetDeviceData, (void *)HookGetData, (void **)&g_realGetData);
 		PatchSlot(vtbl, DEV_Acquire, (void *)HookAcquire, (void **)&g_realAcquire);
+		PatchSlot(vtbl, DEV_Release, (void *)HookRelease, (void **)&g_realRelease);
 		if (!g_realUnacquire)
 			g_realUnacquire = (UnacquireFn)vtbl[DEV_Unacquire];
 	}
@@ -367,6 +384,31 @@ static ClipCursorFn g_realClipCursor;
 
 static HWND WINAPI HookGetFocus(void) { return g_spoof && g_hwnd ? g_hwnd : g_realGetFocus(); }
 static HWND WINAPI HookGetForeground(void) { return g_spoof && g_hwnd ? g_hwnd : g_realGetForeground(); }
+
+/* SWAT 4's WinDrv also asks GetActiveWindow / GetKeyState / GetAsyncKeyState and grabs focus with
+   SetForegroundWindow / SetActiveWindow / SetFocus: in focus mode those are answered from the
+   virtual state and never touch the real desktop (the game stays behind the user's windows). */
+typedef HWND (WINAPI *SetHwndFn)(HWND);
+typedef BOOL (WINAPI *SetFgFn)(HWND);
+typedef SHORT (WINAPI *KeyStateFn)(int);
+static HwndFn g_realGetActive;
+static SetHwndFn g_realSetActive, g_realSetFocus;
+static SetFgFn g_realSetForeground;
+static KeyStateFn g_realGetKeyState, g_realGetAsyncKeyState;
+static BYTE g_vbuttons[3];          /* buttons held by wdown/wclick: L, R, M */
+static HWND WINAPI HookGetActive(void) { return g_spoof && g_hwnd ? g_hwnd : g_realGetActive(); }
+static HWND WINAPI HookSetActive(HWND h) { return g_spoof ? g_hwnd : g_realSetActive(h); }
+static HWND WINAPI HookSetFocus(HWND h) { return g_spoof ? g_hwnd : g_realSetFocus(h); }
+static BOOL WINAPI HookSetForeground(HWND h) { return g_spoof ? TRUE : g_realSetForeground(h); }
+static SHORT VirtualKeyState(int vk)
+{
+	if (vk == VK_LBUTTON) return g_vbuttons[0] ? (SHORT)0x8000 : 0;
+	if (vk == VK_RBUTTON) return g_vbuttons[1] ? (SHORT)0x8000 : 0;
+	if (vk == VK_MBUTTON) return g_vbuttons[2] ? (SHORT)0x8000 : 0;
+	return 0;                       /* the user's real keys never reach the pilot's game */
+}
+static SHORT WINAPI HookGetKeyState(int vk) { return g_spoof ? VirtualKeyState(vk) : g_realGetKeyState(vk); }
+static SHORT WINAPI HookGetAsyncKeyState(int vk) { return g_spoof ? VirtualKeyState(vk) : g_realGetAsyncKeyState(vk); }
 
 static BOOL WINAPI HookGetCursorPos(LPPOINT pt)
 {
@@ -429,18 +471,33 @@ static void PatchImport(HMODULE mod, const char *dll, const char *name, void *fn
 	}
 }
 
-static void PatchWinDrv(void)
+static void PatchModule(HMODULE m)
 {
-	HMODULE m = GetModuleHandleA("WinDrv.dll");
-	static int done;
-	if (!m || done)
-		return;
-	done = 1;
 	PatchImport(m, "user32.dll", "GetFocus", (void *)HookGetFocus, (void **)&g_realGetFocus);
 	PatchImport(m, "user32.dll", "GetForegroundWindow", (void *)HookGetForeground, (void **)&g_realGetForeground);
 	PatchImport(m, "user32.dll", "GetCursorPos", (void *)HookGetCursorPos, (void **)&g_realGetCursorPos);
 	PatchImport(m, "user32.dll", "SetCursorPos", (void *)HookSetCursorPos, (void **)&g_realSetCursorPos);
 	PatchImport(m, "user32.dll", "ClipCursor", (void *)HookClipCursor, (void **)&g_realClipCursor);
+	PatchImport(m, "user32.dll", "GetActiveWindow", (void *)HookGetActive, (void **)&g_realGetActive);
+	PatchImport(m, "user32.dll", "SetActiveWindow", (void *)HookSetActive, (void **)&g_realSetActive);
+	PatchImport(m, "user32.dll", "SetFocus", (void *)HookSetFocus, (void **)&g_realSetFocus);
+	PatchImport(m, "user32.dll", "SetForegroundWindow", (void *)HookSetForeground, (void **)&g_realSetForeground);
+	PatchImport(m, "user32.dll", "GetKeyState", (void *)HookGetKeyState, (void **)&g_realGetKeyState);
+	PatchImport(m, "user32.dll", "GetAsyncKeyState", (void *)HookGetAsyncKeyState, (void **)&g_realGetAsyncKeyState);
+}
+
+/* WinDrv (Unreal II) plus Window/Engine/the exe (SWAT 4 keeps focus logic in WWindow) */
+static void PatchWinDrv(void)
+{
+	static const char *mods[] = {"WinDrv.dll", "Window.dll", "Engine.dll", NULL};
+	static int done;
+	int i;
+	if (done || !GetModuleHandleA("WinDrv.dll"))
+		return;
+	done = 1;
+	for (i = 0; mods[i]; i++)
+		if (GetModuleHandleA(mods[i])) PatchModule(GetModuleHandleA(mods[i]));
+	PatchModule(GetModuleHandleA(NULL));
 }
 
 static BOOL CALLBACK FindGameWindow(HWND h, LPARAM lp)
@@ -652,6 +709,17 @@ static void Command(char *line, char *reply, int size)
 		Queue(0, 12 + a, cmd[0] == 'd' ? 0x80 : 0, 0);
 	else if (n == 2 && !strcmp(cmd, "click") && a >= 0 && a < 8)
 		{ Queue(0, 12 + a, 0x80, 0); Queue(0, 12 + a, 0, 4); }
+	else if (n == 2 && (!strcmp(cmd, "wdown") || !strcmp(cmd, "wup") || !strcmp(cmd, "wclick")) && a >= 0 && a < 3)
+	{
+		/* mouse buttons as window messages at the virtual cursor (SWAT 4 menus read these) */
+		static const UINT downMsg[3] = {WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN};
+		static const WPARAM mk[3] = {MK_LBUTTON, MK_RBUTTON, MK_MBUTTON};
+		LPARAM lp = MAKELPARAM(g_cursor.x, g_cursor.y);
+		if (!g_hwnd) EnumWindows(FindGameWindow, (LPARAM)&g_hwnd);
+		PostMessageA(g_hwnd, WM_MOUSEMOVE, 0, lp);
+		if (cmd[1] != 'u') { g_vbuttons[a] = 1; PostMessageA(g_hwnd, downMsg[a], mk[a], lp); }
+		if (cmd[1] != 'd') { if (cmd[1] == 'c') Sleep(60); g_vbuttons[a] = 0; PostMessageA(g_hwnd, downMsg[a] + 1, 0, lp); }
+	}
 	else if (n == 2 && !strcmp(cmd, "tap") && a > 0 && a < 256)
 		{ Queue(1, a, 0x80, 0); Queue(1, a, 0, 4); }
 	else if (!strcmp(cmd, "key") && sscanf_s(line, "%15s %ld %15s", cmd, (unsigned)sizeof(cmd), &a, word, (unsigned)sizeof(word)) == 3 && a > 0 && a < 256)
