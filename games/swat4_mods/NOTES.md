@@ -292,3 +292,19 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
   - Hard/Elite damage multiplier is 1.0.
   - Toolkit qualify time is 4 s.
 - **NOT installed:** RFS Audio Overhaul (needs SEF v7.2) and SEF Real Time Mirror Reflections (needs SEF; it replaces Engine.dll and Engine.u). SWAT: Elite Force is not installed on this PC.
+
+## Playtest 3 results (10-17, SP-FoodWall, after fix pass 1)
+- 4 suspects, nerve 0.77 / 0.42 / 0.98 / 0.81; three aggressive.
+- 2 down lines (one-shot fix works): SwatEnemy2 dmg=164, SwatEnemy1 dmg=86.
+- 0 feel lines: no ally within AllyFearRange=1200 with FastTrace sight when the downs happened. Next: hearing radius (no sight needed) for shots/downs.
+- 17 score lines; the 0.5 blend keeps the stock order now.
+- First fear came from stress + low nerve (SwatEnemy1 fear 0.21).
+- User recording `C:\Users\john\Videos\2026-10-17 13-59-09.mp4` (54 s): ended MISSION FAILED 1/100 (unauthorized deadly force -10; 1/4 incapacitated, 1/4 neutralized).
+- RFS Audio Overhaul + SEF Real Time Mirror Reflections (Nexus) need SEF; not installed.
+
+## Borderless helper (10-17, verified)
+- Window title is `Swat4`. `SwatMinds\borderless.pyw` (pythonw, started by LaunchSwatMinds.bat) restyles it to WS_POPUP|WS_VISIBLE (0x94000000) at the monitor rect (tested 0,0-1920x1080), ClipCursor while the game is foreground, skips minimized, SWP_NOACTIVATE, exits with the game.
+
+## Research (10-17, Sonnet agents)
+- `research/breach-cover-ai.md`: CQB rules (fatal funnel, points of domination, interlocking sectors) as slot claims on a shared board; F.E.A.R. callouts on state change; TLoU buddy rule (never block the player's aim/door); utility scoring; light L4D Director; no revive in SWAT 4, so cover-downed-officer / drag / cuff-assist / reload-cover.
+- `research/ray-audio.md`: 1) check DefOpenAL32.dll for EFX or drop in OpenAL Soft x86; 2) UnrealScript Trace probes ~10 Hz for RT60/occlusion with a material absorption table; 3) proxy DefOpenAL32.dll sets EFX reverb + per-source low-pass; 4) Steam Audio only if too coarse.
