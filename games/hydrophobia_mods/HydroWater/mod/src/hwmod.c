@@ -69,8 +69,10 @@ static struct {
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
     float drench;       /* Kate just out of the water: wet skin sheen, soaked cloth, running water, drips */
     float drench_splash; /* how much of her the spray wets in patches when she runs through shallow water (0..1) */
-    float drench_mask;  /* 1 = soak only where the game's own wetness mask (spec map .z) allows, 0 = everywhere, 2 = show the mask in red */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f };
+    float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
+                           3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
+                           Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 0.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -506,8 +508,8 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                 g_body_foam = 0; g_body_vmax = 0.0f;
             }
         }
-        Log("mesh hook: %ld rebuilds, %ld no bridge, %ld size mismatch, %ld sheets coloured; shaders %ld compiled, %ld patched, %ld water-like without anchor",
-            g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheets, g_shader_calls, g_foam_patched, g_shader_water_noanchor);
+        Log("mesh hook: %ld rebuilds, %ld no bridge, %ld size mismatch, %ld sheets coloured; shaders %ld compiled, %ld patched, %ld water-like without anchor, %ld wet",
+            g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheets, g_shader_calls, g_foam_patched, g_shader_water_noanchor, g_wet_patched);
     }
     return dt;
 }
@@ -808,6 +810,7 @@ static const char WET_NEED[] = "float4 vertexPosition = vIn.m_vVertexPosition;";
 static const char WET_GLOBALS[] = "float4 hwWet : register(c219);\nfloat4 hwKate : register(c218);\nfloat4 hwKate2 : register(c217);\n";
 static const char WET_HLSL[] =
     "  { /* HydroWater wet surfaces: darker and glossier below the high-water mark */\n"
+    "    if (hwKate2.w > 2.5f) { float2 hwQd = vertexPosition.xy - hwKate.xy; diffuseMapSample.rgb = float3(hwKate.w > 0.0f ? 1.0f : 0.0f, dot(hwQd, hwQd) < 3600.0f ? 1.0f : 0.0f, frac(abs(vertexPosition.z) * 0.01f)); }\n" /* drench_mask 3 debug: red = drench constants set, green = within 60 units of her xy, blue = world z bands */
     "    float2 hwWu = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "    if (hwWet.w > 0.0f && hwWu.x > 0.0f && hwWu.x < 1.0f && hwWu.y > 0.0f && hwWu.y < 1.0f) {\n"
     "      float hwWa = tex2Dlod(hwFoamTex, float4(0.5f + hwWu.x * 0.5f, hwWu.y, 0.0f, 0.0f)).a * 255.0f;\n"
