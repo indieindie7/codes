@@ -311,3 +311,7 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
 
 ## Fix pass 2 (10-17, SwatMinds.u built 14:08): hearing
 - SpreadFear: seen (<= AllyFearRange 1200 + FastTrace) = full amount, logged "saw"; else within HearRange=3000 = HearFactor 0.6 x (1 - 0.5 x dist/HearRange), logged "heard". Feel lines now carry dist=.
+
+## Random Instant Action (10-17, source done, NOT built yet: game was running playtest 4)
+- Instant Action (SwatMainMenu.uc:91-106) calls GuiConfig.LoadLastMissionPlayed() (SwatGUIConfig.uc:352), which replays the private config LastMissionPlayed*; GameStart() (SwatGUIControllerBase.uc:241) saves it just before LoadLevel.
+- SwatMindsMutator.RandomizeInstantAction (bRandomInstantAction=true): on each map load, PC.Player.GUIController -> SwatGUIControllerBase.GuiConfig, picks a random other MissionName[k], SetPropertyText on the three private fields, SaveConfig. Log "instant action next:". First click after a fresh install still replays the stored mission once.

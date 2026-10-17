@@ -27,6 +27,7 @@ var config float AllyFearRange;    // allies within this range (and in sight) fe
 var config float CloseRange;       // officer this close and in sight = being yelled at / cornered
 var config float HearRange;        // allies within this range hear a hit/down through walls
 var config float HearFactor;       // heard (not seen) events scare this much of a seen one
+var config bool  bRandomInstantAction; // after each map load, store a random other mission as "last played"
 
 var array<Mind> Minds;
 
@@ -43,6 +44,8 @@ function PostBeginPlay()
             return;
         }
     SetTimer(TickInterval, true);
+    if (bRandomInstantAction)
+        RandomizeInstantAction();
     Log("SwatMinds up: enabled="$bEnabled$" probe="$bProbe, 'SwatMinds');
 }
 
@@ -257,6 +260,38 @@ function float Score(Pawn P, int Kind, float Stock)
     return Result;
 }
 
+// Instant Action replays SwatGUIConfig.LastMissionPlayed*, saved by GameStart() just
+// before this map loaded. Overwrite it with a random other campaign mission so the
+// next Instant Action click goes somewhere new. The fields are private: SetPropertyText.
+function RandomizeInstantAction()
+{
+    local PlayerController PC;
+    local SwatGUIControllerBase GC;
+    local SwatGUIConfig Cfg;
+    local int k, n, Tries;
+    local string Cur;
+
+    PC = Level.GetLocalPlayerController();
+    if (PC == None || PC.Player == None)
+        return;
+    GC = SwatGUIControllerBase(PC.Player.GUIController);
+    if (GC == None || GC.GuiConfig == None)
+        return;
+    Cfg = GC.GuiConfig;
+    n = Min(Cfg.MissionName.Length, Cfg.FriendlyName.Length);
+    if (n < 2)
+        return;
+    Cur = string(Level.Outer.Name);       // map package, e.g. SP-FoodWall
+    do
+        k = Rand(n);
+    until (string(Cfg.MissionName[k]) != Cur || ++Tries > 10);
+    Cfg.SetPropertyText("LastMissionPlayedName", string(Cfg.MissionName[k]));
+    Cfg.SetPropertyText("LastMissionPlayedFriendlyName", Cfg.FriendlyName[k]);
+    Cfg.SetPropertyText("LastMissionPlayedCustomScenario", "None");
+    Cfg.SaveConfig();
+    Log("SwatMinds instant action next: "$Cfg.MissionName[k]$" (this map "$Cur$")", 'SwatMinds');
+}
+
 static function SwatMindsMutator Get(Actor Any)
 {
     local SwatMindsMutator M;
@@ -279,4 +314,5 @@ defaultproperties
     CloseRange=400.0
     HearRange=3000.0
     HearFactor=0.6
+    bRandomInstantAction=true
 }
