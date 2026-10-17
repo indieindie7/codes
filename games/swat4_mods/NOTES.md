@@ -1,0 +1,243 @@
+﻿# SWAT 4 modding notes
+
+Started 2026-10-17 (chat "SWAT 4 AI study"). Inputs: `HANDOFF-FROM-ADVENT.md` (this folder), `C:\re\devastation\HANDOFF-SWAT4.md` (8 Devastation ideas).
+Rule: no game assets or SDK source committed here; file:line refs into the SDK only.
+
+## Install + engine (verified 10-17)
+- Install: `F:\gogGames\SWAT 4` (GOG Gold, game id 1409964317). Base `Content\System\Swat4.exe`, expansion (TSS) `ContentExpansion\System\Swat4X.exe`, + `*DedicatedServer.exe` in both.
+- Engine: Irrational Vengeance (UE2.x). Renderer `D3DDrv.dll` imports **d3d9.dll** -> shader work needs a d3d9 proxy (not our d3d8to9 fork).
+- Physics: **Havok** (Engine.dll has HavokActor, Havok6DOFConstraint, HavokCharacterCollision...; `HavokData\` folders; `SwatExpHavokClasses.u`). No Karma.
+- Tools shipped: `UCC.exe`, `SwatEd.exe` (editor), `ScriptCompiler.dll`, `ShaderPackager.exe`.
+- Script packages (ContentExpansion\System): AICommon Core Editor Engine Gameplay GUI IGEffectsSystem IGSoundEffectsSubsystem IGVisualEffectsSubsystem IpDrv RWOSupport Scripting SoundEffectsConfig SwatAIAwareness SwatAICommon SwatEd SwatEquipment SwatGame SwatGui SwatObjectives SwatProcedures Tyrion UWindow Voting. Several have native DLLs (Tyrion.dll, SwatAICommon.dll, SwatGame.dll, SwatAIAwareness.dll, AICommon.dll).
+
+## Official SDK (verified 10-17)
+- `F:\gogGames\SWAT 4\SWAT4_SDK.zip` (also `ContentExpansion\SDK\`), unpacked to `C:\re\swat4\sdk\SDK\` (research copy, never publish).
+- Full UnrealScript source: 1492 .uc. Per package: AICommon 7, Gameplay 23, RWOSupport 38, Scripting 59, SwatAIAwareness 3, SwatAICommon 312, SwatEquipment 74, SwatGame 320, SwatGui 72, SwatObjectives 18, SwatProcedures 20, Tyrion 68.
+- Modding doc as text: `C:\re\swat4\modding_overview.txt` (from SDK/Documentation/SWAT4_Modding_Overview.pdf, 11 pages).
+- Mod setup per doc: own `<MOD_DIR>` next to Content (Content\Maps etc. inside), copy System\*.ini, edit `Startup.ini` + `StartupUCC.ini` (doc L137, L277), compile from `<MOD_DIR>\System` with `..\..\Content\System\UCC.exe make -nobind` (L310); add `EditPackages=` [Editor.EditorEngine] + `ServerPackages=` [Engine.GameEngine] in Swat4.ini and UCC.ini (L343-346); prefer subclassing (L333); `EnableDevTools=true` in Swat4.ini (L366); windowed: remove `Suppress=WindowedMode` (L350).
+
+## AI layout (SDK, 10-17)
+- Tyrion = goal/action/resource AI framework (Engine 35 .uc: AI_Goal, AI_Action, AI_Controller, AI_*Resource for character/movement/head/weapon, AI_PeriodicSensor).
+- SwatAICommon: Actions 94, Goals 80, Sensors 12 (Vision, Hearing, Threatened, Compliant, Comply, Arrested, Distance*, DoorOpening, DoorSide, Target), SensorAction 9, Navigation 13 (Stackup/Clear/Flee points, Formation), Squads 8 (Hive, HiveBlackboard, OfficerTeamInfo, Red/Blue/Element) + Squad Actions 34 / Goals 33, InitialReactions, Idling, Patrolling.
+- SwatGame: SwatAI, SwatAICharacter, SwatAIController, SwatEnemy, SwatHostage, SwatOfficer, EnemyArchetype, HostageArchetype, Enemy/HostageSpawner, PawnDoorKnowledge, GameEvent_* (PawnDamaged, EnemyFiredWeapon, PawnArrested...).
+- Detailed maps (Sonnet agents, 10-17): `C:\re\swat4\map-suspects.md`, `C:\re\swat4\map-officers.md` -> merged below (sections "Suspect + hostage AI", "Officer AI + Tyrion engine").
+
+## Suspect + hostage AI (spot-checked 10-17: compliance roll CommanderAction.uc:446-448, AI.ini keys)
+
+Paths: SDK = `C:\re\swat4\sdk\SDK\Source\Game`. INI = `F:\gogGames\SWAT 4\ContentExpansion\System\AI.ini` (Content\System\AI.ini is the same minus 2 expansion keys + WildGunner section). Cited as AI.ini:line (expansion file). SwatPawn.ini is in the same folders.
+Only the base-game source is in the SDK. Expansion-only behaviour has INI keys but no .uc (see 2).
+
+### 1. Class chain and starting goals
+- `SwatEnemy` extends `SwatAICharacter` extends `SwatAI` extends `SwatRagdollPawn`. All `native` (SwatEnemy.uc:2-5, SwatAICharacter.uc:4-13, SwatAI.uc:6-13). `SwatHostage` extends `SwatAICharacter` (SwatHostage.uc:2-5).
+- `SwatAIController extends Tyrion.AI_Controller`, native. Its only script is `OnHearSound`, which forwards to `SwatAI.hearing` (SwatAIController.uc:10-14).
+- Tyrion setup (SwatAI.uc:405-437): `ConstructCharacterAI` adds TakeCover, MoveTo, Incapacitated and ReactToBeingShot abilities. It then `SetupCommanderGoal()` and posts `CommanderGoal` (SwatAI.uc:433-439). An idle goal is posted at SwatAI.uc:558-564.
+- Each pawn type registers its own CommanderAction as an ability. That one action is the brain: it satisfies `CommanderGoal` (CommanderAction.uc:1435).
+  - Enemy: `EnemyCommanderAction`, EnemySpeechManager, Barricade, Investigate, Restrained, TakeCover, `EnemyComplianceAction`, `EnemyCowerAction` (SwatEnemy.uc:286-293).
+  - Enemy hook `ConstructCharacterAIHook` (SwatEnemy.uc:308-316) adds AttackOfficer, TakeCoverAndAttack, Flee, ThreatenHostage, ConverseWithHostages, Regroup. SwatGuard and SwatUndercover override the hook (SwatGuard.uc:7, SwatUndercover.uc:7).
+  - Hostage: Compliance, `HostageCommanderAction`, HostageSpeechManager, Flee, HostageReactionToOfficers, Cower, Restrained (SwatHostage.uc:51-54).
+- Engagement: `EnemyCommanderAction` posts `EngageOfficerGoal` (EnemyCommanderAction.uc:1163-1176). Tyrion picks the registered action with the highest `selectionHeuristic`. Candidates satisfying that goal: AttackOfficer, TakeCoverAndAttack, Flee, Regroup, ThreatenHostage, EnemyCower (satisfiesGoal lines: FleeAction.uc:392, RegroupAction.uc:422, TakeCoverAndAttackAction.uc:690, ThreatenHostageAction.uc:464, EnemyCowerAction.uc:142).
+
+### 2. Morale and compliance
+- **Morale** is a single float, `CurrentMorale`, capped at `MaxMorale=1.5` (AI.ini:14, CommanderAction.uc:57,64). Initial value is `Instance.Morale` = `RandRange(Min,Max)` from the archetype (CharacterArchetype.uc:177, SwatAICharacter.uc:413) and is applied via `InitializeMorale` (CommanderAction.uc:125-128). Only enemies call it (EnemyCommanderAction.uc:120-135). Hostages are initialised by `CommanderAction` too, since Morale is on CharacterArchetype.
+- **`ChangeMorale(delta, reason, bDoNotStartListening)`** (CommanderAction.uc:1179-1210):
+  - It is ignored once a ComplianceGoal or RestrainedGoal exists.
+  - It adds the delta and clamps with `FMin` to `MaxMorale`. There is no lower clamp.
+  - A negative delta sets `bListeningForCompliance=true` unless the flag is passed.
+  - Being shot passes the flag, so shooting a leg cannot force compliance (CommanderAction.uc:884).
+- **Compliance roll** `OnComplianceIssued` (CommanderAction.uc:427-488), shared and not meant to be overridden:
+  - It fires only if the pawn is not arrested, not compliant and not incapacitated.
+  - A "comply" shout reaches it through `ComplySensor` (CommanderAction.uc:385-391).
+  - If `bListeningForCompliance`, it rolls `RandomChance = 1 - FRand()` and complies when `RandomChance >= CurrentMorale` (lines 445-449). So morale >= 1.0 never complies; morale <= 0 always does.
+  - After any roll it sets `bListeningForCompliance=false`, so the pawn ignores orders until morale drops again (line 465).
+  - Ignored orders are counted. `MaxComplianceOrdersToIgnore=3` (AI.ini:11) tells the Hive "AI ignoring officers" (lines 478-484).
+  - On success, `PostComplianceGoal` (CommanderAction.uc:513-535) calls `SetIsCompliant`, posts `ComplianceGoal` and calls `NotifyBecameCompliant`.
+- **Morale deltas** (AI.ini:23-143; enemy values listed Low/Med/High; all are subtracted from morale unless noted):
+
+| Source | Enemy Low/Med/High | Hostage |
+|---|---|---|
+| Flashbang | 0.5 / 0.5 / 0.5 | 0.65 |
+| Gas | 0.35 each | 0.55 |
+| Pepper spray | 0.75 each | 0.75 |
+| Sting | 0.4 each | 0.6 |
+| Taser | 0.9 each | 0.9 |
+| C2 stun | 0.45 each | 0.65 |
+| Shot (no compliance listen) | 0.2 / 0.1 / 0.0 | 0.5 |
+| Dropped weapon | 0.25 / 0.15 / 0.1 | - |
+| Out of usable weapons | 1.0 / 0.8 / 0.75 | - |
+| Nearby enemy killed (within `MinDistanceToAffectMoraleOfOtherEnemiesUponDeath=500`) | 0.4 / 0.2 / 0.1 | - |
+| Killed officer (ADDS to morale) | +0.3 / +0.4 / +0.5 | - |
+| Surprised by comply shout | 0.8 / 0.6 / 0.5 | - |
+
+- Notes on the table:
+  - Stun-type deltas are applied by `StunnedAction.AffectMorale` and refunded when the stun ends (StunnedAction.uc:75-90). The refund applies only if the pawn is conscious.
+  - The other enemy deltas are applied at EnemyCommanderAction.uc:428 (weapon), 458 (officer killed), 484-488 (nearby killed), 516 (no weapon) and 874 (surprise). Shot is at CommanderAction.uc:884.
+  - Hostage deltas are at HostageCommanderAction.uc:23-29 and 171.
+  - Enemy gets `bThreat` and the Hive is notified when it fires or aims at someone (SwatEnemy.uc:881, 954-960; ThreatenedSensorAction.uc:43-50).
+- **Surprise** (`PreComplianceCheck`, EnemyCommanderAction.uc:861-877): applies only if the state is below `EnemyState_Aware`. The pawn becomes Aware. If the issuer is within `MaxSurprisedComplianceDistance=400` and outside the view cone of `SurprisedComplianceAngle=90` (2D dot test, lines 830-858; AI.ini:64-66), it takes the surprise morale hit before the roll.
+- **Refusal** (`PostComplianceCheck`): on refusal, an enemy plays uncompliant speech and `EncounterEnemy(issuer)` (EnemyCommanderAction.uc:879-887). A hostage sets idle category `NonCompliant` and uncrouches (HostageCommanderAction.uc:~215-228).
+- **Restrain / arrest**:
+  - `SwatAICharacter.OnArrestBegan` calls `NotifyBeginArrest`, which posts `RestrainedGoal` (SwatAICharacter.uc:855-866, CommanderAction.uc:596-612).
+  - `OnArrestInterrupted` calls `RestrainInterrupted` (CommanderAction.uc:614-622).
+  - `NotifyRestrained` removes the ComplianceGoal (lines 624-629).
+  - `CanBeArrestedNow` = `bCanBeArrested && !IsArrested && !IsBeingArrested && conscious` (SwatAICharacter.uc:850).
+  - Compliance has no reset in the SDK source: `SetIsCompliant` only sets true (SwatAI.uc:2533).
+- **"Un-arrest" / leaving compliance**: the expansion's AI.ini adds `UnobservedComplianceMoraleModification=0.1` and `LeaveCompliantStateMoraleThreshold=1.0` (AI.ini:145-149). No .uc in the SDK reads them (grep is empty), so that logic is compiled in the expansion's SwatAICommon.u and is not available as source.
+- **Scream and flinch**: `ShouldScream` is `FRand() < chance` (EnemyCommanderAction.uc:795). Enemy chance is 0.65 / 0.5 / 0.3 by skill (AI.ini:~75). Hostage chance is 0.7 (AI.ini:41). The delay is Rand(`MinScreamTime=0.1`, `MaxScreamTime=1.0`) (CommanderAction.uc:901-910). Gunshot reaction range `MinReactToGunshotDistance=300` (AI.ini:15).
+
+### 3. Combat
+- Target selection:
+  - `EncounterEnemy(pawn)` (EnemyCommanderAction.uc:1038-1079) sets `CurrentEnemy` and forces state Aware.
+  - `ShouldEncounterNewEnemy` switches target if the new pawn is closer than the current one and within `DeltaDistanceToSwitchEnemies=300`, or if the current target cannot be hit but the new one can (lines 993-1010; AI.ini:~78).
+  - `FindBetterEnemy` takes the closest visible conscious pawn when `CanHit(current)` is false (lines 1367-1387).
+  - The lost-sight timer is 3-8 s (`MinLostPawnDeltaTime`/`MaxLostPawnDeltaTime`, AI.ini:~70). When it fires the pawn clears its enemy, then `FinishedEngagingEnemies` posts a Barricade goal at the last known position (lines 1389-1415).
+- Initial reaction (a one-off animation): chance 0.15 / 0.10 / 0.05 by skill, only if all officers are farther than 200 (`MinDistanceToOfficersToDoInitialReaction`). SwatGuard always reacts (EnemyCommanderAction.uc:1099-1140; AI.ini:~73-77).
+- `EngageOfficerGoal` picks one action by random `selectionHeuristic` (`FClamp(FRand(), min, max)`, with different ranges for aggressive and passive pawns). Aggressive is `FRand() < AggressiveChance` per archetype, rolled once at spawn (CharacterArchetype.uc:187). Morale is NOT part of this choice.
+  - AttackOfficer: usable weapon and a target are required. Passive 0.0-1.0, aggressive 0.5-1.0 (AttackOfficerAction.uc:~45-60; AI.ini:~484-488).
+  - TakeCoverAndAttack: needs cover available, farther than 200 from officers (`MinDistanceToOfficersWhileTakingCover`), a cover result not within 200 of or behind any seen pawn (`CoverIsInBadPosition`, TakeCoverAndAttackAction.uc:66-104). Passive 0.0-1.0, aggressive 0.75-1.0. Timings: crouch 1-3 s, stand 1-3 s, lean 1-2 s, aim-around 0.5-1.0 s over 90-270 degrees (AI.ini:~395-424).
+  - Flee: needs a `FleePoint` outside the current room that is not claimed and not in the enemy's room (`FindFleePointDestination`, FleeAction.uc:268-300). It needs a room door more than 200 from officers (`CanGetOutOfRoomSafely`, lines 101-128). Passive 0.25-1.0, aggressive 0.0-0.75. If an officer is within 200 it returns `FRand()*0.1` (AI.ini:285-288; FleeAction.uc:130-175). `CrouchAtFleePointChance=0.8`.
+  - Regroup: same shape, with passive 0.25-1.0 and aggressive 0.0-1.0, and it needs another living enemy (RegroupAction.uc:119-160; AI.ini:379-382).
+  - EnemyCower: if there is no usable weapon it returns 1.0 if the pawn has already fled unarmed, else `FRand()`; otherwise 0 (EnemyCowerAction.uc:46-72).
+  - ThreatenHostage: conditions are an armed enemy, a visible player, a hostage in the room within 256 of the enemy, and officers at least 200 away (`CanThreatenHostage`, ThreatenHostageAction.uc:128-145; AI.ini:442-465). Chance is 1.0 aggressive, 0.75-1.0 passive. It aims at the hostage, then shoots after 2.0-4.0 s (lines 420-458).
+- Firing (`AttackTargetAction`, AttackTargetAction.uc:150-345):
+  - It aims, waits until `CanHit`, fires, then sleeps `GetTimeToWaitBetweenFiring`.
+  - The give-up timer is `MaximumTimeToWaitToAttack=7.5` (AI.ini:174).
+  - Gap between shots comes from SwatPawn.ini:333-351 (pistol 0.1-0.2 s, SMG full auto 0.5-0.7 s, shotgun 0.3-0.6 s).
+  - Aim error: Low 7.0 / Med 6.0 / High 3.0 (SwatPawn.ini:379-381, `GetAdditionalBaseAimError`, native, SwatEnemy.uc:937).
+  - Full-auto burst length: Low 1-2 s / Med 0.6-1.0 s / High 0.2-0.5 s (SwatPawn.ini:388-393).
+  - Full-body hit chance: 0.666 / 0.5 / 0.25 (SwatPawn.ini:410-412).
+- Barricade (AI.ini:204-233):
+  - Used when the enemy is suspicious or loses its target. It also triggers after `MaxBlockedDoorCount=3` blocked-door attempts (EnemyCommanderAction.uc:1266-1310).
+  - `ShootAtDoorsChance=1.0`, shoots at an opening door for 2.0-3.5 s.
+  - Closes and locks the nearest door with chance 0.5, subsequent doors 0.25.
+  - Delay before barricading is 0.5-1.0 s.
+
+### 4. Perception
+- `VisionSensor` (VisionSensor.uc:1-126) keeps the `Pawns` seen list, `LastPawnSeen`/`LastPawnLost` and `GetVisibleConsciousPawnClosestTo`. It is fed by the native `VisionNotifier` (AICommon/Classes/Sensing/VisionNotifier.uc), which is native, so there is no FOV or range number in script.
+- `HearingSensor` (HearingSensor.uc:1-68) stores the last `SoundMaker`, `Origin`, `Category` and time. `WillListenToSound` is virtual and returns true. `kDeltaHeardTime=2.5` is declared but unused here. The engine calls `SwatAIController.OnHearSound`.
+- Sound categories seen in SoundEffects.ini (same folder): Gunshots (AISoundRadius 1500), BulletHitSpangs, Explosions, DoorInteraction, Footsteps (radius 150/300/600/1000 depending on movement), OfficerYelling.
+- `ThreatenedSensor` is set by `ThreatenedSensorAction.UpdateThreatFrom`: the other pawn must be a threat and aiming at us (`SwatWeaponAction.IsAThreatBasedOnAim`) (ThreatenedSensorAction.uc:36-60). The `ThreatenedBy` pawn is exposed on the sensor (ThreatenedSensor.uc:5-33).
+- Enemy `OnHeardNoise` (EnemyCommanderAction.uc:636-720):
+  - Compliant or arrested: it only flinches for a nearby gunshot.
+  - Otherwise: a threat in line of sight triggers `EncounterEnemy`.
+  - Footsteps: engage if there is a current enemy, else `BecomeSuspicious` (lines 757-777).
+  - DoorInteraction: a line-of-sight check on the door, then engage if Aware, else suspicious ("yes this is cheating", line ~692).
+  - Anything else with no enemy: `BecomeSuspicious` (state Unaware to Suspicious to Aware, `ISwatEnemy.uc:22-27`). Investigator enemies get an Investigate goal, others get Barricade (lines 723-752).
+- Hostage `OnHeardNoise` (HostageCommanderAction.uc:245-290):
+  - A deadly noise (`IsDeadlyNoise`: Gunshots, BulletHitSpangs, Explosions; CommanderAction.uc:~339) makes the pawn crouch once with chance 0.85 (aggressive) or 0.65 (passive) (lines 336-350).
+  - Gunshot hits within 300 make it run to a point and scream. Compliant hostages flinch.
+  - It uses `IsInDanger` (lines 390-415): threatened, or a non-compliant enemy is visible, or a SwatEnemy is in the room.
+  - If in danger it cowers (CowerGoal) and speaks "in danger" every 3-8 s. When a SwatOfficer or SwatPlayer comes into view it becomes Rescuer, and HostageReactionToOfficers runs (lines 417-460).
+  - ReactToThrownGrenadeChance is 1.0 for hostages and 0.333 / 0.5 / 0.75 for enemies by skill.
+
+### 5. Archetypes and data
+- Config class: `EnemyArchetype` (config `EnemyArchetypes`), `HostageArchetype` (config `HostageArchetypes`), both extend `CharacterArchetype`. These are INI files at `...\Content\System\EnemyArchetypes.ini` (81 sections) and `HostageArchetypes.ini` (97 sections), plus ContentExpansion copies.
+- Fields:
+  - CharacterArchetype.uc:23-35: `Morale` (Range), `AggressiveChance`, Mesh, materials, `Equipment1..4`, `CharacterType`, `VoiceTypeOverride`.
+  - EnemyArchetype.uc: `Skill` (array of `{Skill=EnemySkill_Low|Medium|High, Chance}`), `PrimaryWeapon`/`BackupWeapon` (array of `{Weapon, Chance}`), `InvestigatorOverride`, `ActorClass`.
+- Examples: `[FoodWall_Jimenez]` has Morale 0.4-0.6, Skill Low (100%), AggressiveChance 0.75. EnemyArchetypes.ini morale ranges seen run from 0.0 to 0.9 (e.g. 0.33-0.60 and 0.50-0.75 for several). Hostages are mostly 0.05-0.10 with some 0.0-0.33.
+- Per-map data: spawners (EnemySpawner/HostageSpawner/EnemyRoster/HostageRoster in SwatGame/Classes/Spawning), FleePoint actors, patrol lists and archetype references are placed in the `.s4m` map files (Content\Maps\*.s4m). They are binary, so no grep was done. `CustomScenarioCreator.ini` lets the user override enemy weapons through `CustomScenario.MutateEnemyWeapons` (EnemyArchetype.uc, `Initialize`).
+- The tuning INIs are SwatPawn.ini (AI sections) and AI.ini. Both are plain text and are loaded per `config(AI)`.
+
+### 6. Hook points for a fear / anger / suppression / panic mod
+
+| Target | Final/native? | Why |
+|---|---|---|
+| `EnemyCommanderAction` and `HostageCommanderAction` (subclass, swap in at SwatEnemy.uc:286 / SwatHostage.uc:52) | script class, config vars; not final | Central brain. Override `ChangeMorale`, `GetShotMoraleModification`, the `Get*MoraleModification` functions, `OnHeardNoise`, `EncounterEnemy`, `ShouldScream`. Add new emotion floats here. |
+| `CommanderAction.ChangeMorale` / `OnComplianceIssued` (CommanderAction.uc:1179 / 427) | script, not final (comment says "no overriding" for OnComplianceIssued, but it is not declared final) | Single choke point for morale. Replace the roll with fear/anger weighting. |
+| `ConstructCharacterAI` / `ConstructCharacterAIHook` (SwatEnemy.uc:280, 308) | protected script | Register new abilities (new Flee, Suppressed, Panic actions). SwatGuard already does this. |
+| `selectionHeuristic` of AttackOfficer / TakeCoverAndAttack / Flee / Regroup / EnemyCower | script, overridable | Replace `FRand()` with a function of fear/anger/suppression. Easiest place to make panic and cover choice emotion-driven. |
+| `TakeCoverAndAttackAction.CanTakeCoverAndAttack` / `FindBestCoverToAttackFrom` / `CoverIsInBadPosition` (lines 66-104) | script; `AICoverFinder` is native (AICoverFinder.uc, `FindCover`, `IsCoverAvailable`) | Better cover choice: filter or score `CoverResult` candidates. The finder itself is native, so only post-filter. |
+| `AttackTargetAction` (`AimAndFireAtTarget`, `ShouldSucceed`), `SwatEnemy.GetAdditionalBaseAimError` | AimError is `native event`; others are script | Suppression: raise aim error or add flinch. Native, so override via a script wrapper or a pawn-level multiplier. |
+| `SwatAIController.OnHearSound`, `HearingSensor.OnListenerHeardNoise`, `VisionSensor.OnViewerSawPawn` | script event/functions; native notifiers underneath | Inject fear stimuli (near-miss bullets, explosions) into emotion state. Bullet near-miss is not a stimulus in script; gunshots arrive as sound categories. |
+| `StunnedAction.AffectMorale` and the Gassed/Flashbanged/PepperSprayed/Stung/Tased/StunnedByC2 `GetMoraleModificationAmount` (StunnedAction.uc:69-90) | script | Add stress on top of the stun-morale refund. |
+
+- The sensor classes, `AIKnowledge`, `Hive` and most pawn state (`IsFlashbanged`, `IsGassed`, `CanHit`, `CanHitTargetAt`, `IsOtherActorAThreat`) are native in SwatAI/SwatAICharacter (SwatAI.uc:1969-1970, 2543; SwatAICharacter.uc:826-832). Do not try to override them; wrap them.
+- Gaps: no suppression or near-miss detection exists, no morale floor or decay over time, no hostage panic-flee goal (FleeAction is registered on hostages but nothing posts EngageOfficerGoal for them), and no un-arrest in source.
+
+## Officer AI + Tyrion engine
+
+Paths relative to `C:\re\swat4\sdk\SDK\Source\Game\`. Lines marked "~" are approximate.
+
+### 1. Tyrion engine loop (Tyrion\Classes\Engine)
+- Goal = "what": `AI_Goal` native abstract (AI_Goal.uc:11-14); Priority 0-100, default 50 (:21, :479); `priorityFn()` (:114); flags bInactive/bPermanent/bTryOnlyOnce/bTerminateIfStolen (:20-37).
+- Action = "how": `AI_Action` native (AI_Action.uc:8-10); `satisfiesGoal` (:18), `selectionHeuristic(goal)` 0..1 default 1.0 (:391); `resourceUsage` bits RU_HEAD=1/ARMS=2/LEGS=4 (AI_Resource.uc:47-49).
+- Resources are hierarchical: squad > pawn > leaf head/arms/legs (AI_Resource.uc:1-42); only leaves are "used".
+- `chooseAction(goal)` is NATIVE (AI_Resource.uc:253): filter by satisfiesGoal, rank by selectionHeuristic, need free resources. Exact algorithm is in Tyrion.dll (inferred).
+- Preemption: `resourceCheck()` (AI_Resource.uc:266-300): a goal with higher priority than the leaf's current goal calls `interruptAction` on the user; parent gets `resourceStolenCB` (AI_Action.uc:471).
+- `addGoal` sets `bMatchGoals=true` (AI_Resource.uc:401), the native `processGoals` then re-matches. Permanent goals re-match after success (AI_Goal.uc ~:340).
+- Idioms (script): waitForGoal/AllGoals/AnyGoal, interruptGoalIf (AI_Action.uc:112-222), waitForResourcesAvailable (:278); succeed/fail (:32-100).
+- Sensors: `AI_Sensor` native (AI_Sensor.uc:9); `setIntegerValue` notifies recipients inside bounds (:151-180); goal activation/deactivation via `AI_SensorWithBounds` sentinels (AI_Goal.uc:24-25).
+- Native = match/choose/processGoals, sensor core; script = all data, callbacks, idioms.
+
+### 2. Squads and Hive
+- `OfficerTeamInfo` (native, extends AICommon.SquadInfo); Element (all), Red, Blue squads created in SwatAIRepository.uc:104-120; getters native (:124-126).
+- Officers join Red/Blue + Element in `AddToSquads` (SwatGame\Classes\AI\Officers\OfficerRedOne.uc:19-26).
+- `InitAbilities` registers ~30 Squad*Action abilities (SwatAICommon\Classes\Squads\OfficerTeamInfo.uc:32-67).
+- Player order path: CommandInterface.uc `SendCommandToOfficers` (~:1255-1410) -> `PendingCommandTeam` (:811, :1005-1013) -> OfficerTeamInfo.MoveAndClear (:678) etc. -> `PostCommandGoal` (:498-520), replaces old goal.
+- Element-wide commands copy the goal to other team: ElementSquadInfo.uc:94-150.
+- `CanExecuteCommand()` (OfficerTeamInfo.uc:270-289) false if no members, Hive `HasTurnedOnPlayer`, or officers busy (:291).
+- Hive: native, config(AI), `new(self) class'Hive'` hard-coded (SwatAIRepository.uc:93-101). Blackboard: enemies, hostages, assigned targets, engaging point map (HiveBlackboard.uc:14-23).
+- Hive loop: `OfficerSawPawn` (Hive.uc:492-537) -> native `UpdateOfficerAssignments` (:820) -> `AssignOfficer` (:822-838) -> `ClearCommandGoalsForOfficer` (:674-708) + `OfficerCommanderAction.EngageTarget`. Assignment overrides player commands.
+- `CanAssignOfficerToTarget` (:764-786): same room, clearing into room, LOS to non-threat, `CanHit` on threat, or an engaging point exists.
+- Rogue player: `NotifyOfficerShotByPlayer` (:549-575) accumulates damage; at config `PlayerDamageThreshold` (:24; AI.ini:727 = 100.0) `PlayerCrossedDamageThreshold` (:593) makes the player an enemy.
+
+### 3. Officer combat
+- Abilities list: SwatOfficer.uc:167-231 (OfficerCommanderAction, AttackEnemy, EngageForCompliance, MoveAndClear, Cover, Guard, deploy taser/pepper/etc.).
+- `OfficerCommanderAction` (native class, script body): `EngageTarget` (:352), `ShouldEngageTarget` (:333), `EngageAssignment` (~:447) picks AttackEnemy for threats/player, else EngageForCompliance; calls `Hive.FinishedAssignment`.
+- Priorities: MoveAndClear 90 (MoveAndClearGoal.uc:41), AttackEnemy 85 (AttackEnemyGoal.uc:29), EngageForCompliance/OrderCompliance 85, RestrainAndReport 80, FallIn 80, StackUp 75, Cover/Guard 60, StackedUp 39, WatchNonHostile 35.
+- `AttackEnemyAction`: heuristic = FRand() (AttackEnemyAction.uc:31); posts AttackTargetGoal + MoveOfficerToEngageGoal; 0.1-0.25 s update; `FindBetterEnemy` re-runs assignments.
+- `AttackTargetAction` (:170-345): waits for native `m_Pawn.CanHit(Target)`; officers loop only while `IsTargetAThreat()` (:265); fire via `AimAndFireAtTarget`, delay `GetTimeToWaitBetweenFiring` (SwatAI.uc:2015, per-weapon config :197-208); default fire mode Burst > Auto > Single (SwatAI.uc:1993-2011); `bHavePerfectAim` -> SetPerfectAimNextShot. Aim error is native (not visible).
+- Rules of engagement: officers shoot only `bThreat` enemies; `BecomeAThreat` when aiming a firearm at a pawn (SwatWeaponAction.uc:142) or discharging (SwatEnemy.uc:881-892, :956-961).
+- Less-lethal, restrain: player-ordered only (SquadSecureAction.uc:388 posts RestrainAndReportGoal).
+
+### 4. Movement, nav, cover, awareness
+- Stack-up: `GetStackupWeightForOfficer` = path distance, deflated by closer officers, -512 if wrong side of door (SquadStackUpAction.uc:472-493, :346-368); greedy pairing `DetermineOfficerStackupPoints` (:412-460).
+- Move and clear: leader/follower roles, `SetupOfficerRoles`, `CreateClearFormation` (SquadMoveAndClearAction.uc:947); consts :66-72; Running state :1567-1612.
+- BangAndClear needs a flashbang thrower or fails ACT_INSUFFICIENT_RESOURCES_AVAILABLE (SquadBangAndClearAction.uc).
+- Formation: leader + members, reorder timer (Navigation\Formation.uc).
+- Nav points StackupPoint/ClearPoint/BaseDoorPoint extend native PathNode; doors via ISwatDoor; belief flags in Doors\PawnDoorKnowledge.uc.
+- Cover is player-ordered only: CoverAction.uc (FastTrace from eye, kMaxDistanceFromCoverFromLocation=100). TakeCover + native AICoverFinder are enemy-only; no officer script posts TakeCoverGoal.
+- Officers do not duck or seek cover on their own under fire.
+- SwatAIAwareness: native `AwarenessProxy` graph of vision/hearing points; the Hive owns it for officers, updated every 0.333-0.666 s (Hive.uc:17-19, :36-37). Not used for officer cover.
+- Engage-point search: native `FindEngagingPointForOfficerInRoom` (Hive.uc:486); `MoveOfficerToEngageAction` retests every 1-3 s.
+
+### 5. Leader dependence
+- Every `SquadCommandGoal` requires non-None CommandGiver + CommandOrigin (SquadCommandGoal.uc:13-29).
+- `SquadFallInAction` builds Formation(CommandGiver) (SquadFallInAction.uc:166), timers on CommandGiver (:77-79), LOS speech (:96-121).
+- Stack-up / clear use CommandOrigin (a vector), so they survive the giver dying.
+- `NotifyPlayerDied` only triggers speech (Hive.uc:341). Without a player, command-driven behaviour never starts; officers only idle, aim around, and engage via Hive assignment.
+- Headless/bot test needs a pawn as CommandGiver.
+
+### 6. Mod hook points
+- `Hive.CanAssignOfficerToTarget` (Hive.uc:764) and `AssignOfficer` (:822): script, but Hive is hard-coded `class'Hive'` (SwatAIRepository.uc:95); scoring (`UpdateOfficerAssignments`) native, fixed.
+- `OfficerCommanderAction.ShouldEngageTarget`/`EngageAssignment`: script in a native class; replace via ConstructCharacterAI.
+- `SwatOfficer.ConstructCharacterAI` (SwatOfficer.uc:167): add or swap abilities (best hook; add a TakeCover ability here).
+- `AttackEnemyAction.selectionHeuristic` (:31) / `AttackTargetAction.IsTargetAThreat`, `SetFireMode`, `AimAndFireAtTarget`: script, overridable.
+- `OfficerTeamInfo.InitAbilities` / `CanExecuteCommand` (:32, :270): script.
+- `SquadStackUpAction.GetStackupWeightForOfficer` (:472): event, overridable.
+- `SwatAI.GetTimeToWaitBetweenFiring` (:2015): script plus config.
+- Native, NOT changeable: chooseAction, processGoals, UpdateOfficerAssignments, FindEngagingPointForOfficerInRoom, Pawn.CanHit, awareness impl, AICoverFinder, aim error.
+- No `final` keywords found in Squads; config defaults live in game AI.ini / SwatPawn.ini, not the SDK.
+
+## Port candidates (Devastation HANDOFF-SWAT4.md + Advent AI-MINDS-DESIGN.md -> SWAT 4 hooks), 10-17
+SWAT 4 already has: one morale float, random action choice (selectionHeuristic = clamped FRand), native cover finder (enemies only), no suppression, no morale decay, officers never take cover on their own.
+1. **Emotion-driven action choice (best first mod)**: subclass EnemyCommanderAction (swap at SwatEnemy.uc:286) + override selectionHeuristic of AttackOfficer/TakeCoverAndAttack/Flee/Regroup/EnemyCower so fear/anger/stress (Advent ModMind) replace FRand. Compliance roll stays morale-based; fear feeds morale via ChangeMorale. Off switch: config bool -> stock FRand.
+   - Devastation hide-when-hit (PROVEN 10-17, HANDOFF-SWAT4.md last section): hit adds fear +0.1 (+0.2 if dmg>20); away from cover in ranged fight -> hide if FRand*CoverAbility < fear; hiding resets fear 0, run+crouch 1-2 s, pop out. Live: CoverAbility 0 hid on 1st hit (0.07 s); CoverAbility 1 hid at fear 0.7/0.9. Use as per-archetype 'nerve' for suspects (TakeCoverAndAttack/Flee weight).
+2. **Suppression**: gunshots arrive only as sound category Gunshots (AISoundRadius 1500) + BulletHitSpangs; no near-miss stimulus. Use spangs near the pawn as near-miss -> stress up, aim error up (wrap native GetAdditionalBaseAimError via pawn multiplier), cover/flee weight up.
+3. **Cover scoring (Devastation idea 1)**: AICoverFinder is native -> post-filter its CoverResult in TakeCoverAndAttackAction (CoverIsInBadPosition :66-104): add officer-lane penalty, stay-at-current bonus, facing check.
+4. **Officer self-cover**: register a TakeCover ability in SwatOfficer.ConstructCharacterAI (:167) for officers under fire (they never duck now). Respect player orders (priorities MoveAndClear 90 / AttackEnemy 85 / Cover 60).
+5. **Leader-anchor gotcha (Devastation idea 2)** is real here: SquadCommandGoal needs a CommandGiver pawn; headless tests must spawn one.
+6. **Props as noise (Devastation idea 6)**: Havok props -> make impact noise a HearingSensor stimulus (suspects become Suspicious, like DoorInteraction).
+7. Skip for now: ragdoll joint port (Havok, not Karma; check HavokData + SwatRagdollPawn first), gibs (wrong tone for SWAT 4).
+Next: build the empty mod package (doc setup) + compile with UCC, then a probe actor that logs morale/emotion per suspect.
+
+## SwatMinds mod (first mod), 10-17
+- Mod dir `F:\gogGames\SWAT 4\SwatMinds` (BASE game). `System\` = runtime (copied base ini/int + shaders.spk, Startup/StartupUCC/Version edited per SDK doc, `EditPackages=SwatMinds` + `ServerPackages=SwatMinds` in Default.ini, Suppress=ScriptLog etc. commented, EnableDevTools=true, StartupFullscreen=False). `BuildSystem\` = compile dir holding copies of the SHIPPED base .u files.
+- GOTCHA: UCC make with the SDK FilePath rebuilds all 22 base packages from SDK source; Engine logs 4 "Unknown property in defaults" (LastSpeedHackLog, MaxTimeMargin, TimeMarginSlack, MinTimeMargin) = SDK source older than shipped. Don't run on rebuilt base packages; compile against shipped .u copies in BuildSystem. `CompileSwatMinds.bat` builds there and copies only SwatMinds.u to System.
+- GOTCHA: a subclass that reads the parent's `m_pawn` (SwatCharacterAction, protected) makes UCC crash on save ("Referencers of ObjectProperty SwatAICommon.SwatCharacterAction.m_pawn", then assert in DynamicFlashlightSpotLight serialize). Use `AI_CharacterResource(goal.resource).m_pawn` instead.
+- Design: `SwatMindsMutator` (config SwatMinds.ini) ticks every 0.25 s over pawns IsA('SwatEnemy'); per suspect Fear/Anger/Stress/Nerve. On first sight it swaps exact-class AttackOfficer/TakeCoverAndAttack/Flee/Regroup in `Pawn.CharacterAI.abilities` (Tyrion_ResourceBase.uc:44, script array) for `Mind*Action` subclasses (loaded by name). Their selectionHeuristic keeps stock eligibility (stock 0 -> 0) and returns `Score()`: attack 0.15+0.55A+0.35(1-F)N, cover 0.2+0.5S+0.4FN, flee 0.7F(1-N)+0.2S, regroup 0.4F+0.2S, + FRand*0.2.
+  - Hit: fear +0.1 (+0.2 if dmg>20) x(1.5-nerve), anger +0.25*nerve, ChangeMorale(-fearAdd*0.25). Officers/player in sight (1500 uu): stress +0.08 each per tick, else -0.04. Decay fear -0.02, anger -0.015 per tick. Fear floor = (1 - morale/startMorale)*0.5. Nerve = 0.3+FRand*0.5 (+0.2 aggressive).
+  - Mind* subclasses need their own AI.ini sections (copied from the stock ones as [SwatMinds.Mind*Action]).
+- Run: `Content\System\Swat4.exe SP-FoodWall?Mutator=SwatMinds.SwatMindsMutator` from `SwatMinds\System` (GameInfo.uc:719 parses ?Mutator=). Log `SwatMinds\System\Swat4.log`, tag `SwatMinds:` (probe / add / swapped / hit / score lines).
+- Verified 10-17: compiles 0/0; on SP-FoodWall, 3 suspects each got 4 abilities swapped, probe logs every 1 s, fear 0 at rest, no SwatMinds script warnings. NOT yet verified: combat (score/hit lines) needs a played engagement. Menu-started missions don't add the mutator yet (ServerActors untested).
+- Devastation update 10-17 (HANDOFF-SWAT4.md last section): bots see a standing teammate in their line of fire, but rapid-fire teammates refuse crouch requests and the 100 uu sidestep fails from cover, so the shooter just stops; cover swap bug: a bot asked to give up its point found no other and lost its own. Fixes for an officer port: let any officer crouch on request (whatever the weapon), try several strafe distances, and keep the old cover point when the swap search fails. Final handoff 10-17 (all tests done; run data in C:edevastationNOTES.md runs 1-18).
