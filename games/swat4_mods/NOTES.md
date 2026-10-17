@@ -308,3 +308,6 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
 ## Research (10-17, Sonnet agents)
 - `research/breach-cover-ai.md`: CQB rules (fatal funnel, points of domination, interlocking sectors) as slot claims on a shared board; F.E.A.R. callouts on state change; TLoU buddy rule (never block the player's aim/door); utility scoring; light L4D Director; no revive in SWAT 4, so cover-downed-officer / drag / cuff-assist / reload-cover.
 - `research/ray-audio.md`: 1) check DefOpenAL32.dll for EFX or drop in OpenAL Soft x86; 2) UnrealScript Trace probes ~10 Hz for RT60/occlusion with a material absorption table; 3) proxy DefOpenAL32.dll sets EFX reverb + per-source low-pass; 4) Steam Audio only if too coarse.
+
+## Fix pass 2 (10-17, SwatMinds.u built 14:08): hearing
+- SpreadFear: seen (<= AllyFearRange 1200 + FastTrace) = full amount, logged "saw"; else within HearRange=3000 = HearFactor 0.6 x (1 - 0.5 x dist/HearRange), logged "heard". Feel lines now carry dist=.
