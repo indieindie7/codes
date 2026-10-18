@@ -52,6 +52,7 @@ typedef struct hw_foam_params {
     float spray_foam;   /* foam left where a drop lands (0.15) */
     float spray_drag;   /* air drag on drops, per second (0.5) */
     int spray_max;      /* drop limit, at most HW_SPRAY_CAP (4096) */
+    float spray_vol;    /* depth (units) a drop of size 1 carries out of its cell and back into the cell it lands in (0.05); 0 = render-only drops */
     float dye_gain;     /* silt or dye stirred up per second at full churn (0.6) */
     float dye_life;     /* seconds for dye to fade to a third; it outlasts foam so it shows the flow (12) */
 } hw_foam_params;

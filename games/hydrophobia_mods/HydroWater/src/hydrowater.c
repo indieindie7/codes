@@ -53,7 +53,7 @@ HW_API hw_sheet *hw_create(int w, int h, float dx, float g, float cfl)
     s->rng = 0x9e3779b9u;
     s->fp.foam_gain = 0.8f; s->fp.air_gain = 3.0f; s->fp.foam_life = 2.5f; s->fp.lace = 0.25f;
     s->fp.bubble_rise = 25.0f; s->fp.air_to_foam = 0.35f; s->fp.spread = 3.0f;
-    s->fp.spray_rate = 30.0f; s->fp.spray_foam = 0.15f; s->fp.spray_drag = 0.5f; s->fp.spray_max = 4096;
+    s->fp.spray_rate = 30.0f; s->fp.spray_foam = 0.15f; s->fp.spray_drag = 0.5f; s->fp.spray_max = 4096; s->fp.spray_vol = 0.05f;
     s->fp.dye_gain = 0.6f; s->fp.dye_life = 12.0f;
     s->wallx = (unsigned char *)calloc((size_t)s->n, 1);
     s->wally = (unsigned char *)calloc((size_t)s->n, 1);
@@ -591,6 +591,10 @@ static void spray_spawn(hw_sheet *s, int i, int j, float strength, float dt, flo
         p[4] = up;
         p[6] = 0;
         p[7] = 0.5f + frand(s);
+        {   /* the drop carries water (idea 12b): the cell loses what it takes, the landing cell gets it back */
+            float dv = s->fp.spray_vol * p[7];
+            if (dv > 0 && s->hA[k] > 4 * dv) s->hA[k] -= dv; else p[7] = -p[7];   /* a dry-ish cell lends nothing: size < 0 marks an empty drop */
+        }
     }
 }
 
@@ -606,15 +610,16 @@ static void spray_step(hw_sheet *s, float dt)
         p[0] += p[3] * dt; p[1] += p[4] * dt; p[2] += p[5] * dt;
         p[6] += dt;
         i = (int)floorf(p[0] / s->dx); j = (int)floorf(p[2] / s->dx);
-        if (i < 0 || j < 0 || i >= s->w || j >= s->h || p[6] > 3.0f) dead = 1;
+        if (i < 0 || j < 0 || i >= s->w || j >= s->h) dead = 1;   /* off the sheet: its water is lost */
         else {
             k = AT(s, i, j);
             if (s->wall[k] > 0) dead = 1;
-            else if (p[4] < 0 && p[1] <= s->Beff[k] + s->hA[k]) {   /* landed */
+            else if (p[6] > 3.0f || (p[4] < 0 && p[1] <= s->Beff[k] + s->hA[k])) {   /* landed (or too old: dropped where it is) */
                 dead = 1;
+                if (p[7] > 0) s->hA[k] += s->fp.spray_vol * p[7];   /* its water lands here */
                 if (s->hA[k] >= WET_FOAM) {
-                    s->foam[k] += s->fp.spray_foam * p[7];
-                    s->air[k] += 0.5f * s->fp.spray_foam * p[7];
+                    s->foam[k] += s->fp.spray_foam * fabsf(p[7]);
+                    s->air[k] += 0.5f * s->fp.spray_foam * fabsf(p[7]);
                     if (s->foam[k] > 1) s->foam[k] = 1;
                     if (s->air[k] > 1) s->air[k] = 1;
                 }
