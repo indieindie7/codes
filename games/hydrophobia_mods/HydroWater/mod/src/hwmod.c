@@ -65,6 +65,7 @@ static struct {
     float wake_length;  /* length (world units) of each arm at full speed */
     float wake_pull;    /* low pressure behind Kate drags foam, dye and air into her wake: 0 = off, 1 = default */
     float splotch;      /* big slow patches that break up wide thin foam: 0 = off, 1 = default */
+    float foam_rim;     /* rim-bright, core-dark foam lumps (cheap self-shadow): 0 = off, 1 = default */
     float foam_normals; /* foam lit as if raised (Crest's foam-gradient normals): 0 = off, 1 = default, at most 2 */
     float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
@@ -74,7 +75,7 @@ static struct {
     float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
                            3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
                            Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -154,6 +155,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "wake_length")) cfg.wake_length = (float)atof(v);
         else if (!_stricmp(k, "wake_pull")) cfg.wake_pull = (float)atof(v);
         else if (!_stricmp(k, "splotch")) cfg.splotch = (float)atof(v);
+        else if (!_stricmp(k, "foam_rim")) cfg.foam_rim = (float)atof(v);
         else if (!_stricmp(k, "foam_normals")) cfg.foam_normals = (float)atof(v);
         else if (!_stricmp(k, "wet")) cfg.wet = (float)atof(v);
         else if (!_stricmp(k, "wet_dry")) cfg.wet_dry = (float)atof(v);
@@ -735,6 +737,11 @@ static const char FOAM_HLSL[] =
     "  /* crest glow: light through the thin top of a wave, a green-blue lift, more where the water is shallow */\n"
     "  refractionColour.rgb += float3(0.07f, 0.40f, 0.34f) * (hwCr * hwLit * fFresRefr * (0.55f + 0.45f * hwTr.g));\n"
     "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 1.0f), vFogColour.rgb, 0.12f) * (hwLit * 0.5f) * (0.8f + 0.2f * hwN2);\n"
+    "  if (hwFx.y > 0.0f) { /* rim bright, core dark (BeamNG smoke trick): a thick lump shadows its own middle, its thin edge is lit through */\n"
+    "    float hwCore = smoothstep(0.45f, 0.95f, hwF) * (0.6f + 0.4f * hwLace);\n"
+    "    float hwRim = smoothstep(0.06f, 0.3f, hwF) * (1.0f - smoothstep(0.3f, 0.65f, hwF));\n"
+    "    hwFoam *= 1.0f + hwFx.y * (0.2f * hwRim - 0.3f * hwCore);\n"
+    "  }\n"
     "  if (hwFn > 0.0f) { /* foam normals (Crest, MIT): the foam stands up as a height, so its edges catch and lose light */\n"
     "    float2 hwPl = hwP * 2.7f + float2(17.0f, 5.0f);\n"
     "    float2 hwGl = float2(HW_VN(hwPl + float2(0.25f, 0.0f)) - hwN2, HW_VN(hwPl + float2(0.0f, 0.25f)) - hwN2) * (2.7f / (34.0f * 0.25f));\n"
@@ -1772,7 +1779,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 222, xf, 1);
     xf[0] = cfg.dye_colour[0]; xf[1] = cfg.dye_colour[1]; xf[2] = cfg.dye_colour[2]; xf[3] = cfg.dye;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 221, xf, 1);
-    xf[0] = cfg.foam_normals > 2.0f ? 2.0f : cfg.foam_normals < 0.0f ? 0.0f : cfg.foam_normals; xf[1] = xf[2] = xf[3] = 0.0f;
+    xf[0] = cfg.foam_normals > 2.0f ? 2.0f : cfg.foam_normals < 0.0f ? 0.0f : cfg.foam_normals; xf[1] = cfg.foam_rim > 1.0f ? 1.0f : cfg.foam_rim < 0.0f ? 0.0f : cfg.foam_rim; xf[2] = xf[3] = 0.0f;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 220, xf, 1);
     if (InterlockedIncrement(&g_foam_tex_logged) == 1 || g_foam_tex_logged % 2000 == 0)
         Log("foam: world texture over %d sheets, x %.0f..%.0f y %.0f..%.0f, texel %.1f", n, x0, x1, y0, y1, cell);
