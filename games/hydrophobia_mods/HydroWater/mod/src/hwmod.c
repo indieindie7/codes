@@ -68,6 +68,8 @@ static struct {
     float foam_rim;     /* rim-bright, core-dark foam lumps (cheap self-shadow): 0 = off, 1 = default */
     float foam_cells;   /* cell-holed foam net (AC Black Flag wake foam): 0 = off, 1 = default */
     float foam_dots;    /* thin foam breaks into dots instead of fading: 0 = off, 1 = default */
+    float foam_glow;    /* bioluminescent foam in dark scenes: 0 = off (default), 1 = full */
+    float glow_colour[3];
     float foam_normals; /* foam lit as if raised (Crest's foam-gradient normals): 0 = off, 1 = default, at most 2 */
     float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
@@ -77,7 +79,7 @@ static struct {
     float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
                            3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
                            Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -160,6 +162,8 @@ static void ReadIni(void)
         else if (!_stricmp(k, "foam_rim")) cfg.foam_rim = (float)atof(v);
         else if (!_stricmp(k, "foam_cells")) cfg.foam_cells = (float)atof(v);
         else if (!_stricmp(k, "foam_dots")) cfg.foam_dots = (float)atof(v);
+        else if (!_stricmp(k, "foam_glow")) cfg.foam_glow = (float)atof(v);
+        else if (!_stricmp(k, "glow_colour")) sscanf(v, "%f %f %f", &cfg.glow_colour[0], &cfg.glow_colour[1], &cfg.glow_colour[2]);
         else if (!_stricmp(k, "foam_normals")) cfg.foam_normals = (float)atof(v);
         else if (!_stricmp(k, "wet")) cfg.wet = (float)atof(v);
         else if (!_stricmp(k, "wet_dry")) cfg.wet_dry = (float)atof(v);
@@ -775,6 +779,10 @@ static const char FOAM_HLSL[] =
     "    hwFoam *= 1.0f + hwFx.y * (0.2f * hwRim - 0.3f * hwCore);\n"
     "  }\n"
     "  hwFoam *= 1.0f + 0.15f * hwCellRim;\n"
+    "  if (hwGlow.x > 0.0f) { /* bioluminescent foam (KWS2): in dark scenes the foam gives off its own faint light */\n"
+    "    float hwDark = 1.0f - smoothstep(0.06f, 0.3f, hwLum);\n"
+    "    hwFoam += hwGlow.yzw * hwGlow.x * hwDark * (0.5f + 0.5f * hwLace) * smoothstep(0.05f, 0.3f, hwF);\n"
+    "  }\n"
     "  if (hwFn > 0.0f) { /* foam normals (Crest, MIT): the foam stands up as a height, so its edges catch and lose light */\n"
     "    float2 hwPl = hwP * 2.7f + float2(17.0f, 5.0f);\n"
     "    float2 hwGl = float2(HW_VN(hwPl + float2(0.25f, 0.0f)) - hwN2, HW_VN(hwPl + float2(0.0f, 0.25f)) - hwN2) * (2.7f / (34.0f * 0.25f));\n"
@@ -821,7 +829,7 @@ static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g)
 /* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
 /* c222 = (seconds, ripple strength, crest glow on, splotch strength), c221 = (dye colour, dye strength),
    c220 = (foam normals strength, 0, 0, 0) */
-static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\nfloat4 hwBody : register(c216);\n";  /* hwBody: meniscus, Kate (x, y, body radius, strength) */
+static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\nfloat4 hwBody : register(c216);\nfloat4 hwGlow : register(c215);\n";  /* hwGlow: foam glow strength, colour */  /* hwBody: meniscus, Kate (x, y, body radius, strength) */
 static const char FOAM_TEX_LINE[] =
     "  float2 hwU = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "  float4 hwT = tex2Dlod(hwFoamTex, float4(hwU.x * 0.5f, hwU.y, 0.0f, 0.0f));\n"
@@ -1816,6 +1824,9 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     xf[2] = cfg.foam_cells > 1.0f ? 1.0f : cfg.foam_cells < 0.0f ? 0.0f : cfg.foam_cells;
     xf[3] = cfg.foam_dots > 1.0f ? 1.0f : cfg.foam_dots < 0.0f ? 0.0f : cfg.foam_dots;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 220, xf, 1);
+    xf[0] = cfg.foam_glow > 1.0f ? 1.0f : cfg.foam_glow < 0.0f ? 0.0f : cfg.foam_glow;
+    xf[1] = cfg.glow_colour[0]; xf[2] = cfg.glow_colour[1]; xf[3] = cfg.glow_colour[2];
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 215, xf, 1);
     if (InterlockedIncrement(&g_foam_tex_logged) == 1 || g_foam_tex_logged % 2000 == 0)
         Log("foam: world texture over %d sheets, x %.0f..%.0f y %.0f..%.0f, texel %.1f", n, x0, x1, y0, y1, cell);
 }
