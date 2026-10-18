@@ -325,3 +325,10 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
 ## Instant Action fix 2 (10-17, built 14:17)
 - First version never ran: PC.Player.GUIController is None during PostBeginPlay (no "instant action next" lines). Now uses SwatRepo(Level.GetRepo()).GuiConfig (engine-level, LevelInfo.uc:406) and logs "instant action: no Repo/GuiConfig" on failure. Picks from all 13 campaign MissionName entries (no unlock check). A command-line map URL is ignored (game goes to splash), so test from the menu.
 - Research added: research/tactical-fps-ai.md, research/ai-communication.md, plan research/swatminds-plan.md.
+
+## Visual testing queue (10-17 ~21:00, from the Windows support 2 chat)
+- User: "i will prob do some more visual testing in swat 4 if i can get the game to be more chaotic and fun" -> chaos/fun (SwatMinds AI, instant action) comes first; visuals after.
+- Idea for the visual pass, from MARKitekta's spherical-harmonics lecture (video-notes tree/88, youtu.be/cddCr95fnvI): an L2 SH irradiance probe grid (9 coeffs per channel, one dot product per pixel, 108 B per probe) as the ambient term above UE2's zone/actor ambient, diffuse only. Light leaks through walls and no AO are the known failure (needs a per-probe occlusion factor); sharp lights ring (window them, don't raise the order). Lumen keeps SH only as a fallback; radiance caching is the real thing (his next episode).
+
+## CQB research (10-18)
+research/superexplainer-cqb.md: 8 TheSuperExplainer shorts -> suspect room-hold scoring (deep off-axis, hard cover, not beside door, split angles, stairs set back, re-peek swap). Build after suspect comms v1.
