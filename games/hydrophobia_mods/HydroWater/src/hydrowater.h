@@ -53,6 +53,8 @@ typedef struct hw_foam_params {
     float spray_drag;   /* air drag on drops, per second (0.5) */
     int spray_max;      /* drop limit, at most HW_SPRAY_CAP (4096) */
     float spray_vol;    /* depth (units) a drop of size 1 carries out of its cell and back into the cell it lands in (0.05); 0 = render-only drops */
+    float scum_cover;   /* surface layer (algae, oil, leaves) coverage 0..1 that drifts with the flow, parts around bodies and is broken by rough water; 0 = none (default) */
+    float scum_regrow;  /* seconds for the layer to grow back toward scum_cover (90) */
     float dye_gain;     /* silt or dye stirred up per second at full churn (0.6) */
     float dye_life;     /* seconds for dye to fade to a third; it outlasts foam so it shows the flow (12) */
 } hw_foam_params;
@@ -132,6 +134,13 @@ HW_API void hw_foam_add(hw_sheet *s, float x, float z, float r, float foam, floa
  * other source through hw_dye_add). Advected like foam, spreads a little, fades over dye_life. */
 HW_API float *hw_dye(hw_sheet *s);
 HW_API void hw_dye_add(hw_sheet *s, float x, float z, float r, float amount);
+/* scum: a floating surface layer 0..1 (idea 9). Advected with the flow like dye, never fades,
+ * broken up by breaking water, grows back over scum_regrow. hw_scum_fill seeds every wet cell
+ * at scum_cover (mottled); hw_scum_push shoves the layer within r of (x, z) out into a ring
+ * around it over about a quarter second (call every step while a body is there). */
+HW_API float *hw_scum(hw_sheet *s);
+HW_API void hw_scum_fill(hw_sheet *s);
+HW_API void hw_scum_push(hw_sheet *s, float x, float z, float r, float dt);
 /* stir from outside: hu, hv are the momentum planes (same padded layout, row stride `stride`)
  * after something outside the solver changed them, e.g. a game stamping body velocities into
  * the sheet; the change against the last step churns foam and air there. Call before copying

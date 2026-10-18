@@ -73,7 +73,9 @@ static struct {
     float glow_colour[3];
     int spray_draw;     /* draw the solver's spray drops as particles after the water (1 = default, 0 = off) */
     float spray_size;   /* drop size scale (1 = default) */
-    float spray_colour[4]; /* r g b and opacity */
+    float spray_colour[4];
+    float scum;         /* floating surface layer (algae, oil) coverage 0..1 that drifts with the flow and parts around Kate: 0 = off (default) */
+    float scum_colour[3]; /* r g b and opacity */
     float foam_normals; /* foam lit as if raised (Crest's foam-gradient normals): 0 = off, 1 = default, at most 2 */
     float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
@@ -83,7 +85,7 @@ static struct {
     float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
                            3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
                            Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -168,6 +170,8 @@ static void ReadIni(void)
         else if (!_stricmp(k, "foam_dots")) cfg.foam_dots = (float)atof(v);
         else if (!_stricmp(k, "foam_glow")) cfg.foam_glow = (float)atof(v);
         else if (!_stricmp(k, "spray_draw")) cfg.spray_draw = atoi(v);
+        else if (!_stricmp(k, "scum")) cfg.scum = (float)atof(v);
+        else if (!_stricmp(k, "scum_colour")) sscanf(v, "%f %f %f", &cfg.scum_colour[0], &cfg.scum_colour[1], &cfg.scum_colour[2]);
         else if (!_stricmp(k, "spray_size")) cfg.spray_size = (float)atof(v);
         else if (!_stricmp(k, "spray_colour")) sscanf(v, "%f %f %f %f", &cfg.spray_colour[0], &cfg.spray_colour[1], &cfg.spray_colour[2], &cfg.spray_colour[3]);
         else if (!_stricmp(k, "glow_colour")) sscanf(v, "%f %f %f", &cfg.glow_colour[0], &cfg.glow_colour[1], &cfg.glow_colour[2]);
@@ -221,6 +225,7 @@ typedef struct foam_snap {
     BYTE *flowu, *flowv;        /* w*h each: flow direction times streak amount, 128 + 127 x (-1..1) */
     BYTE *dye;                  /* w*h: the dye carried by the flow (world texture alpha only; the mesh has no free channel) */
     BYTE *crest;                /* w*h: crest glow, how far the surface stands above its neighbours (world texture only) */
+    BYTE *scum;                 /* w*h: the floating surface layer (scum texture s14) */
     float *surf;                /* w*h: water surface height (bed + depth, the sheet's up axis), -1e30 where dry */
     float *spray;               /* HW_SPRAY_CAP x 8: the spray drops (x, height, z, vx, vy, vz, age, size), drawn as particles */
     int nspray;
@@ -283,14 +288,16 @@ static bridge *Find(uint32_t *S, int w, int h)
             hw_foam_params fp;
             float *f = &fp.foam_gain;   /* the first seven floats, in FOAM_KEYS order */
             int n;
-            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * (7 + sizeof(float)));
+            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * (8 + sizeof(float)));
             hw_get_foam_params(b->hw, &fp);
             for (n = 0; n < 7; n++) if (cfg.foam_p[n] >= 0.0f) f[n] = cfg.foam_p[n];
             if (cfg.foam_p[7] >= 0.0f) fp.spray_rate = cfg.foam_p[7];   /* library default 30 a cell a second; the drops are drawn (spray_draw) */
             if (cfg.foam_p[8] >= 0.0f) fp.dye_gain = cfg.foam_p[8];
             if (cfg.foam_p[9] >= 0.0f) fp.dye_life = cfg.foam_p[9];
+            if (cfg.scum > 0.0f) { fp.scum_cover = cfg.scum > 1.0f ? 1.0f : cfg.scum; }
             hw_set_foam_params(b->hw, &fp);
-            if (sn) { sn->w = w; sn->h = h; sn->surf = (float *)(sn + 1); sn->foam = (BYTE *)(sn->surf + (size_t)w * h); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; sn->dye = sn->flowv + (size_t)w * h; sn->crest = sn->dye + (size_t)w * h; }
+            if (cfg.scum > 0.0f) hw_scum_fill(b->hw);
+            if (sn) { sn->w = w; sn->h = h; sn->surf = (float *)(sn + 1); sn->foam = (BYTE *)(sn->surf + (size_t)w * h); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; sn->dye = sn->flowv + (size_t)w * h; sn->crest = sn->dye + (size_t)w * h; sn->scum = sn->crest + (size_t)w * h; }
             if (sn) sn->spray = (float *)calloc((size_t)HW_SPRAY_CAP * 8, sizeof(float));
             b->snap = sn;
         }
@@ -432,6 +439,7 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                     if (ci >= 2 && cj >= 2 && ci < w + 2 && cj < h + 2) { g_kate_bed = gbed[cj * gs + ci]; g_kate_depth = gh[cj * gs + ci]; }
                 }
             }
+            if (cfg.scum > 0.0f && !above) hw_scum_push(b->hw, x - ox, z - oz, rad * 1.6f, dt);   /* she parts the surface layer; it closes behind her */
             b->kx = x; b->kz = z; b->kseen = 1;
         }
     }
@@ -451,7 +459,7 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
            scaled to reach 1 at f = 1 */
         float k = 3.0f * cfg.foam_strength, kn = k > 0.01f ? 1.0f / (1.0f - expf(-k)) : 0.0f;
         float dk = cfg.depth_scale > 1.0f ? 1.0f / cfg.depth_scale : 0.0f, dc = cfg.depth_colour > 1.0f ? 1.0f : cfg.depth_colour;
-        const float *pd = hw_depth(b->hw), *pu = hw_u(b->hw), *pv = hw_v(b->hw), *py = hw_dye(b->hw), *pb = hw_bed(b->hw);
+        const float *pd = hw_depth(b->hw), *pu = hw_u(b->hw), *pv = hw_v(b->hw), *py = hw_dye(b->hw), *pb = hw_bed(b->hw), *psc = hw_scum(b->hw);
         float ck = cfg.crest_glow > 0.0f && cfg.crest_height > 0.01f ? 1.0f / cfg.crest_height : 0.0f, cg = cfg.crest_glow > 1.0f ? 1.0f : cfg.crest_glow;
         float sk = cfg.streak_speed > 1.0f ? 1.0f / cfg.streak_speed : 0.0f, sc = cfg.foam_streaks > 1.0f ? 1.0f : cfg.foam_streaks;
         int j;
@@ -482,7 +490,9 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                     sn->flowv[j * w + i] = (BYTE)(128 + (int)(127.0f * v * m));
                 }
                 {   float y = py[(j + 2) * hs + i + 2];
-                    sn->dye[j * w + i] = (BYTE)(y <= 0.0f ? 0 : y >= 1.0f ? 255 : (int)(y * 255.0f + 0.5f)); }
+                    sn->dye[j * w + i] = (BYTE)(y <= 0.0f ? 0 : y >= 1.0f ? 255 : (int)(y * 255.0f + 0.5f));
+                    y = psc[(j + 2) * hs + i + 2];
+                    sn->scum[j * w + i] = (BYTE)(y <= 0.0f ? 0 : y >= 1.0f ? 255 : (int)(y * 255.0f + 0.5f)); }
                 {   int c = (j + 2) * hs + i + 2;
                     sn->surf[j * w + i] = pd[c] > 0.5f ? pd[c] + pb[c] : -1e30f; }
                 {   /* crest glow: the surface above the mean of its wet neighbours, 1 - exp(-bump / crest_height) */
@@ -725,6 +735,7 @@ static const char FOAM_HLSL[] =
     "  float hwD = saturate(1.0f - vertexColour.b);\n"
     "  float2 hwV = float2(0.0f, 0.0f);\n"
     "  float hwDy = 0.0f;\n"
+    "  float hwSc = 0.0f;\n"
     "  float hwCr = 0.0f;\n"
     "  float hwSp = 0.0f;\n"
     "  float hwFn = 0.0f;\n"
@@ -787,6 +798,11 @@ static const char FOAM_HLSL[] =
     "  float3 hwDeep = lerp(float3(0.03f, 0.10f, 0.10f), vFogColour.rgb * 0.5f, 0.3f) * saturate(0.25f + 0.75f * hwLum);\n"
     "  refractionColour.rgb = refractionColour.rgb * hwTr + hwDeep * (1.0f - hwTr.g) * fFresRefr;\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwDyC * hwLit * fFresRefr, saturate(hwDy) * 0.8f);\n"
+    "  if (hwSc > 0.0f) { /* floating layer (idea 9): mats of algae or scum where the layer is thick, carried by the flow, parting around Kate */\n"
+    "    float hwScN = 0.6f * HW_VN(hwP * 1.7f + float2(11.0f, 7.0f)) + 0.4f * HW_VN(hwP * 5.5f + float2(3.0f, 23.0f));\n"
+    "    float hwScA = smoothstep(1.0f - hwSc - 0.12f, 1.0f - hwSc + 0.12f, hwScN) * 0.9f;\n"
+    "    refractionColour.rgb = lerp(refractionColour.rgb, hwScum.yzw * (0.35f + 0.75f * hwLum), hwScA);\n"
+    "  }\n"
     "  /* crest glow: light through the thin top of a wave, a green-blue lift, more where the water is shallow */\n"
     "  refractionColour.rgb += float3(0.07f, 0.40f, 0.34f) * (hwCr * hwLit * fFresRefr * (0.55f + 0.45f * hwTr.g));\n"
     "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 1.0f), vFogColour.rgb, 0.12f) * (hwLit * 0.5f) * (0.8f + 0.2f * hwN2);\n"
@@ -846,7 +862,7 @@ static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g)
 /* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
 /* c222 = (seconds, ripple strength, crest glow on, splotch strength), c221 = (dye colour, dye strength),
    c220 = (foam normals strength, 0, 0, 0) */
-static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\nfloat4 hwBody : register(c216);\nfloat4 hwGlow : register(c215);\n";  /* hwGlow: foam glow strength, colour */  /* hwBody: meniscus, Kate (x, y, body radius, strength) */
+static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\nfloat4 hwBody : register(c216);\nfloat4 hwGlow : register(c215);\nsampler2D hwScumTex : register(s14);\nfloat4 hwScum : register(c214);\n";  /* hwScum: strength, colour; s14 R = the floating layer */  /* hwGlow: foam glow strength, colour */  /* hwBody: meniscus, Kate (x, y, body radius, strength) */
 static const char FOAM_TEX_LINE[] =
     "  float2 hwU = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "  float4 hwT = tex2Dlod(hwFoamTex, float4(hwU.x * 0.5f, hwU.y, 0.0f, 0.0f));\n"
@@ -868,6 +884,7 @@ static const char FOAM_TEX_LINE[] =
     "  hwD = max(hwD, hwT.b);\n"
     "  hwDy = hwT.a * hwDyeCol.a;\n"
     "  hwDyC = hwDyeCol.rgb;\n"
+    "  if (hwScum.x > 0.0f) hwSc = tex2Dlod(hwScumTex, float4(hwU.x, hwU.y, 0.0f, 0.0f)).r * hwScum.x;\n"
     "  if (hwTime.y > 0.0f && dot(hwV, hwV) > 0.0025f) {\n"
     "    /* ripples carried along by the flow: three fixed waves whose pattern moves with (u, v), drawn twice\n"
     "       half a cycle apart and cross-faded so the pattern can reset without a jump (stage 11). The\n"
@@ -1619,6 +1636,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev);
  * sheet origin is at S+0x7c/S+0x80 and cells are dx = S+0x10 apart (FUN_00bf0e20). */
 #define FOAM_TEX_N 512
 static IDirect3DTexture9 *g_foam_tex;
+static IDirect3DTexture9 *g_scum_tex;   /* FOAM_TEX_N square, same mapping: R = the floating layer (idea 9) */
 static IDirect3DDevice9 *g_foam_tex_dev;
 static volatile LONG g_foam_tex_logged;
 
@@ -1661,13 +1679,14 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     int i, j, n = 0;
     DWORD now = GetTickCount();
     if (!cfg.foam_tex || !cfg.opts.foam) return;
-    if (g_foam_tex && g_foam_tex_dev != dev) { g_foam_tex = NULL; }   /* new device: the old texture went with it */
+    if (g_foam_tex && g_foam_tex_dev != dev) { g_foam_tex = NULL; g_scum_tex = NULL; }   /* new device: the old textures went with it */
     if (!g_foam_tex) {
         if (IDirect3DDevice9_CreateTexture(dev, 2 * FOAM_TEX_N, FOAM_TEX_N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_foam_tex, NULL) != D3D_OK) {
             g_foam_tex = NULL; return;
         }
         g_foam_tex_dev = dev;
         Log("foam: world foam texture %dx%d created (right half: flow)", 2 * FOAM_TEX_N, FOAM_TEX_N);
+        if (cfg.scum > 0.0f && IDirect3DDevice9_CreateTexture(dev, FOAM_TEX_N, FOAM_TEX_N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_scum_tex, NULL) != D3D_OK) { g_scum_tex = NULL; Log("scum: texture not created, the layer is off"); }
     }
     AcquireSRWLockShared(&g_lock);
     for (b = g_bridges; b; b = b->next) {
@@ -1702,6 +1721,9 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
             if (g_wet_m[k] > -1e29f) { g_wet_m[k] -= sink; if (g_wet_m[k] < g_wet_lo[k] - 80.0f) g_wet_m[k] = -1e30f; }
     }
     if (IDirect3DTexture9_LockRect(g_foam_tex, 0, &lr, NULL, 0) == D3D_OK) {
+        D3DLOCKED_RECT ls = { 0, NULL };
+        if (g_scum_tex && IDirect3DTexture9_LockRect(g_scum_tex, 0, &ls, NULL, 0) != D3D_OK) ls.pBits = NULL;
+        if (ls.pBits) for (j = 0; j < FOAM_TEX_N; j++) memset((BYTE *)ls.pBits + (size_t)j * ls.Pitch, 0, FOAM_TEX_N * 4);
         for (j = 0; j < FOAM_TEX_N; j++) {
             memset((BYTE *)lr.pBits + (size_t)j * lr.Pitch, 0, FOAM_TEX_N * 4);
             memset((BYTE *)lr.pBits + (size_t)j * lr.Pitch + FOAM_TEX_N * 4, 128, FOAM_TEX_N * 4);   /* no flow */
@@ -1725,6 +1747,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                     if (a > row[tx * 4 + 1]) row[tx * 4 + 1] = a;   /* G: air */
                     if (sn->dye[j * sn->w + i] > row[tx * 4 + 3]) row[tx * 4 + 3] = sn->dye[j * sn->w + i];   /* A: dye */
                     if (d > row[tx * 4 + 0]) row[tx * 4 + 0] = d;   /* B: depth tint */
+                    if (ls.pBits) { BYTE *sr = (BYTE *)ls.pBits + (size_t)ty * ls.Pitch + tx * 4, sv = sn->scum[j * sn->w + i]; if (sv > sr[2]) sr[2] = sv; }   /* scum texture R */
                     {   /* right half, R/G: flow; the stronger one wins where sheets overlap */
                         BYTE *fl = row + (FOAM_TEX_N + tx) * 4;
                         int nu = sn->flowu[j * sn->w + i] - 128, nv = sn->flowv[j * sn->w + i] - 128, ou = fl[2] - 128, ov = fl[1] - 128;
@@ -1799,6 +1822,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
             xf[3] = cfg.wet > 1.5f ? 1.5f : cfg.wet;
         } else { xf[0] = xf[1] = xf[2] = xf[3] = 0.0f; }
         IDirect3DTexture9_UnlockRect(g_foam_tex, 0);
+        if (ls.pBits) IDirect3DTexture9_UnlockRect(g_scum_tex, 0);
         IDirect3DDevice9_SetPixelShaderConstantF(dev, 219, xf, 1);
         {   const float *kp = KatePos();
             float kc[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -1827,6 +1851,16 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     ReleaseSRWLockShared(&g_lock);
     xf[0] = x0; xf[1] = y0; xf[2] = 1.0f / (cell * FOAM_TEX_N); xf[3] = xf[2];
     IDirect3DDevice9_SetTexture(dev, 15, (IDirect3DBaseTexture9 *)g_foam_tex);
+    if (g_scum_tex) {
+        IDirect3DDevice9_SetTexture(dev, 14, (IDirect3DBaseTexture9 *)g_scum_tex);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+    }
+    xf[0] = g_scum_tex ? (cfg.scum > 1.0f ? 1.0f : cfg.scum) : 0.0f; xf[1] = cfg.scum_colour[0]; xf[2] = cfg.scum_colour[1]; xf[3] = cfg.scum_colour[2];
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 214, xf, 1);
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
