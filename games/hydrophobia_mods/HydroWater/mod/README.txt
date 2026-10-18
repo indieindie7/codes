@@ -36,6 +36,7 @@ foam_rim            thick foam is darker in the middle and lit at its edge (1 = 
 foam_cells          foam is a net of cells with water showing through the holes, like a ship wake (1 = default, 0 = off)
 foam_dots           thin foam breaks into small dots instead of fading out (1 = default, 0 = off)
 foam_glow           bioluminescent foam that glows faintly in the dark (0 = off, the default; 1 = full), glow_colour = r g b
+spray_draw          spray drops from breaking water drawn as particles over the water (1 = default, 0 = off); spray_size, spray_colour = r g b opacity, spray_rate
 wake_pull           foam and silt behind Kate are dragged along into her wake (1 = default, 0 = off)
 meniscus            the water bows down around Kate's body with a foam ring on the rim (1 = default, 0 = off)
 drench_mask         0 = soak everywhere (default), 1 = only where the game's wetness mask allows, 2 = show it
