@@ -75,7 +75,8 @@ static struct {
     float spray_size;   /* drop size scale (1 = default) */
     float spray_colour[4];
     float scum;         /* floating surface layer (algae, oil) coverage 0..1 that drifts with the flow and parts around Kate: 0 = off (default) */
-    float scum_colour[3]; /* r g b and opacity */
+    float scum_colour[3];
+    float debris_wake;  /* foam trail and wake pull behind every body the game stamps into the water (crates, planks): 0 = off, 1 = default */ /* r g b and opacity */
     float foam_normals; /* foam lit as if raised (Crest's foam-gradient normals): 0 = off, 1 = default, at most 2 */
     float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
@@ -85,7 +86,7 @@ static struct {
     float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
                            3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
                            Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -171,6 +172,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "foam_glow")) cfg.foam_glow = (float)atof(v);
         else if (!_stricmp(k, "spray_draw")) cfg.spray_draw = atoi(v);
         else if (!_stricmp(k, "scum")) cfg.scum = (float)atof(v);
+        else if (!_stricmp(k, "debris_wake")) cfg.debris_wake = (float)atof(v);
         else if (!_stricmp(k, "scum_colour")) sscanf(v, "%f %f %f", &cfg.scum_colour[0], &cfg.scum_colour[1], &cfg.scum_colour[2]);
         else if (!_stricmp(k, "spray_size")) cfg.spray_size = (float)atof(v);
         else if (!_stricmp(k, "spray_colour")) sscanf(v, "%f %f %f %f", &cfg.spray_colour[0], &cfg.spray_colour[1], &cfg.spray_colour[2], &cfg.spray_colour[3]);
@@ -295,6 +297,7 @@ static bridge *Find(uint32_t *S, int w, int h)
             if (cfg.foam_p[8] >= 0.0f) fp.dye_gain = cfg.foam_p[8];
             if (cfg.foam_p[9] >= 0.0f) fp.dye_life = cfg.foam_p[9];
             if (cfg.scum > 0.0f) { fp.scum_cover = cfg.scum > 1.0f ? 1.0f : cfg.scum; }
+            fp.debris_wake = cfg.debris_wake < 0.0f ? 0.0f : cfg.debris_wake;
             hw_set_foam_params(b->hw, &fp);
             if (cfg.scum > 0.0f) hw_scum_fill(b->hw);
             if (sn) { sn->w = w; sn->h = h; sn->surf = (float *)(sn + 1); sn->foam = (BYTE *)(sn->surf + (size_t)w * h); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; sn->dye = sn->flowv + (size_t)w * h; sn->crest = sn->dye + (size_t)w * h; sn->scum = sn->crest + (size_t)w * h; }

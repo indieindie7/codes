@@ -55,6 +55,7 @@ typedef struct hw_foam_params {
     float spray_vol;    /* depth (units) a drop of size 1 carries out of its cell and back into the cell it lands in (0.05); 0 = render-only drops */
     float scum_cover;   /* surface layer (algae, oil, leaves) coverage 0..1 that drifts with the flow, parts around bodies and is broken by rough water; 0 = none (default) */
     float scum_regrow;  /* seconds for the layer to grow back toward scum_cover (90) */
+    float debris_wake;  /* wakes behind bodies stamped in from outside (hw_foam_stir): blobs of pushed cells get a foam trail and a wake pull (1); 0 = off */
     float dye_gain;     /* silt or dye stirred up per second at full churn (0.6) */
     float dye_life;     /* seconds for dye to fade to a third; it outlasts foam so it shows the flow (12) */
 } hw_foam_params;

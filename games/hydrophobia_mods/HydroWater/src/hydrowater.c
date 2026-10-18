@@ -55,7 +55,7 @@ HW_API hw_sheet *hw_create(int w, int h, float dx, float g, float cfl)
     s->fp.foam_gain = 0.8f; s->fp.air_gain = 3.0f; s->fp.foam_life = 2.5f; s->fp.lace = 0.25f;
     s->fp.bubble_rise = 25.0f; s->fp.air_to_foam = 0.35f; s->fp.spread = 3.0f;
     s->fp.spray_rate = 30.0f; s->fp.spray_foam = 0.15f; s->fp.spray_drag = 0.5f; s->fp.spray_max = 4096; s->fp.spray_vol = 0.05f;
-    s->fp.scum_cover = 0.0f; s->fp.scum_regrow = 90.0f;
+    s->fp.scum_cover = 0.0f; s->fp.scum_regrow = 90.0f; s->fp.debris_wake = 1.0f;
     s->fp.dye_gain = 0.6f; s->fp.dye_life = 12.0f;
     s->wallx = (unsigned char *)calloc((size_t)s->n, 1);
     s->wally = (unsigned char *)calloc((size_t)s->n, 1);
@@ -798,6 +798,57 @@ HW_API const float *hw_spray(const hw_sheet *s, int *count) { if (count) *count 
 HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p) { s->fp = *p; }
 HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p) { *p = s->fp; }
 
+/* idea 19: the cells a stamped body pushed this step form a blob; its centroid and mean push
+ * velocity stand in for the body (crate, plank, Kate where the game stamps her), so it gets
+ * the same foam trail and wake pull as the player pawn. Blobs are found by a flood fill over
+ * the cells whose velocity changed by more than 20 units/s. */
+static void debris_wakes(hw_sheet *s, const float *hu, const float *hv, int stride)
+{
+    unsigned char *mark = (unsigned char *)calloc((size_t)s->w * s->h, 1);
+    int *stack = (int *)malloc(sizeof(int) * (size_t)s->w * s->h);
+    int i, j, blobs = 0;
+    float dt = s->last_dt > 0 ? s->last_dt : 0.016f, scale = s->fp.debris_wake > 1 ? 1 : s->fp.debris_wake;
+    if (!mark || !stack) { free(mark); free(stack); return; }
+    for (j = 0; j < s->h; j++)
+        for (i = 0; i < s->w; i++) {
+            int k = AT(s, i, j), e = (j + 2) * stride + i + 2, n = 0, top = 0, c;
+            float du, dv, sx = 0, sz = 0, vx = 0, vz = 0, sp, r, a;
+            if (mark[j * s->w + i] || !foam_cell(s, k)) continue;
+            du = (hu[e] - s->huA[k]) / s->hA[k]; dv = (hv[e] - s->hvA[k]) / s->hA[k];
+            if (du * du + dv * dv < 400.0f) continue;
+            stack[top++] = j * s->w + i; mark[j * s->w + i] = 1;
+            while (top > 0) {
+                int ci, cj, q;
+                c = stack[--top]; ci = c % s->w; cj = c / s->w;
+                k = AT(s, ci, cj); e = (cj + 2) * stride + ci + 2;
+                du = (hu[e] - s->huA[k]) / s->hA[k]; dv = (hv[e] - s->hvA[k]) / s->hA[k];
+                sx += (ci + 0.5f) * s->dx; sz += (cj + 0.5f) * s->dx; vx += du; vz += dv; n++;
+                for (q = 0; q < 4; q++) {
+                    int ni = ci + (q == 0 ? -1 : q == 1 ? 1 : 0), nj = cj + (q == 2 ? -1 : q == 3 ? 1 : 0), nk, ne;
+                    float nu, nv;
+                    if (ni < 0 || nj < 0 || ni >= s->w || nj >= s->h || mark[nj * s->w + ni]) continue;
+                    nk = AT(s, ni, nj); ne = (nj + 2) * stride + ni + 2;
+                    if (!foam_cell(s, nk)) continue;
+                    nu = (hu[ne] - s->huA[nk]) / s->hA[nk]; nv = (hv[ne] - s->hvA[nk]) / s->hA[nk];
+                    if (nu * nu + nv * nv < 400.0f) continue;
+                    mark[nj * s->w + ni] = 1; stack[top++] = nj * s->w + ni;
+                }
+            }
+            if (n < 2 || blobs >= 64) continue;
+            blobs++;
+            sx /= n; sz /= n; vx /= n; vz /= n;
+            sp = sqrtf(vx * vx + vz * vz);
+            if (sp < 20.0f || sp > 3000.0f) continue;   /* a jump is a teleport or a bad read, not a wake */
+            r = 0.8f * sqrtf((float)n) * s->dx + s->dx;
+            a = (sp - 20.0f) / 250.0f; if (a > 1) a = 1;
+            a *= scale;
+            /* the same recipe as the player pawn in the mod: a trail a little behind, and low pressure dragging the wake along */
+            hw_foam_add(s, sx - vx / sp * r * 0.5f, sz - vz / sp * r * 0.5f, r * 1.3f, 1.5f * a * dt, 0.5f * a * dt);
+            hw_foam_pull(s, sx, sz, -vx / sp, -vz / sp, r * 3.0f, 0.45f * sp * scale);
+        }
+    free(mark); free(stack);
+}
+
 HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stride)
 {
     int i, j;
@@ -810,6 +861,7 @@ HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stri
             d = sqrtf(du * du + dv * dv) / h;
             if (d > s->stir[k]) s->stir[k] = d;
         }
+    if (s->fp.debris_wake > 0) debris_wakes(s, hu, hv, stride);
 }
 
 HW_API void hw_foam_pull(hw_sheet *s, float x, float z, float bx, float bz, float r, float speed)
