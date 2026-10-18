@@ -69,10 +69,11 @@ static struct {
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
     float drench;       /* Kate just out of the water: wet skin sheen, soaked cloth, running water, drips */
     float drench_splash; /* how much of her the spray wets in patches when she runs through shallow water (0..1) */
+    float meniscus;     /* the water surface bows down around Kate's body with a foam ring on the rim (0 = off, 1 = default) */
     float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
                            3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
                            Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 0.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -156,6 +157,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "wet_dry")) cfg.wet_dry = (float)atof(v);
         else if (!_stricmp(k, "drench")) cfg.drench = (float)atof(v);
         else if (!_stricmp(k, "drench_splash")) cfg.drench_splash = (float)atof(v);
+        else if (!_stricmp(k, "meniscus")) cfg.meniscus = (float)atof(v);
         else if (!_stricmp(k, "drench_mask")) cfg.drench_mask = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
@@ -733,6 +735,16 @@ static const char FOAM_HLSL[] =
     "    refractionColour.rgb *= 1.0f - 0.15f * saturate(length(hwG) * 10.0f * hwFn) * (1.0f - hwCov);\n"
     "  }\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, refractionColour.rgb * 0.8f + float3(0.06f, 0.11f, 0.11f) * hwLit, hwA * 0.5f);\n"
+    "  if (hwBody.w > 0.0f) { /* meniscus around Kate (shading only, the pool meshes are never rebuilt): the surface bows down to her body,\n"
+    "     so the bowl darkens, its slope shades the reflection, and a foam ring sits on the rim */\n"
+    "    float2 hwBd = vertexPosition.xy - hwBody.xy; float hwBr = length(hwBd);\n"
+    "    float hwBowl = (1.0f - smoothstep(hwBody.z, hwBody.z * 1.9f, hwBr)) * hwBody.w;\n"
+    "    float hwBsh = dot(hwBd / max(hwBr, 1.0f), float2(0.6f, 0.8f)) * hwBowl;\n"
+    "    reflectionColour.rgb *= 1.0f - 0.3f * hwBowl - 0.35f * hwBsh;\n"
+    "    refractionColour.rgb *= 1.0f - 0.2f * hwBowl;\n"
+    "    float hwRing = (1.0f - smoothstep(0.0f, 8.0f, abs(hwBr - hwBody.z * 1.15f))) * hwBody.w * (0.35f + 0.65f * hwLace);\n"
+    "    hwCov = max(hwCov, hwRing * 0.7f);\n"
+    "  }\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwFoam, hwCov);\n"
     "  reflectionColour *= 1.0f - 0.9f * hwCov;\n"
     "  specularStrength *= 1.0f - hwCov;\n"
@@ -760,7 +772,7 @@ static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g)
 /* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
 /* c222 = (seconds, ripple strength, crest glow on, splotch strength), c221 = (dye colour, dye strength),
    c220 = (foam normals strength, 0, 0, 0) */
-static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\n";
+static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\nfloat4 hwBody : register(c216);\n";  /* hwBody: meniscus, Kate (x, y, body radius, strength) */
 static const char FOAM_TEX_LINE[] =
     "  float2 hwU = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "  float4 hwT = tex2Dlod(hwFoamTex, float4(hwU.x * 0.5f, hwU.y, 0.0f, 0.0f));\n"
@@ -1729,6 +1741,13 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
             } else { kc[1] = kc[2] = 0.0f; }
             kc[3] = cfg.drench_mask;
             IDirect3DDevice9_SetPixelShaderConstantF(dev, 217, kc, 1);
+            {   /* c216 meniscus: her position, body radius (wider when she swims, lying flat) and how deep she is in */
+                float d = (kp && g_kate_surf > -1e29f) ? g_kate_surf - (-kp[2]) : -1e30f, st = (d + 100.0f) * (1.0f / 60.0f);
+                if (st > 1.0f) st = 1.0f;
+                if (kp && cfg.meniscus > 0.0f && st > 0.0f) { kc[0] = kp[0]; kc[1] = kp[1]; kc[2] = d > 40.0f ? 30.0f : 16.0f; kc[3] = st * (cfg.meniscus > 1.0f ? 1.0f : cfg.meniscus); }
+                else kc[0] = kc[1] = kc[2] = kc[3] = 0.0f;
+                IDirect3DDevice9_SetPixelShaderConstantF(dev, 216, kc, 1);
+            }
         }
     }
     ReleaseSRWLockShared(&g_lock);
