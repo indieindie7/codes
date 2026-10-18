@@ -24,6 +24,7 @@ struct hw_sheet {
     /* stage 7 */
     float *foam, *air, *hprev, *impact, *ftmp, *atmp;
     float *stir;             /* velocity change pushed in from outside since the last foam pass */
+    float *pullu, *pullv;    /* surface drift added to the foam, air and dye advection this step (wake pull), zeroed after use */
     float *dye;              /* tint carried by the flow (silt, blood) */
     float *spray; int nspray;
     hw_foam_params fp;
@@ -47,6 +48,7 @@ HW_API hw_sheet *hw_create(int w, int h, float dx, float g, float cfl)
     s->B = plane(s); s->wall = plane(s); s->b = plane(s); s->bprev = plane(s); s->edge = plane(s); s->Beff = plane(s);
     s->foam = plane(s); s->air = plane(s); s->hprev = plane(s); s->impact = plane(s);
     s->ftmp = plane(s); s->atmp = plane(s); s->stir = plane(s); s->dye = plane(s);
+    s->pullu = plane(s); s->pullv = plane(s);
     s->spray = (float *)calloc(HW_SPRAY_CAP * 8, sizeof(float));
     s->rng = 0x9e3779b9u;
     s->fp.foam_gain = 0.8f; s->fp.air_gain = 3.0f; s->fp.foam_life = 2.5f; s->fp.lace = 0.25f;
@@ -73,7 +75,7 @@ HW_API void hw_destroy(hw_sheet *s)
     free(s->hA); free(s->huA); free(s->hvA); free(s->hB); free(s->huB); free(s->hvB);
     free(s->hC); free(s->huC); free(s->hvC); free(s->u); free(s->v); free(s->c);
     free(s->B); free(s->wall); free(s->b); free(s->bprev); free(s->edge); free(s->Beff);
-    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->dye); free(s->spray);
+    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->dye); free(s->spray); free(s->pullu); free(s->pullv);
     free(s->wallx); free(s->wally); free(s);
 }
 
@@ -707,7 +709,7 @@ static void foam_pass(hw_sheet *s, float dt)
             sq = 1 - dt * div[k];
             if (sq < 0.5f) sq = 0.5f;
             if (sq > 1.5f) sq = 1.5f;
-            sq *= sample_wet(s, s->ftmp, (i + 0.5f) * dx - s->u[k] * dt, (j + 0.5f) * dx - s->v[k] * dt);
+            sq *= sample_wet(s, s->ftmp, (i + 0.5f) * dx - (s->u[k] + s->pullu[k]) * dt, (j + 0.5f) * dx - (s->v[k] + s->pullv[k]) * dt);
             s->foam[k] = sq > 1 ? 1 : sq;
         }
     memcpy(s->ftmp, s->air, bytes);
@@ -715,7 +717,7 @@ static void foam_pass(hw_sheet *s, float dt)
         for (i = 0; i < s->w; i++) {
             int k = AT(s, i, j);
             if (!foam_cell(s, k)) continue;
-            s->air[k] = sample_wet(s, s->ftmp, (i + 0.5f) * dx - s->u[k] * dt, (j + 0.5f) * dx - s->v[k] * dt);
+            s->air[k] = sample_wet(s, s->ftmp, (i + 0.5f) * dx - (s->u[k] + s->pullu[k]) * dt, (j + 0.5f) * dx - (s->v[k] + s->pullv[k]) * dt);
         }
     memcpy(s->ftmp, s->dye, bytes);
     for (j = 0; j < s->h; j++)
@@ -724,7 +726,7 @@ static void foam_pass(hw_sheet *s, float dt)
             float d, sum = 0;
             if (!foam_cell(s, k)) continue;
             /* dye drifts with the flow and spreads at half the foam rate (a cloud, not lines) */
-            d = sample_wet(s, s->ftmp, (i + 0.5f) * dx - s->u[k] * dt, (j + 0.5f) * dx - s->v[k] * dt);
+            d = sample_wet(s, s->ftmp, (i + 0.5f) * dx - (s->u[k] + s->pullu[k]) * dt, (j + 0.5f) * dx - (s->v[k] + s->pullv[k]) * dt);
             kn[0] = AT(s, i - 1, j); kn[1] = AT(s, i + 1, j); kn[2] = AT(s, i, j - 1); kn[3] = AT(s, i, j + 1);
             for (q = 0; q < 4; q++)
                 sum += (face_open(s, i, j, q) && foam_cell(s, kn[q])) ? s->ftmp[kn[q]] : s->ftmp[k];
@@ -732,6 +734,7 @@ static void foam_pass(hw_sheet *s, float dt)
         }
     for (j = 0; j < s->h; j++)
         for (i = 0; i < s->w; i++) { int k = AT(s, i, j); if (foam_cell(s, k)) s->dye[k] = s->atmp[k]; }
+    memset(s->pullu, 0, bytes); memset(s->pullv, 0, bytes);   /* the pull lasts one step; the caller stamps it again */
     /* spread: f <- d f + (1 - d)/4 sum(open wet neighbours) */
     memcpy(s->ftmp, s->foam, bytes);
     for (j = 0; j < s->h; j++)
@@ -764,6 +767,29 @@ HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stri
             du = hu[e] - s->huA[k]; dv = hv[e] - s->hvA[k];
             d = sqrtf(du * du + dv * dv) / h;
             if (d > s->stir[k]) s->stir[k] = d;
+        }
+}
+
+HW_API void hw_foam_pull(hw_sheet *s, float x, float z, float bx, float bz, float r, float speed)
+{
+    /* low pressure behind a moving body: within r of (x, z), on the side the unit vector (bx, bz)
+       points to (behind), the surface layer drifts toward (x, z) at up to `speed`, strongest on
+       the centre line and fading with distance; adds to the flow for this step only */
+    int i, j, i0 = (int)floorf((x - r) / s->dx), i1 = (int)floorf((x + r) / s->dx);
+    int j0 = (int)floorf((z - r) / s->dx), j1 = (int)floorf((z + r) / s->dx);
+    for (j = j0; j <= j1; j++)
+        for (i = i0; i <= i1; i++) {
+            int k;
+            float ox = (i + 0.5f) * s->dx - x, oz = (j + 0.5f) * s->dx - z, d, behind, w;
+            if (i < 0 || j < 0 || i >= s->w || j >= s->h) continue;
+            k = AT(s, i, j);
+            if (!foam_cell(s, k)) continue;
+            d = sqrtf(ox * ox + oz * oz);
+            if (d < 1e-3f || d > r) continue;
+            behind = (ox * bx + oz * bz) / d;          /* 1 right behind, 0 beside, < 0 ahead */
+            if (behind <= 0.2f) continue;
+            w = speed * (behind - 0.2f) / 0.8f * (1 - d / r);
+            if (w > fabsf(s->pullu[k]) + fabsf(s->pullv[k])) { s->pullu[k] = -ox / d * w; s->pullv[k] = -oz / d * w; }
         }
 }
 

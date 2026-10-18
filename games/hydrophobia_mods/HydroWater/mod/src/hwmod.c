@@ -63,6 +63,7 @@ static struct {
     float crest_height; /* how far (world units) a crest stands above its neighbours to glow about two thirds of full */
     float wake;         /* V wake behind Kate (Kelvin angle arms of foam): 0 = off, 1 = default */
     float wake_length;  /* length (world units) of each arm at full speed */
+    float wake_pull;    /* low pressure behind Kate drags foam, dye and air into her wake: 0 = off, 1 = default */
     float splotch;      /* big slow patches that break up wide thin foam: 0 = off, 1 = default */
     float foam_normals; /* foam lit as if raised (Crest's foam-gradient normals): 0 = off, 1 = default, at most 2 */
     float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
@@ -73,7 +74,7 @@ static struct {
     float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
                            3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
                            Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
 static const char *const FOAM_KEYS[10] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -151,6 +152,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "crest_height")) cfg.crest_height = (float)atof(v);
         else if (!_stricmp(k, "wake")) cfg.wake = (float)atof(v);
         else if (!_stricmp(k, "wake_length")) cfg.wake_length = (float)atof(v);
+        else if (!_stricmp(k, "wake_pull")) cfg.wake_pull = (float)atof(v);
         else if (!_stricmp(k, "splotch")) cfg.splotch = (float)atof(v);
         else if (!_stricmp(k, "foam_normals")) cfg.foam_normals = (float)atof(v);
         else if (!_stricmp(k, "wet")) cfg.wet = (float)atof(v);
@@ -397,6 +399,13 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                                             1.2f * wg * a * t * dt, 0.3f * wg * a * t * dt);
                             }
                         }
+                    }
+                    if (cfg.wake_pull > 0.0f) {
+                        /* wake pull: the water closing in behind her drags the surface layer after her,
+                           so the foam and silt gather in a streak instead of staying in a column */
+                        float bx = -vx / (v * dt), bz = -vz / (v * dt), sp = 0.45f * v;
+                        if (sp > 110.0f) sp = 110.0f;
+                        hw_foam_pull(b->hw, x - ox, z - oz, bx, bz, rad * 3.0f, sp * (cfg.wake_pull > 1.0f ? 1.0f : cfg.wake_pull));
                     }
                     g_body_foam++;
                     g_kate_h = kp[2];

@@ -32,6 +32,7 @@ foam                foam and air bubbles on the water (1 = on)
 wet, wet_dry        wet surfaces where the water has been, and how fast they dry
 drench              Kate soaked after a swim: wet skin, dark cloth, running water, drips
 drench_splash       running through shallow water splashes her higher up in wet patches
+wake_pull           foam and silt behind Kate are dragged along into her wake (1 = default, 0 = off)
 meniscus            the water bows down around Kate's body with a foam ring on the rim (1 = default, 0 = off)
 drench_mask         0 = soak everywhere (default), 1 = only where the game's wetness mask allows, 2 = show it
 foam_dump           1 = write the patched water shader to HydroWater_shaderN.hlsl

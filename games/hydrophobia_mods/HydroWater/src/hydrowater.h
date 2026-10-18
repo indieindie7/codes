@@ -136,6 +136,10 @@ HW_API void hw_dye_add(hw_sheet *s, float x, float z, float r, float amount);
  * the sheet; the change against the last step churns foam and air there. Call before copying
  * them in. */
 HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stride);
+/* wake pull: for this step only, the foam, air and dye within r of (x, z) on the side the unit
+ * vector (bx, bz) points to drift toward (x, z) at up to `speed` world units per second, so a
+ * moving body drags its wake along instead of leaving a column behind. Call every step. */
+HW_API void hw_foam_pull(hw_sheet *s, float x, float z, float bx, float bz, float r, float speed);
 
 /* advance by dt seconds (sub-stepped by CFL); returns the number of sub-steps */
 HW_API int hw_step(hw_sheet *s, float dt);
