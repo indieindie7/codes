@@ -639,7 +639,7 @@ static void foam_pass(hw_sheet *s, float dt)
         for (i = 0; i < s->w; i++) {
             int k = AT(s, i, j), kn[4], q;
             float h = s->hA[k], eta, en[4], un[4], vn[4], c, gx, gz, slope, lap, rise, sp, fr;
-            float brk, bore, rapid, slam = 0, impact, src, out, snx = 0, snz = 0, sprayk;
+            float brk, bore, rapid, fall = 0, slam = 0, impact, src, out, snx = 0, snz = 0, sprayk;
             div[k] = 0;
             if (!foam_cell(s, k)) { s->foam[k] = 0; s->air[k] = 0; s->dye[k] = 0; continue; }
             kn[0] = AT(s, i - 1, j); kn[1] = AT(s, i + 1, j); kn[2] = AT(s, i, j - 1); kn[3] = AT(s, i, j + 1);
@@ -668,6 +668,20 @@ static void foam_pass(hw_sheet *s, float dt)
             brk = smooth01(0.15f, 0.5f, slope) * smooth01(0.02f, 0.2f, rise / c) * smooth01(0.02f, 0.2f, -lap);
             bore = smooth01(0.6f, 1.2f, fr) * smooth01(0.05f, 0.5f, -div[k] * dx / (sp + c));
             rapid = smooth01(1.5f, 3.0f, fr);
+            /* a step in the bed: water pouring over a sharp drop into this cell is a small waterfall,
+               so foam, air and spray pile up at its foot */
+            for (q = 0; q < 4; q++) {
+                float drop, in;
+                if (!face_open(s, i, j, q) || s->wall[kn[q]] > 0 || s->hA[kn[q]] < WET_FOAM) continue;
+                drop = s->Beff[kn[q]] - s->Beff[k];
+                if (drop < 6) continue;
+                /* flow from that neighbour into this cell (q: 0 west, 1 east, 2 south, 3 north) */
+                in = q == 0 ? un[0] : q == 1 ? -un[1] : q == 2 ? vn[2] : -vn[3];
+                if (in <= 0) continue;
+                /* a fall, not a drowned step: the upper surface stands above ours by a good part of the drop */
+                fall += smooth01(6, 20, drop) * smooth01(0.05f, 0.4f, in / c) * smooth01(0.1f, 0.6f, (en[q] - eta) / drop);
+            }
+            if (fall > 1) fall = 1;
             {   /* a body entering or leaving churns the water around its rim */
                 float im = s->impact[k];
                 for (q = 0; q < 4; q++) if (s->impact[kn[q]] > im) im = s->impact[kn[q]];
@@ -677,7 +691,7 @@ static void foam_pass(hw_sheet *s, float dt)
                 for (q = 0; q < 4; q++) if (s->stir[kn[q]] > im) im = s->stir[kn[q]];
                 impact += smooth01(0.05f, 0.4f, im / c);
             }
-            src = brk + bore + 0.1f * rapid + slam + impact;
+            src = brk + bore + 0.1f * rapid + slam + impact + fall;
             if (src > 2) src = 2;
             /* silt: bodies churn it up most, a bore or rapids a little; it fades slowly */
             s->dye[k] += (impact + 0.3f * bore + 0.15f * rapid) * fp->dye_gain * dt;
@@ -695,7 +709,7 @@ static void foam_pass(hw_sheet *s, float dt)
             s->foam[k] *= expf(-dt * (fp->lace + s->foam[k]) / fp->foam_life);
             if (s->air[k] > 1) s->air[k] = 1;
             if (s->foam[k] > 1) s->foam[k] = 1;
-            sprayk = brk + 1.5f * slam + 2 * impact + 0.5f * bore;
+            sprayk = brk + 1.5f * slam + 2 * impact + 0.5f * bore + 0.8f * fall;
             if (sprayk > 0.05f)
                 spray_spawn(s, i, j, sprayk, dt, slam > 0.3f ? snx : 0, slam > 0.3f ? snz : 0);
         }
