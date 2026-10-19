@@ -349,3 +349,19 @@ research/superexplainer-cqb.md: 8 TheSuperExplainer shorts -> suspect room-hold 
 - Verified mid-level: HearRange 3000->1000->3000, MindWeight 0.5->0.9->0.5 (mutator), stock `SwatAICommon.EnemyCommanderAction` HighSkillScreamChance 0.3->0.9->0.3 and MaxMorale 1.5->2.0 on the live instance EnemyCommanderAction7, each within one interval. Log `SwatMinds live ...` only when values change.
 - Gotchas: `Actor.ConsoleCommand("exec ...")` from the mutator does nothing (ret empty, no change); a direct `Actor.ConsoleCommand("set ...")` does work. Route exec through the PlayerController.
 - Needs restart: code changes (UnrealScript recompile = close game, rebuild .u). Values cached at spawn (e.g. a pawn's current morale already derived from MaxMorale) only affect later reads; behaviour-level before/after in combat not yet measured (player idle in the test).
+
+## Auto officers (10-19, user: "ok enable ai officers and lets work on top of them")
+SP only. `AutoOfficers()` in SwatMindsMutator (config `bAutoOfficers=true`, `OfficerThink=2`, `MaxDoorDist=2500`, `OrderTimeout=90`, `bGhostPlayer=false`) gives the stock Element squad its orders, with the player pawn as CommandGiver:
+1. Secure the nearest compliant, conscious, unarrested SwatEnemy/SwatHostage (`Squad.Secure`).
+2. Else the nearest unused door within MaxDoorDist that has 4 stack-up points on our side (`SwatDoor.GetStackupPoints(LeadLoc).Length >= 4`): open/broken -> MoveAndClear, locked -> BreachBangAndClear, else BangAndClear.
+3. Else FallIn.
+API: `SwatAIRepository(Level.AIRepo).GetElementSquad()`; commands in SwatAICommon Squads/OfficerTeamInfo.uc (MoveAndClear 678, BangAndClear 700, BreachAndClear 799, BreachBangAndClear 846, Secure 1230, FallIn 612; IsExecutingCommandGoal 545, ClearCommandGoal 524).
+Gotchas found:
+- Ordering at t~2 s crashes: `Assertion failed: Commander->achievingAction` (UHive::execUpdateOfficerAssignments). Gate: wait until every officer has `ISwatAI.GetCommanderAction()`, first order at >= 20 s.
+- A player standing still at spawn blocks the spawn exit: officers walk to 2 nodes beside the player and stall forever (move goals never fail, no log). `bGhostPlayer=True` (player collision off) fixes it for unattended runs; set it via SwatMindsLive.txt `set SwatMinds.SwatMindsMutator bGhostPlayer True`. A real player who moves is fine.
+- Minimized window is NOT the cause of stalls (tested windowed-behind with `tools/swat4_bgrun.ps1`).
+- FoodWall_Standard_Door6 has 0 stack-up points on one side -> SquadStackUpAction script asserts and the squad hangs; hence the stack-up filter.
+- MoveAndClear of Repo_Standard_Door1 never reports complete (room cleared by ~t=45, a hostage complied); `OrderTimeout` clears the goal and moves on.
+- Debug: `set SwatGame.SwatOfficer logTyrion True` in the live file prints officer goal traces.
+Verified (SP-FoodWall, ghost player, minimized, 330 s): MoveAndClear -> timeout -> Secure SwatHostage1 -> Secure SwatHostage0 -> BreachBangAndClear Door14, 0 asserts. Logs: `SwatMinds officers <cmd> ...`, `officers busy t= ... doordist:` every 10 s.
+Next: door scoring with CQB attacker rules (research/superexplainer-cqb.md), AI-vs-AI gym runs (suspect tactics vs auto squad, hot knobs between runs), then co-op.

@@ -35,6 +35,18 @@ var config bool  bRandomInstantAction; // after each map load, store a random ot
 var config string LiveFile;        // hot knobs: console script re-run while the level plays ("" = off)
 var config float  LiveInterval;
 var float NextLive;
+var config bool  bAutoOfficers;    // officers pick their own squad orders (no player commands)
+var config float OfficerThink;     // seconds between officer decisions
+var config float MaxDoorDist;      // only doors this close to the squad
+var float NextOfficerThink;
+var float OfficersReadyAt;
+var array<Door> UsedDoors;
+var array<Pawn> SecureAsked;
+var float NextOfficerWhy;
+var float LastOrderTime;
+var Door LastOrderDoor;
+var config float OrderTimeout;
+var config bool bGhostPlayer;
 var string LastLive;
 var config bool  bComms;           // suspect callouts from stock recorded lines
 var config float SayCooldown;      // per suspect
@@ -151,6 +163,12 @@ function Timer()
             Log("SwatMinds live "$R, 'SwatMinds');
         LastLive = R;
         E = None;
+    }
+
+    if (bAutoOfficers && Level.TimeSeconds >= NextOfficerThink)
+    {
+        NextOfficerThink = Level.TimeSeconds + OfficerThink;
+        AutoOfficers();
     }
 
     // officer-down tracking (each officer reacts once per down)
@@ -406,6 +424,135 @@ function float Score(Pawn P, int Kind, float Stock)
 // Instant Action replays SwatGUIConfig.LastMissionPlayed*, saved by GameStart() just
 // before this map loaded. Overwrite it with a random other campaign mission so the
 // next Instant Action click goes somewhere new. The fields are private: SetPropertyText.
+// Auto officers v1: the stock element squad gets its orders from here instead of the player.
+// Order of goals: secure compliant people > clear the nearest unused door. Uses the same
+// OfficerTeamInfo calls the command menu makes, so all stock squad behaviour is kept.
+function AutoOfficers()
+{
+    local OfficerTeamInfo Squad;
+    local PlayerController PC;
+    local Pawn Giver, Lead, P, Best;
+    local Door D, BestDoor;
+    local float Dist, BestDist;
+    local int k;
+    local bool bUsed;
+    local string Cmd;
+
+    Squad = SwatAIRepository(Level.AIRepo).GetElementSquad();
+    PC = Level.GetLocalPlayerController();
+    if (Squad == None || PC == None || PC.Pawn == None || !Squad.HasActiveMembers())
+        return;
+    if (Squad.IsExecutingCommandGoal())
+    {
+        if (Level.TimeSeconds > NextOfficerWhy)
+        {
+            NextOfficerWhy = Level.TimeSeconds + 10.0;
+            Cmd = "";
+            if (LastOrderDoor != None)
+                foreach DynamicActors(class'Pawn', P)
+                    if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer'))
+                        Cmd = Cmd$" "$P.Name$"="$int(VSize(P.Location - LastOrderDoor.Location))$"/v"$int(VSize(P.Velocity))$"@"$int(P.Location.X)$","$int(P.Location.Y)$","$int(P.Location.Z);
+            Log("SwatMinds officers busy t="$Level.TimeSeconds$" state="$SwatRepo(Level.GetRepo()).GuiConfig.SwatGameState$" pauser="$Level.Pauser$" doordist:"$Cmd$" door@"$int(LastOrderDoor.Location.X)$","$int(LastOrderDoor.Location.Y)$" me@"$int(PC.Pawn.Location.X)$","$int(PC.Pawn.Location.Y), 'SwatMinds');
+        }
+        if (Level.TimeSeconds - LastOrderTime > OrderTimeout)
+        {
+            Log("SwatMinds officers timeout, clearing order", 'SwatMinds');
+            Squad.ClearCommandGoal();
+        }
+        return;
+    }
+    Giver = PC.Pawn;
+
+    // start gate: ordering before every officer's commander action runs asserts in Hive (crash 10-19)
+    if (OfficersReadyAt <= 0.0)
+    {
+        foreach DynamicActors(class'Pawn', P)
+            if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && (ISwatAI(P) == None || ISwatAI(P).GetCommanderAction() == None))
+                return;
+        OfficersReadyAt = FMax(Level.TimeSeconds + 10.0, 20.0);
+        if (bGhostPlayer)
+        {
+            Giver.SetCollision(false, false, false);
+            Log("SwatMinds officers ghost player (no collision)", 'SwatMinds');
+        }
+        Log("SwatMinds officers ready, first order at "$OfficersReadyAt, 'SwatMinds');
+    }
+    if (Level.TimeSeconds < OfficersReadyAt)
+        return;
+
+    // 1. secure: compliant, not yet restrained suspects or hostages
+    BestDist = 0;
+    foreach DynamicActors(class'Pawn', P)
+    {
+        if (!(P.IsA('SwatEnemy') || P.IsA('SwatHostage')) || !P.IsConscious() || !P.IsCompliant() || ISwatAI(P).IsArrested())
+            continue;
+        bUsed = false;
+        for (k = 0; k < SecureAsked.Length; k++)
+            if (SecureAsked[k] == P)
+                bUsed = true;
+        if (bUsed)
+            continue;
+        Lead = Squad.GetClosestOfficerTo(P);
+        if (Lead == None)
+            continue;
+        Dist = VSize(Lead.Location - P.Location);
+        if (Best == None || Dist < BestDist)
+            { Best = P; BestDist = Dist; }
+    }
+    if (Best != None)
+    {
+        SecureAsked[SecureAsked.Length] = Best;
+        LastOrderTime = Level.TimeSeconds;
+        Lead = Squad.GetClosestOfficerTo(Best);
+        Squad.Secure(Giver, Lead.Location, Best);
+        Log("SwatMinds officers secure "$Best.Name$" dist="$int(BestDist), 'SwatMinds');
+        return;
+    }
+
+    // 2. clear: nearest door not used yet (open -> move&clear, closed -> bang&clear, locked -> breach-bang)
+    BestDist = 0;
+    foreach AllActors(class'Door', D)
+    {
+        bUsed = false;
+        for (k = 0; k < UsedDoors.Length; k++)
+            if (UsedDoors[k] == D)
+                bUsed = true;
+        if (bUsed)
+            continue;
+        Lead = Squad.GetClosestOfficerTo(D);
+        if (Lead == None)
+            continue;
+        Dist = VSize(Lead.Location - D.Location);
+        if (Dist > MaxDoorDist)
+            continue;
+        // stock squad entries need 4 stack-up points on our side (Door6 FoodWall has 0 -> script assert + stall, 10-19)
+        if (SwatDoor(D) == None || SwatDoor(D).GetStackupPoints(Lead.Location).Length < 4)
+            continue;
+        if (BestDoor == None || Dist < BestDist)
+            { BestDoor = D; BestDist = Dist; }
+    }
+    if (BestDoor == None)
+    {
+        if (!Squad.IsFallingIn())
+        {
+            Squad.FallIn(Giver, Giver.Location);
+            Log("SwatMinds officers FallIn t="$Level.TimeSeconds$" (no unused door within "$int(MaxDoorDist)$")", 'SwatMinds');
+        }
+        return;
+    }
+    UsedDoors[UsedDoors.Length] = BestDoor;
+    LastOrderDoor = BestDoor;
+    LastOrderTime = Level.TimeSeconds;
+    Lead = Squad.GetClosestOfficerTo(BestDoor);
+    if (BestDoor.IsOpen() || BestDoor.IsBroken())
+        { Squad.MoveAndClear(Giver, Lead.Location, BestDoor); Cmd = "MoveAndClear"; }
+    else if (BestDoor.IsLocked())
+        { Squad.BreachBangAndClear(Giver, Lead.Location, BestDoor); Cmd = "BreachBangAndClear"; }
+    else
+        { Squad.BangAndClear(Giver, Lead.Location, BestDoor); Cmd = "BangAndClear"; }
+    Log("SwatMinds officers "$Cmd$" "$BestDoor.Name$" dist="$int(BestDist)$" open="$BestDoor.IsOpen()$" locked="$BestDoor.IsLocked(), 'SwatMinds');
+}
+
 function RandomizeInstantAction()
 {
     local SwatRepo Repo;
@@ -460,6 +607,10 @@ defaultproperties
     bRandomInstantAction=true
     LiveFile="SwatMindsLive.txt"
     LiveInterval=3.0
+    bAutoOfficers=true
+    OfficerThink=2.0
+    MaxDoorDist=2500.0
+    OrderTimeout=90.0
     bComms=true
     SayCooldown=6.0
     SayGap=2.0
