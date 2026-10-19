@@ -365,3 +365,16 @@ Gotchas found:
 - Debug: `set SwatGame.SwatOfficer logTyrion True` in the live file prints officer goal traces.
 Verified (SP-FoodWall, ghost player, minimized, 330 s): MoveAndClear -> timeout -> Secure SwatHostage1 -> Secure SwatHostage0 -> BreachBangAndClear Door14, 0 asserts. Logs: `SwatMinds officers <cmd> ...`, `officers busy t= ... doordist:` every 10 s.
 Next: door scoring with CQB attacker rules (research/superexplainer-cqb.md), AI-vs-AI gym runs (suspect tactics vs auto squad, hot knobs between runs), then co-op.
+
+## Door scoring + gym A/B (10-19, user: "ok lets proceed")
+- Mutator: config `bScoreDoors` (default False), `IntelW=1.5`, `IntelRange=1200`, `IntelLife=60`. Intel = suspect `Say()` spots + officer `LineOfSightTo` on non-compliant suspects within 3000 (no omniscience); `AddIntel` merges within 200 uu. Door score = `-dist/1000 + IntelW*IntelBehind` (behind = fresh, within IntelRange, `(I-D) Dot (L-D) < 0`). Scored cmd: locked+intel BreachBangAndClear, locked BreachAndClear, intel BangAndClear, else MoveAndClear. `Tally()` every 30 s: `SwatMinds tally t= score= orders= susDown= susArrest= susFree= hostSecured= offDown= intel=`.
+- Runner `tools/swat4_gymrun.py`: per run writes live file (+ghost player, +mode lines, +`--set "Prop value"` lines), launches SP-FoodWall minimized, kills after `--secs`, restores live file, copies log to `--out` (default `SwatMinds\gymruns`), writes summary.md/json. `--parse-only` re-summarizes.
+- Round 1 (`SwatMinds\gymruns_r1`, 3+3 runs, 330 s, level t~140 at last tally):
+
+| mode | t | orders | susDown | susArrest | susFree | hostSecured | offDown | asserts |
+|---|---|---|---|---|---|---|---|---|
+| nearest | 140.67 | 5.33 | 1.67 | 0.33 | 1.33 | 0.0 | 0.0 | 1 |
+| scored | 140.67 | 6.0 | 1.67 | 0.67 | 1.67 | 1.33 | 0.33 | 0 |
+
+  Inconclusive: too short, and every run's first order (MoveAndClear Repo_Standard_Door1, no intel yet) stalls into the 90 s OrderTimeout. The one assert is stock (`BerettaM9_ThirdPerson FellOutOfWorld`). Scored mode does pick intel doors (score 1.2-1.5, BangAndClear). Round 2 running: `--secs 600 --set "OrderTimeout 45"`, out `SwatMinds\gymruns_r2`.
+- Doctrine research: `research/swat-room-clearing.md` (next officer rules: contact+cover on secure, deliberate by default, don't idle in the funnel, hall/stair overwatch).

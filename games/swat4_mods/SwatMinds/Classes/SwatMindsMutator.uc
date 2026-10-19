@@ -47,6 +47,14 @@ var float LastOrderTime;
 var Door LastOrderDoor;
 var config float OrderTimeout;
 var config bool bGhostPlayer;
+var config bool  bScoreDoors;      // officers pick doors by intel (heard/seen suspects) instead of nearest
+var config float IntelW;           // score bonus for a door with intel behind it (1.0 = worth 1000 uu of walking)
+var config float IntelRange;       // intel this close behind a door counts
+var config float IntelLife;        // seconds intel stays fresh
+var array<vector> IntelLoc;
+var array<float> IntelTime;
+var int Orders;
+var float NextTally;
 var string LastLive;
 var config bool  bComms;           // suspect callouts from stock recorded lines
 var config float SayCooldown;      // per suspect
@@ -169,6 +177,11 @@ function Timer()
     {
         NextOfficerThink = Level.TimeSeconds + OfficerThink;
         AutoOfficers();
+    }
+    if (bAutoOfficers && Level.TimeSeconds >= NextTally)
+    {
+        NextTally = Level.TimeSeconds + 30.0;
+        Tally();
     }
 
     // officer-down tracking (each officer reacts once per down)
@@ -353,6 +366,7 @@ function bool Say(int i, int Rule)
     Minds[i].NextSay = T + SayCooldown;
     Minds[i].RuleTime[Rule] = T;
     LastSay = T;
+    AddIntel(Minds[i].P.Location, "say "$Minds[i].P.Name);
     Log("SwatMinds say "$Minds[i].P.Name$" rule="$Rule$" line="$Line$" fear="$Minds[i].Fear$" anger="$Minds[i].Anger, 'SwatMinds');
     return true;
 }
@@ -427,6 +441,51 @@ function float Score(Pawn P, int Kind, float Stock)
 // Auto officers v1: the stock element squad gets its orders from here instead of the player.
 // Order of goals: secure compliant people > clear the nearest unused door. Uses the same
 // OfficerTeamInfo calls the command menu makes, so all stock squad behaviour is kept.
+function AddIntel(vector L, string Why)
+{
+    local int k;
+    for (k = 0; k < IntelLoc.Length; k++)
+        if (VSize(IntelLoc[k] - L) < 200.0)
+        {
+            IntelLoc[k] = L; IntelTime[k] = Level.TimeSeconds;
+            return;
+        }
+    IntelLoc[IntelLoc.Length] = L;
+    IntelTime[IntelTime.Length] = Level.TimeSeconds;
+    Log("SwatMinds intel "$Why$" at "$int(L.X)$","$int(L.Y), 'SwatMinds');
+}
+
+// 1 if fresh intel lies on the far side of door D, as seen from L
+function int IntelBehind(Door D, vector L)
+{
+    local int k;
+    for (k = 0; k < IntelLoc.Length; k++)
+        if (Level.TimeSeconds - IntelTime[k] < IntelLife && VSize(IntelLoc[k] - D.Location) < IntelRange
+            && ((IntelLoc[k] - D.Location) Dot (L - D.Location)) < 0)
+            return 1;
+    return 0;
+}
+
+function Tally()
+{
+    local Pawn P;
+    local int SD, SA, HS, OD, SL;
+    foreach DynamicActors(class'Pawn', P)
+    {
+        if (P.IsA('SwatEnemy'))
+        {
+            if (!P.IsConscious()) SD++;
+            else if (ISwatAI(P).IsArrested()) SA++;
+            else SL++;
+        }
+        else if (P.IsA('SwatHostage') && ISwatAI(P).IsArrested())
+            HS++;
+        else if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && !P.IsConscious())
+            OD++;
+    }
+    Log("SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length, 'SwatMinds');
+}
+
 function AutoOfficers()
 {
     local OfficerTeamInfo Squad;
@@ -437,6 +496,8 @@ function AutoOfficers()
     local int k;
     local bool bUsed;
     local string Cmd;
+    local float Sc, BestSc;
+    local int Intel;
 
     Squad = SwatAIRepository(Level.AIRepo).GetElementSquad();
     PC = Level.GetLocalPlayerController();
@@ -502,12 +563,22 @@ function AutoOfficers()
     if (Best != None)
     {
         SecureAsked[SecureAsked.Length] = Best;
+        Orders++;
         LastOrderTime = Level.TimeSeconds;
         Lead = Squad.GetClosestOfficerTo(Best);
         Squad.Secure(Giver, Lead.Location, Best);
         Log("SwatMinds officers secure "$Best.Name$" dist="$int(BestDist), 'SwatMinds');
         return;
     }
+
+    // officer intel: suspects an officer can see right now
+    foreach DynamicActors(class'Pawn', P)
+        if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && P.IsConscious())
+            foreach DynamicActors(class'Pawn', Best)
+                if (Best.IsA('SwatEnemy') && Best.IsConscious() && !Best.IsCompliant() && !ISwatAI(Best).IsArrested()
+                    && VSize(Best.Location - P.Location) < 3000 && P.LineOfSightTo(Best))
+                    AddIntel(Best.Location, "seen "$Best.Name$" by "$P.Name);
+    Best = None;
 
     // 2. clear: nearest door not used yet (open -> move&clear, closed -> bang&clear, locked -> breach-bang)
     BestDist = 0;
@@ -528,8 +599,11 @@ function AutoOfficers()
         // stock squad entries need 4 stack-up points on our side (Door6 FoodWall has 0 -> script assert + stall, 10-19)
         if (SwatDoor(D) == None || SwatDoor(D).GetStackupPoints(Lead.Location).Length < 4)
             continue;
-        if (BestDoor == None || Dist < BestDist)
-            { BestDoor = D; BestDist = Dist; }
+        Sc = -Dist / 1000.0;
+        if (bScoreDoors)
+            Sc += IntelW * IntelBehind(D, Lead.Location);
+        if (BestDoor == None || Sc > BestSc)
+            { BestDoor = D; BestDist = Dist; BestSc = Sc; }
     }
     if (BestDoor == None)
     {
@@ -544,13 +618,26 @@ function AutoOfficers()
     LastOrderDoor = BestDoor;
     LastOrderTime = Level.TimeSeconds;
     Lead = Squad.GetClosestOfficerTo(BestDoor);
-    if (BestDoor.IsOpen() || BestDoor.IsBroken())
+    Orders++;
+    Intel = IntelBehind(BestDoor, Lead.Location);
+    if (bScoreDoors)
+    {
+        // CQB: flash only rooms we know are occupied; quiet entry otherwise
+        if (BestDoor.IsLocked())
+            { if (Intel > 0) { Squad.BreachBangAndClear(Giver, Lead.Location, BestDoor); Cmd = "BreachBangAndClear"; }
+              else { Squad.BreachAndClear(Giver, Lead.Location, BestDoor); Cmd = "BreachAndClear"; } }
+        else if (Intel > 0)
+            { Squad.BangAndClear(Giver, Lead.Location, BestDoor); Cmd = "BangAndClear"; }
+        else
+            { Squad.MoveAndClear(Giver, Lead.Location, BestDoor); Cmd = "MoveAndClear"; }
+    }
+    else if (BestDoor.IsOpen() || BestDoor.IsBroken())
         { Squad.MoveAndClear(Giver, Lead.Location, BestDoor); Cmd = "MoveAndClear"; }
     else if (BestDoor.IsLocked())
         { Squad.BreachBangAndClear(Giver, Lead.Location, BestDoor); Cmd = "BreachBangAndClear"; }
     else
         { Squad.BangAndClear(Giver, Lead.Location, BestDoor); Cmd = "BangAndClear"; }
-    Log("SwatMinds officers "$Cmd$" "$BestDoor.Name$" dist="$int(BestDist)$" open="$BestDoor.IsOpen()$" locked="$BestDoor.IsLocked(), 'SwatMinds');
+    Log("SwatMinds officers "$Cmd$" "$BestDoor.Name$" dist="$int(BestDist)$" open="$BestDoor.IsOpen()$" locked="$BestDoor.IsLocked()$" intel="$Intel$" score="$BestSc, 'SwatMinds');
 }
 
 function RandomizeInstantAction()
@@ -611,6 +698,9 @@ defaultproperties
     OfficerThink=2.0
     MaxDoorDist=2500.0
     OrderTimeout=90.0
+    IntelW=1.5
+    IntelRange=1200.0
+    IntelLife=60.0
     bComms=true
     SayCooldown=6.0
     SayGap=2.0
