@@ -332,3 +332,9 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
 
 ## CQB research (10-18)
 research/superexplainer-cqb.md: 8 TheSuperExplainer shorts -> suspect room-hold scoring (deep off-axis, hard cover, not beside door, split angles, stairs set back, re-peek swap). Build after suspect comms v1.
+
+## Eye-height sight + comms v1 (10-19, SwatMinds.u built 10:59, 0 errors; in-game check pending)
+- SpreadFear "saw" now traces victim chest (+40) or eye to suspect eye (`BaseEyeHeight`, exists on Pawn); the old centre trace gave 0 "saw" lines in playtest 4.
+- Comms v1 = Ruskin rules (research/l4d-ai-talk.md) over stock recorded lines via `EnemySpeechManagerAction` (`ISwatAI(P).GetSpeechManagerAction()`): rule 0 saw ally down + fear>=0.5 -> Scream; 1 saw ally down + anger>fear -> NonCompliant; 2 ally down other -> CalledForHelp; 3 ally hit + fear>=0.4 -> CalledForHelp; 4 fear crosses 0.7 -> Flee line (re-arms <0.4); 5 anger crosses 0.6 -> NonCompliant (re-arms <0.3); 6 officer down -> nearest suspect (seeing first, within HearRange) ReactedDownOfficer, anger +0.2.
+- Memory: per-suspect SayCooldown=6, global SayGap=2, per-rule RuleCooldown=20. Config bComms=true. Log lines `SwatMinds say <pawn> rule=<n> line=<x>` and `SwatMinds officer down <pawn> reactor=<i>`.
+- Check in next playtest: "saw" lines > 0, say lines audible and not spammy.
