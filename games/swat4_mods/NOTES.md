@@ -378,3 +378,18 @@ Next: door scoring with CQB attacker rules (research/superexplainer-cqb.md), AI-
 
   Inconclusive: too short, and every run's first order (MoveAndClear Repo_Standard_Door1, no intel yet) stalls into the 90 s OrderTimeout. The one assert is stock (`BerettaM9_ThirdPerson FellOutOfWorld`). Scored mode does pick intel doors (score 1.2-1.5, BangAndClear). Round 2 running: `--secs 600 --set "OrderTimeout 45"`, out `SwatMinds\gymruns_r2`.
 - Doctrine research: `research/swat-room-clearing.md` (next officer rules: contact+cover on secure, deliberate by default, don't idle in the funnel, hall/stair overwatch).
+- **Parallel null-render gym (10-19, user: "yeah lets make the gym runs be like 5 minutes without spinning up texture rendering and have like 2 or 3 in parallel"), verified 3 at once:**
+  - SWAT 4 is single-instance via the UTF-16 mutex name `Swat4IsRunning` (5 hits in Content\System\Swat4.exe; 2nd copy shows "SWAT 4 Already Running"). `-mptest` bypasses it but forces the log to `MPTestClient.log` for every copy (clash), so not used.
+  - Runner makes `Content\System\Swat4Gym<k>.exe` (k=1..3; local game-file copies, never commit) with `Swat4IsRunning`->`Swat4IsRunnin<k>` and `ScriptLog.log` (UTF-16 at 0x1a364)->`ScriptLo<k>.log` (otherwise "Failed to write: ScriptLog.log" dialog).
+  - Per slot: `-ini=Gym<k>.ini` (Swat4.ini with `RenderDevice=Engine.NullRenderDevice`, 320x240; verified: no D3DDrv/d3d9 module loaded, checked with 32-bit PowerShell), `-userini=GymUser<k>.ini`, `LOG=gym<k>.log`, URL option `?SMLive=GymLive<k>.txt`.
+  - Mutator: PostBeginPlay logs `SwatMinds url ...`; `?SMLive=` overrides LiveFile. Gotcha: `GetLocalURL()` starts with the map name, so ParseOption needs `Mid(URL, InStr(URL,"?"))`.
+  - The shared SwatMindsLive.txt is now only read (base lines), never rewritten.
+  - Run: `py -3.13 -I tools/swat4_gymrun.py --runs 6 --secs 300 --jobs 3 --set "OrderTimeout 45" --out "F:\gogGames\SWAT 4\SwatMinds\gymruns_r2"`.
+- **Round 2 (`SwatMinds\gymruns_r2`, 6+6 runs, 300 s, 3 parallel, OrderTimeout 45):**
+
+| mode | runs | t | orders | susDown | susArrest | susFree | hostSecured | offDown | asserts |
+|---|---|---|---|---|---|---|---|---|---|
+| nearest | 6/6 | 115.17 | 4.67 | 1.67 | 0.0 | 1.83 | 1.17 | 0.67 | 0 |
+| scored | 5/6 | 120.6 | 5.6 | 1.6 | 1.0 | 1.2 | 1.4 | 0.0 | 0 |
+
+  Scored looks better (0 officers down vs 0.67, arrests 1.0 vs 0) but n is small and level time only reaches ~120-150 s in a 300 s run (load ~25 s, and with 3 in parallel the game clock runs slower than wall time). scored_5 lost its tallies because the kill cut the log; fixed after the round: the runner appends `exit` to each slot's live file 10 s before the end, so the game quits cleanly and flushes ("Log file closed").

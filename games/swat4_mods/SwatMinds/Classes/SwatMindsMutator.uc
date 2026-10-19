@@ -77,6 +77,13 @@ function PostBeginPlay()
             Destroy();
             return;
         }
+    Log("SwatMinds url "$Level.GetLocalURL()$" game="$Level.Game, 'SwatMinds');
+    // gym runner: ?SMLive=<file> gives each parallel instance its own hot-knob script
+    if (Level.Game != None && Level.Game.ParseOption(Mid(Level.GetLocalURL(), InStr(Level.GetLocalURL(), "?")), "SMLive") != "")
+    {
+        LiveFile = Level.Game.ParseOption(Mid(Level.GetLocalURL(), InStr(Level.GetLocalURL(), "?")), "SMLive");
+        Log("SwatMinds live file "$LiveFile, 'SwatMinds');
+    }
     SetTimer(TickInterval, true);
     if (bRandomInstantAction)
         RandomizeInstantAction();
