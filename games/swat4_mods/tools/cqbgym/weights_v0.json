@@ -1,0 +1,66 @@
+{
+ "doctrine": {
+  "weights": {
+   "depth": 0.524,
+   "off_axis": 1.0,
+   "hard_cover": -0.335,
+   "beside_frame": 0.239,
+   "door_line": 0.161
+  },
+  "train": 0.483,
+  "test": 0.45,
+  "baselines": {
+   "door-facing (minus depth)": 0.015,
+   "cqb-tips (hand)": 0.472,
+   "random spot": 0.157
+  }
+ },
+ "sloppy": {
+  "weights": {
+   "depth": -1.0,
+   "off_axis": 0.658,
+   "hard_cover": -0.547,
+   "beside_frame": 0.043,
+   "door_line": -0.141
+  },
+  "train": 0.987,
+  "test": 0.965,
+  "baselines": {
+   "door-facing (minus depth)": 0.025,
+   "cqb-tips (hand)": 0.665,
+   "random spot": 0.24
+  }
+ },
+ "rusher": {
+  "weights": {
+   "depth": 0.662,
+   "off_axis": 1.0,
+   "hard_cover": -0.307,
+   "beside_frame": 0.222,
+   "door_line": -0.958
+  },
+  "train": 0.993,
+  "test": 0.995,
+  "baselines": {
+   "door-facing (minus depth)": 0.0,
+   "cqb-tips (hand)": 0.67,
+   "random spot": 0.206
+  }
+ },
+ "mixed": {
+  "weights": {
+   "depth": 0.684,
+   "off_axis": 1.0,
+   "hard_cover": -0.384,
+   "beside_frame": 0.28,
+   "door_line": -0.601
+  },
+  "train": 0.813,
+  "test": 0.797,
+  "baselines": {
+   "door-facing (minus depth)": 0.013,
+   "cqb-tips (hand)": 0.602,
+   "random spot": 0.201
+  }
+ }
+}

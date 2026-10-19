@@ -338,3 +338,7 @@ research/superexplainer-cqb.md: 8 TheSuperExplainer shorts -> suspect room-hold 
 - Comms v1 = Ruskin rules (research/l4d-ai-talk.md) over stock recorded lines via `EnemySpeechManagerAction` (`ISwatAI(P).GetSpeechManagerAction()`): rule 0 saw ally down + fear>=0.5 -> Scream; 1 saw ally down + anger>fear -> NonCompliant; 2 ally down other -> CalledForHelp; 3 ally hit + fear>=0.4 -> CalledForHelp; 4 fear crosses 0.7 -> Flee line (re-arms <0.4); 5 anger crosses 0.6 -> NonCompliant (re-arms <0.3); 6 officer down -> nearest suspect (seeing first, within HearRange) ReactedDownOfficer, anger +0.2.
 - Memory: per-suspect SayCooldown=6, global SayGap=2, per-rule RuleCooldown=20. Config bComms=true. Log lines `SwatMinds say <pawn> rule=<n> line=<x>` and `SwatMinds officer down <pawn> reactor=<i>`.
 - Check in next playtest: "saw" lines > 0, say lines audible and not spammy.
+
+## Combat gym (10-19, user: "a gym for training our combat ai ... adapt to player or learn from player mistakes")
+- Plan: research/combat-gym-plan.md (train fast in a Python CQB sim, deploy weights as SwatMinds.ini config, adapt live with a habit logger + bandit + SaveConfig, fairness director).
+- v0: tools/cqbgym/gym_v0.py (`py -3.13 -I gym_v0.py --rooms 150 --seeds 4`), output weights_v0.json. Learned hold-spot pick 0.80 suspect win vs 0.20 random, 0.60 hand CQB tips (mixed attackers); off_axis top weight; depth sign flips with player habit (doorway-stopper -> shallow). Table + caveats in the plan file.
