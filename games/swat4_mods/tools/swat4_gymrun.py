@@ -21,6 +21,8 @@ MODES = {
     "nearest": ["set SwatMinds.SwatMindsMutator bScoreDoors False"],
     "scored": ["set SwatMinds.SwatMindsMutator bScoreDoors True"],
 }
+TRAJ = re.compile(r"SwatMinds traj t=([\d.]+) orders=(\d+)(.*)")
+PAWN = re.compile(r"([OEH]\d+):(-?\d+),(-?\d+),(\d+),([cad])")
 TALLY = re.compile(r"SwatMinds tally t=(\d+) score=\w+ orders=(\d+) susDown=(\d+) susArrest=(\d+) susFree=(\d+) hostSecured=(\d+) offDown=(\d+) intel=(\d+)")
 KEYS = ["t", "orders", "susDown", "susArrest", "susFree", "hostSecured", "offDown", "intel"]
 
@@ -48,7 +50,7 @@ def prep_slot(k):
 
 
 def launch(k, mode, map_, extra):
-    lines = LIVE.read_text(encoding="latin-1").splitlines() + ["set SwatMinds.SwatMindsMutator bGhostPlayer True"] + list(extra) + MODES[mode]
+    lines = LIVE.read_text(encoding="latin-1").splitlines() + ["set SwatMinds.SwatMindsMutator bGhostPlayer True", "set SwatMinds.SwatMindsMutator bTraj True"] + list(extra) + MODES[mode]
     (SYS / f"GymLive{k}.txt").write_text("\n".join(lines) + "\n", encoding="latin-1")
     log = SYS / f"gym{k}.log"
     log.unlink(missing_ok=True)
@@ -89,8 +91,21 @@ def parse(log):
     rows = [dict(zip(KEYS, map(int, m.groups()))) for m in TALLY.finditer(txt)]
     last = rows[-1] if rows else {}
     cmds = re.findall(r"SwatMinds officers (MoveAndClear|BangAndClear|BreachAndClear|BreachBangAndClear|secure|timeout)", txt)
-    return dict(last=last, cmds={c: cmds.count(c) for c in set(cmds)},
+    return dict(last=last, cmds={c: cmds.count(c) for c in set(cmds)}, traj=len(TRAJ.findall(txt)),
                 asserts=len(re.findall(r"Assertion failed", txt)), crash="Critical:" in txt)
+
+
+def traj(log):
+    """frames from `SwatMinds traj` lines: {t, orders, pawns: {O0: [x, y, yaw, state], ...}}; order/intel events kept as {t, ev}."""
+    out = []
+    for line in log.read_text(encoding="latin-1", errors="replace").splitlines():
+        m = TRAJ.search(line)
+        if m:
+            pawns = {k: [int(x), int(y), int(w), s] for k, x, y, w, s in PAWN.findall(m.group(3))}
+            out.append(dict(t=float(m.group(1)), orders=int(m.group(2)), pawns=pawns))
+        elif out and ("SwatMinds officers " in line or "SwatMinds intel " in line):
+            out.append(dict(t=out[-1]["t"], ev=line.split("SwatMinds ", 1)[1][:200]))
+    return out
 
 
 def summarize():
@@ -142,8 +157,10 @@ def run_knobs(knobs, a, d):
     rows = [parse(l) for l in logs]
     with open(OUT / "data.jsonl", "a") as f:
         for l, r in zip(logs, rows):
+            tj = l.with_suffix(".traj.jsonl")  # one frame per line, next to the game log (data.jsonl stays small)
+            tj.write_text("".join(json.dumps(fr) + "\n" for fr in traj(l)))
             f.write(json.dumps(dict(ts=time.strftime("%Y-%m-%d %H:%M:%S"), map=a.map, secs=a.secs, knobs=knobs, set=a.set,
-                                    log=str(l), score=cand_score(r["last"]), **r)) + "\n")
+                                    log=str(l), traj_file=str(tj), score=cand_score(r["last"]), **r)) + "\n")
     return rows
 
 

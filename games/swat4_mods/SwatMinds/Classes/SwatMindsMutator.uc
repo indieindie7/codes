@@ -56,6 +56,9 @@ var array<float> IntelTime;
 var int Orders;
 var float NextTally;
 var string LastLive;
+var config bool  bTraj;            // log one "traj" line of all pawn positions every TrajInterval (gym demos/data)
+var config float TrajInterval;
+var float NextTraj;
 var config bool  bComms;           // suspect callouts from stock recorded lines
 var config float SayCooldown;      // per suspect
 var config float SayGap;           // between any two suspects
@@ -189,6 +192,11 @@ function Timer()
     {
         NextTally = Level.TimeSeconds + 30.0;
         Tally();
+    }
+    if (bTraj && Level.TimeSeconds >= NextTraj)
+    {
+        NextTraj = Level.TimeSeconds + TrajInterval;
+        Traj();
     }
 
     // officer-down tracking (each officer reacts once per down)
@@ -493,6 +501,26 @@ function Tally()
     Log("SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length, 'SwatMinds');
 }
 
+// one line per TrajInterval: <kind><n>:x,y,yaw,state for every officer (O), suspect (E), hostage (H); state c=free a=arrested d=down
+function Traj()
+{
+    local Pawn P;
+    local string S, K, St;
+    local int nO, nE, nH;
+    foreach DynamicActors(class'Pawn', P)
+    {
+        if (P.IsA('SwatEnemy')) { K = "E"$nE; nE++; }
+        else if (P.IsA('SwatHostage')) { K = "H"$nH; nH++; }
+        else if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer')) { K = "O"$nO; nO++; }
+        else continue;
+        if (!P.IsConscious()) St = "d";
+        else if (ISwatAI(P).IsArrested()) St = "a";
+        else St = "c";
+        S = S$" "$K$":"$int(P.Location.X)$","$int(P.Location.Y)$","$(P.Rotation.Yaw & 65535)$","$St;
+    }
+    Log("SwatMinds traj t="$int(Level.TimeSeconds * 10) / 10.0$" orders="$Orders$S, 'SwatMinds');
+}
+
 function AutoOfficers()
 {
     local OfficerTeamInfo Squad;
@@ -708,6 +736,7 @@ defaultproperties
     IntelW=1.5
     IntelRange=1200.0
     IntelLife=60.0
+    TrajInterval=1.0
     bComms=true
     SayCooldown=6.0
     SayGap=2.0
