@@ -32,6 +32,10 @@ var config float HearRange;        // allies within this range hear a hit/down t
 var config float HearFactor;       // heard (not seen) events scare this much of a seen one
 var config bool  bRandomInstantAction; // after each map load, store a random other mission as "last played"
 
+var config string LiveFile;        // hot knobs: console script re-run while the level plays ("" = off)
+var config float  LiveInterval;
+var float NextLive;
+var string LastLive;
 var config bool  bComms;           // suspect callouts from stock recorded lines
 var config float SayCooldown;      // per suspect
 var config float SayGap;           // between any two suspects
@@ -117,12 +121,37 @@ function bool IsOfficerSide(Actor A)
 function Timer()
 {
     local Pawn E;
+    local EnemyCommanderAction ECA;
+    local PlayerController PC;
+    local string R;
     local Pawn O;
     local int i, Dmg, Seen, Close;
     local float FearAdd, MoraleFrac;
     local CommanderAction CA;
     local int k;
     local bool bKnown;
+
+    // hot knobs: re-run the console script (`set <class> <prop> <value>` lines), then log what live objects hold
+    if (LiveFile != "" && Level.TimeSeconds >= NextLive)
+    {
+        NextLive = Level.TimeSeconds + LiveInterval;
+        PC = Level.GetLocalPlayerController();
+        if (PC != None)
+            R = PC.ConsoleCommand("exec "$LiveFile);
+        else
+            R = ConsoleCommand("exec "$LiveFile);
+        foreach DynamicActors(class'Pawn', E)
+            if (E.IsA('SwatEnemy') && ECA == None)
+                ECA = EnemyCommanderAction(ISwatAI(E).GetCommanderAction());
+        if (ECA != None)
+            R = "HearRange="$HearRange$" MindWeight="$MindWeight$" bComms="$bComms$" | live "$ECA.Name$" HighScream="$ECA.HighSkillScreamChance$" MaxMorale="$ECA.MaxMorale$" | default HighScream="$class'EnemyCommanderAction'.default.HighSkillScreamChance;
+        else
+            R = "HearRange="$HearRange$" MindWeight="$MindWeight$" bComms="$bComms$" (no enemy yet)";
+        if (R != LastLive)
+            Log("SwatMinds live "$R, 'SwatMinds');
+        LastLive = R;
+        E = None;
+    }
 
     // officer-down tracking (each officer reacts once per down)
     foreach DynamicActors(class'Pawn', O)
@@ -429,6 +458,8 @@ defaultproperties
     HearRange=3000.0
     HearFactor=0.6
     bRandomInstantAction=true
+    LiveFile="SwatMindsLive.txt"
+    LiveInterval=3.0
     bComms=true
     SayCooldown=6.0
     SayGap=2.0

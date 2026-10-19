@@ -342,3 +342,10 @@ research/superexplainer-cqb.md: 8 TheSuperExplainer shorts -> suspect room-hold 
 ## Combat gym (10-19, user: "a gym for training our combat ai ... adapt to player or learn from player mistakes")
 - Plan: research/combat-gym-plan.md (train fast in a Python CQB sim, deploy weights as SwatMinds.ini config, adapt live with a habit logger + bandit + SaveConfig, fairness director).
 - v0: tools/cqbgym/gym_v0.py (`py -3.13 -I gym_v0.py --rooms 150 --seeds 4`), output weights_v0.json. Learned hold-spot pick 0.80 suspect win vs 0.20 random, 0.60 hand CQB tips (mixed attackers); off_axis top weight; depth sign flips with player habit (doorway-stopper -> shallow). Table + caveats in the plan file.
+
+## Hot AI knobs (10-19, asked by the PC chat; verified in a minimized SP-FoodWall run)
+- **Direct map launch works (no menu):** `Content\System\Swat4.exe "SP-FoodWall?Mutator=SwatMinds.SwatMindsMutator" -nointro`, cwd `SwatMinds\System`. Mutator loads, Timer runs. This unblocks pilot/gym runs without menu input.
+- **Hot reload:** every LiveInterval=3 s the mutator runs `exec SwatMindsLive.txt` (file in SwatMinds\System, repo copy SwatMinds/SwatMindsLive.txt) through `Level.GetLocalPlayerController().ConsoleCommand`. Lines are `set <Package.Class> <prop> <value>`; `set` changes the class default AND live instances.
+- Verified mid-level: HearRange 3000->1000->3000, MindWeight 0.5->0.9->0.5 (mutator), stock `SwatAICommon.EnemyCommanderAction` HighSkillScreamChance 0.3->0.9->0.3 and MaxMorale 1.5->2.0 on the live instance EnemyCommanderAction7, each within one interval. Log `SwatMinds live ...` only when values change.
+- Gotchas: `Actor.ConsoleCommand("exec ...")` from the mutator does nothing (ret empty, no change); a direct `Actor.ConsoleCommand("set ...")` does work. Route exec through the PlayerController.
+- Needs restart: code changes (UnrealScript recompile = close game, rebuild .u). Values cached at spawn (e.g. a pawn's current morale already derived from MaxMorale) only affect later reads; behaviour-level before/after in combat not yet measured (player idle in the test).

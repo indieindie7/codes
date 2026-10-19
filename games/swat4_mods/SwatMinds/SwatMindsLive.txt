@@ -1,0 +1,4 @@
+set SwatMinds.SwatMindsMutator HearRange 3000
+set SwatMinds.SwatMindsMutator MindWeight 0.5
+set SwatAICommon.EnemyCommanderAction HighSkillScreamChance 0.3
+set SwatAICommon.EnemyCommanderAction MaxMorale 1.5
