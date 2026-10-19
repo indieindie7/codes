@@ -5,9 +5,10 @@ ScriptLog name), own ini (Engine.NullRenderDevice: no D3D at all), own live file
 Live file per slot = SwatMindsLive.txt lines + ghost player + --set lines + the mode's lines. Outcome = last `SwatMinds tally` line (written every 30 s).
 
 Run:   py -3.13 -I swat4_gymrun.py [--runs 3] [--secs 300] [--jobs 3] [--set "OrderTimeout 45"] [--out dir] [--map SP-FoodWall] [--modes nearest,scored]
+Search: py -3.13 -I swat4_gymrun.py --search 1 --secs 300 --out <dir>   (score = arrests + hostSecured - 2*offDown - susFree, mean of 3 games)
 Parse: py -3.13 -I swat4_gymrun.py --parse-only
 """
-import argparse, json, re, shutil, subprocess, sys, time
+import argparse, json, random, re, shutil, subprocess, sys, time
 from pathlib import Path
 
 GAME = Path(r"F:\gogGames\SWAT 4")
@@ -56,7 +57,7 @@ def launch(k, mode, map_, extra):
     return log
 
 
-def batch(jobs, secs, map_, extra):
+def batch(jobs, secs, map_, extra, dest=None):
     """jobs = [(mode, i)], at most 3; all run at once, one slot each."""
     logs = [launch(k, mode, map_, extra) for k, (mode, i) in enumerate(jobs, 1)]
     time.sleep(max(0, secs - 10))
@@ -69,7 +70,7 @@ def batch(jobs, secs, map_, extra):
     time.sleep(3)
     out = []
     for log, (mode, i) in zip(logs, jobs):
-        dst = OUT / f"{mode}_{i}.log"
+        dst = (dest or OUT) / f"{mode}_{i}.log"
         shutil.copy(log, dst); out.append(dst)
     return out
 
@@ -98,6 +99,58 @@ def summarize():
     print("\n".join(lines))
 
 
+# --search: random -> (1+lambda)-ES over the hot knobs; each candidate = 3 parallel games with the same --set lines
+KNOBS = {  # name: (lo, hi, log-scale?)
+    "IntelW": (0.0, 4.0, False), "IntelRange": (300.0, 1500.0, False),
+    "IntelLife": (20.0, 180.0, True), "OrderTimeout": (20.0, 90.0, False),
+}
+
+
+def cand_score(last):
+    """arrests + hostSecured - 2*offDown - susFree from the last tally line (None if the run left no tally)."""
+    if not last:
+        return None
+    return last["susArrest"] + last["hostSecured"] - 2 * last["offDown"] - last["susFree"]
+
+
+def propose(tried, rng, n_random=4, sigma=0.2):
+    """first n_random candidates uniform in the box; after that Gaussian mutation (sigma = fraction of range) of the best."""
+    scored = [t for t in tried if t["score"] is not None]
+    if len(scored) < n_random or not scored:
+        return {k: round(rng.uniform(lo, hi), 2) if not lg else round(lo * (hi / lo) ** rng.random(), 1) for k, (lo, hi, lg) in KNOBS.items()}
+    best = max(scored, key=lambda t: t["score"])["knobs"]
+    out = {}
+    for k, (lo, hi, lg) in KNOBS.items():
+        out[k] = round(min(hi, max(lo, rng.gauss(best[k], sigma * (hi - lo)))), 2)
+    return out
+
+
+def search(a):
+    sdir = OUT / "search_logs"; sdir.mkdir(exist_ok=True)
+    sj = OUT / "search.json"
+    state = json.loads(sj.read_text()) if sj.exists() else dict(tried=[], best=None)
+    rng = random.Random(a.seed + len(state["tried"]))
+    kill()
+    for k in range(1, 4):
+        prep_slot(k)
+    for _ in range(a.search):
+        n = len(state["tried"])
+        knobs = propose(state["tried"], rng)
+        extra = ["set SwatMinds.SwatMindsMutator %s %s" % kv for kv in knobs.items()] + ["set SwatMinds.SwatMindsMutator " + x for x in a.set]
+        d = sdir / f"c{n:03d}"; d.mkdir(exist_ok=True)
+        logs = batch([("scored", i) for i in range(3)], a.secs, a.map, extra, dest=d)
+        rows = [parse(l) for l in logs]
+        sc = [cand_score(r["last"]) for r in rows]
+        ok = [x for x in sc if x is not None]
+        rec = dict(n=n, knobs=knobs, run_scores=sc, score=round(sum(ok) / len(ok), 3) if ok else None,
+                   last=[r["last"] for r in rows], asserts=sum(r["asserts"] for r in rows))
+        state["tried"].append(rec)
+        sc_all = [t for t in state["tried"] if t["score"] is not None]
+        state["best"] = max(sc_all, key=lambda t: t["score"]) if sc_all else None
+        sj.write_text(json.dumps(state, indent=1))
+        print(f"candidate {n}: {knobs} -> runs {sc} mean {rec['score']}  best so far {state['best'] and state['best']['score']}", flush=True)
+
+
 def main():
     global OUT
     ap = argparse.ArgumentParser()
@@ -109,9 +162,13 @@ def main():
     ap.add_argument("--set", action="append", default=[], help="extra live line for every mode, e.g. \"OrderTimeout 45\" (SwatMindsMutator prop value)")
     ap.add_argument("--out", default=str(OUT))
     ap.add_argument("--parse-only", action="store_true")
+    ap.add_argument("--search", type=int, default=0, metavar="N", help="run N knob-search candidates (3 parallel games each) over IntelW/IntelRange/IntelLife/OrderTimeout; writes <out>/search.json")
+    ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
     OUT = Path(a.out)
     OUT.mkdir(exist_ok=True)
+    if a.search:
+        return search(a)
     if not a.parse_only:
         kill()
         for k in range(1, a.jobs + 1):
