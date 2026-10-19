@@ -399,3 +399,14 @@ Next: door scoring with CQB attacker rules (research/superexplainer-cqb.md), AI-
 - Result (80 held-out rooms, suspect win rate): vs doctrine 0.467 (hand CQB tips 0.451), sloppy 0.925 (0.686), rusher 0.971 (0.660), vs trained officer 0.329 (0.344). Weights: depth .326, off_axis 1.0, hard_cover -.254, beside_frame -.739, door_line -.338. Trained officer ends at limits (speed 420, turn 400, react .15, no stop, near first): the self-play adversary saturates its box, so suspect gain vs a strong officer is small; gym_v0 mixed v0 weights score about the same. Not yet validated in-engine.
 - `tools/swat4_gymrun.py --search N`: each candidate = 3 parallel games (scored mode) with random (first 4) then Gaussian-mutated-best IntelW [0,4], IntelRange [300,1500], IntelLife [20,180], OrderTimeout [20,90] `--set` lines. Score = mean over games of susArrest + hostSecured - 2*offDown - susFree from the last tally. Writes `<out>/search.json` (resumable: rerun appends) and logs under `<out>/search_logs/cNNN/`. Other flags unchanged.
 - Proof run (`F:\gogGames\SWAT 4\SwatMinds\gymruns_search`, candidate 0: IntelW .54, Range 1317, Life 107, Timeout 37.85, 300 s): run scores -2, -3, None; mean -2.5. Slot 3 never reached a tally (stuck loading, no tally line), levels only reached t=60 at wall 300 s (Strata research was using CPU concurrently). So candidate scores need n>=2 runs with tally and a longer --secs; a candidate with a missing run is averaged over the rest. Not a tuning result.
+
+## Autogym (10-19, endless data loop)
+> **User:** "write up an autorun system for these that we can execute and it keeps generating data"
+
+- `tools/swat4_autogym.py`: loops until `F:\gogGames\SWAT 4\SwatMinds\autogym\STOP` exists (or `--hours`). Per cycle:
+  1. sim: `cqbgym/gym_v0.py --train --seed 1000+cycle` -> `autogym/sim/weights_NNNN.json`, summary row in `autogym/sim.jsonl`;
+  2. engine: `swat4_gymrun.py --search 1` (every 3rd cycle `--reeval 1` reruns the best) into `autogym/engine/<map>/` (search.json + one row per game in data.jsonl); skipped while a real `Swat4.exe` runs, so the user can play;
+  3. `autogym/REPORT.md` rewritten (best knobs per map, top 5, last sim).
+- Options: `--maps a,b` (rotated), `--secs 600` (wall s per 3-game batch), `--no-sim`, `--no-engine`. Cycle numbers continue across restarts.
+- Start hidden: `Start-Process py -ArgumentList '-3.13 -I tools\swat4_autogym.py' -WindowStyle Hidden` (cwd wt9 games/swat4_mods). Stop: create the STOP file.
+- swat4_gymrun.py changes: a slot without "SwatMinds url" in its log after STALL=150 s is killed and relaunched once (the stuck-loading slot in the c85e25c proof run); `--reeval M`; per-game rows in `<out>/data.jsonl`; best only counts candidates with >= 6 good games once any has them (one 3-game batch is too noisy).

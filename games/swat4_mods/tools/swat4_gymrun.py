@@ -16,6 +16,7 @@ SYS = GAME / "SwatMinds" / "System"
 LIVE = SYS / "SwatMindsLive.txt"  # read only: base lines for every slot
 CSYS = GAME / "Content" / "System"
 OUT = GAME / "SwatMinds" / "gymruns"
+STALL = 150  # s after launch by which a slot must have logged "SwatMinds url", else it is relaunched once
 MODES = {
     "nearest": ["set SwatMinds.SwatMindsMutator bScoreDoors False"],
     "scored": ["set SwatMinds.SwatMindsMutator bScoreDoors True"],
@@ -60,7 +61,15 @@ def launch(k, mode, map_, extra):
 def batch(jobs, secs, map_, extra, dest=None):
     """jobs = [(mode, i)], at most 3; all run at once, one slot each."""
     logs = [launch(k, mode, map_, extra) for k, (mode, i) in enumerate(jobs, 1)]
-    time.sleep(max(0, secs - 10))
+    t0 = time.time()
+    time.sleep(min(STALL, secs))
+    for k, (mode, i) in enumerate(jobs, 1):  # a slot that never reached the mutator (stuck loading) gets one relaunch
+        log = logs[k - 1]
+        if not (log.exists() and "SwatMinds url" in log.read_text(encoding="latin-1", errors="replace")):
+            print(f"slot {k} stalled loading, relaunching", flush=True)
+            kill(k); time.sleep(2)
+            launch(k, mode, map_, extra)
+    time.sleep(max(0, secs - 10 - (time.time() - t0)))
     for k in range(1, len(jobs) + 1):  # clean quit via the live file so the log gets flushed (a kill cuts its tail)
         with open(SYS / f"GymLive{k}.txt", "a", encoding="latin-1") as f:
             f.write("exit\n")
@@ -125,30 +134,51 @@ def propose(tried, rng, n_random=4, sigma=0.2):
     return out
 
 
+def run_knobs(knobs, a, d):
+    """3 parallel games with these knobs; returns per-game rows (also appended to <out>/data.jsonl)."""
+    extra = ["set SwatMinds.SwatMindsMutator %s %s" % kv for kv in knobs.items()] + ["set SwatMinds.SwatMindsMutator " + x for x in a.set]
+    d.mkdir(exist_ok=True)
+    logs = batch([("scored", i) for i in range(3)], a.secs, a.map, extra, dest=d)
+    rows = [parse(l) for l in logs]
+    with open(OUT / "data.jsonl", "a") as f:
+        for l, r in zip(logs, rows):
+            f.write(json.dumps(dict(ts=time.strftime("%Y-%m-%d %H:%M:%S"), map=a.map, secs=a.secs, knobs=knobs, set=a.set,
+                                    log=str(l), score=cand_score(r["last"]), **r)) + "\n")
+    return rows
+
+
 def search(a):
+    """--search N new candidates; --reeval M reruns the current best M times (scores are noisy, the mean over all its runs counts)."""
     sdir = OUT / "search_logs"; sdir.mkdir(exist_ok=True)
     sj = OUT / "search.json"
     state = json.loads(sj.read_text()) if sj.exists() else dict(tried=[], best=None)
-    rng = random.Random(a.seed + len(state["tried"]))
+    rng = random.Random(a.seed + len(state["tried"]) + int(time.time()) % 100000)
     kill()
     for k in range(1, 4):
         prep_slot(k)
-    for _ in range(a.search):
-        n = len(state["tried"])
-        knobs = propose(state["tried"], rng)
-        extra = ["set SwatMinds.SwatMindsMutator %s %s" % kv for kv in knobs.items()] + ["set SwatMinds.SwatMindsMutator " + x for x in a.set]
-        d = sdir / f"c{n:03d}"; d.mkdir(exist_ok=True)
-        logs = batch([("scored", i) for i in range(3)], a.secs, a.map, extra, dest=d)
-        rows = [parse(l) for l in logs]
-        sc = [cand_score(r["last"]) for r in rows]
-        ok = [x for x in sc if x is not None]
-        rec = dict(n=n, knobs=knobs, run_scores=sc, score=round(sum(ok) / len(ok), 3) if ok else None,
-                   last=[r["last"] for r in rows], asserts=sum(r["asserts"] for r in rows))
-        state["tried"].append(rec)
+    plan = ["new"] * a.search + ["reeval"] * a.reeval
+    for what in plan:
+        if what == "reeval" and state["best"]:
+            rec = next(t for t in state["tried"] if t["n"] == state["best"]["n"])
+            rows = run_knobs(rec["knobs"], a, sdir / f"c{rec['n']:03d}_r{len(rec['run_scores'])}")
+            rec["run_scores"] += [cand_score(r["last"]) for r in rows]
+            rec["last"] += [r["last"] for r in rows]
+        else:
+            n = len(state["tried"])
+            knobs = propose(state["tried"], rng)
+            rows = run_knobs(knobs, a, sdir / f"c{n:03d}")
+            rec = dict(n=n, knobs=knobs, run_scores=[cand_score(r["last"]) for r in rows], last=[r["last"] for r in rows], asserts=0)
+            state["tried"].append(rec)
+        rec["asserts"] += sum(r["asserts"] for r in rows)
+        ok = [x for x in rec["run_scores"] if x is not None]
+        rec["score"] = round(sum(ok) / len(ok), 3) if ok else None
+        rec["games"] = len(ok)
+        # best = highest mean among candidates with >= 6 good games (2 batches) once any has them (one 3-game batch is too noisy to trust)
         sc_all = [t for t in state["tried"] if t["score"] is not None]
-        state["best"] = max(sc_all, key=lambda t: t["score"]) if sc_all else None
+        sure = [t for t in sc_all if t.get("games", 0) >= 6] or sc_all
+        state["best"] = max(sure, key=lambda t: t["score"]) if sure else None
         sj.write_text(json.dumps(state, indent=1))
-        print(f"candidate {n}: {knobs} -> runs {sc} mean {rec['score']}  best so far {state['best'] and state['best']['score']}", flush=True)
+        print(f"{what} {rec['n']}: {rec['knobs']} -> runs {rec['run_scores']} mean {rec['score']}  best {state['best'] and (state['best']['n'], state['best']['score'])}", flush=True)
 
 
 def main():
@@ -163,11 +193,12 @@ def main():
     ap.add_argument("--out", default=str(OUT))
     ap.add_argument("--parse-only", action="store_true")
     ap.add_argument("--search", type=int, default=0, metavar="N", help="run N knob-search candidates (3 parallel games each) over IntelW/IntelRange/IntelLife/OrderTimeout; writes <out>/search.json")
+    ap.add_argument("--reeval", type=int, default=0, metavar="M", help="with --search: also rerun the current best M times")
     ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
     OUT = Path(a.out)
-    OUT.mkdir(exist_ok=True)
-    if a.search:
+    OUT.mkdir(parents=True, exist_ok=True)
+    if a.search or a.reeval:
         return search(a)
     if not a.parse_only:
         kill()
