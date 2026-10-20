@@ -5,6 +5,10 @@ import ctypes, time
 from ctypes import wintypes as W
 
 u = ctypes.windll.user32
+try:  # real pixels on scaled displays (else the rect is DPI-virtualized and too small)
+    u.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+except Exception:
+    u.SetProcessDPIAware()
 GWL_STYLE, GWL_EXSTYLE = -16, -20
 WS_POPUP, WS_VISIBLE = 0x80000000, 0x10000000
 WS_EX_DLGMODALFRAME, WS_EX_CLIENTEDGE, WS_EX_STATICEDGE, WS_EX_WINDOWEDGE = 0x1, 0x200, 0x20000, 0x100
