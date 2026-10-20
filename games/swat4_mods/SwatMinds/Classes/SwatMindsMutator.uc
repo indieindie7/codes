@@ -49,6 +49,42 @@ var array<AimAtPointGoal> SectorGoals;
 var array<Pawn> SectorPawns;
 var array<float> SectorPosted;
 var string SectorSig;
+var array<Pawn> TrainPawns;        // this tick's column order (front to tail)
+var array<int> TrainYaw;           // world yaw of each officer's sector
+// coverage "paint" scorer (10-20): nav points the squad can see are threats; aim cone + LOS paints them
+var config bool  bPaint;
+var config float PaintRange, PaintFade, PaintCone, DeadHold;
+var array<NavigationPoint> PaintNav;
+var array<float> PaintTime;
+var array<byte> PaintThreat;
+var array<int> ThreatIdx;
+var bool bPaintInit;
+var float PaintShare, PaintSum, NextPaintLog;
+var int PaintN;
+var array<vector> SqEye, SqDir;
+var vector SqC;
+var array<Pawn> DeadPawns;         // dead-space hold per officer
+var array<int> DeadIdx;
+var array<float> DeadUntil;
+// halt: cover spots + shoulder tap
+var config bool  bCoverHold;
+var config float CoverSearch, TapGap, HaltTime;
+var vector HaltLoc;
+var float HaltSince, TapSum;
+var int TapN;
+var bool bTapDone, bCoverDone;
+var array<MoveToLocationGoal> CoverGoals;
+var array<Pawn> CoverPawns;
+var array<vector> CoverPts;
+var array<float> CoverPosted;
+// director (live feature + gym probe): sends a threat from the least-painted out-of-sight spot
+var config bool  bDirector;
+var config float DirectorInterval, DirectorRange, DirectorMin, DirectorTimeout;
+var float NextDirector, DirStart, DirSeenAt, DirFaceSum;
+var int DirN, DirMiss, DirNoShow;
+var Pawn DirPawn;
+var vector DirPt;
+var MoveToLocationGoal DirGoal;
 var array<Door> UsedDoors;
 var array<Pawn> SecureAsked;
 var float NextOfficerWhy;
@@ -209,8 +245,12 @@ function Timer()
         E = None;
     }
 
+    if (bPaint && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
+        UpdatePaint();
     if (bAutoOfficers && bEscort && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
         UpdateSectors();
+    if (bDirector && bPaint && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
+        UpdateDirector();
     if (bAutoOfficers && Level.TimeSeconds >= NextOfficerThink)
     {
         NextOfficerThink = Level.TimeSeconds + OfficerThink;
@@ -569,7 +609,8 @@ function Tally()
         else if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && !P.IsConscious())
             OD++;
     }
-    R = "SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length$" wall="$(Level.Hour*3600+Level.Minute*60+Level.Second)$"."$Level.Millisecond$" frames="$Frames$" dil="$Level.TimeDilation;
+    R = "SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length$" wall="$(Level.Hour*3600+Level.Minute*60+Level.Second)$"."$Level.Millisecond$" frames="$Frames$" dil="$Level.TimeDilation
+        $" paint="$(PaintSum / Max(1, PaintN))$" tap="$(TapSum / Max(1, TapN))$" tapN="$TapN$" dirFace="$(DirFaceSum / Max(1, DirN))$" dirN="$DirN$" dirMiss="$DirMiss$" dirNoShow="$DirNoShow;
     SideLog(R);
 }
 
@@ -815,9 +856,12 @@ function UpdateSectors()
     {
         if (SectorGoals.Length > 0)
             ClearSectors();
+        ClearCover();
         return;
     }
     Me = PC.Pawn;
+    TrainPawns.Length = 0;
+    TrainYaw.Length = 0;
     Fwd = vector(MakeRot(Me.Rotation.Yaw));
     Rt = vector(MakeRot(Me.Rotation.Yaw + 16384));
 
@@ -861,6 +905,10 @@ function UpdateSectors()
             Pt = HitL;
         else
             Pt = End;
+        TrainPawns[k] = P;
+        TrainYaw[k] = Me.Rotation.Yaw + Off;
+        if (bPaint)
+            Pt = DeadSpace(P, Me.Rotation.Yaw + Off, Pt);
 
         G = None;
         m = -1;
@@ -892,6 +940,458 @@ function UpdateSectors()
     }
     if (S != "")
         Log("SwatMinds escort train t="$Level.TimeSeconds$S, 'SwatMinds');
+    if (bCoverHold)
+        UpdateCover(Me);
+}
+
+// ---- coverage paint (10-20, user idea: "they 'paint' the walls to guarantee no hidden places") ----
+// Threat points = nav points within PaintRange that some squad eye can see. A point is painted when a
+// squad member aims within the cone at it with LOS; paint fades after PaintFade s. Share = painted/threats.
+function UpdatePaint()
+{
+    local NavigationPoint NP;
+    local PlayerController PC;
+    local Pawn P, Me;
+    local vector L, D, F;
+    local int i, k, n, Painted;
+    local bool bLOS;
+
+    if (!bPaintInit)
+    {
+        foreach AllActors(class'NavigationPoint', NP)
+            PaintNav[PaintNav.Length] = NP;
+        PaintTime.Length = PaintNav.Length;
+        PaintThreat.Length = PaintNav.Length;
+        bPaintInit = true;
+        Log("SwatMinds paint navs="$PaintNav.Length, 'SwatMinds');
+    }
+    SqEye.Length = 0;
+    SqDir.Length = 0;
+    SqC = vect(0,0,0);
+    PC = Level.GetLocalPlayerController();
+    if (PC != None && PC.Pawn != None && !bGhostPlayer && PC.Pawn.IsConscious())
+    {
+        Me = PC.Pawn;
+        SqEye[0] = Me.Location + Me.EyePosition();
+        F = vector(Me.GetViewRotation()); F.Z = 0;
+        SqDir[0] = Normal(F);
+    }
+    foreach DynamicActors(class'Pawn', P)
+        if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && P.IsConscious() && ISwatAI(P) != None)
+        {
+            k = SqEye.Length;
+            SqEye[k] = P.Location + P.EyePosition();
+            F = vector(ISwatAI(P).GetAimOrientation()); F.Z = 0;
+            SqDir[k] = Normal(F);
+            SqC += P.Location;
+            n++;
+        }
+    if (SqEye.Length == 0)
+        return;
+    if (Me != None && (bEscort || n == 0))
+        SqC = Me.Location;
+    else
+        SqC = SqC / n;
+
+    ThreatIdx.Length = 0;
+    for (i = 0; i < PaintNav.Length; i++)
+    {
+        PaintThreat[i] = 0;
+        if (PaintNav[i] == None)
+            continue;
+        L = PaintNav[i].Location + vect(0,0,40);
+        if (VSize(L - SqC) > PaintRange || Abs(L.Z - SqC.Z) > 300)
+            continue;
+        bLOS = false;
+        for (k = 0; k < SqEye.Length; k++)
+            if (FastTrace(L, SqEye[k]))
+            {
+                bLOS = true;
+                D = L - SqEye[k]; D.Z = 0;
+                if (VSize(D) < 80 || (Normal(D) dot SqDir[k]) > PaintCone)
+                {
+                    PaintTime[i] = Level.TimeSeconds;
+                    break;
+                }
+            }
+        if (!bLOS)
+            continue;
+        PaintThreat[i] = 1;
+        ThreatIdx[ThreatIdx.Length] = i;
+        if (Level.TimeSeconds - PaintTime[i] <= PaintFade)
+            Painted++;
+    }
+    if (ThreatIdx.Length > 0)
+    {
+        PaintShare = float(Painted) / ThreatIdx.Length;
+        PaintSum += PaintShare;
+        PaintN++;
+    }
+    if (Level.TimeSeconds >= NextPaintLog)
+    {
+        NextPaintLog = Level.TimeSeconds + 5.0;
+        Log("SwatMinds paint t="$int(Level.TimeSeconds)$" share="$PaintShare$" threats="$ThreatIdx.Length$" painted="$Painted$" squad="$SqEye.Length, 'SwatMinds');
+    }
+}
+
+// dead space: instead of the plain lane, look at the oldest unpainted threat point within 90 deg of the
+// officer's train sector (the sector is the prior). Held DeadHold s or until painted; one officer per point.
+function vector DeadSpace(Pawn P, int Yaw, vector Lane)
+{
+    local int i, j, q, Me, Best;
+    local float Age, BestAge;
+    local vector Eye, D, Fw;
+    local bool bTaken;
+
+    if (!bPaintInit)
+        return Lane;
+    Me = -1;
+    for (j = 0; j < DeadPawns.Length; j++)
+        if (DeadPawns[j] == P)
+            Me = j;
+    if (Me < 0)
+    {
+        Me = DeadPawns.Length;
+        DeadPawns[Me] = P;
+        DeadIdx[Me] = -1;
+        DeadUntil[Me] = 0;
+    }
+    if (DeadIdx[Me] >= 0 && Level.TimeSeconds < DeadUntil[Me] && Level.TimeSeconds - PaintTime[DeadIdx[Me]] > PaintFade)
+        return PaintNav[DeadIdx[Me]].Location + vect(0,0,40);
+    DeadIdx[Me] = -1;
+    Eye = P.Location + P.EyePosition();
+    Fw = vector(MakeRot(Yaw));
+    Best = -1;
+    BestAge = PaintFade;
+    for (q = 0; q < ThreatIdx.Length; q++)
+    {
+        i = ThreatIdx[q];
+        Age = Level.TimeSeconds - PaintTime[i];
+        if (Age <= BestAge)
+            continue;
+        D = PaintNav[i].Location - P.Location; D.Z = 0;
+        if (VSize(D) < 150 || (Normal(D) dot Fw) < 0.0)
+            continue;
+        bTaken = false;
+        for (j = 0; j < DeadPawns.Length; j++)
+            if (j != Me && DeadIdx[j] == i && Level.TimeSeconds < DeadUntil[j])
+                bTaken = true;
+        if (bTaken || !FastTrace(PaintNav[i].Location + vect(0,0,40), Eye))
+            continue;
+        Best = i;
+        BestAge = Age;
+    }
+    if (Best < 0)
+        return Lane;
+    DeadIdx[Me] = Best;
+    DeadUntil[Me] = Level.TimeSeconds + DeadHold;
+    return PaintNav[Best].Location + vect(0,0,40);
+}
+
+// ---- halt: cover spots + shoulder tap (10-20) ----
+// Player still for HaltTime: each officer moves to a nearby nav spot that sees down its sector with a wall
+// at its back / an edge beside it (MoveToLocationGoal 95 beats MoveInFormationGoal 90; re-posted if it ends).
+// Tap = all sector aims set; logged as time from halt. When the player moves on, cover is dropped, but the
+// tail keeps holding the rear until the gap to the next officer passes TapGap (then it "taps out").
+function UpdateCover(Pawn Me)
+{
+    local int k, j, i;
+    local Pawn P, Tail;
+    local vector Fw, L, Best;
+    local float Sc, BestSc;
+    local bool bAll, bFound, bNear;
+    local AimAtPointGoal G;
+    local string S;
+
+    if (TrainPawns.Length > 0)
+        Tail = TrainPawns[TrainPawns.Length - 1];
+    if (VSize(Me.Location - HaltLoc) > 120)
+    {
+        HaltLoc = Me.Location;
+        HaltSince = Level.TimeSeconds;
+        bTapDone = false;
+        bCoverDone = false;
+    }
+    if (Level.TimeSeconds - HaltSince < HaltTime)
+    {
+        k = CoverPawns.Length - 1;
+        while (k >= 0)
+        {
+            P = CoverPawns[k];
+            if (TrainPawns.Length > 1 && P == Tail
+                && VSize(P.Location - TrainPawns[TrainPawns.Length - 2].Location) < TapGap
+                && Level.TimeSeconds - CoverPosted[k] < 8.0)
+            {
+                k--;
+                continue;
+            }
+            if (P == Tail)
+                Log("SwatMinds tail tap-out t="$int(Level.TimeSeconds)$" "$P.Name, 'SwatMinds');
+            ReleaseCover(k);
+            k--;
+        }
+        return;
+    }
+
+    // halted: shoulder tap = every sector aim is set
+    if (!bTapDone && TrainPawns.Length > 0)
+    {
+        bAll = true;
+        for (k = 0; k < TrainPawns.Length; k++)
+        {
+            G = None;
+            for (j = 0; j < SectorPawns.Length; j++)
+                if (SectorPawns[j] == TrainPawns[k])
+                    G = SectorGoals[j];
+            if (G == None || G.achievingAction == None)
+                bAll = false;
+            else
+            {
+                Fw = G.Point - TrainPawns[k].Location; Fw.Z = 0;
+                L = vector(ISwatAI(TrainPawns[k]).GetAimOrientation()); L.Z = 0;
+                if ((Normal(Fw) dot Normal(L)) < 0.9)
+                    bAll = false;
+            }
+        }
+        if (bAll)
+        {
+            bTapDone = true;
+            TapSum += Level.TimeSeconds - HaltSince;
+            TapN++;
+            Log("SwatMinds tap t="$int(Level.TimeSeconds)$" dt="$(Level.TimeSeconds - HaltSince)$" n="$TrainPawns.Length, 'SwatMinds');
+        }
+    }
+
+    // keep holds alive
+    for (k = 0; k < CoverGoals.Length; k++)
+        if (CoverGoals[k].achievingAction == None && Level.TimeSeconds - CoverPosted[k] > 1.0
+            && VSize(CoverPawns[k].Location - CoverPts[k]) > 60)
+        {
+            CoverGoals[k].unPostGoal(None);
+            CoverGoals[k].Release();
+            CoverGoals[k] = PostMove(CoverPawns[k], CoverPts[k]);
+            CoverPosted[k] = Level.TimeSeconds;
+        }
+    if (bCoverDone || !bPaintInit)
+        return;
+    bCoverDone = true;
+    for (k = 0; k < TrainPawns.Length; k++)
+    {
+        P = TrainPawns[k];
+        bNear = false;
+        for (j = 0; j < CoverPawns.Length; j++)
+            if (CoverPawns[j] == P)
+                bNear = true;
+        if (bNear)
+            continue;      // tail still holding from the last halt
+        Fw = vector(MakeRot(TrainYaw[k]));
+        BestSc = CoverScore(P.Location, Fw) + 0.2;   // moving must be clearly better
+        bFound = false;
+        for (i = 0; i < PaintNav.Length; i++)
+        {
+            if (PaintNav[i] == None)
+                continue;
+            L = PaintNav[i].Location;
+            if (VSize(L - P.Location) > CoverSearch || VSize(L - Me.Location) > 700 || Abs(L.Z - P.Location.Z) > 80)
+                continue;
+            bNear = false;
+            for (j = 0; j < CoverPts.Length; j++)
+                if (VSize(L - CoverPts[j]) < 80)
+                    bNear = true;
+            if (bNear || VSize(L - Me.Location) < 80 || !FastTrace(L + vect(0,0,40), P.Location + vect(0,0,40)))
+                continue;
+            Sc = CoverScore(L, Fw) - VSize(L - P.Location) / 1000.0;
+            if (Sc > BestSc)
+            {
+                BestSc = Sc;
+                Best = L;
+                bFound = true;
+            }
+        }
+        if (bFound)
+        {
+            j = CoverGoals.Length;
+            CoverPawns[j] = P;
+            CoverPts[j] = Best;
+            CoverGoals[j] = PostMove(P, Best);
+            CoverPosted[j] = Level.TimeSeconds;
+            S = S$" "$P.Name$"="$int(VSize(Best - P.Location))$"/"$BestSc;
+        }
+    }
+    if (S != "")
+        Log("SwatMinds cover t="$int(Level.TimeSeconds)$S, 'SwatMinds');
+}
+
+// sector view length (0..1) + wall at the back + edge (wall on exactly one side)
+function float CoverScore(vector L, vector Fw)
+{
+    local vector E, Rt, HitL, HitN;
+    local float Sc;
+    local bool A, B;
+
+    E = L + vect(0,0,40);
+    Rt = Fw cross vect(0,0,1);
+    if (Trace(HitL, HitN, E + 1200.0 * Fw, E, false) != None)
+        Sc = VSize(HitL - E) / 1200.0;
+    else
+        Sc = 1.0;
+    if (!FastTrace(E - 150.0 * Fw, E))
+        Sc += 0.4;
+    A = !FastTrace(E + 120.0 * Rt, E);
+    B = !FastTrace(E - 120.0 * Rt, E);
+    if (A != B)
+        Sc += 0.3;
+    return Sc;
+}
+
+function MoveToLocationGoal PostMove(Pawn P, vector L)
+{
+    local MoveToLocationGoal G;
+
+    G = new class'MoveToLocationGoal'(AI_Resource(P.MovementAI), 95, L);
+    G.SetAcceptNearbyPath(true);
+    G.AddRef();
+    G.postGoal(None);
+    return G;
+}
+
+function ReleaseCover(int k)
+{
+    if (CoverGoals[k] != None)
+    {
+        CoverGoals[k].unPostGoal(None);
+        CoverGoals[k].Release();
+    }
+    CoverGoals.Remove(k, 1);
+    CoverPawns.Remove(k, 1);
+    CoverPts.Remove(k, 1);
+    CoverPosted.Remove(k, 1);
+}
+
+function ClearCover()
+{
+    while (CoverGoals.Length > 0)
+        ReleaseCover(CoverGoals.Length - 1);
+}
+
+// ---- director (10-20, user: "we will add the director ai into the game too") ----
+// Every ~DirectorInterval s: the out-of-sight nav point (DirectorMin..DirectorRange from the squad) that was
+// painted longest ago. The nearest free suspect that the squad cannot see is sent there; with no suspect the
+// point is a virtual probe. Time-to-face = first squad LOS on the threat -> a squad aim cone on it.
+function UpdateDirector()
+{
+    local int i, k, Best;
+    local float Sc, BestSc, D, BestD;
+    local vector L, T, V;
+    local Pawn E, BestE;
+    local bool bSeen, bFaced;
+
+    if (DirStart > 0)
+    {
+        if (DirPawn != None && (DirPawn.bDeleteMe || !DirPawn.IsConscious() || ISwatAI(DirPawn).IsArrested()))
+        {
+            Log("SwatMinds director end (down/arrested) t="$int(Level.TimeSeconds), 'SwatMinds');
+            EndDirector();
+            return;
+        }
+        if (DirPawn != None)
+            T = DirPawn.Location + vect(0,0,40);
+        else
+            T = DirPt;
+        for (k = 0; k < SqEye.Length; k++)
+            if (FastTrace(T, SqEye[k]))
+            {
+                bSeen = true;
+                V = T - SqEye[k]; V.Z = 0;
+                if ((Normal(V) dot SqDir[k]) > PaintCone)
+                    bFaced = true;
+            }
+        if (bSeen && DirSeenAt == 0)
+            DirSeenAt = Level.TimeSeconds;
+        if (bFaced)
+        {
+            DirFaceSum += Level.TimeSeconds - DirSeenAt;
+            DirN++;
+            Log("SwatMinds director faced t="$int(Level.TimeSeconds)$" face="$(Level.TimeSeconds - DirSeenAt)$" by="$DirPawn, 'SwatMinds');
+            EndDirector();
+        }
+        else if (Level.TimeSeconds - DirStart > DirectorTimeout)
+        {
+            if (DirSeenAt > 0)
+                DirMiss++;
+            else
+                DirNoShow++;
+            Log("SwatMinds director timeout t="$int(Level.TimeSeconds)$" seen="$(DirSeenAt > 0)$" by="$DirPawn, 'SwatMinds');
+            EndDirector();
+        }
+        return;
+    }
+    if (NextDirector == 0)
+        NextDirector = Level.TimeSeconds + 0.5 * DirectorInterval;
+    if (Level.TimeSeconds < NextDirector || SqEye.Length == 0)
+        return;
+    NextDirector = Level.TimeSeconds + DirectorInterval * (0.75 + 0.5 * FRand());
+
+    Best = -1;
+    BestSc = -1;
+    for (i = 0; i < PaintNav.Length; i++)
+    {
+        if (PaintNav[i] == None || PaintThreat[i] == 1)
+            continue;
+        L = PaintNav[i].Location + vect(0,0,40);
+        D = VSize(L - SqC);
+        if (D < DirectorMin || D > DirectorRange || Abs(L.Z - SqC.Z) > 400)
+            continue;
+        Sc = Level.TimeSeconds - PaintTime[i] + 5.0 * FRand();
+        if (Sc <= BestSc)
+            continue;
+        bSeen = false;
+        for (k = 0; k < SqEye.Length; k++)
+            if (FastTrace(L, SqEye[k]))
+                bSeen = true;
+        if (bSeen)
+            continue;
+        Best = i;
+        BestSc = Sc;
+    }
+    if (Best < 0)
+        return;
+    DirPt = PaintNav[Best].Location + vect(0,0,40);
+
+    BestD = DirectorRange * 1.5;
+    foreach DynamicActors(class'Pawn', E)
+        if (E.IsA('SwatEnemy') && E.IsConscious() && ISwatAI(E) != None && !ISwatAI(E).IsArrested() && AI_Resource(E.MovementAI) != None)
+        {
+            D = VSize(E.Location - DirPt);
+            if (D >= BestD)
+                continue;
+            bSeen = false;
+            for (k = 0; k < SqEye.Length; k++)
+                if (FastTrace(E.Location + vect(0,0,40), SqEye[k]))
+                    bSeen = true;
+            if (bSeen)
+                continue;
+            BestE = E;
+            BestD = D;
+        }
+    DirPawn = BestE;
+    if (BestE != None)
+        DirGoal = PostMove(BestE, PaintNav[Best].Location);
+    DirStart = Level.TimeSeconds;
+    DirSeenAt = 0;
+    Log("SwatMinds director send t="$int(Level.TimeSeconds)$" pt="$int(DirPt.X)$","$int(DirPt.Y)$" age="$int(Level.TimeSeconds - PaintTime[Best])$" by="$BestE$" dist="$int(BestD), 'SwatMinds');
+}
+
+function EndDirector()
+{
+    if (DirGoal != None)
+    {
+        DirGoal.unPostGoal(None);
+        DirGoal.Release();
+        DirGoal = None;
+    }
+    DirPawn = None;
+    DirStart = 0;
 }
 
 function AimAtPointGoal PostSector(Pawn P, vector Pt)
@@ -988,6 +1488,20 @@ defaultproperties
     LiveInterval=3.0
     bAutoOfficers=true
     bEscort=true
+    bPaint=true
+    PaintRange=1500.0
+    PaintFade=3.0
+    PaintCone=0.866
+    DeadHold=1.5
+    bCoverHold=true
+    CoverSearch=400.0
+    TapGap=300.0
+    HaltTime=1.5
+    bDirector=true
+    DirectorInterval=60.0
+    DirectorRange=2500.0
+    DirectorMin=700.0
+    DirectorTimeout=30.0
     OfficerThink=2.0
     MaxDoorDist=2500.0
     OrderTimeout=90.0

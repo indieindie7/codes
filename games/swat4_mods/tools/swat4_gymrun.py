@@ -27,6 +27,8 @@ TRAJ = re.compile(r"SwatMinds traj t=([\d.]+) orders=(\d+)(.*)")
 PAWN = re.compile(r"([OEH]\d+):(-?\d+),(-?\d+),(\d+),([cad])")
 TALLY = re.compile(r"SwatMinds tally t=(\d+) score=\w+ orders=(\d+) susDown=(\d+) susArrest=(\d+) susFree=(\d+) hostSecured=(\d+) offDown=(\d+) intel=(\d+)")
 KEYS = ["t", "orders", "susDown", "susArrest", "susFree", "hostSecured", "offDown", "intel"]
+EXTRA = re.compile(r"paint=([\d.]+) tap=([\d.]+) tapN=(\d+) dirFace=([\d.]+) dirN=(\d+) dirMiss=(\d+) dirNoShow=(\d+)")  # 10-20 coverage paint + director
+EXTRA_KEYS = ["paint", "tap", "tapN", "dirFace", "dirN", "dirMiss", "dirNoShow"]
 
 
 def kill(slot=None):
@@ -101,6 +103,9 @@ def parse(log):
     txt = log.read_text(encoding="latin-1", errors="replace")
     rows = [dict(zip(KEYS, map(int, m.groups()))) for m in TALLY.finditer(txt)]
     last = rows[-1] if rows else {}
+    ex = EXTRA.findall(txt)
+    if last and ex:
+        last.update(dict(zip(EXTRA_KEYS, map(float, ex[-1]))))
     cmds = re.findall(r"SwatMinds officers (MoveAndClear|BangAndClear|BreachAndClear|BreachBangAndClear|secure|timeout)", txt)
     return dict(last=last, cmds={c: cmds.count(c) for c in set(cmds)}, traj=len(TRAJ.findall(txt)),
                 asserts=len(re.findall(r"Assertion failed", txt)), crash="Critical:" in txt)
@@ -145,7 +150,8 @@ def cand_score(last):
     """arrests + hostSecured - 2*offDown - susFree from the last tally line (None if the run left no tally)."""
     if not last:
         return None
-    return last["susArrest"] + last["hostSecured"] - 2 * last["offDown"] - last["susFree"]
+    # 10-20: + 2 * mean painted share (coverage of seen nav points), - 0.5 per director threat seen but never faced
+    return last["susArrest"] + last["hostSecured"] - 2 * last["offDown"] - last["susFree"] + 2 * last.get("paint", 0) - 0.5 * last.get("dirMiss", 0)
 
 
 def propose(tried, rng, n_random=4, sigma=0.2):
