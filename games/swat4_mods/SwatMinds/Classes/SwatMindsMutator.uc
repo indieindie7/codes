@@ -1321,7 +1321,9 @@ function UpdateDirector()
                 DirMiss++;
             else
                 DirNoShow++;
-            Log("SwatMinds director timeout t="$int(Level.TimeSeconds)$" seen="$(DirSeenAt > 0)$" by="$DirPawn, 'SwatMinds');
+            if (DirPawn != None)
+                D = VSize(DirPawn.Location - DirPt);
+            Log("SwatMinds director timeout t="$int(Level.TimeSeconds)$" seen="$(DirSeenAt > 0)$" by="$DirPawn$" left="$int(D)$" act="$(DirGoal != None && DirGoal.achievingAction != None), 'SwatMinds');
             EndDirector();
         }
         return;
@@ -1336,7 +1338,7 @@ function UpdateDirector()
     BestSc = -1;
     for (i = 0; i < PaintNav.Length; i++)
     {
-        if (PaintNav[i] == None || PaintThreat[i] == 1)
+        if (PaintNav[i] == None || PaintThreat[i] != 1)
             continue;
         L = PaintNav[i].Location + vect(0,0,40);
         D = VSize(L - SqC);
@@ -1344,12 +1346,6 @@ function UpdateDirector()
             continue;
         Sc = Level.TimeSeconds - PaintTime[i] + 5.0 * FRand();
         if (Sc <= BestSc)
-            continue;
-        bSeen = false;
-        for (k = 0; k < SqEye.Length; k++)
-            if (FastTrace(L, SqEye[k]))
-                bSeen = true;
-        if (bSeen)
             continue;
         Best = i;
         BestSc = Sc;

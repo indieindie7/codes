@@ -143,6 +143,8 @@ def summarize():
 KNOBS = {  # name: (lo, hi, log-scale?)
     "IntelW": (0.0, 4.0, False), "IntelRange": (300.0, 1500.0, False),
     "IntelLife": (20.0, 180.0, True), "OrderTimeout": (20.0, 90.0, False),
+    # 10-20 b: officer pace + door reach (active in the ghost gym; paint/cover/tap knobs are escort-only, not tunable here)
+    "OfficerThink": (0.5, 4.0, False), "MaxDoorDist": (1000.0, 4000.0, False),
 }
 
 
@@ -151,7 +153,8 @@ def cand_score(last):
     if not last:
         return None
     # 10-20: + 2 * mean painted share (coverage of seen nav points), - 0.5 per director threat seen but never faced
-    return last["susArrest"] + last["hostSecured"] - 2 * last["offDown"] - last["susFree"] + 2 * last.get("paint", 0) - 0.5 * last.get("dirMiss", 0)
+    # 10-20 b: arrests count double (SWAT rules: kills cost the mission), so +2 per arrest
+    return 2 * last["susArrest"] + last["hostSecured"] - 2 * last["offDown"] - last["susFree"] + 2 * last.get("paint", 0) - 0.5 * last.get("dirMiss", 0)
 
 
 def propose(tried, rng, n_random=4, sigma=0.2):
@@ -162,7 +165,8 @@ def propose(tried, rng, n_random=4, sigma=0.2):
     best = max(scored, key=lambda t: t["score"])["knobs"]
     out = {}
     for k, (lo, hi, lg) in KNOBS.items():
-        out[k] = round(min(hi, max(lo, rng.gauss(best[k], sigma * (hi - lo)))), 2)
+        c = best.get(k, (lo + hi) / 2)  # knobs added later start from the box middle
+        out[k] = round(min(hi, max(lo, rng.gauss(c, sigma * (hi - lo)))), 2)
     return out
 
 

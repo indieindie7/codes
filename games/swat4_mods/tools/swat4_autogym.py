@@ -17,7 +17,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PY = sys.executable.replace("pythonw.exe", "python.exe")
 OUT = Path(r"F:\gogGames\SWAT 4\SwatMinds\autogym")
-REEVAL_EVERY = 3
+REEVAL_EVERY = 2  # 10-20 b: rerun the best every 2nd visit (scores are noisy)
 
 
 def user_playing():
