@@ -37,12 +37,18 @@ var config float  LiveInterval;
 var float NextLive;
 var config float  ExitAfter;       // gym: final tally + clean quit at this level time (0 = off); each live exec costs ~6-9 s wall, so the gym execs once
 var bool bExiting;
-var bool bIADone;              // instant-action pick written (after GameStart's SaveLastMissionPlayed)
+var bool bIADone;
+var string IAPick, IAPickFriendly;   // chosen next instant-action map; re-applied because the GUI saves the current map again later              // instant-action pick written (after GameStart's SaveLastMissionPlayed)
 var config bool  bAutoOfficers;    // officers pick their own squad orders (no player commands)
 var config float OfficerThink;     // seconds between officer decisions
 var config float MaxDoorDist;      // only doors this close to the squad
 var float NextOfficerThink;
 var float OfficersReadyAt;
+var config bool  bEscort;          // officers stay with the player (FallIn) and hold a 360 perimeter instead of clearing doors (playtest 5 wish)
+var array<AimAtPointGoal> SectorGoals;
+var vector SectorAt;
+var int SectorYaw;
+var float StillSince;
 var array<Door> UsedDoors;
 var array<Pawn> SecureAsked;
 var float NextOfficerWhy;
@@ -175,6 +181,8 @@ function Timer()
         bIADone = true;
         RandomizeInstantAction();
     }
+    else if (bIADone)
+        ReapplyInstantAction();
 
     if (Dilation > 0 && Level.TimeDilation != Dilation)
         Level.TimeDilation = Dilation;
@@ -618,7 +626,9 @@ function AutoOfficers()
     PC = Level.GetLocalPlayerController();
     if (Squad == None || PC == None || PC.Pawn == None || !Squad.HasActiveMembers())
         return;
-    if (Squad.IsExecutingCommandGoal())
+    if (bEscort && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
+        UpdateSectors(Squad, PC.Pawn);
+    if (Squad.IsExecutingCommandGoal() && !(bEscort && Squad.IsFallingIn()))
     {
         if (Level.TimeSeconds > NextOfficerWhy)
         {
@@ -695,6 +705,17 @@ function AutoOfficers()
                     AddIntel(Best.Location, "seen "$Best.Name$" by "$P.Name);
     Best = None;
 
+    if (bEscort)
+    {
+        if (!Squad.IsFallingIn())
+        {
+            Squad.FallIn(Giver, Giver.Location);
+            Orders++;
+            Log("SwatMinds officers escort FallIn t="$Level.TimeSeconds, 'SwatMinds');
+        }
+        return;
+    }
+
     // 2. clear: nearest door not used yet (open -> move&clear, closed -> bang&clear, locked -> breach-bang)
     BestDist = 0;
     foreach AllActors(class'Door', D)
@@ -755,6 +776,117 @@ function AutoOfficers()
     Log("SwatMinds officers "$Cmd$" "$BestDoor.Name$" dist="$int(BestDist)$" open="$BestDoor.IsOpen()$" locked="$BestDoor.IsLocked()$" intel="$Intel$" score="$BestSc, 'SwatMinds');
 }
 
+function ClearSectors()
+{
+    local int k;
+
+    for (k = 0; k < SectorGoals.Length; k++)
+        if (SectorGoals[k] != None)
+        {
+            SectorGoals[k].unPostGoal(None);
+            SectorGoals[k].Release();
+        }
+    SectorGoals.Length = 0;
+}
+
+// escort perimeter: once the player stands still, each officer aims down a different open lane
+// (8 directions, the player's own front 90 degrees skipped, longest lines of sight first).
+// Priority 40 < attack 80 / engage 85, so spotting an enemy still wins.
+function UpdateSectors(OfficerTeamInfo Squad, Pawn Me)
+{
+    local Pawn P, Pick;
+    local array<Pawn> Offs;
+    local array<int> Yaws;
+    local array<float> Lens;
+    local array<vector> Pts;
+    local vector Eye, End, HitL, HitN, Pt;
+    local int k, j, Off, Dy, BestK;
+    local float Len, D, BestD;
+    local AimAtPointGoal G;
+    local string S;
+
+    Dy = ((Me.Rotation.Yaw - SectorYaw) & 65535);
+    if (Dy > 32768) Dy = 65536 - Dy;
+    if (VSize(Me.Location - SectorAt) > 120.0 || Dy > 8000 || !Squad.IsFallingIn())
+    {
+        if (SectorGoals.Length > 0)
+            ClearSectors();
+        SectorAt = Me.Location;
+        SectorYaw = Me.Rotation.Yaw & 65535;
+        StillSince = Level.TimeSeconds;
+        return;
+    }
+    if (SectorGoals.Length > 0 || Level.TimeSeconds - StillSince < 1.5)
+        return;
+
+    foreach DynamicActors(class'Pawn', P)
+        if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && P.IsConscious() && AI_Resource(P.WeaponAI) != None)
+            Offs[Offs.Length] = P;
+    if (Offs.Length == 0)
+        return;
+
+    // lanes: 5 directions (left, right, back and the back diagonals), sorted by open length
+    Eye = Me.Location + vect(0,0,40);
+    for (Off = 16384; Off <= 49152; Off += 8192)
+    {
+        End = Eye + 1500.0 * vector(MakeRot(SectorYaw + Off));
+        if (Trace(HitL, HitN, End, Eye, false) != None)
+            Len = VSize(HitL - Eye);
+        else
+            { Len = 1500.0; HitL = End; }
+        k = 0;
+        while (k < Lens.Length && Lens[k] >= Len)
+            k++;
+        Lens.Insert(k, 1); Yaws.Insert(k, 1); Pts.Insert(k, 1);
+        Lens[k] = Len; Yaws[k] = Off; Pts[k] = Eye + (HitL - Eye) * 0.9;
+    }
+
+    // longest lane gets the closest free officer, and so on
+    for (k = 0; k < Lens.Length && Offs.Length > 0; k++)
+    {
+        Pt = Pts[k];
+        Pick = None;
+        for (j = 0; j < Offs.Length; j++)
+        {
+            D = VSize(Offs[j].Location - Pt);
+            if (Pick == None || D < BestD)
+                { Pick = Offs[j]; BestD = D; BestK = j; }
+        }
+        Offs.Remove(BestK, 1);
+        G = new class'AimAtPointGoal'(AI_Resource(Pick.WeaponAI), 40, Pt);
+        G.AddRef();
+        G.postGoal(None);
+        SectorGoals[SectorGoals.Length] = G;
+        S = S$" "$Pick.Name$"@"$(Yaws[k] * 360 / 65536)$"deg/"$int(Lens[k]);
+    }
+    Log("SwatMinds escort sectors t="$Level.TimeSeconds$S, 'SwatMinds');
+}
+
+function rotator MakeRot(int Yaw)
+{
+    local rotator R;
+    R.Yaw = Yaw;
+    return R;
+}
+
+function ReapplyInstantAction()
+{
+    local SwatRepo Repo;
+    local SwatGUIConfig Cfg;
+
+    Repo = SwatRepo(Level.GetRepo());
+    if (IAPick == "" || Repo == None || Repo.GuiConfig == None)
+        return;
+    Cfg = Repo.GuiConfig;
+    if (Cfg.GetPropertyText("LastMissionPlayedName") == IAPick)
+        return;
+    Cfg.SetPropertyText("LastMissionPlayedName", IAPick);
+    Cfg.SetPropertyText("LastMissionPlayedFriendlyName", IAPickFriendly);
+    Cfg.SetPropertyText("LastMissionPlayedCustomScenario", "None");
+    Cfg.SaveConfig();
+    Log("SwatMinds instant action re-set to "$IAPick$" (GUI had overwritten it)", 'SwatMinds');
+}
+
 function RandomizeInstantAction()
 {
     local SwatRepo Repo;
@@ -777,8 +909,10 @@ function RandomizeInstantAction()
     do
         k = Rand(n);
     until (string(Cfg.MissionName[k]) != Cur || ++Tries > 10);
-    Cfg.SetPropertyText("LastMissionPlayedName", string(Cfg.MissionName[k]));
-    Cfg.SetPropertyText("LastMissionPlayedFriendlyName", Cfg.FriendlyName[k]);
+    IAPick = string(Cfg.MissionName[k]);
+    IAPickFriendly = Cfg.FriendlyName[k];
+    Cfg.SetPropertyText("LastMissionPlayedName", IAPick);
+    Cfg.SetPropertyText("LastMissionPlayedFriendlyName", IAPickFriendly);
     Cfg.SetPropertyText("LastMissionPlayedCustomScenario", "None");
     Cfg.SaveConfig();
     Log("SwatMinds instant action next: "$Cfg.MissionName[k]$" (this map "$Cur$")", 'SwatMinds');
@@ -811,6 +945,7 @@ defaultproperties
     LiveFile="SwatMindsLive.txt"
     LiveInterval=3.0
     bAutoOfficers=true
+    bEscort=true
     OfficerThink=2.0
     MaxDoorDist=2500.0
     OrderTimeout=90.0
