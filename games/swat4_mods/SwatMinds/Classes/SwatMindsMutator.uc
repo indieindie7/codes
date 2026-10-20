@@ -46,9 +46,9 @@ var float NextOfficerThink;
 var float OfficersReadyAt;
 var config bool  bEscort;          // officers stay with the player (FallIn) and hold a 360 perimeter instead of clearing doors (playtest 5 wish)
 var array<AimAtPointGoal> SectorGoals;
-var vector SectorAt;
-var int SectorYaw;
-var float StillSince;
+var array<Pawn> SectorPawns;
+var array<float> SectorPosted;
+var string SectorSig;
 var array<Door> UsedDoors;
 var array<Pawn> SecureAsked;
 var float NextOfficerWhy;
@@ -209,6 +209,8 @@ function Timer()
         E = None;
     }
 
+    if (bAutoOfficers && bEscort && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
+        UpdateSectors();
     if (bAutoOfficers && Level.TimeSeconds >= NextOfficerThink)
     {
         NextOfficerThink = Level.TimeSeconds + OfficerThink;
@@ -626,8 +628,6 @@ function AutoOfficers()
     PC = Level.GetLocalPlayerController();
     if (Squad == None || PC == None || PC.Pawn == None || !Squad.HasActiveMembers())
         return;
-    if (bEscort && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
-        UpdateSectors(Squad, PC.Pawn);
     if (Squad.IsExecutingCommandGoal() && !(bEscort && Squad.IsFallingIn()))
     {
         if (Level.TimeSeconds > NextOfficerWhy)
@@ -787,79 +787,121 @@ function ClearSectors()
             SectorGoals[k].Release();
         }
     SectorGoals.Length = 0;
+    SectorPawns.Length = 0;
+    SectorPosted.Length = 0;
 }
 
-// escort perimeter: once the player stands still, each officer aims down a different open lane
-// (8 directions, the player's own front 90 degrees skipped, longest lines of sight first).
-// Priority 40 < attack 80 / engage 85, so spotting an enemy still wins.
-function UpdateSectors(OfficerTeamInfo Squad, Pawn Me)
+// escort "train" (playtest 6 wish): the player is point and covers the front; the officers behind
+// are ordered by how far back they stand. The last one covers the rear, the others each cover the side
+// they stand on (alternating if two stand on the same side). Lanes are parallel to the player's facing,
+// measured from each officer, and are refreshed every tick, so it also holds while moving.
+// AimAtPointGoal pri 40 < attack 80 / engage 85: a spotted enemy still wins.
+function UpdateSectors()
 {
-    local Pawn P, Pick;
+    local OfficerTeamInfo Squad;
+    local PlayerController PC;
+    local Pawn Me, P;
     local array<Pawn> Offs;
-    local array<int> Yaws;
-    local array<float> Lens;
-    local array<vector> Pts;
-    local vector Eye, End, HitL, HitN, Pt;
-    local int k, j, Off, Dy, BestK;
-    local float Len, D, BestD;
+    local array<float> Back;
+    local vector Fwd, Rt, Eye, End, HitL, HitN, Pt;
+    local int k, j, m, Off, PrevSide, Side;
+    local float T;
     local AimAtPointGoal G;
-    local string S;
+    local string Sig, S;
 
-    Dy = ((Me.Rotation.Yaw - SectorYaw) & 65535);
-    if (Dy > 32768) Dy = 65536 - Dy;
-    if (VSize(Me.Location - SectorAt) > 120.0 || Dy > 8000 || !Squad.IsFallingIn())
+    Squad = SwatAIRepository(Level.AIRepo).GetElementSquad();
+    PC = Level.GetLocalPlayerController();
+    if (Squad == None || PC == None || PC.Pawn == None || !Squad.IsFallingIn())
     {
         if (SectorGoals.Length > 0)
             ClearSectors();
-        SectorAt = Me.Location;
-        SectorYaw = Me.Rotation.Yaw & 65535;
-        StillSince = Level.TimeSeconds;
         return;
     }
-    if (SectorGoals.Length > 0 || Level.TimeSeconds - StillSince < 1.5)
-        return;
+    Me = PC.Pawn;
+    Fwd = vector(MakeRot(Me.Rotation.Yaw));
+    Rt = vector(MakeRot(Me.Rotation.Yaw + 16384));
 
+    // column order: closest behind the player first
     foreach DynamicActors(class'Pawn', P)
         if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && P.IsConscious() && AI_Resource(P.WeaponAI) != None)
-            Offs[Offs.Length] = P;
+        {
+            T = (Me.Location - P.Location) dot Fwd;
+            k = 0;
+            while (k < Back.Length && Back[k] <= T)
+                k++;
+            Offs.Insert(k, 1); Back.Insert(k, 1);
+            Offs[k] = P; Back[k] = T;
+        }
+    for (k = 0; k < Offs.Length; k++)
+        Sig = Sig$Offs[k].Name;
+    if (Sig != SectorSig)
+    {
+        ClearSectors();
+        SectorSig = Sig;
+    }
     if (Offs.Length == 0)
         return;
 
-    // lanes: 5 directions (left, right, back and the back diagonals), sorted by open length
-    Eye = Me.Location + vect(0,0,40);
-    for (Off = 16384; Off <= 49152; Off += 8192)
+    PrevSide = 0;
+    for (k = 0; k < Offs.Length; k++)
     {
-        End = Eye + 1500.0 * vector(MakeRot(SectorYaw + Off));
-        if (Trace(HitL, HitN, End, Eye, false) != None)
-            Len = VSize(HitL - Eye);
+        P = Offs[k];
+        if (k == Offs.Length - 1 && Offs.Length > 1)
+            Off = 32768;                                   // tail: rear
         else
-            { Len = 1500.0; HitL = End; }
-        k = 0;
-        while (k < Lens.Length && Lens[k] >= Len)
-            k++;
-        Lens.Insert(k, 1); Yaws.Insert(k, 1); Pts.Insert(k, 1);
-        Lens[k] = Len; Yaws[k] = Off; Pts[k] = Eye + (HitL - Eye) * 0.9;
-    }
-
-    // longest lane gets the closest free officer, and so on
-    for (k = 0; k < Lens.Length && Offs.Length > 0; k++)
-    {
-        Pt = Pts[k];
-        Pick = None;
-        for (j = 0; j < Offs.Length; j++)
         {
-            D = VSize(Offs[j].Location - Pt);
-            if (Pick == None || D < BestD)
-                { Pick = Offs[j]; BestD = D; BestK = j; }
+            if (((P.Location - Me.Location) dot Rt) >= 0) Side = 1; else Side = -1;
+            if (Side == PrevSide) Side = -Side;            // two on one side: alternate
+            PrevSide = Side;
+            if (Side > 0) Off = 16384; else Off = 49152;
         }
-        Offs.Remove(BestK, 1);
-        G = new class'AimAtPointGoal'(AI_Resource(Pick.WeaponAI), 40, Pt);
-        G.AddRef();
-        G.postGoal(None);
-        SectorGoals[SectorGoals.Length] = G;
-        S = S$" "$Pick.Name$"@"$(Yaws[k] * 360 / 65536)$"deg/"$int(Lens[k]);
+        Eye = P.Location + vect(0,0,40);
+        End = Eye + 1200.0 * vector(MakeRot(Me.Rotation.Yaw + Off));
+        if (Trace(HitL, HitN, End, Eye, false) != None)
+            Pt = HitL;
+        else
+            Pt = End;
+
+        G = None;
+        m = -1;
+        for (j = 0; j < SectorPawns.Length; j++)
+            if (SectorPawns[j] == P)
+                { G = SectorGoals[j]; m = j; }
+        if (G == None)
+        {
+            j = SectorGoals.Length;
+            SectorPawns[j] = P;
+            SectorGoals[j] = PostSector(P, Pt);
+            SectorPosted[j] = Level.TimeSeconds;
+            S = S$" "$P.Name$"="$(Off * 360 / 65536);
+        }
+        else
+        {
+            G.Point = Pt;
+            if (AimAtPointAction(G.achievingAction) != None)
+                AimAtPointAction(G.achievingAction).Point = Pt;
+            else if (Level.TimeSeconds - SectorPosted[m] > 2.0)
+            {
+                // the action ends when the body cannot turn that far (e.g. rear while walking): re-post
+                G.unPostGoal(None);
+                G.Release();
+                SectorGoals[m] = PostSector(P, Pt);
+                SectorPosted[m] = Level.TimeSeconds;
+            }
+        }
     }
-    Log("SwatMinds escort sectors t="$Level.TimeSeconds$S, 'SwatMinds');
+    if (S != "")
+        Log("SwatMinds escort train t="$Level.TimeSeconds$S, 'SwatMinds');
+}
+
+function AimAtPointGoal PostSector(Pawn P, vector Pt)
+{
+    local AimAtPointGoal G;
+
+    G = new class'AimAtPointGoal'(AI_Resource(P.WeaponAI), 40, Pt);
+    G.AddRef();
+    G.postGoal(None);
+    return G;
 }
 
 function rotator MakeRot(int Yaw)
