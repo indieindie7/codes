@@ -8,7 +8,7 @@ Run:   py -3.13 -I swat4_gymrun.py [--runs 3] [--secs 300] [--jobs 3] [--set "Or
 Search: py -3.13 -I swat4_gymrun.py --search 1 --secs 300 --out <dir>   (score = arrests + hostSecured - 2*offDown - susFree, mean of 3 games)
 Parse: py -3.13 -I swat4_gymrun.py --parse-only
 """
-import argparse, json, random, re, shutil, subprocess, sys, time
+import argparse, json, os, random, re, shutil, subprocess, sys, time
 from pathlib import Path
 
 GAME = Path(r"F:\gogGames\SWAT 4")
@@ -17,6 +17,8 @@ LIVE = SYS / "SwatMindsLive.txt"  # read only: base lines for every slot
 CSYS = GAME / "Content" / "System"
 OUT = GAME / "SwatMinds" / "gymruns"
 STALL = 150  # s after launch by which a slot must have logged "SwatMinds url", else it is relaunched once
+EXIT_GRACE = 60  # wall s past the expected end before a slot is killed (the mutator quits itself at ExitAfter level s)
+PROCS = {}  # slot -> Popen
 MODES = {
     "nearest": ["set SwatMinds.SwatMindsMutator bScoreDoors False"],
     "scored": ["set SwatMinds.SwatMindsMutator bScoreDoors True"],
@@ -42,27 +44,33 @@ def prep_slot(k):
         b = b.replace("ScriptLog.log".encode("utf-16le"), f"ScriptLo{k}.log".encode("utf-16le"))
         exe.write_bytes(b)
     ini = (SYS / "Swat4.ini").read_text(encoding="latin-1")
-    ini = re.sub(r"(?m)^RenderDevice=.*$", "RenderDevice=Engine.NullRenderDevice", ini)
+    if not os.environ.get("GYM_D3D"):  # GYM_D3D=1: keep the real renderer (speed comparison)
+        ini = re.sub(r"(?m)^RenderDevice=.*$", "RenderDevice=Engine.NullRenderDevice", ini)
     ini = re.sub(r"(?m)^WindowedViewportX=.*$", "WindowedViewportX=320", ini)
     ini = re.sub(r"(?m)^WindowedViewportY=.*$", "WindowedViewportY=240", ini)
     (SYS / f"Gym{k}.ini").write_text(ini, encoding="latin-1")
     shutil.copy(SYS / "User.ini", SYS / f"GymUser{k}.ini")
 
 
-def launch(k, mode, map_, extra):
-    lines = LIVE.read_text(encoding="latin-1").splitlines() + ["set SwatMinds.SwatMindsMutator bGhostPlayer True", "set SwatMinds.SwatMindsMutator bTraj True"] + list(extra) + MODES[mode]
+def launch(k, mode, map_, extra, secs):
+    # the live file is exec'd ONCE (each exec stalls the game ~6-9 s wall: level time ran at 0.2-0.35x with LiveInterval 3);
+    # the mutator then tallies and quits by itself at ExitAfter level seconds, which flushes the log
+    lines = LIVE.read_text(encoding="latin-1").splitlines() + ["set SwatMinds.SwatMindsMutator bGhostPlayer True", "set SwatMinds.SwatMindsMutator bTraj True",
+             "set SwatMinds.SwatMindsMutator LiveInterval 1000000", f"set SwatMinds.SwatMindsMutator ExitAfter {secs}", "set SwatMinds.SwatMindsMutator Dilation 4"] + list(extra) + MODES[mode]
     (SYS / f"GymLive{k}.txt").write_text("\n".join(lines) + "\n", encoding="latin-1")
     log = SYS / f"gym{k}.log"
     log.unlink(missing_ok=True)
+    (SYS / f"SMTally_GymLive{k}.txt").unlink(missing_ok=True)
     si = subprocess.STARTUPINFO(); si.dwFlags = 1; si.wShowWindow = 7  # SW_SHOWMINNOACTIVE
-    subprocess.Popen([str(CSYS / f"Swat4Gym{k}.exe"), f"{map_}?Mutator=SwatMinds.SwatMindsMutator?SMLive=GymLive{k}.txt", "-nointro",
+    p = subprocess.Popen([str(CSYS / f"Swat4Gym{k}.exe"), f"{map_}?Mutator=SwatMinds.SwatMindsMutator?SMLive=GymLive{k}.txt", "-nointro",
                       f"-ini=Gym{k}.ini", f"-userini=GymUser{k}.ini", f"LOG=gym{k}.log"], cwd=str(SYS), startupinfo=si)
+    PROCS[k] = p
     return log
 
 
 def batch(jobs, secs, map_, extra, dest=None):
-    """jobs = [(mode, i)], at most 3; all run at once, one slot each."""
-    logs = [launch(k, mode, map_, extra) for k, (mode, i) in enumerate(jobs, 1)]
+    """jobs = [(mode, i)], at most 3; all run at once, one slot each. secs = level seconds (level time now runs ~1:1 with wall)."""
+    logs = [launch(k, mode, map_, extra, secs) for k, (mode, i) in enumerate(jobs, 1)]
     t0 = time.time()
     time.sleep(min(STALL, secs))
     for k, (mode, i) in enumerate(jobs, 1):  # a slot that never reached the mutator (stuck loading) gets one relaunch
@@ -70,19 +78,22 @@ def batch(jobs, secs, map_, extra, dest=None):
         if not (log.exists() and "SwatMinds url" in log.read_text(encoding="latin-1", errors="replace")):
             print(f"slot {k} stalled loading, relaunching", flush=True)
             kill(k); time.sleep(2)
-            launch(k, mode, map_, extra)
-    time.sleep(max(0, secs - 10 - (time.time() - t0)))
-    for k in range(1, len(jobs) + 1):  # clean quit via the live file so the log gets flushed (a kill cuts its tail)
-        with open(SYS / f"GymLive{k}.txt", "a", encoding="latin-1") as f:
-            f.write("exit\n")
-    time.sleep(10)
+            launch(k, mode, map_, extra, secs)
+    deadline = time.time() + secs + EXIT_GRACE
+    while time.time() < deadline and any(PROCS[k].poll() is None for k in range(1, len(jobs) + 1)):
+        time.sleep(2)
     for k in range(1, len(jobs) + 1):
-        kill(k)
+        if PROCS[k].poll() is None:
+            print(f"slot {k} did not quit by itself, killing (log tail may be cut)", flush=True)
+            kill(k)
     time.sleep(3)
     out = []
-    for log, (mode, i) in zip(logs, jobs):
+    for k, (log, (mode, i)) in enumerate(zip(logs, jobs), 1):
         dst = (dest or OUT) / f"{mode}_{i}.log"
         shutil.copy(log, dst); out.append(dst)
+        side = SYS / f"SMTally_GymLive{k}.txt"
+        if side.exists():
+            shutil.copy(side, dst.with_suffix(".tally.txt"))
     return out
 
 

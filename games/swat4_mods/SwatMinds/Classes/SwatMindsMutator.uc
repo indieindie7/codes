@@ -35,6 +35,8 @@ var config bool  bRandomInstantAction; // after each map load, store a random ot
 var config string LiveFile;        // hot knobs: console script re-run while the level plays ("" = off)
 var config float  LiveInterval;
 var float NextLive;
+var config float  ExitAfter;       // gym: final tally + clean quit at this level time (0 = off); each live exec costs ~6-9 s wall, so the gym execs once
+var bool bExiting;
 var config bool  bAutoOfficers;    // officers pick their own squad orders (no player commands)
 var config float OfficerThink;     // seconds between officer decisions
 var config float MaxDoorDist;      // only doors this close to the squad
@@ -55,6 +57,13 @@ var array<vector> IntelLoc;
 var array<float> IntelTime;
 var int Orders;
 var float NextTally;
+var config float Dilation;         // >0: force Level.TimeDilation (gym speed-up)
+var config bool  bAutoSpeed;        // gym: retune Level.TimeDilation so level time keeps up with wall time
+var config float SpeedTarget;       // wanted level s per wall s (1 = real time)
+var config float MaxDilation;
+var float SpeedW0, SpeedT0;
+var config bool bClockProbe;       // log dt/level time/wall every 200 frames (gym speed check)
+var int Frames;                    // Tick count, for fps= in the tally line
 var string LastLive;
 var config bool  bTraj;            // log one "traj" line of all pawn positions every TrajInterval (gym demos/data)
 var config float TrajInterval;
@@ -160,6 +169,8 @@ function Timer()
     local CommanderAction CA;
     local int k;
     local bool bKnown;
+    if (Dilation > 0 && Level.TimeDilation != Dilation)
+        Level.TimeDilation = Dilation;
 
     // hot knobs: re-run the console script (`set <class> <prop> <value>` lines), then log what live objects hold
     if (LiveFile != "" && Level.TimeSeconds >= NextLive)
@@ -192,6 +203,17 @@ function Timer()
     {
         NextTally = Level.TimeSeconds + 30.0;
         Tally();
+    }
+    if (ExitAfter > 0 && Level.TimeSeconds >= ExitAfter && !bExiting)
+    {
+        bExiting = true;
+        Tally();
+        SideLog("SwatMinds exit t="$int(Level.TimeSeconds));
+        PC = Level.GetLocalPlayerController();
+        if (PC != None)
+            PC.ConsoleCommand("exit");
+        else
+            ConsoleCommand("exit");
     }
     if (bTraj && Level.TimeSeconds >= NextTraj)
     {
@@ -481,10 +503,42 @@ function int IntelBehind(Door D, vector L)
     return 0;
 }
 
+function float WallNow()
+{
+    return Level.Hour*3600 + Level.Minute*60 + Level.Second + Level.Millisecond/1000.0;
+}
+
+event Tick(float DeltaTime)
+{
+    local float W, S;
+    Frames++;
+    if (bGhostPlayer && Level.Pauser != None)  // gym: WinDrv pauses a slot whose window loses focus; bAlwaysTick keeps this running
+    {
+        SideLog("SwatMinds unpause t="$int(Level.TimeSeconds));
+        Level.Pauser = None;
+    }
+    if (bAutoSpeed)
+    {
+        W = WallNow();
+        if (SpeedW0 == 0 || W < SpeedW0) { SpeedW0 = W; SpeedT0 = Level.TimeSeconds; }
+        else if (W - SpeedW0 >= 3.0)
+        {
+            S = (Level.TimeSeconds - SpeedT0) / (W - SpeedW0);  // level s per wall s at the current dilation
+            if (S > 0)
+                Level.TimeDilation = FClamp(Level.TimeDilation * SpeedTarget / S, 1.0, MaxDilation);
+            SpeedW0 = W; SpeedT0 = Level.TimeSeconds;
+        }
+    }
+    if (bClockProbe && Frames % 200 == 0)
+        SideLog("SwatMinds clock frames="$Frames$" dtms="$int(DeltaTime*1000000)/1000.0$" dil="$Level.TimeDilation$" t="$Level.TimeSeconds$" wall="$(Level.Hour*3600+Level.Minute*60+Level.Second)$"."$Level.Millisecond$" pauser="$Level.Pauser);
+    Super.Tick(DeltaTime);
+}
+
 function Tally()
 {
     local Pawn P;
     local int SD, SA, HS, OD, SL;
+    local string R;
     foreach DynamicActors(class'Pawn', P)
     {
         if (P.IsA('SwatEnemy'))
@@ -498,7 +552,26 @@ function Tally()
         else if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && !P.IsConscious())
             OD++;
     }
-    Log("SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length, 'SwatMinds');
+    R = "SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length$" wall="$(Level.Hour*3600+Level.Minute*60+Level.Second)$"."$Level.Millisecond$" frames="$Frames$" dil="$Level.TimeDilation;
+    SideLog(R);
+}
+
+// log line + gym side file (closed after every write so a killed gym slot keeps it; the main log is buffered)
+function SideLog(string R)
+{
+    local FileLog FL;
+    Log(R, 'SwatMinds');
+    if (LiveFile != "")
+    {
+        FL = Spawn(class'FileLog');
+        if (FL != None)
+        {
+            FL.OpenLog("SMTally_"$Left(LiveFile, InStr(LiveFile$".", ".")));
+            FL.Logf(R);
+            FL.CloseLog();
+            FL.Destroy();
+        }
+    }
 }
 
 // one line per TrajInterval: <kind><n>:x,y,yaw,state for every officer (O), suspect (E), hostage (H); state c=free a=arrested d=down
@@ -714,6 +787,7 @@ static function SwatMindsMutator Get(Actor Any)
 
 defaultproperties
 {
+    bAlwaysTick=true
     bEnabled=true
     bProbe=true
     ProbeInterval=1.0
@@ -737,6 +811,8 @@ defaultproperties
     IntelRange=1200.0
     IntelLife=60.0
     TrajInterval=1.0
+    SpeedTarget=1.0
+    MaxDilation=8.0
     bComms=true
     SayCooldown=6.0
     SayGap=2.0
