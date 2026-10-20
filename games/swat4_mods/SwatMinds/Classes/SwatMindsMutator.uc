@@ -37,6 +37,7 @@ var config float  LiveInterval;
 var float NextLive;
 var config float  ExitAfter;       // gym: final tally + clean quit at this level time (0 = off); each live exec costs ~6-9 s wall, so the gym execs once
 var bool bExiting;
+var bool bIADone;              // instant-action pick written (after GameStart's SaveLastMissionPlayed)
 var config bool  bAutoOfficers;    // officers pick their own squad orders (no player commands)
 var config float OfficerThink;     // seconds between officer decisions
 var config float MaxDoorDist;      // only doors this close to the squad
@@ -97,8 +98,6 @@ function PostBeginPlay()
         Log("SwatMinds live file "$LiveFile, 'SwatMinds');
     }
     SetTimer(TickInterval, true);
-    if (bRandomInstantAction)
-        RandomizeInstantAction();
     Log("SwatMinds up: enabled="$bEnabled$" probe="$bProbe, 'SwatMinds');
 }
 
@@ -164,11 +163,19 @@ function Timer()
     local PlayerController PC;
     local string R;
     local Pawn O;
+
     local int i, Dmg, Seen, Close;
     local float FearAdd, MoraleFrac;
     local CommanderAction CA;
     local int k;
     local bool bKnown;
+    // GameStart() saves this map as last played after PostBeginPlay, so pick the next one a few seconds in
+    if (bRandomInstantAction && !bIADone && Level.TimeSeconds > 3.0)
+    {
+        bIADone = true;
+        RandomizeInstantAction();
+    }
+
     if (Dilation > 0 && Level.TimeDilation != Dilation)
         Level.TimeDilation = Dilation;
 
@@ -638,7 +645,7 @@ function AutoOfficers()
         foreach DynamicActors(class'Pawn', P)
             if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && (ISwatAI(P) == None || ISwatAI(P).GetCommanderAction() == None))
                 return;
-        OfficersReadyAt = FMax(Level.TimeSeconds + 10.0, 20.0);
+        OfficersReadyAt = Level.TimeSeconds + 3.0;  // was max(t+10, 20): officers sat in the truck too long in playtests
         if (bGhostPlayer)
         {
             Giver.SetCollision(false, false, false);
