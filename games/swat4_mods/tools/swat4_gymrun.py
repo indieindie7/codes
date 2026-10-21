@@ -149,6 +149,8 @@ KNOBS = {  # name: (lo, hi, log-scale?)
     "IntelLife": (20.0, 180.0, True), "OrderTimeout": (20.0, 90.0, False),
     # 10-20 b: officer pace + door reach (active in the ghost gym; paint/cover/tap knobs are escort-only, not tunable here)
     "OfficerThink": (0.5, 4.0, False), "MaxDoorDist": (1000.0, 4000.0, False),
+    # 10-21: ROE hold seconds; <= 0 = stock (mutator only runs UpdateComply when > 0), so the low fifth of the box is "off"
+    "ComplyWait": (-2.0, 8.0, False),
 }
 
 

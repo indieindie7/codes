@@ -478,3 +478,9 @@ User, 2026-10-20: "my idea was that in shadertoy i remember that there was a noi
   Tally: cwHold= (holds posted) cwShot= (holds broken by suspect fire) cwComply= (held suspects that complied); log "SwatMinds comply ...".
 - Gotcha: killing gym processes by CommandLine regex also matched the running bash shells (exclude bash.exe).
 - First ROE v2 game (ConvenienceStore, 10-20 ~23:10): cwHold=34 cwShot=6 cwComply=0; held suspects fired ~1 s after the hold began; susDown 6, susArrest 1, offDown 1. Gym restarted with curriculum + ROE v2.
+
+## 10-21 ROE review + ComplyWait knob
+- Morning gym (07:43-11:20, ~105 runs, curriculum 3 maps, no promotions). Since ROE v2 vs before: Fairfax clear 76->83 %, FoodWall 16->30 % (offDown/game 0.41->1.01), ConvenienceStore 27->11 % (offDown/game 0.87->1.6). cwHold ~5100, cwShot ~900, cwComply 1: the hold mostly gives suspects a free shot.
+- Arrests/game since ROE (tally field susArrest): Fairfax 0.25, FoodWall 0.59, ConvenienceStore 0.32.
+- ComplyWait is now a search knob in tools/swat4_gymrun.py KNOBS: (-2.0, 8.0); <= 0 = stock (mutator only calls UpdateComply when ComplyWait > 0), so ~1/5 of the box is "off". Old candidates without it mutate from the box middle (3.0). Gym restarted ~11:25.
+- Next: check REPORT.md best knobs per map for the ComplyWait the search favours.
