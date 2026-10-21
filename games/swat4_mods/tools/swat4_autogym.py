@@ -36,10 +36,23 @@ def clear_rate(map_):
 def curriculum(maps, log):
     cf = OUT / "curriculum.json"
     st = json.loads(cf.read_text()) if cf.exists() else {"active": START_ACTIVE, "promotions": []}
+    # 10-21: the locked tail is re-ordered by cross-map KL at each promotion (tools/swat4_maporder.py); --maps seeds it
+    if sorted(st.get("order", [])) != sorted(maps):
+        st["order"] = list(maps)
+    maps = st["order"]
     st["active"] = max(1, min(st["active"], len(maps)))
     rates = {m: clear_rate(m) for m in maps[:st["active"]]}
     st["rates"] = {m: round(r, 2) for m, (r, n) in rates.items()}
     if st["active"] < len(maps) and all(n >= PROMOTE_GAMES and r >= PROMOTE_RATE for r, n in rates.values()):
+        try:
+            import importlib.util  # py -I: the tools dir is not on sys.path
+            spec = importlib.util.spec_from_file_location("swat4_maporder", Path(__file__).with_name("swat4_maporder.py"))
+            mo = importlib.util.module_from_spec(spec); spec.loader.exec_module(mo)
+            st["order"], _ = mo.order(maps, st["active"])
+            maps = st["order"]
+        except Exception as e:  # keep the old order if the trajectories cannot be read
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(f"\n== maporder failed, keeping order: {e!r}\n")
         st["active"] += 1
         st["promotions"].append({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "unlocked": maps[st["active"] - 1], "rates": st["rates"]})
         with open(log, "a", encoding="utf-8") as f:
