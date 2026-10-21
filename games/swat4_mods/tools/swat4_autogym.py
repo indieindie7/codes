@@ -16,7 +16,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PY = sys.executable.replace("pythonw.exe", "python.exe")
-OUT = Path(r"F:\gogGames\SWAT 4\SwatMinds\autogym")
+OUT = Path("C:/Users/john/Documents/SwatMindsGym/autogym")  # 10-20: moved off the F: USB enclosure (dropped 13:20 under gym writes)
 REEVAL_EVERY = 2  # 10-20 b: rerun the best every 2nd visit (scores are noisy)
 
 
