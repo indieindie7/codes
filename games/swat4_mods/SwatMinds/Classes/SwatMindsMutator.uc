@@ -91,6 +91,18 @@ var float NextOfficerWhy;
 var float LastOrderTime;
 var Door LastOrderDoor;
 var config float OrderTimeout;
+// 10-20 c ROE (hard rule, b2studios lesson): stock officers attack a suspect the moment it becomes a threat (aims once;
+// SwatEnemy.bThreat is private native and never resets, SetPropertyText cannot clear it). For the first ComplyWait s of a
+// threat, every AI officer in sight gets an OrderComplianceGoal (weapon resource, pri 85 > AttackTargetGoal 80): it shouts
+// instead of firing. The hold ends at once when the suspect fires (ammo in clip drops). 0 = stock.
+var config float ComplyWait;
+var array<Pawn> CwPawn;
+var array<int> CwRounds;           // rounds left in the suspect's clip last tick (-1 = no fired weapon)
+var array<float> CwSince;          // first tick seen as a threat (0 = not yet)
+var array<byte> CwFired, CwHeld, CwDone;
+var array<Pawn> HoldO, HoldE;
+var array<OrderComplianceGoal> HoldG;
+var int CwHold, CwShot, CwComply;
 var config bool bGhostPlayer;
 var config bool  bScoreDoors;      // officers pick doors by intel (heard/seen suspects) instead of nearest
 var config float IntelW;           // score bonus for a door with intel behind it (1.0 = worth 1000 uu of walking)
@@ -251,6 +263,8 @@ function Timer()
         UpdateSectors();
     if (bDirector && bPaint && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
         UpdateDirector();
+    if (ComplyWait > 0 && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
+        UpdateComply();
     if (bAutoOfficers && Level.TimeSeconds >= NextOfficerThink)
     {
         NextOfficerThink = Level.TimeSeconds + OfficerThink;
@@ -610,7 +624,7 @@ function Tally()
             OD++;
     }
     R = "SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length$" wall="$(Level.Hour*3600+Level.Minute*60+Level.Second)$"."$Level.Millisecond$" frames="$Frames$" dil="$Level.TimeDilation
-        $" paint="$(PaintSum / Max(1, PaintN))$" tap="$(TapSum / Max(1, TapN))$" tapN="$TapN$" dirFace="$(DirFaceSum / Max(1, DirN))$" dirN="$DirN$" dirMiss="$DirMiss$" dirNoShow="$DirNoShow;
+        $" paint="$(PaintSum / Max(1, PaintN))$" tap="$(TapSum / Max(1, TapN))$" tapN="$TapN$" dirFace="$(DirFaceSum / Max(1, DirN))$" dirN="$DirN$" dirMiss="$DirMiss$" dirNoShow="$DirNoShow$" cwHold="$CwHold$" cwShot="$CwShot$" cwComply="$CwComply;
     SideLog(R);
 }
 
@@ -1278,6 +1292,106 @@ function ClearCover()
 // Every ~DirectorInterval s: the out-of-sight nav point (DirectorMin..DirectorRange from the squad) that was
 // painted longest ago. The nearest free suspect that the squad cannot see is sent there; with no suspect the
 // point is a virtual probe. Time-to-face = first squad LOS on the threat -> a squad aim cone on it.
+function int SusRounds(Pawn E)
+{
+    local HandheldEquipment W;
+    W = E.GetActiveItem();
+    if (W == None || !W.IsA('FiredWeapon') || FiredWeapon(W).Ammo == None)
+        return -1;
+    return FiredWeapon(W).Ammo.RoundsRemainingBeforeReload();
+}
+
+function bool HoldOn(int i)
+{
+    local Pawn E;
+    E = CwPawn[i];
+    return E != None && E.IsConscious() && !ISwatAI(E).IsCompliant() && !ISwatAI(E).IsArrested()
+        && CwSince[i] > 0 && CwFired[i] == 0 && Level.TimeSeconds - CwSince[i] < ComplyWait;
+}
+
+function UpdateComply()
+{
+    local Pawn E, O;
+    local int i, k, R;
+    local bool bHas;
+    local OrderComplianceGoal G;
+
+    foreach DynamicActors(class'Pawn', E)
+    {
+        if (!E.IsA('SwatEnemy'))
+            continue;
+        for (i = 0; i < CwPawn.Length; i++)
+            if (CwPawn[i] == E)
+                break;
+        if (i == CwPawn.Length)
+        {
+            CwPawn[i] = E; CwRounds[i] = SusRounds(E); CwSince[i] = 0; CwFired[i] = 0; CwHeld[i] = 0; CwDone[i] = 0;
+        }
+        if (CwHeld[i] == 1 && CwDone[i] == 0 && E.IsConscious() && (ISwatAI(E).IsCompliant() || ISwatAI(E).IsArrested()))
+        {
+            CwDone[i] = 1;
+            CwComply++;
+            SideLog("SwatMinds comply t="$int(Level.TimeSeconds)$" "$E.Name$" complied during/after hold");
+        }
+        if (!E.IsConscious() || ISwatAI(E).IsCompliant() || ISwatAI(E).IsArrested())
+            continue;
+        R = SusRounds(E);
+        if (R >= 0 && CwRounds[i] >= 0 && R < CwRounds[i] && CwSince[i] > 0 && CwFired[i] == 0)
+        {
+            CwFired[i] = 1;
+            if (Level.TimeSeconds - CwSince[i] < ComplyWait)
+            {
+                CwShot++;
+                SideLog("SwatMinds comply t="$int(Level.TimeSeconds)$" "$E.Name$" fired, hold off");
+            }
+        }
+        CwRounds[i] = R;
+        if (CwSince[i] == 0 && ISwatEnemy(E).IsAThreat())
+            CwSince[i] = Level.TimeSeconds;
+    }
+
+    // drop holds that are over or whose goal finished (re-posted below while the hold lasts)
+    for (k = HoldG.Length - 1; k >= 0; k--)
+    {
+        for (i = 0; i < CwPawn.Length; i++)
+            if (CwPawn[i] == HoldE[k])
+                break;
+        if (i < CwPawn.Length && HoldOn(i) && HoldO[k] != None && HoldO[k].IsConscious() && !HoldG[k].hasCompleted())
+            continue;
+        HoldG[k].unPostGoal(None);
+        HoldG[k].Release();
+        HoldG.Remove(k, 1); HoldO.Remove(k, 1); HoldE.Remove(k, 1);
+    }
+
+    for (i = 0; i < CwPawn.Length; i++)
+    {
+        if (!HoldOn(i))
+            continue;
+        E = CwPawn[i];
+        foreach DynamicActors(class'Pawn', O)
+        {
+            if (!O.IsA('SwatOfficer') || O.IsA('SwatPlayer') || !O.IsConscious() || O.WeaponAI == None)
+                continue;
+            if (VSize(O.Location - E.Location) > 2500.0 || !O.LineOfSightTo(E))
+                continue;
+            bHas = false;
+            for (k = 0; k < HoldO.Length; k++)
+                if (HoldO[k] == O)
+                    bHas = true;
+            if (bHas)
+                continue;
+            G = new class'OrderComplianceGoal'(AI_Resource(O.WeaponAI), E);
+            G.AddRef();
+            G.postGoal(None);
+            HoldG[HoldG.Length] = G; HoldO[HoldO.Length] = O; HoldE[HoldE.Length] = E;
+            CwHold++;
+            if (CwHeld[i] == 0)
+                SideLog("SwatMinds comply t="$int(Level.TimeSeconds)$" "$O.Name$" holds fire on "$E.Name$", shouting");
+            CwHeld[i] = 1;
+        }
+    }
+}
+
 function UpdateDirector()
 {
     local int i, k, Best;
@@ -1501,6 +1615,7 @@ defaultproperties
     OfficerThink=2.0
     MaxDoorDist=2500.0
     OrderTimeout=90.0
+    ComplyWait=4.0
     IntelW=1.5
     IntelRange=1200.0
     IntelLife=60.0

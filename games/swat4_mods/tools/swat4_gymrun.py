@@ -29,6 +29,7 @@ TALLY = re.compile(r"SwatMinds tally t=(\d+) score=\w+ orders=(\d+) susDown=(\d+
 KEYS = ["t", "orders", "susDown", "susArrest", "susFree", "hostSecured", "offDown", "intel"]
 EXTRA = re.compile(r"paint=([\d.]+) tap=([\d.]+) tapN=(\d+) dirFace=([\d.]+) dirN=(\d+) dirMiss=(\d+) dirNoShow=(\d+)")  # 10-20 coverage paint + director
 EXTRA_KEYS = ["paint", "tap", "tapN", "dirFace", "dirN", "dirMiss", "dirNoShow"]
+COMPLY = re.compile(r"cwHold=(\d+) cwShot=(\d+) cwComply=(\d+)")  # 10-20 c ROE: compliance holds posted, broken by suspect fire, suspects that complied
 
 
 def kill(slot=None):
@@ -106,6 +107,9 @@ def parse(log):
     ex = EXTRA.findall(txt)
     if last and ex:
         last.update(dict(zip(EXTRA_KEYS, map(float, ex[-1]))))
+    cw = COMPLY.findall(txt)
+    if last and cw:
+        last.update(cwHold=int(cw[-1][0]), cwShot=int(cw[-1][1]), cwComply=int(cw[-1][2]))
     cmds = re.findall(r"SwatMinds officers (MoveAndClear|BangAndClear|BreachAndClear|BreachBangAndClear|secure|timeout)", txt)
     return dict(last=last, cmds={c: cmds.count(c) for c in set(cmds)}, traj=len(TRAJ.findall(txt)),
                 asserts=len(re.findall(r"Assertion failed", txt)), crash="Critical:" in txt)

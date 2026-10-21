@@ -240,7 +240,8 @@ Next: build the empty mod package (doc setup) + compile with UCC, then a probe a
   - Mind* subclasses need their own AI.ini sections (copied from the stock ones as [SwatMinds.Mind*Action]).
 - Run: `Content\System\Swat4.exe SP-FoodWall?Mutator=SwatMinds.SwatMindsMutator` from `SwatMinds\System` (GameInfo.uc:719 parses ?Mutator=). Log `SwatMinds\System\Swat4.log`, tag `SwatMinds:` (probe / add / swapped / hit / score lines).
 - Verified 10-17: compiles 0/0; on SP-FoodWall, 3 suspects each got 4 abilities swapped, probe logs every 1 s, fear 0 at rest, no SwatMinds script warnings. NOT yet verified: combat (score/hit lines) needs a played engagement. Menu-started missions don't add the mutator yet (ServerActors untested).
-- Devastation update 10-17 (HANDOFF-SWAT4.md last section): bots see a standing teammate in their line of fire, but rapid-fire teammates refuse crouch requests and the 100 uu sidestep fails from cover, so the shooter just stops; cover swap bug: a bot asked to give up its point found no other and lost its own. Fixes for an officer port: let any officer crouch on request (whatever the weapon), try several strafe distances, and keep the old cover point when the swap search fails. Final handoff 10-17 (all tests done; run data in C:edevastationNOTES.md runs 1-18).
+- Devastation update 10-17 (HANDOFF-SWAT4.md last section): bots see a standing teammate in their line of fire, but rapid-fire teammates refuse crouch requests and the 100 uu sidestep fails from cover, so the shooter just stops; cover swap bug: a bot asked to give up its point found no other and lost its own. Fixes for an officer port: let any officer crouch on request (whatever the weapon), try several strafe distances, and keep the old cover point when the swap search fails. Final handoff 10-17 (all tests done; run data in C:
+edevastationNOTES.md runs 1-18).
 
 ## PCGamingWiki notes (user pasted, 10-17)
 - `-nointro` skips the intro videos and fixes some fullscreen flicker. LaunchSwatMinds.bat passes it now.
@@ -466,3 +467,14 @@ User, 2026-10-20: "my idea was that in shadertoy i remember that there was a noi
 - 2026-10-20 21:40 user: "reseated try again please". F: back; `chkdsk F:` found errors (bad $I30 index entries, $SDH/$SII, MFT bitmap); `chkdsk F: /f /x` fixed them ("O Windows fez correções"), orphan .wav files restored to their folder. SwatMinds.u/.ini/.ini.play and all 13 data.jsonl files parse fine.
 - Results 10:59-13:19 (87 games, fresh search, new score): no improvement yet (mean -7.24 first half -> -7.35 second half). Clears: FairfaxResidence 8/9, FoodWall 3/6, ConvenienceStore 2/6, others 0. Arrests still rare (0-1.2/game vs 3-11 kills). Biggest losses: officers down 3-4 on big maps, Hotel/Tenement ~10 suspects free.
 - Autogym OUT moved to C:/Users/john/Documents/SwatMindsGym/autogym (old copy left on F:). Restarted 21:44 (13 maps); the game and slot logs still run from F:.
+
+### 10-20 c: curriculum + ROE compliance wait (b2studios "AI Plays Paintball" lessons)
+- Why: 87+ games, no score gain (-7.24 -> -7.35); kills ~10x arrests. Hard rules beat penalty terms; easy tasks first.
+- Curriculum (tools/swat4_autogym.py): --maps is ordered easy -> hard; only the first `active` maps train (start 3). When every active map clears >= 0.8 of its last 6 games (clear = susFree 0 and offDown 0 at game end), the next map unlocks. State OUT/curriculum.json; REPORT.md "curriculum" section; autogym.log "CURRICULUM unlocked".
+  Order: FairfaxResidence, FoodWall, ConvenienceStore, JewelryHeist, ArmsDeal, AutoGarage, DNA, Tenement, RedLibrary, Hotel, Casino, Hospital, ABomb (after the first 3 = guess).
+  Rates at start: Fairfax 0.83, FoodWall 0.33, ConvenienceStore 0.33.
+- ROE v1 FAILED in-engine: clearing private native SwatEnemy.bThreat with SetPropertyText does nothing ("comply FAIL" logged, rule switched itself off). Lesson: SetPropertyText/GetPropertyText cannot reach private vars (also OfficerCommanderAction.CurrentAssignment, FiredWeapon.NextFireTime).
+- ROE v2 (SwatMindsMutator UpdateComply, ComplyWait=4.0, 0 = stock): stock officers attack the moment a suspect becomes a threat (aims once; flag never resets). For the first ComplyWait s of a threat, every AI officer within 2500 uu with LOS gets OrderComplianceGoal(AI_Resource(O.WeaponAI), E): weapon resource, pri 85 > AttackTargetGoal 80, so it shouts instead of firing; re-posted while the hold lasts. Hold ends at once when the suspect fires (FiredWeapon.Ammo.RoundsRemainingBeforeReload() drops).
+  Tally: cwHold= (holds posted) cwShot= (holds broken by suspect fire) cwComply= (held suspects that complied); log "SwatMinds comply ...".
+- Gotcha: killing gym processes by CommandLine regex also matched the running bash shells (exclude bash.exe).
+- First ROE v2 game (ConvenienceStore, 10-20 ~23:10): cwHold=34 cwShot=6 cwComply=0; held suspects fired ~1 s after the hold began; susDown 6, susArrest 1, offDown 1. Gym restarted with curriculum + ROE v2.

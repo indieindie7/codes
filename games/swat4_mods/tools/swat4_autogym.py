@@ -18,6 +18,34 @@ HERE = Path(__file__).resolve().parent
 PY = sys.executable.replace("pythonw.exe", "python.exe")
 OUT = Path("C:/Users/john/Documents/SwatMindsGym/autogym")  # 10-20: moved off the F: USB enclosure (dropped 13:20 under gym writes)
 REEVAL_EVERY = 2  # 10-20 b: rerun the best every 2nd visit (scores are noisy)
+# 10-20 c: curriculum (b2studios paintball lesson). --maps is ordered easy -> hard; only the first `active` maps
+# are trained. When every active map clears >= PROMOTE_RATE of its last PROMOTE_GAMES games, the next map unlocks.
+# clear = no suspect left free and no officer down at game end. State in OUT/curriculum.json.
+START_ACTIVE, PROMOTE_GAMES, PROMOTE_RATE = 3, 6, 0.8
+
+
+def clear_rate(map_):
+    f = OUT / "engine" / map_ / "data.jsonl"
+    if not f.exists():
+        return 0.0, 0
+    rows = [json.loads(l) for l in f.read_text().splitlines() if l.strip()][-PROMOTE_GAMES:]
+    ok = sum(1 for r in rows if r.get("last") and r["last"]["susFree"] == 0 and r["last"]["offDown"] == 0)
+    return (ok / len(rows) if rows else 0.0), len(rows)
+
+
+def curriculum(maps, log):
+    cf = OUT / "curriculum.json"
+    st = json.loads(cf.read_text()) if cf.exists() else {"active": START_ACTIVE, "promotions": []}
+    st["active"] = max(1, min(st["active"], len(maps)))
+    rates = {m: clear_rate(m) for m in maps[:st["active"]]}
+    st["rates"] = {m: round(r, 2) for m, (r, n) in rates.items()}
+    if st["active"] < len(maps) and all(n >= PROMOTE_GAMES and r >= PROMOTE_RATE for r, n in rates.values()):
+        st["active"] += 1
+        st["promotions"].append({"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "unlocked": maps[st["active"] - 1], "rates": st["rates"]})
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"\n== {time.strftime('%Y-%m-%d %H:%M:%S')} CURRICULUM unlocked {maps[st['active'] - 1]} (rates {st['rates']})\n")
+    cf.write_text(json.dumps(st, indent=1))
+    return maps[:st["active"]], st
 
 
 def user_playing():
@@ -57,6 +85,11 @@ def engine_step(cycle, map_, secs, log):
 def report(t0, cycles):
     lines = [f"# Autogym report ({time.strftime('%Y-%m-%d %H:%M')})", "",
              f"running since {time.strftime('%Y-%m-%d %H:%M', time.localtime(t0))}, {cycles} cycles this run", ""]
+    cf = OUT / "curriculum.json"
+    if cf.exists():
+        c = json.loads(cf.read_text())
+        lines += [f"## curriculum: {c['active']} maps active, clear rates (last {PROMOTE_GAMES}) {c.get('rates')}",
+                  "promotions: " + (", ".join(f"{x['ts']} {x['unlocked']}" for x in c["promotions"]) or "none"), ""]
     for sj in sorted((OUT / "engine").glob("*/search.json")):
         st = json.loads(sj.read_text())
         rows = sum(1 for _ in open(sj.parent / "data.jsonl")) if (sj.parent / "data.jsonl").exists() else 0
@@ -75,7 +108,7 @@ def report(t0, cycles):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--maps", default="SP-FoodWall", help="comma list, rotated per cycle")
+    ap.add_argument("--maps", default="SP-FoodWall", help="comma list ordered easy -> hard; the active curriculum prefix is rotated per cycle")
     ap.add_argument("--secs", type=int, default=600, help="wall seconds per engine batch (3 games)")
     ap.add_argument("--hours", type=float, default=0, help="stop after this many hours (0 = until STOP)")
     ap.add_argument("--no-sim", action="store_true")
@@ -98,7 +131,8 @@ def main():
                 run(["cmd", "/c", "echo", "Swat4.exe running (user), engine step skipped"], log)
                 time.sleep(60)
             else:
-                engine_step(cycle, maps[cycle % len(maps)], a.secs, log)
+                active, _ = curriculum(maps, log)
+                engine_step(cycle, active[cycle % len(active)], a.secs, log)
         cycles += 1
         report(t0, cycles)
     report(t0, cycles)
