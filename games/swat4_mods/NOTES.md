@@ -498,3 +498,6 @@ User: "instead of like just following like a train, they try to stay close in a 
   - guard: nav BubbleMin..BubbleMax (128..550) from player pos + 0.8 s velocity, LOS to it, same floor (+-80 z). GuardScore = CoverScore facing out + 0.8 x share of 8 oldest unpainted threat navs seen + 0.5 x own random bearing (re-rolled 15-25 s) - dist/1500 - 1 per mate within 160 + 0.4 per busy mate in sight; keep spot +0.2 hysteresis, +0.15 noise. MoveToLocationGoal 95, aim at oldest unpainted visible nav else outward.
 - Log lines "SwatMinds bubble t=.. Officer=guard:NNN / restrain:X / evidence:X / done".
 - Built 23:03 (0 err) in BuildSystem; System\SwatMinds.u NOT replaced yet (Swat4 running, file locked) -> copy BuildSystem\SwatMinds.u to System after the game closes. bBubble=True in SwatMinds.ini.play (+ copied to SwatMinds.ini). Untested in game.
+
+## Friday 10-23 test plan
+See FRIDAY-PLAN.md: carry-over checks, Frozen Synapse 2 + Door Kickers 1 training gyms, paintball lessons, missing perception, later human-level "ATV pack" constraint + director.
