@@ -51,6 +51,23 @@ var array<float> SectorPosted;
 var string SectorSig;
 var array<Pawn> TrainPawns;        // this tick's column order (front to tail)
 var array<int> TrainYaw;           // world yaw of each officer's sector
+// escort "bubble" (10-21): loose group around the player, each officer picks guard / secure / evidence
+var config bool  bBubble;
+var config float BubbleThink, BubbleMin, BubbleMax, SecureRange;
+var array<Pawn> BubPawn;
+var array<byte> BubTask;           // 0 guard, 1 restrain, 2 evidence
+var array<Actor> BubTarget;
+var array<vector> BubPt, BubMovePt;
+var array<float> BubNext, BubBiasT, BubAimT, BubMoveT;
+var array<int> BubBias;            // own random bearing around the player
+var array<MoveToLocationGoal> BubMove;
+var array<AimAtPointGoal> BubAim;
+var array<RestrainAndReportGoal> BubRR;
+var array<SecureEvidenceGoal> BubSE;
+var array<Actor> BubEvid;
+var array<int> BubOld;             // oldest unpainted threat navs this tick
+var float BubThreatT, BubEvidT;
+var int BubSecN, BubEvN;
 // coverage "paint" scorer (10-20): nav points the squad can see are threats; aim cone + LOS paints them
 var config bool  bPaint;
 var config float PaintRange, PaintFade, PaintCone, DeadHold;
@@ -871,6 +888,7 @@ function UpdateSectors()
         if (SectorGoals.Length > 0)
             ClearSectors();
         ClearCover();
+        ClearBubble();
         return;
     }
     Me = PC.Pawn;
@@ -899,6 +917,15 @@ function UpdateSectors()
     }
     if (Offs.Length == 0)
         return;
+    if (bBubble && bPaint && bPaintInit)
+    {
+        if (SectorGoals.Length > 0)
+            ClearSectors();
+        ClearCover();
+        UpdateBubble(Me, Offs);
+        return;
+    }
+    ClearBubble();
 
     PrevSide = 0;
     for (k = 0; k < Offs.Length; k++)
@@ -956,6 +983,360 @@ function UpdateSectors()
         Log("SwatMinds escort train t="$Level.TimeSeconds$S, 'SwatMinds');
     if (bCoverHold)
         UpdateCover(Me);
+}
+
+// ---- escort "bubble" (10-21, user: "instead of like just following like a train ... baldurs gate movement
+// formation like random assortments of positionements relative to the player ... autonomy to choose when to cover
+// someone, when to move and secure hostage or gun/evidence") ----
+// Replaces the train when bBubble. Every ~BubbleThink s each officer picks a job. Restrain a compliant person or
+// secure evidence near the player only when no threat was seen for 3 s and at least one officer stays on guard;
+// the job is dropped as soon as a threat shows. Otherwise guard: a nav spot BubbleMin..BubbleMax from where the
+// player will be, in sight of it, scored by cover facing out from the player (CoverScore), view on the oldest
+// unpainted threat points, sight of a busy officer, the officer's own random bearing (re-rolled every 15-25 s:
+// the random assortment), spacing, minus travel. It aims at the oldest unpainted threat it can see from there.
+// MoveToLocationGoal 95 beats the FallIn formation (90); restrain/evidence goals are pri 80 on characterAI.
+function UpdateBubble(Pawn Me, array<Pawn> Offs)
+{
+    local int k, b, i, j, Busy;
+    local Pawn P, E;
+    local Actor A, BestA;
+    local NavigationPoint NP;
+    local vector C, L, BestL, Aim;
+    local float Sc, BestSc, Now;
+    local bool bOk, bFound;
+    local string S;
+
+    Now = Level.TimeSeconds;
+    C = Me.Location + 0.8 * Me.Velocity;
+
+    // any live threat in sight of the squad?
+    foreach DynamicActors(class'Pawn', E)
+    {
+        if (!E.IsA('SwatEnemy') || !E.IsConscious() || ISwatAI(E).IsCompliant() || ISwatAI(E).IsArrested()
+            || VSize(E.Location - Me.Location) > 3000)
+            continue;
+        bOk = Me.LineOfSightTo(E);
+        for (k = 0; k < Offs.Length && !bOk; k++)
+            bOk = Offs[k].LineOfSightTo(E);
+        if (bOk)
+            BubThreatT = Now;
+    }
+
+    // evidence list (dropped guns are HandheldEquipmentModel), refreshed every 2 s
+    if (Now > BubEvidT)
+    {
+        BubEvidT = Now + 2.0;
+        BubEvid.Length = 0;
+        foreach DynamicActors(class'Actor', A)
+            if (A.IsA('IEvidence') && IEvidence(A).CanBeUsedNow())
+                BubEvid[BubEvid.Length] = A;
+    }
+
+    // oldest unpainted threat navs (up to 8)
+    BubOld.Length = 0;
+    for (k = 0; k < ThreatIdx.Length; k++)
+    {
+        i = ThreatIdx[k];
+        if (Now - PaintTime[i] < PaintFade)
+            continue;
+        j = 0;
+        while (j < BubOld.Length && PaintTime[BubOld[j]] <= PaintTime[i])
+            j++;
+        if (j >= 8)
+            continue;
+        BubOld.Insert(j, 1);
+        BubOld[j] = i;
+        if (BubOld.Length > 8)
+            BubOld.Length = 8;
+    }
+
+    // drop slots of officers that left
+    for (b = BubPawn.Length - 1; b >= 0; b--)
+    {
+        bOk = false;
+        for (k = 0; k < Offs.Length; k++)
+            if (Offs[k] == BubPawn[b])
+                bOk = true;
+        if (!bOk)
+            RemoveBubSlot(b);
+    }
+
+    // running jobs
+    Busy = 0;
+    for (k = 0; k < Offs.Length; k++)
+    {
+        b = BubSlot(Offs[k]);
+        if (BubTask[b] == 0)
+            continue;
+        bOk = Now - BubThreatT > 2.0 && BubTarget[b] != None;
+        if (bOk && BubTask[b] == 1)
+            bOk = BubRR[b] != None && !BubRR[b].hasCompleted() && Pawn(BubTarget[b]).IsConscious()
+                && !ISwatAI(BubTarget[b]).IsArrested();
+        if (bOk && BubTask[b] == 2)
+            bOk = BubSE[b] != None && !BubSE[b].hasCompleted() && IEvidence(BubTarget[b]).CanBeUsedNow();
+        if (bOk)
+        {
+            Busy++;
+            continue;
+        }
+        S = S$" "$Offs[k].Name$"=done";
+        ReleaseBubJob(b);
+        BubNext[b] = 0;
+    }
+
+    for (k = 0; k < Offs.Length; k++)
+    {
+        P = Offs[k];
+        b = BubSlot(P);
+        if (BubTask[b] != 0)
+            continue;
+        if (Now > BubBiasT[b])
+        {
+            BubBias[b] = Rand(65536);
+            BubBiasT[b] = Now + 15.0 + 10.0 * FRand();
+        }
+        if (Now >= BubNext[b])
+        {
+            BubNext[b] = Now + BubbleThink * (0.75 + 0.5 * FRand());
+
+            // a job near the player?
+            if (Busy < Offs.Length - 1 && Now - BubThreatT > 3.0)
+            {
+                BestA = None;
+                BestSc = -999;
+                foreach DynamicActors(class'Pawn', E)
+                    if ((E.IsA('SwatEnemy') || E.IsA('SwatHostage')) && E.IsConscious() && ISwatAI(E).IsCompliant()
+                        && !ISwatAI(E).IsArrested() && VSize(E.Location - Me.Location) < SecureRange && !BubClaimed(E))
+                    {
+                        Sc = 2.0 - VSize(E.Location - P.Location) / 1000.0;
+                        if (Sc > BestSc)
+                            { BestSc = Sc; BestA = E; }
+                    }
+                for (i = 0; i < BubEvid.Length; i++)
+                {
+                    A = BubEvid[i];
+                    if (A == None || !IEvidence(A).CanBeUsedNow() || VSize(A.Location - Me.Location) > SecureRange || BubClaimed(A))
+                        continue;
+                    Sc = 1.5 - VSize(A.Location - P.Location) / 1000.0;
+                    if (Sc > BestSc)
+                        { BestSc = Sc; BestA = A; }
+                }
+                if (BestA != None)
+                {
+                    ReleaseBubGuard(b);
+                    BubTarget[b] = BestA;
+                    if (BestA.IsA('Pawn'))
+                    {
+                        BubTask[b] = 1;
+                        BubRR[b] = new class'RestrainAndReportGoal'(AI_Resource(P.characterAI), Pawn(BestA));
+                        BubRR[b].AddRef();
+                        BubRR[b].postGoal(None);
+                        BubSecN++;
+                        S = S$" "$P.Name$"=restrain:"$BestA.Name;
+                    }
+                    else
+                    {
+                        BubTask[b] = 2;
+                        BubSE[b] = new class'SecureEvidenceGoal'(AI_Resource(P.characterAI), IEvidence(BestA));
+                        BubSE[b].AddRef();
+                        BubSE[b].postGoal(None);
+                        BubEvN++;
+                        S = S$" "$P.Name$"=evidence:"$BestA.Name;
+                    }
+                    Busy++;
+                    continue;
+                }
+            }
+
+            // guard spot (keep the current one unless clearly better)
+            BestSc = -999;
+            if (BubPt[b] != vect(0,0,0))
+                BestSc = GuardScore(b, P, BubPt[b], C, Busy > 0) + 0.2;
+            bFound = false;
+            for (i = 0; i < PaintNav.Length; i++)
+            {
+                NP = PaintNav[i];
+                if (NP == None)
+                    continue;
+                L = NP.Location;
+                Sc = VSize(L - C);
+                if (Sc < BubbleMin || Sc > BubbleMax || Abs(L.Z - Me.Location.Z) > 80
+                    || !FastTrace(L + vect(0,0,40), C + vect(0,0,40)))
+                    continue;
+                Sc = GuardScore(b, P, L, C, Busy > 0) + 0.15 * FRand();
+                if (Sc > BestSc)
+                    { BestSc = Sc; BestL = L; bFound = true; }
+            }
+            if (bFound)
+            {
+                BubPt[b] = BestL;
+                S = S$" "$P.Name$"=guard:"$int(VSize(BestL - C));
+            }
+        }
+        if (BubPt[b] == vect(0,0,0))
+            continue;
+
+        // go to / hold the spot
+        if (BubMove[b] == None || VSize(BubMovePt[b] - BubPt[b]) > 10
+            || ((BubMove[b].hasCompleted() || BubMove[b].achievingAction == None) && Now - BubMoveT[b] > 1.0
+                && VSize(P.Location - BubPt[b]) > 60))
+        {
+            if (BubMove[b] != None)
+            {
+                BubMove[b].unPostGoal(None);
+                BubMove[b].Release();
+            }
+            BubMove[b] = PostMove(P, BubPt[b]);
+            BubMovePt[b] = BubPt[b];
+            BubMoveT[b] = Now;
+        }
+
+        // aim: oldest unpainted threat in sight of the spot, else straight out from the player
+        bFound = false;
+        for (j = 0; j < BubOld.Length && !bFound; j++)
+        {
+            L = PaintNav[BubOld[j]].Location;
+            if (VSize(L - BubPt[b]) < PaintRange && FastTrace(L + vect(0,0,40), BubPt[b] + vect(0,0,40)))
+            {
+                Aim = L + vect(0,0,40);
+                bFound = true;
+            }
+        }
+        if (!bFound)
+        {
+            L = BubPt[b] - C;
+            L.Z = 0;
+            if (VSize(L) < 1)
+                L = vector(MakeRot(BubBias[b]));
+            Aim = BubPt[b] + vect(0,0,40) + 600.0 * Normal(L);
+        }
+        if (BubAim[b] == None)
+        {
+            BubAim[b] = PostSector(P, Aim);
+            BubAimT[b] = Now;
+        }
+        else
+        {
+            BubAim[b].Point = Aim;
+            if (AimAtPointAction(BubAim[b].achievingAction) != None)
+                AimAtPointAction(BubAim[b].achievingAction).Point = Aim;
+            else if (Now - BubAimT[b] > 2.0)
+            {
+                BubAim[b].unPostGoal(None);
+                BubAim[b].Release();
+                BubAim[b] = PostSector(P, Aim);
+                BubAimT[b] = Now;
+            }
+        }
+    }
+    if (S != "")
+        SideLog("SwatMinds bubble t="$int(Now)$S);
+}
+
+function float GuardScore(int b, Pawn P, vector L, vector C, bool bCoverMates)
+{
+    local vector Fw;
+    local float Sc;
+    local int j, n;
+
+    Fw = L - C;
+    Fw.Z = 0;
+    if (VSize(Fw) < 1)
+        Fw = vector(MakeRot(BubBias[b]));
+    Fw = Normal(Fw);
+    Sc = CoverScore(L, Fw);
+    for (j = 0; j < BubOld.Length; j++)
+        if (VSize(PaintNav[BubOld[j]].Location - L) < PaintRange
+            && FastTrace(PaintNav[BubOld[j]].Location + vect(0,0,40), L + vect(0,0,40)))
+            n++;
+    if (BubOld.Length > 0)
+        Sc += 0.8 * n / BubOld.Length;
+    Sc += 0.5 * (Fw dot vector(MakeRot(BubBias[b])));
+    Sc -= VSize(L - P.Location) / 1500.0;
+    for (j = 0; j < BubPawn.Length; j++)
+    {
+        if (j == b || BubPawn[j] == None)
+            continue;
+        if (BubTask[j] == 0 && BubPt[j] != vect(0,0,0) && VSize(BubPt[j] - L) < 160)
+            Sc -= 1.0;
+        if (bCoverMates && BubTask[j] != 0 && FastTrace(BubPawn[j].Location + vect(0,0,40), L + vect(0,0,40)))
+            Sc += 0.4;     // cover a teammate who is restraining / bagging evidence
+    }
+    return Sc;
+}
+
+function int BubSlot(Pawn P)
+{
+    local int b;
+
+    for (b = 0; b < BubPawn.Length; b++)
+        if (BubPawn[b] == P)
+            return b;
+    b = BubPawn.Length;
+    BubPawn[b] = P; BubTask[b] = 0; BubTarget[b] = None; BubPt[b] = vect(0,0,0); BubMovePt[b] = vect(0,0,0);
+    BubNext[b] = 0; BubBiasT[b] = 0; BubAimT[b] = 0; BubMoveT[b] = 0; BubBias[b] = 0;
+    BubMove[b] = None; BubAim[b] = None; BubRR[b] = None; BubSE[b] = None;
+    return b;
+}
+
+function bool BubClaimed(Actor A)
+{
+    local int b;
+
+    for (b = 0; b < BubPawn.Length; b++)
+        if (BubTask[b] != 0 && BubTarget[b] == A)
+            return true;
+    return false;
+}
+
+function ReleaseBubGuard(int b)
+{
+    if (BubMove[b] != None)
+    {
+        BubMove[b].unPostGoal(None);
+        BubMove[b].Release();
+        BubMove[b] = None;
+    }
+    if (BubAim[b] != None)
+    {
+        BubAim[b].unPostGoal(None);
+        BubAim[b].Release();
+        BubAim[b] = None;
+    }
+    BubPt[b] = vect(0,0,0);
+}
+
+function ReleaseBubJob(int b)
+{
+    if (BubRR[b] != None)
+    {
+        BubRR[b].unPostGoal(None);
+        BubRR[b].Release();
+        BubRR[b] = None;
+    }
+    if (BubSE[b] != None)
+    {
+        BubSE[b].unPostGoal(None);
+        BubSE[b].Release();
+        BubSE[b] = None;
+    }
+    BubTask[b] = 0;
+    BubTarget[b] = None;
+}
+
+function RemoveBubSlot(int b)
+{
+    ReleaseBubGuard(b);
+    ReleaseBubJob(b);
+    BubPawn.Remove(b, 1); BubTask.Remove(b, 1); BubTarget.Remove(b, 1); BubPt.Remove(b, 1); BubMovePt.Remove(b, 1);
+    BubNext.Remove(b, 1); BubBiasT.Remove(b, 1); BubAimT.Remove(b, 1); BubMoveT.Remove(b, 1); BubBias.Remove(b, 1);
+    BubMove.Remove(b, 1); BubAim.Remove(b, 1); BubRR.Remove(b, 1); BubSE.Remove(b, 1);
+}
+
+function ClearBubble()
+{
+    while (BubPawn.Length > 0)
+        RemoveBubSlot(BubPawn.Length - 1);
 }
 
 // ---- coverage paint (10-20, user idea: "they 'paint' the walls to guarantee no hidden places") ----
@@ -1598,6 +1979,11 @@ defaultproperties
     LiveInterval=3.0
     bAutoOfficers=true
     bEscort=true
+    bBubble=true
+    BubbleThink=1.0
+    BubbleMin=128
+    BubbleMax=550
+    SecureRange=1200
     bPaint=true
     PaintRange=1500.0
     PaintFade=3.0
