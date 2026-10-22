@@ -53,3 +53,23 @@ Idea: like a MotorStorm-style ATV pack, the AI should stay around the player's l
 
 ## Measures (all phases)
 clear (susFree 0 and offDown 0), offDown/game, arrests/game, kills vs arrests, time-to-face, paint share. Ideas with a test go in `ideas.py add` so opsd runs them and logs a verdict.
+
+## Recon results (10-22, Sonnet agents; spot-check before relying)
+### Door Kickers 1
+- Install `F:\SteamLibrary\steamapps\common\DoorKickers` (appid 248610). User data `C:\Users\john\Documents\KillHouseGames\DoorKickers` (options.xml, log.txt, replays\, roster.xml, stats.xml, mods\).
+- All moddable data is XML, no Lua: `data\object_library\humans_enemy.xml` / `humans_friendly.xml` / `equipment*.xml` / `firearm_attacktypes*.xml`; `data\config\gameplay_settings.xml` (sound ranges, EnemyGhostsTime, path lookahead), `damage_table.xml`, `game_config.xml` (`<GameSpeed value="1.0"/>`, speed-up untested); `data\levels\*.xml`.
+- Enemy AI = per-entity `<Behavior><State>` blocks + `<FieldOfView degrees eyeRadiusMeters rangeMeters>` + `<PointsOfInterest>`: data-driven, not scripted.
+- Mods: `mods\<name>\` overrides stock XML by path (template `mods\data_modtemplate`). Custom levels in the user folder show under "Your creations".
+- No CLI mission start, no autoplay, no path-from-file, no results API found. Replays `.rpl` binary, deterministic (desync check), undocumented.
+- DK2 (appid 1239080): also XML only (doctrine_nodes.xml, units.xml), no scripting API found.
+- Verdict: Python sim reading level XML + entity stats + FOV + damage_table (top-down 2D, LOS, doors, sound); validate vs real replays later. Real-game automation would need GUI input injection or .rpl RE.
+### Frozen Synapse 2
+- Install `C:\Program Files (x86)\Steam\steamapps\common\Frozen Synapse 2` (appid 445020, Torque 3D; `FrozenSynapse2.exe` stub + `FrozenSynapse2.dll`, `$appName="brutal"`).
+- Logic is compiled TorqueScript `.dso` (1278 files: `brutalScripts\`, `map\scriptsFS2InGame\AI\`); plain `.cs` only boot/tools.
+- Readable text: rules `map\scriptsFS2InGame\rulesFiles\*.ro` (extermination, secure, hostage, charge, bombDefusal...), `mpSetups\*.txt`, `teamDefs\*.ted`, `fieldDefs\*.fd`, `levels\*.mis`. Maps/plays `.enc` (1180, undocumented).
+- Built-in "Charon" AI planner in a worker thread (`getAITurn`, `startGetAITurnThreaded`, takes `%inFile`/`%outFile`): maybe a file-based turn interface. Empty `serverTurnFiles\`, `clientTurnFiles\`; `customModes\gclGameTypeForSoak.ro` hints at an automated soak mode. Not decompiled yet.
+- No mod docs, bot API, headless server or Workshop found. Original FS1 has community RE (github.com/JusticeRage/BrokenSynapse). Sim said to be deterministic.
+- Verdict: Python re-sim (grid, LOS, simultaneous 5 s turns) for training; .dso disassembly / soak mode / turn files = later fidelity check (most promising real-game hook of the two games).
+
+### Friday route (from recon)
+Both games: train in Python sims built from the games' own data (DK XML stats/levels, FS2 rules/team defs), share one top-down squad sim core (LOS, doors, FOV, reaction time, simultaneous turns). Real-game checks later: DK replays, FS2 Charon turn files / soak mode.
