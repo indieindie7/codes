@@ -16,7 +16,7 @@ import numpy as np
 import tune as T
 import harness as H
 
-DEFAULTS = {"alpha": 1.0, "c_adapt": 0.2, "edge_damp": 0.7, "cfl": 0.5, "recon": 1}   # hydrowater.c defaults
+DEFAULTS = {"alpha": 0.0, "c_adapt": 0.0, "edge_damp": 0.0, "cfl": 0.5, "recon": 1}   # 0 = take the library default from hw_set_opts, so a changed default in hydrowater.c counts
 REFS = os.path.join(HERE, "irl_refs.json")
 BASE = os.path.join(HERE, "irl_baseline.json")
 

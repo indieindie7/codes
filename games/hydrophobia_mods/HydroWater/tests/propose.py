@@ -66,8 +66,9 @@ Last verdicts of earlier proposals (gain > 0 was kept):
 Solver lines around the knobs:
 {solver_excerpt()}
 Note: alpha only scales bed changes and c_adapt only body velocity stamps; neither acts in this dry-bed dam break, so
-changing them is wasted. Candidates that do act: edge_damp, recon (face reconstruction), wet/dry threshold, flux or
-wave-speed choices, the time step.
+changing them is wasted. cfl is a hw_create() argument the scorer passes itself (0.5), there is no s->o.cfl, so it cannot be changed here.
+Candidates that do act: edge_damp, recon (face reconstruction), wet/dry threshold, flux or wave-speed choices,
+the hydrostatic reconstruction, the edge-cell test. Use only fields that exist in hw_opts (hydrowater.h). A changed default in hw_set_opts counts: the scorer passes 0 for alpha, c_adapt and edge_damp and takes the library values.
 Propose exactly ONE change: a new default value, or a patch of at most 30 changed lines, to src/hydrowater.c or
 src/hydrowater.h only. Do not touch tests. Reply with a first line `Title: <at most 8 words>`, then `Why: <one line>`, then a unified diff
 (--- a/src/hydrowater.c / +++ b/src/hydrowater.c, correct hunk headers) in a ```diff block. Nothing else."""
