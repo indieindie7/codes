@@ -322,6 +322,26 @@ Findings (seeds 2–4, 10–15 gens × 12):
 
 Next for the tuner: score foam/air knobs against the foam test videos (needs a visual metric), and add a scene with the game's own stamp so c_adapt gets a real target.
 
+### IRL reference: lab dam break (2026-10-23)
+
+Until now the tuner only had self-reference (fine run of our own solver, biased) and Ritter (frictionless ideal). First measured target: Lobovsky, Botia-Vera, Castellana, Mas-Soler, Souto-Iglesias 2014, *Experimental investigation of dynamic pressure loads during dam break* (arXiv 1308.0115), Table 1 lists the average front velocity v/sqrt(gH) on a dry bed for t* = t·sqrt(g/H) > 1 from ten runs: ETSIN H 300/600 mm 1.56/1.34, Martin & Moyce 1952 (57/114 mm) 1.48/1.69, Dressler 1954 (55/110/220 mm) 1.54/1.70/1.74, Hu & Sueyoshi 2010 1.21/1.14, Koshizuka & Oka 1996 (292 mm) 1.30. Mean 1.47, band 1.14–1.74; Ritter says 2.0. No digitized Martin & Moyce Z–T table turned up (the labs disagree for t* < 1 anyway: gate removal, non-hydrostatic collapse), so the early stage is not scored.
+
+Scene `lab` in `tests/tune.py`: 160×8 cells, column H 200 units over the first 20 cells, dry bed, no walls in reach. Front = last column whose mean depth exceeds 1 % H; v* = least-squares slope of x/H over t* 1..2.5; cost |v* − 1.47| + 0.002·steps. alpha and c_adapt do not touch this scene (no bodies, no walls); only `edge_damp` moves the front.
+
+Results (seed 3):
+
+| run | v* | note |
+|---|---|---|
+| default (edge_damp 0.7, recon) | 1.453 | in band, 0.02 under the lab mean |
+| edge_damp 1.0 (no wet/dry damping) | 1.558 at H 200, 1.68 at H 400, 1.73 at H 400 with a 0.1 % threshold | climbs toward Ritter as the grid resolves the tip |
+| edge_damp 0.5 / 0.3 | 1.39 / 1.36 | too slow |
+| tuner, lab only, 6 gens | 1.472 at edge_damp 0.69 | recon off wins by 0.02 (fewer steps) |
+| tuner, ritter+lab, 8 gens | 1.476, Ritter rmse 0.387 | alpha 0.903, edge_damp 0.713, cfl 0.5, recon on |
+
+Sensitivity: with edge_damp 0.7 the front speed stays 1.44–1.48 across thresholds 0.1–5 % and H 100–400 (except the coarsest cases); undamped it drifts with resolution. So `edge_damp` is doing the job of the bed friction the solver lacks, and the shipped default 0.7 already lands on the lab mean. The Ritter-only tuner's push to edge_damp 1.0 (above) was toward the ideal, not reality: keep 0.7. Carry-over from Ritter: alpha ≈ 0.9 and recon on cost nothing here.
+
+Still missing for a real IRL score: a front-shape or gauge-depth series (Lobovsky's H1–H4 are plots only; would need digitizing), a wading bow-wave measurement for `c_adapt`, and a foam/spray metric.
+
 ## Ideas not built yet (2026-10-11)
 
 Collected from the Crimson Desert water breakdown, the KWS2 videos and Sea of Thieves. Rough order of value per effort:

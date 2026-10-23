@@ -106,10 +106,48 @@ def ritter_ref(w, h):
     return out
 
 
+# Lab dam break. Lobovsky et al. 2014 (arXiv 1308.0115, Table 1) list the measured
+# average front velocity v/sqrt(g H) on a dry bed for t* = t sqrt(g/H) > 1:
+# ETSIN H 300/600 mm 1.56/1.34, Martin & Moyce 1952 57/114 mm 1.48/1.69,
+# Dressler 1954 55/110/220 mm 1.54/1.70/1.74, Hu 2010 1.21/1.14, Koshizuka 1996 1.30.
+# Mean 1.47, band 1.14..1.74; Ritter's frictionless ideal is 2.0. Our solver has no
+# bed friction, so only the wet/dry treatment (edge_damp, alpha) can slow the front.
+# t* < 1 is left out: the early collapse is non-hydrostatic (the labs disagree there too).
+LAB_H, LAB_L, LAB_T = 200.0, 20, (1.0, 2.5)     # column height (units), length (cells), t* window
+LAB_V = {"mean": 1.47, "lo": 1.14, "hi": 1.74}
+
+
+def score_lab(p):
+    """Return (cost, parts): cost = |v* - lab mean|, v* = least-squares front speed over LAB_T."""
+    w, h = 160, 8
+    s = Sheet(w, h, cfl=p["cfl"], alpha=p["alpha"], c_adapt=p["c_adapt"],
+              edge_damp=p["edge_damp"], recon=int(p["recon"]))
+    s.bed[:] = 0.0
+    d = np.zeros((h, w))
+    d[:, :LAB_L] = LAB_H
+    s.depth[:] = d
+    tscale = np.sqrt(LAB_H / H.G)
+    ts, xs, t = [], [], 0.0
+    while t < LAB_T[1] * tscale - 1e-6:
+        s.step(DT)
+        t += DT
+        wet = np.where(s.depth.mean(axis=0) > 0.01 * LAB_H)[0]
+        ts.append(t / tscale)
+        xs.append(((wet.max() + 1) - LAB_L) * H.DX / LAB_H if len(wet) else 0.0)
+    steps = s.steps
+    s.close()
+    ts, xs = np.array(ts), np.array(xs)
+    m = (ts >= LAB_T[0]) & (ts <= LAB_T[1])
+    v = float(np.polyfit(ts[m], xs[m], 1)[0]) if m.sum() >= 3 else 0.0   # d(x/H)/dt* = v/sqrt(gH)
+    cost = abs(v - LAB_V["mean"]) + 0.002 * steps
+    return cost, {"vfront": round(v, 3), "in_band": bool(LAB_V["lo"] <= v <= LAB_V["hi"]),
+                  "x_end": round(float(xs[-1]), 2), "steps": steps}
+
+
 # name: (w, h, scene, per-step motion or None). c_adapt only acts on stamped bodies (wade).
 SCENES = {"dam": (80, 16, scene_dam, None), "drop": (48, 48, scene_drop, None),
           "bump": (80, 16, scene_bump, None), "wade": (60, 30, scene_wade, motion_wade),
-          "ritter": (160, 8, scene_ritter, None)}
+          "ritter": (160, 8, scene_ritter, None), "lab": (160, 8, None, None)}
 
 
 def run(w, h, f, scene, cfl, motion=None, **opts):
@@ -152,6 +190,10 @@ def score(p, scenes):
     """Lower is better. rmse in height units, drift and sub-step cost added."""
     total, parts = 0.0, {}
     for name in scenes:
+        if name == "lab":
+            cost, parts[name] = score_lab(p)
+            total += cost
+            continue
         w, h, fn, mo = SCENES[name]
         ref = reference(name)
         snaps, drift, steps = run(w, h, 1, fn, p["cfl"], motion=mo, alpha=p["alpha"], c_adapt=p["c_adapt"],
