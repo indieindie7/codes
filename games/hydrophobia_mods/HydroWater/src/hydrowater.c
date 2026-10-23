@@ -24,9 +24,7 @@ struct hw_sheet {
     /* stage 7 */
     float *foam, *air, *hprev, *impact, *ftmp, *atmp;
     float *stir;             /* velocity change pushed in from outside since the last foam pass */
-    float *pullu, *pullv;    /* surface drift added to the foam, air and dye advection this step (wake pull), zeroed after use */
     float *dye;              /* tint carried by the flow (silt, blood) */
-    float *scum;             /* floating surface layer (idea 9) */
     float *spray; int nspray;
     hw_foam_params fp;
     unsigned rng;
@@ -48,15 +46,14 @@ HW_API hw_sheet *hw_create(int w, int h, float dx, float g, float cfl)
     s->u = plane(s); s->v = plane(s); s->c = plane(s);
     s->B = plane(s); s->wall = plane(s); s->b = plane(s); s->bprev = plane(s); s->edge = plane(s); s->Beff = plane(s);
     s->foam = plane(s); s->air = plane(s); s->hprev = plane(s); s->impact = plane(s);
-    s->ftmp = plane(s); s->atmp = plane(s); s->stir = plane(s); s->dye = plane(s); s->scum = plane(s);
-    s->pullu = plane(s); s->pullv = plane(s);
+    s->ftmp = plane(s); s->atmp = plane(s); s->stir = plane(s); s->dye = plane(s);
     s->spray = (float *)calloc(HW_SPRAY_CAP * 8, sizeof(float));
     s->rng = 0x9e3779b9u;
     s->fp.foam_gain = 0.8f; s->fp.air_gain = 3.0f; s->fp.foam_life = 2.5f; s->fp.lace = 0.25f;
     s->fp.bubble_rise = 25.0f; s->fp.air_to_foam = 0.35f; s->fp.spread = 3.0f;
-    s->fp.spray_rate = 30.0f; s->fp.spray_foam = 0.15f; s->fp.spray_drag = 0.5f; s->fp.spray_max = 4096; s->fp.spray_vol = 0.05f;
-    s->fp.scum_cover = 0.0f; s->fp.scum_regrow = 90.0f; s->fp.debris_wake = 1.0f;
+    s->fp.spray_rate = 30.0f; s->fp.spray_foam = 0.15f; s->fp.spray_drag = 0.5f; s->fp.spray_max = 4096;
     s->fp.dye_gain = 0.6f; s->fp.dye_life = 12.0f;
+    s->fp.shear_gain = 0.5f; s->fp.kin_floor = 0.3f; s->fp.kin_lo = 0.02f; s->fp.kin_hi = 0.5f;
     s->wallx = (unsigned char *)calloc((size_t)s->n, 1);
     s->wally = (unsigned char *)calloc((size_t)s->n, 1);
     /* the border is wall in both models so nothing leaves the sheet */
@@ -77,7 +74,7 @@ HW_API void hw_destroy(hw_sheet *s)
     free(s->hA); free(s->huA); free(s->hvA); free(s->hB); free(s->huB); free(s->hvB);
     free(s->hC); free(s->huC); free(s->hvC); free(s->u); free(s->v); free(s->c);
     free(s->B); free(s->wall); free(s->b); free(s->bprev); free(s->edge); free(s->Beff);
-    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->dye); free(s->scum); free(s->spray); free(s->pullu); free(s->pullv);
+    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->dye); free(s->spray);
     free(s->wallx); free(s->wally); free(s);
 }
 
@@ -593,10 +590,6 @@ static void spray_spawn(hw_sheet *s, int i, int j, float strength, float dt, flo
         p[4] = up;
         p[6] = 0;
         p[7] = 0.5f + frand(s);
-        {   /* the drop carries water (idea 12b): the cell loses what it takes, the landing cell gets it back */
-            float dv = s->fp.spray_vol * p[7];
-            if (dv > 0 && s->hA[k] > 4 * dv) s->hA[k] -= dv; else p[7] = -p[7];   /* a dry-ish cell lends nothing: size < 0 marks an empty drop */
-        }
     }
 }
 
@@ -612,16 +605,15 @@ static void spray_step(hw_sheet *s, float dt)
         p[0] += p[3] * dt; p[1] += p[4] * dt; p[2] += p[5] * dt;
         p[6] += dt;
         i = (int)floorf(p[0] / s->dx); j = (int)floorf(p[2] / s->dx);
-        if (i < 0 || j < 0 || i >= s->w || j >= s->h) dead = 1;   /* off the sheet: its water is lost */
+        if (i < 0 || j < 0 || i >= s->w || j >= s->h || p[6] > 3.0f) dead = 1;
         else {
             k = AT(s, i, j);
             if (s->wall[k] > 0) dead = 1;
-            else if (p[6] > 3.0f || (p[4] < 0 && p[1] <= s->Beff[k] + s->hA[k])) {   /* landed (or too old: dropped where it is) */
+            else if (p[4] < 0 && p[1] <= s->Beff[k] + s->hA[k]) {   /* landed */
                 dead = 1;
-                if (p[7] > 0) s->hA[k] += s->fp.spray_vol * p[7];   /* its water lands here */
                 if (s->hA[k] >= WET_FOAM) {
-                    s->foam[k] += s->fp.spray_foam * fabsf(p[7]);
-                    s->air[k] += 0.5f * s->fp.spray_foam * fabsf(p[7]);
+                    s->foam[k] += s->fp.spray_foam * p[7];
+                    s->air[k] += 0.5f * s->fp.spray_foam * p[7];
                     if (s->foam[k] > 1) s->foam[k] = 1;
                     if (s->air[k] > 1) s->air[k] = 1;
                 }
@@ -646,9 +638,9 @@ static void foam_pass(hw_sheet *s, float dt)
         for (i = 0; i < s->w; i++) {
             int k = AT(s, i, j), kn[4], q;
             float h = s->hA[k], eta, en[4], un[4], vn[4], c, gx, gz, slope, lap, rise, sp, fr;
-            float brk, bore, rapid, fall = 0, slam = 0, impact, src, out, snx = 0, snz = 0, sprayk;
+            float brk, bore, rapid, shear, kin, slam = 0, impact, src, out, snx = 0, snz = 0, sprayk;
             div[k] = 0;
-            if (!foam_cell(s, k)) { s->foam[k] = 0; s->air[k] = 0; s->dye[k] = 0; s->scum[k] = 0; continue; }
+            if (!foam_cell(s, k)) { s->foam[k] = 0; s->air[k] = 0; s->dye[k] = 0; continue; }
             kn[0] = AT(s, i - 1, j); kn[1] = AT(s, i + 1, j); kn[2] = AT(s, i, j - 1); kn[3] = AT(s, i, j + 1);
             eta = s->Beff[k] + h;
             c = sqrtf(s->g * h);
@@ -675,20 +667,18 @@ static void foam_pass(hw_sheet *s, float dt)
             brk = smooth01(0.15f, 0.5f, slope) * smooth01(0.02f, 0.2f, rise / c) * smooth01(0.02f, 0.2f, -lap);
             bore = smooth01(0.6f, 1.2f, fr) * smooth01(0.05f, 0.5f, -div[k] * dx / (sp + c));
             rapid = smooth01(1.5f, 3.0f, fr);
-            /* a step in the bed: water pouring over a sharp drop into this cell is a small waterfall,
-               so foam, air and spray pile up at its foot */
-            for (q = 0; q < 4; q++) {
-                float drop, in;
-                if (!face_open(s, i, j, q) || s->wall[kn[q]] > 0 || s->hA[kn[q]] < WET_FOAM) continue;
-                drop = s->Beff[kn[q]] - s->Beff[k];
-                if (drop < 6) continue;
-                /* flow from that neighbour into this cell (q: 0 west, 1 east, 2 south, 3 north) */
-                in = q == 0 ? un[0] : q == 1 ? -un[1] : q == 2 ? vn[2] : -vn[3];
-                if (in <= 0) continue;
-                /* a fall, not a drowned step: the upper surface stands above ours by a good part of the drop */
-                fall += smooth01(6, 20, drop) * smooth01(0.05f, 0.4f, in / c) * smooth01(0.1f, 0.6f, (en[q] - eta) / drop);
+            /* Ihmsen 2012: trapped air from the velocity difference to the neighbours (shear and
+               convergence alike), wave crest ~ brk, both gated by the kinetic energy of the cell */
+            {
+                float dv = 0;
+                for (q = 0; q < 4; q++) {
+                    float du = un[q] - s->u[k], dw = vn[q] - s->v[k];
+                    dv += sqrtf(du * du + dw * dw);
+                }
+                shear = smooth01(0.1f, 0.6f, 0.25f * dv / c);
+                kin = smooth01(fp->kin_lo, fp->kin_hi, h * sp * sp / (s->g * dx * dx));
+                kin = fp->kin_floor + (1 - fp->kin_floor) * kin;
             }
-            if (fall > 1) fall = 1;
             {   /* a body entering or leaving churns the water around its rim */
                 float im = s->impact[k];
                 for (q = 0; q < 4; q++) if (s->impact[kn[q]] > im) im = s->impact[kn[q]];
@@ -698,7 +688,7 @@ static void foam_pass(hw_sheet *s, float dt)
                 for (q = 0; q < 4; q++) if (s->stir[kn[q]] > im) im = s->stir[kn[q]];
                 impact += smooth01(0.05f, 0.4f, im / c);
             }
-            src = brk + bore + 0.1f * rapid + slam + impact + fall;
+            src = kin * (brk + bore + fp->shear_gain * shear + 0.1f * rapid) + slam + impact;
             if (src > 2) src = 2;
             /* silt: bodies churn it up most, a bore or rapids a little; it fades slowly */
             s->dye[k] += (impact + 0.3f * bore + 0.15f * rapid) * fp->dye_gain * dt;
@@ -716,12 +706,7 @@ static void foam_pass(hw_sheet *s, float dt)
             s->foam[k] *= expf(-dt * (fp->lace + s->foam[k]) / fp->foam_life);
             if (s->air[k] > 1) s->air[k] = 1;
             if (s->foam[k] > 1) s->foam[k] = 1;
-            sprayk = brk + 1.5f * slam + 2 * impact + 0.5f * bore + 0.8f * fall;
-            if (fp->scum_cover > 0) {   /* the surface layer is torn up by rough water and grows back slowly */
-                float sc = s->scum[k] * expf(-2.0f * sprayk * dt);
-                if (fp->scum_regrow > 0 && sc < fp->scum_cover) sc += (fp->scum_cover - sc) * dt / fp->scum_regrow;
-                s->scum[k] = sc;
-            }
+            sprayk = brk + 1.5f * slam + 2 * impact + 0.5f * bore;
             if (sprayk > 0.05f)
                 spray_spawn(s, i, j, sprayk, dt, slam > 0.3f ? snx : 0, slam > 0.3f ? snz : 0);
         }
@@ -735,7 +720,7 @@ static void foam_pass(hw_sheet *s, float dt)
             sq = 1 - dt * div[k];
             if (sq < 0.5f) sq = 0.5f;
             if (sq > 1.5f) sq = 1.5f;
-            sq *= sample_wet(s, s->ftmp, (i + 0.5f) * dx - (s->u[k] + s->pullu[k]) * dt, (j + 0.5f) * dx - (s->v[k] + s->pullv[k]) * dt);
+            sq *= sample_wet(s, s->ftmp, (i + 0.5f) * dx - s->u[k] * dt, (j + 0.5f) * dx - s->v[k] * dt);
             s->foam[k] = sq > 1 ? 1 : sq;
         }
     memcpy(s->ftmp, s->air, bytes);
@@ -743,7 +728,7 @@ static void foam_pass(hw_sheet *s, float dt)
         for (i = 0; i < s->w; i++) {
             int k = AT(s, i, j);
             if (!foam_cell(s, k)) continue;
-            s->air[k] = sample_wet(s, s->ftmp, (i + 0.5f) * dx - (s->u[k] + s->pullu[k]) * dt, (j + 0.5f) * dx - (s->v[k] + s->pullv[k]) * dt);
+            s->air[k] = sample_wet(s, s->ftmp, (i + 0.5f) * dx - s->u[k] * dt, (j + 0.5f) * dx - s->v[k] * dt);
         }
     memcpy(s->ftmp, s->dye, bytes);
     for (j = 0; j < s->h; j++)
@@ -752,7 +737,7 @@ static void foam_pass(hw_sheet *s, float dt)
             float d, sum = 0;
             if (!foam_cell(s, k)) continue;
             /* dye drifts with the flow and spreads at half the foam rate (a cloud, not lines) */
-            d = sample_wet(s, s->ftmp, (i + 0.5f) * dx - (s->u[k] + s->pullu[k]) * dt, (j + 0.5f) * dx - (s->v[k] + s->pullv[k]) * dt);
+            d = sample_wet(s, s->ftmp, (i + 0.5f) * dx - s->u[k] * dt, (j + 0.5f) * dx - s->v[k] * dt);
             kn[0] = AT(s, i - 1, j); kn[1] = AT(s, i + 1, j); kn[2] = AT(s, i, j - 1); kn[3] = AT(s, i, j + 1);
             for (q = 0; q < 4; q++)
                 sum += (face_open(s, i, j, q) && foam_cell(s, kn[q])) ? s->ftmp[kn[q]] : s->ftmp[k];
@@ -760,23 +745,6 @@ static void foam_pass(hw_sheet *s, float dt)
         }
     for (j = 0; j < s->h; j++)
         for (i = 0; i < s->w; i++) { int k = AT(s, i, j); if (foam_cell(s, k)) s->dye[k] = s->atmp[k]; }
-    if (s->fp.scum_cover > 0) {   /* the surface layer drifts the same way and spreads at a quarter of the foam rate, so a gap closes slowly */
-        memcpy(s->ftmp, s->scum, bytes);
-        for (j = 0; j < s->h; j++)
-            for (i = 0; i < s->w; i++) {
-                int k = AT(s, i, j), kn[4], q;
-                float d, sum = 0;
-                if (!foam_cell(s, k)) continue;
-                d = sample_wet(s, s->ftmp, (i + 0.5f) * dx - (s->u[k] + s->pullu[k]) * dt, (j + 0.5f) * dx - (s->v[k] + s->pullv[k]) * dt);
-                kn[0] = AT(s, i - 1, j); kn[1] = AT(s, i + 1, j); kn[2] = AT(s, i, j - 1); kn[3] = AT(s, i, j + 1);
-                for (q = 0; q < 4; q++)
-                    sum += (face_open(s, i, j, q) && foam_cell(s, kn[q])) ? s->ftmp[kn[q]] : s->ftmp[k];
-                s->atmp[k] = (1 - 0.25f * spread) * d + 0.25f * spread * 0.25f * sum;
-            }
-        for (j = 0; j < s->h; j++)
-            for (i = 0; i < s->w; i++) { int k = AT(s, i, j); if (foam_cell(s, k)) s->scum[k] = s->atmp[k] > 1 ? 1 : s->atmp[k]; }
-    }
-    memset(s->pullu, 0, bytes); memset(s->pullv, 0, bytes);   /* the pull lasts one step; the caller stamps it again */
     /* spread: f <- d f + (1 - d)/4 sum(open wet neighbours) */
     memcpy(s->ftmp, s->foam, bytes);
     for (j = 0; j < s->h; j++)
@@ -798,57 +766,6 @@ HW_API const float *hw_spray(const hw_sheet *s, int *count) { if (count) *count 
 HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p) { s->fp = *p; }
 HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p) { *p = s->fp; }
 
-/* idea 19: the cells a stamped body pushed this step form a blob; its centroid and mean push
- * velocity stand in for the body (crate, plank, Kate where the game stamps her), so it gets
- * the same foam trail and wake pull as the player pawn. Blobs are found by a flood fill over
- * the cells whose velocity changed by more than 20 units/s. */
-static void debris_wakes(hw_sheet *s, const float *hu, const float *hv, int stride)
-{
-    unsigned char *mark = (unsigned char *)calloc((size_t)s->w * s->h, 1);
-    int *stack = (int *)malloc(sizeof(int) * (size_t)s->w * s->h);
-    int i, j, blobs = 0;
-    float dt = s->last_dt > 0 ? s->last_dt : 0.016f, scale = s->fp.debris_wake > 1 ? 1 : s->fp.debris_wake;
-    if (!mark || !stack) { free(mark); free(stack); return; }
-    for (j = 0; j < s->h; j++)
-        for (i = 0; i < s->w; i++) {
-            int k = AT(s, i, j), e = (j + 2) * stride + i + 2, n = 0, top = 0, c;
-            float du, dv, sx = 0, sz = 0, vx = 0, vz = 0, sp, r, a;
-            if (mark[j * s->w + i] || !foam_cell(s, k)) continue;
-            du = (hu[e] - s->huA[k]) / s->hA[k]; dv = (hv[e] - s->hvA[k]) / s->hA[k];
-            if (du * du + dv * dv < 400.0f) continue;
-            stack[top++] = j * s->w + i; mark[j * s->w + i] = 1;
-            while (top > 0) {
-                int ci, cj, q;
-                c = stack[--top]; ci = c % s->w; cj = c / s->w;
-                k = AT(s, ci, cj); e = (cj + 2) * stride + ci + 2;
-                du = (hu[e] - s->huA[k]) / s->hA[k]; dv = (hv[e] - s->hvA[k]) / s->hA[k];
-                sx += (ci + 0.5f) * s->dx; sz += (cj + 0.5f) * s->dx; vx += du; vz += dv; n++;
-                for (q = 0; q < 4; q++) {
-                    int ni = ci + (q == 0 ? -1 : q == 1 ? 1 : 0), nj = cj + (q == 2 ? -1 : q == 3 ? 1 : 0), nk, ne;
-                    float nu, nv;
-                    if (ni < 0 || nj < 0 || ni >= s->w || nj >= s->h || mark[nj * s->w + ni]) continue;
-                    nk = AT(s, ni, nj); ne = (nj + 2) * stride + ni + 2;
-                    if (!foam_cell(s, nk)) continue;
-                    nu = (hu[ne] - s->huA[nk]) / s->hA[nk]; nv = (hv[ne] - s->hvA[nk]) / s->hA[nk];
-                    if (nu * nu + nv * nv < 400.0f) continue;
-                    mark[nj * s->w + ni] = 1; stack[top++] = nj * s->w + ni;
-                }
-            }
-            if (n < 2 || blobs >= 64) continue;
-            blobs++;
-            sx /= n; sz /= n; vx /= n; vz /= n;
-            sp = sqrtf(vx * vx + vz * vz);
-            if (sp < 20.0f || sp > 3000.0f) continue;   /* a jump is a teleport or a bad read, not a wake */
-            r = 0.8f * sqrtf((float)n) * s->dx + s->dx;
-            a = (sp - 20.0f) / 250.0f; if (a > 1) a = 1;
-            a *= scale;
-            /* the same recipe as the player pawn in the mod: a trail a little behind, and low pressure dragging the wake along */
-            hw_foam_add(s, sx - vx / sp * r * 0.5f, sz - vz / sp * r * 0.5f, r * 1.3f, 1.5f * a * dt, 0.5f * a * dt);
-            hw_foam_pull(s, sx, sz, -vx / sp, -vz / sp, r * 3.0f, 0.45f * sp * scale);
-        }
-    free(mark); free(stack);
-}
-
 HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stride)
 {
     int i, j;
@@ -860,30 +777,6 @@ HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stri
             du = hu[e] - s->huA[k]; dv = hv[e] - s->hvA[k];
             d = sqrtf(du * du + dv * dv) / h;
             if (d > s->stir[k]) s->stir[k] = d;
-        }
-    if (s->fp.debris_wake > 0) debris_wakes(s, hu, hv, stride);
-}
-
-HW_API void hw_foam_pull(hw_sheet *s, float x, float z, float bx, float bz, float r, float speed)
-{
-    /* low pressure behind a moving body: within r of (x, z), on the side the unit vector (bx, bz)
-       points to (behind), the surface layer drifts toward (x, z) at up to `speed`, strongest on
-       the centre line and fading with distance; adds to the flow for this step only */
-    int i, j, i0 = (int)floorf((x - r) / s->dx), i1 = (int)floorf((x + r) / s->dx);
-    int j0 = (int)floorf((z - r) / s->dx), j1 = (int)floorf((z + r) / s->dx);
-    for (j = j0; j <= j1; j++)
-        for (i = i0; i <= i1; i++) {
-            int k;
-            float ox = (i + 0.5f) * s->dx - x, oz = (j + 0.5f) * s->dx - z, d, behind, w;
-            if (i < 0 || j < 0 || i >= s->w || j >= s->h) continue;
-            k = AT(s, i, j);
-            if (!foam_cell(s, k)) continue;
-            d = sqrtf(ox * ox + oz * oz);
-            if (d < 1e-3f || d > r) continue;
-            behind = (ox * bx + oz * bz) / d;          /* 1 right behind, 0 beside, < 0 ahead */
-            if (behind <= 0.2f) continue;
-            w = speed * (behind - 0.2f) / 0.8f * (1 - d / r);
-            if (w > fabsf(s->pullu[k]) + fabsf(s->pullv[k])) { s->pullu[k] = -ox / d * w; s->pullv[k] = -oz / d * w; }
         }
 }
 
@@ -919,45 +812,6 @@ HW_API void hw_dye_add(hw_sheet *s, float x, float z, float r, float amount)
             w = 1 - (ox * ox + oz * oz) / (r * r);
             if (w <= 0) continue;
             s->dye[k] += amount * w; if (s->dye[k] > 1) s->dye[k] = 1;
-        }
-}
-
-HW_API float *hw_scum(hw_sheet *s) { return s->scum; }
-
-HW_API void hw_scum_fill(hw_sheet *s)
-{
-    int i, j;
-    for (j = 0; j < s->h; j++)
-        for (i = 0; i < s->w; i++) {
-            int k = AT(s, i, j);
-            float v = foam_cell(s, k) ? s->fp.scum_cover * (0.7f + 0.6f * frand(s)) : 0;
-            s->scum[k] = v > 1 ? 1 : v;
-        }
-}
-
-HW_API void hw_scum_push(hw_sheet *s, float x, float z, float r, float dt)
-{
-    int i, j, i0 = (int)floorf((x - r) / s->dx), i1 = (int)floorf((x + r) / s->dx);
-    int j0 = (int)floorf((z - r) / s->dx), j1 = (int)floorf((z + r) / s->dx);
-    float take = dt * 4.0f;
-    if (take > 1) take = 1;
-    for (j = j0; j <= j1; j++)
-        for (i = i0; i <= i1; i++) {
-            int k, ti, tj, tk;
-            float ox = (i + 0.5f) * s->dx - x, oz = (j + 0.5f) * s->dx - z, d2 = ox * ox + oz * oz, d, m;
-            if (i < 0 || j < 0 || i >= s->w || j >= s->h || d2 >= r * r) continue;
-            k = AT(s, i, j);
-            if (!foam_cell(s, k) || s->scum[k] <= 0) continue;
-            m = s->scum[k] * take * (1 - d2 / (r * r));
-            s->scum[k] -= m;
-            /* shoved straight outward onto the ring just past r, where it piles up (cells very near the centre go a random way) */
-            d = sqrtf(d2);
-            if (d < 0.01f * r) { ox = frand(s) - 0.5f; oz = frand(s) - 0.5f; d = sqrtf(ox * ox + oz * oz) + 1e-6f; }
-            ti = (int)floorf((x + ox / d * 1.25f * r) / s->dx); tj = (int)floorf((z + oz / d * 1.25f * r) / s->dx);
-            if (ti < 0 || tj < 0 || ti >= s->w || tj >= s->h) continue;
-            tk = AT(s, ti, tj);
-            if (!foam_cell(s, tk)) continue;
-            s->scum[tk] += m; if (s->scum[tk] > 1) s->scum[tk] = 1;
         }
 }
 

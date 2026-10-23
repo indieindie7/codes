@@ -342,6 +342,29 @@ Sensitivity: with edge_damp 0.7 the front speed stays 1.44–1.48 across thresho
 
 Still missing for a real IRL score: a front-shape or gauge-depth series (Lobovsky's H1–H4 are plots only; would need digitizing), a wading bow-wave measurement for `c_adapt`, and a foam/spray metric.
 
+### Ihmsen 2012 potentials mapped onto the foam sources (2026-10-23)
+
+Ihmsen et al. 2012 ("Unified spray, foam and air bubbles for particle-based fluids") spawn
+foam from three clamped potentials: trapped air (velocity difference to the neighbours),
+wave crest (curvature where the surface moves against its normal) and kinetic energy, with
+n = I_k · (k_ta·I_ta + k_wc·I_wc)·dt, so slow water never foams however it is shaped. Rules
+are noted in `Documents\Hydrophobia_research\PAPERS-2026-10-23.md`. On the height field:
+
+| Ihmsen | HydroWater (`foam_pass`, src/hydrowater.c) |
+|---|---|
+| I_wc wave crest | `brk` (slope × rise/c × curvature), unchanged |
+| I_ta trapped air | new `shear` = Σ|v_n − v| / (4c) clamped 0.1..0.6, weight `shear_gain` (0.5) |
+| I_k kinetic gate | `kin` = h|v|²/(g dx²) clamped `kin_lo`..`kin_hi` (0.02..0.5); gate = `kin_floor` + (1 − kin_floor)·kin, kin_floor 0.3 |
+| body sources | `impact`, `slam` stay outside the gate (a body churns still water) |
+
+`src = kin·(brk + bore + shear_gain·shear + 0.1·rapid) + slam + impact`. New
+`hw_foam_params` fields are appended (shear_gain, kin_floor, kin_lo, kin_hi), ini keys of
+the same names (`foam_p[14]` in hwmod.c). Measured on a 120×16 dam break, mean foam after
+3 s, old → new: column 200: 0.123 → 0.124; 60: 0.0553 → 0.0553; 20 (one-cell film):
+0.0239 → 0.0132. So deep fronts are untouched and thin films foam about half as much,
+which is the intent. Harness foam milestones unchanged (flood cover 28 %, drop foam 0.40).
+kin_floor = 1 restores the old behaviour.
+
 ## Ideas not built yet (2026-10-11)
 
 Collected from the Crimson Desert water breakdown, the KWS2 videos and Sea of Thieves. Rough order of value per effort:
