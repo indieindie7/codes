@@ -35,6 +35,8 @@ var config bool  bRandomInstantAction; // after each map load, store a random ot
 var config string LiveFile;        // hot knobs: console script re-run while the level plays ("" = off)
 var config float  LiveInterval;
 var float NextLive;
+var config bool  bEarlyExit;       // gym 10-23: quit at a 30 s tally once the game is decided (all suspects down/arrested + hostages secured, or an officer down)
+var int TallyFree, TallyOff, TallyHostLeft, TallyHS, PrevHS;
 var config float  ExitAfter;       // gym: final tally + clean quit at this level time (0 = off); each live exec costs ~6-9 s wall, so the gym execs once
 var bool bExiting;
 var bool bIADone;
@@ -291,6 +293,12 @@ function Timer()
     {
         NextTally = Level.TimeSeconds + 30.0;
         Tally();
+        if (bEarlyExit && ExitAfter > 0 && !bExiting && Level.TimeSeconds > 20 && (TallyOff > 0 || (TallyFree == 0 && (TallyHostLeft == 0 || TallyHS == PrevHS))))
+        {
+            if (TallyOff > 0) SideLog("SwatMinds early end t="$int(Level.TimeSeconds)$" why=offDown");
+            else SideLog("SwatMinds early end t="$int(Level.TimeSeconds)$" why=clear");
+            ExitAfter = Level.TimeSeconds;  // the exit block below tallies again and quits this tick
+        }
     }
     if (ExitAfter > 0 && Level.TimeSeconds >= ExitAfter && !bExiting)
     {
@@ -625,7 +633,7 @@ event Tick(float DeltaTime)
 function Tally()
 {
     local Pawn P;
-    local int SD, SA, HS, OD, SL;
+    local int SD, SA, HS, OD, SL, HL;
     local string R;
     foreach DynamicActors(class'Pawn', P)
     {
@@ -637,11 +645,14 @@ function Tally()
         }
         else if (P.IsA('SwatHostage') && ISwatAI(P).IsArrested())
             HS++;
+        else if (P.IsA('SwatHostage') && P.IsConscious())
+            HL++;
         else if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer') && !P.IsConscious())
             OD++;
     }
     R = "SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length$" wall="$(Level.Hour*3600+Level.Minute*60+Level.Second)$"."$Level.Millisecond$" frames="$Frames$" dil="$Level.TimeDilation
-        $" paint="$(PaintSum / Max(1, PaintN))$" tap="$(TapSum / Max(1, TapN))$" tapN="$TapN$" dirFace="$(DirFaceSum / Max(1, DirN))$" dirN="$DirN$" dirMiss="$DirMiss$" dirNoShow="$DirNoShow$" cwHold="$CwHold$" cwShot="$CwShot$" cwComply="$CwComply;
+        $" paint="$(PaintSum / Max(1, PaintN))$" tap="$(TapSum / Max(1, TapN))$" tapN="$TapN$" dirFace="$(DirFaceSum / Max(1, DirN))$" dirN="$DirN$" dirMiss="$DirMiss$" dirNoShow="$DirNoShow$" cwHold="$CwHold$" cwShot="$CwShot$" cwComply="$CwComply$" hostLeft="$HL;
+    PrevHS = TallyHS; TallyFree = SL; TallyOff = OD; TallyHostLeft = HL; TallyHS = HS;
     SideLog(R);
 }
 
