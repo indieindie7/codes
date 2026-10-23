@@ -504,3 +504,11 @@ See FRIDAY-PLAN.md: carry-over checks, Frozen Synapse 2 + Door Kickers 1 trainin
 
 - 10-22 23:25: gym stopped by user ("lets stop the gym for now"). Last game 21:38 (SP-FoodWall reeval, sim cycle 565). Curriculum: active 3, 0 promotions, rates Fairfax 0.83 / FoodWall 0.33 / ConvStore 0.0. STOP flag left in autogym/; SwatMinds.ini = .play again (bBubble=True).
 - 10-23 13:34: gym RESTARTED (user: "lets pick up the gym and use local models for researching"), ini = .lastgym, --maps = curriculum.json order, first cycle 566 SP-ConvenienceStore. Strata research x3 running (runs/swat4-cqb-curriculum, swat4-humanlike-ai, swat4-tactics-sim-transfer in Documents/Tools/llm/research/runs), GPU token "swat4" gpu 0 released by the batch script.
+
+## 10-23 15:30: gym stall fix + Strata overseer
+User: "yes, build the strata overseer for the gym".
+- Stall bug in tools/swat4_gymrun.py: reeval always reran the best (needs >= 6 games), new candidates got 3 games, so none could ever overtake. Overseer's first pass found 50 (Fairfax), 56 (FoodWall), 44 (ConvStore) challengers above best #0 stuck under 6 games. Fix: reeval reruns the strongest challenger (< 6 games, score > best) first, else the best.
+- gymrun "new" step pops engine/<map>/inject.json first (src="strata" in search.json); else ES propose. Knobs clamped to KNOBS box.
+- tools/swat4_overseer.py: running hidden beside the autogym (started 15:30, pid 11700). Pass every 10 new gymrun cycles (poll 300 s): checks (stale log > 40 min w/o Swat4.exe, Tracebacks, unretried challengers, games scoring >= 3 with offDown/susFree = loophole flag, plateau) + Strata 8090 proposals (<= 2 per active map, queue max 2) under gpu_queue token "swat4-overseer" gpu=0, skipped if busy. Output: autogym/WATCH.md (newest first, last 20) + overseer.log; "verdict" lines show measured scores of Strata candidates. Stops on autogym/STOP. One pass: py -3.13 -I tools/swat4_overseer.py --once [--no-llm].
+- First pass flagged FoodWall: 10 of last 30 games scored >= 3 while losing an officer / leaving a suspect free: score formula may reward the wrong thing (check next).
+- Not in v1: Coder 8091 drafting sim patches.

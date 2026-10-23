@@ -203,15 +203,25 @@ def search(a):
     plan = ["new"] * a.search + ["reeval"] * a.reeval
     for what in plan:
         if what == "reeval" and state["best"]:
-            rec = next(t for t in state["tried"] if t["n"] == state["best"]["n"])
+            # 10-23: rerun the strongest unsure challenger (< 6 games, mean above the best) before the best itself;
+            # before this only the best was ever rerun, so 3-game candidates could never reach the 6 games needed to win
+            # (ConvStore: best #0 had 249 games, #56 at 4.67 over 3 never retried)
+            ch = [t for t in state["tried"] if t["score"] is not None and t.get("games", 0) < 6 and t["score"] > state["best"]["score"]]
+            pick = max(ch, key=lambda t: t["score"])["n"] if ch else state["best"]["n"]
+            rec = next(t for t in state["tried"] if t["n"] == pick)
             rows = run_knobs(rec["knobs"], a, sdir / f"c{rec['n']:03d}_r{len(rec['run_scores'])}")
             rec["run_scores"] += [cand_score(r["last"]) for r in rows]
             rec["last"] += [r["last"] for r in rows]
         else:
             n = len(state["tried"])
-            knobs = propose(state["tried"], rng)
+            knobs, src = propose(state["tried"], rng), "es"
+            inj = OUT / "inject.json"  # 10-23: candidates queued by tools/swat4_overseer.py (Strata) go first; games judge them
+            q = json.loads(inj.read_text()) if inj.exists() else []
+            if q:
+                knobs, src = {k: round(min(KNOBS[k][1], max(KNOBS[k][0], float(v))), 2) for k, v in q.pop(0)["knobs"].items() if k in KNOBS}, "strata"
+                inj.write_text(json.dumps(q, indent=1))
             rows = run_knobs(knobs, a, sdir / f"c{n:03d}")
-            rec = dict(n=n, knobs=knobs, run_scores=[cand_score(r["last"]) for r in rows], last=[r["last"] for r in rows], asserts=0)
+            rec = dict(n=n, knobs=knobs, src=src, run_scores=[cand_score(r["last"]) for r in rows], last=[r["last"] for r in rows], asserts=0)
             state["tried"].append(rec)
         rec["asserts"] += sum(r["asserts"] for r in rows)
         ok = [x for x in rec["run_scores"] if x is not None]
