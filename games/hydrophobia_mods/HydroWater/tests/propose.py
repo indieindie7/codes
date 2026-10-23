@@ -7,7 +7,7 @@ It never sees or touches tests/score_irl.py, tests/irl_refs.json, tests/irl_base
 Usage: py -3.13 propose.py [--dry] [--model coder|strata]   (--dry: write the patch, do not queue)
 Output: tests/proposals/<YYYYMMDD-HHMM>.patch, .test.json, .prompt.txt, .reply.txt; `ideas.py add` id on the last line.
 """
-import argparse, datetime, glob, json, os, re, subprocess, sys, urllib.request
+import argparse, re, datetime, glob, json, os, subprocess, sys, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 PY = "C:/Users/john/Documents/Tools/kimodo/venv/Scripts/python.exe"
 IDEAS = os.path.expanduser("~/Documents/Tools/ops/ideas.py")
@@ -69,7 +69,7 @@ Note: alpha only scales bed changes and c_adapt only body velocity stamps; neith
 changing them is wasted. Candidates that do act: edge_damp, recon (face reconstruction), wet/dry threshold, flux or
 wave-speed choices, the time step.
 Propose exactly ONE change: a new default value, or a patch of at most 30 changed lines, to src/hydrowater.c or
-src/hydrowater.h only. Do not touch tests. Reply with a one-line title, one line why, then a unified diff
+src/hydrowater.h only. Do not touch tests. Reply with a first line `Title: <at most 8 words>`, then `Why: <one line>`, then a unified diff
 (--- a/src/hydrowater.c / +++ b/src/hydrowater.c, correct hunk headers) in a ```diff block. Nothing else."""
     open(base + ".prompt.txt", "w", encoding="utf-8").write(prompt)
     reply = ask(a.model, prompt)
@@ -84,7 +84,18 @@ src/hydrowater.h only. Do not touch tests. Reply with a one-line title, one line
     open(base + ".patch", "w", encoding="utf-8", newline="\n").write(diff if diff.endswith("\n") else diff + "\n")
     chk = subprocess.run(["git", "apply", "--check", base + ".patch"], cwd=ROOT, capture_output=True, text=True)
     if chk.returncode: print("git apply --check failed:", chk.stderr.strip()); sys.exit(1)
-    title = reply.strip().splitlines()[0][:100]
+    title = ""
+    for ln in reply.strip().splitlines():
+        t = ln.strip().strip("#*` ")
+        if not t or t.startswith(("```", "---", "+++", "@@", "diff ", "+", "-")) or t.lower().startswith(("title:", "why:")) and len(t) < 8:
+            continue
+        if t.lower().startswith("title:"): title = t.split(":", 1)[1].strip(); break
+        if not title: title = t
+    files = re.findall(r"^\+\+\+ b/(\S+)", patch, re.M)
+    hunk = re.search(r"^@@[^\n]*@@[ \t]*(.*)$", patch, re.M)
+    where = ", ".join(os.path.basename(f) for f in files) + (f" ({hunk.group(1).strip()[:40]})" if hunk and hunk.group(1).strip() else "")
+    if len(title) > 70 or not title: title = where or "solver patch"
+    else: title = title + " @ " + where
     targets = [os.path.join(ROOT, f) for f in files]
     build = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", os.path.join(ROOT, "build.ps1")]
     test = [{"type": "backup", "target": t} for t in targets] + [
