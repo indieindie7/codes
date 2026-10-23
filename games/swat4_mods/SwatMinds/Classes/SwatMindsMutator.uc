@@ -154,6 +154,8 @@ var float LastSay;
 function PostBeginPlay()
 {
     local SwatMindsMutator Other;
+    local int i, Seed;
+    local string Opt;
 
     Super.PostBeginPlay();
     // URL ?Mutator= and ServerActors can both spawn us; keep one
@@ -169,6 +171,18 @@ function PostBeginPlay()
     {
         LiveFile = Level.Game.ParseOption(Mid(Level.GetLocalURL(), InStr(Level.GetLocalURL(), "?")), "SMLive");
         Log("SwatMinds live file "$LiveFile, 'SwatMinds');
+    }
+    // gym: ?SMSeed=<n> (with -fixedfps=N the engine seeded rand() with 0) burns n*13 draws = per-seed stream
+    if (Level.Game != None)
+    {
+        Opt = Level.Game.ParseOption(Mid(Level.GetLocalURL(), InStr(Level.GetLocalURL(), "?")), "SMSeed");
+        if (Opt != "")
+        {
+            Seed = int(Opt);
+            for (i = 0; i < Seed * 13; i++)
+                FRand();
+            Log("SwatMinds seed "$Seed$" next="$Rand(1000000), 'SwatMinds');
+        }
     }
     SetTimer(TickInterval, true);
     Log("SwatMinds up: enabled="$bEnabled$" probe="$bProbe, 'SwatMinds');

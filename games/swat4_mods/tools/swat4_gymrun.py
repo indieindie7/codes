@@ -58,6 +58,10 @@ def prep_slot(k):
     shutil.copy(SYS / "User.ini", SYS / f"GymUser{k}.ini")
 
 
+RNG_SEED = {}  # slot -> seed for the next launch (None = engine rdtsc seed, the old random way)
+FIXEDFPS = 30  # fixed tick: also makes level time per frame fixed (1/30 s * dilation)
+
+
 def launch(k, mode, map_, extra, secs):
     # the live file is exec'd ONCE (each exec stalls the game ~6-9 s wall: level time ran at 0.2-0.35x with LiveInterval 3);
     # the mutator then tallies and quits by itself at ExitAfter level seconds, which flushes the log
@@ -69,8 +73,11 @@ def launch(k, mode, map_, extra, secs):
     log.unlink(missing_ok=True)
     (SYS / f"SMTally_GymLive{k}.txt").unlink(missing_ok=True)
     si = subprocess.STARTUPINFO(); si.dwFlags = 1; si.wShowWindow = 7  # SW_SHOWMINNOACTIVE
-    p = subprocess.Popen([str(CSYS / f"Swat4Gym{k}.exe"), f"{map_}?Mutator=SwatMinds.SwatMindsMutator?SMLive=GymLive{k}.txt", "-nointro",
-                      f"-ini=Gym{k}.ini", f"-userini=GymUser{k}.ini", f"LOG=gym{k}.log"], cwd=str(SYS), startupinfo=si)
+    sd = RNG_SEED.get(k)
+    # 10-23 night: -fixedfps makes the engine srand(0); the mutator then burns SMSeed*13 FRand draws (NOTES "engine RNG")
+    url = f"{map_}?Mutator=SwatMinds.SwatMindsMutator?SMLive=GymLive{k}.txt" + (f"?SMSeed={sd}" if sd is not None else "")
+    p = subprocess.Popen([str(CSYS / f"Swat4Gym{k}.exe"), url, "-nointro", f"-ini=Gym{k}.ini", f"-userini=GymUser{k}.ini", f"LOG=gym{k}.log"]
+                         + ([f"-fixedfps={FIXEDFPS}"] if sd is not None else []), cwd=str(SYS), startupinfo=si)
     PROCS[k] = p
     return log
 
@@ -201,20 +208,24 @@ def propose(tried, rng, n_random=4, sigma=0.2):
     return out
 
 
-def run_knobs(knobs, a, d):
-    """3 parallel games with these knobs; returns per-game rows (also appended to <out>/data.jsonl)."""
+def run_knobs(knobs, a, d, start=0):
+    """3 parallel games with these knobs; returns per-game rows (also appended to <out>/data.jsonl).
+    --rng-seeds: game number start+i of every candidate gets engine seed start+i (common random numbers: all candidates
+    meet the same spawn layouts in the same order, so score gaps are knob effects, not layout luck)."""
+    for k in (1, 2, 3):
+        RNG_SEED[k] = (start + k - 1) if getattr(a, "rng_seeds", False) else None
     extra = ["set SwatMinds.SwatMindsMutator %s %s" % kv for kv in knobs.items()] + ["set SwatMinds.SwatMindsMutator " + x for x in a.set]
     d.mkdir(exist_ok=True)
     logs = batch([("scored", i) for i in range(3)], a.secs, a.map, extra, dest=d)
     rows = [parse(l) for l in logs]
     with open(OUT / "data.jsonl", "a") as f:
-        for l, r in zip(logs, rows):
+        for k, (l, r) in enumerate(zip(logs, rows), 1):
             tj = l.with_suffix(".traj.jsonl")  # one frame per line, next to the game log (data.jsonl stays small)
             frames = traj(l)
             tj.write_text("".join(json.dumps(fr) + "\n" for fr in frames))
             r["layout"] = layout(frames)  # 10-23: per-spawn-layout fail stats (overseer)
             f.write(json.dumps(dict(ts=time.strftime("%Y-%m-%d %H:%M:%S"), map=a.map, secs=a.secs, knobs=knobs, set=a.set,
-                                    log=str(l), traj_file=str(tj), score=cand_score(r["last"]), **r)) + "\n")
+                                    log=str(l), traj_file=str(tj), score=cand_score(r["last"]), rng_seed=RNG_SEED.get(k), **r)) + "\n")
     return rows
 
 
@@ -291,7 +302,7 @@ def search(a):
             # (ConvStore: best #0 had 249 games, #56 at 4.67 over 3 never retried)
             pick = reeval_pick(state)
             rec = next(t for t in state["tried"] if t["n"] == pick)
-            rows = run_knobs(rec["knobs"], a, sdir / f"c{rec['n']:03d}_r{len(rec['run_scores'])}")
+            rows = run_knobs(rec["knobs"], a, sdir / f"c{rec['n']:03d}_r{len(rec['run_scores'])}", start=len(rec["run_scores"]))
             rec["run_scores"] += [cand_score(r["last"]) for r in rows]
             rec["last"] += [r["last"] for r in rows]
         else:
@@ -336,6 +347,7 @@ def main():
     ap.add_argument("--search", type=int, default=0, metavar="N", help="run N knob-search candidates (3 parallel games each) over IntelW/IntelRange/IntelLife/OrderTimeout; writes <out>/search.json")
     ap.add_argument("--reeval", type=int, default=0, metavar="M", help="with --search: also rerun the current best M times")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--rng-seeds", action="store_true", help="fixed engine seeds per game number (-fixedfps=30 + ?SMSeed), see run_knobs")
     a = ap.parse_args()
     OUT = Path(a.out)
     OUT.mkdir(parents=True, exist_ok=True)

@@ -526,3 +526,12 @@ User: "yes, build the strata overseer for the gym".
 - Shaped terms: tools/swat4_scoreterms.py (held-out split, Spearman of shaped score vs clear share). Run 10-23: no term improved all 3 maps (signs flip, 8-12 candidates each); score stays SCORE_V 2. ConvStore v2 rho -0.23 (score barely predicts clears there). Rerun once endT data piles up.
 - Gym rule (user): slots run minimized + muted (Gym<k>.ini Music/Ambient/Sound/VoiceVolume=0.0).
 - Gym still STOPPED (user, for today). Test out dir: Documents/SwatMindsGym/test1023.
+
+## 10-23 night: engine RNG (user: "could we decomp the random number system?")
+- No decomp needed. UnrealScript FRand/Rand -> Core appFrand/appRand -> MSVCR71 `rand()` (Core IAT rand 0x103a16b8, srand 0x103a16bc; appFrand body 0x1012cf50 = rand()*const; appRandInit 0x1012cf40 = jmp [srand]). appSRand (0x1012d420) is a separate LCG on Core global 0x102371b0 (appSRandInit 0x1012cfa0 stores it).
+- Seeds: Swat4.exe 0x10909716 calls appRandInit(0) only if Core `GUseFixedTimeStep`; UEngine::Init (Engine 0x10434814..0x10434820) calls appRandInit(GUseFixedTimeStep ? 0 : rdtsc). Init runs once per process, not per map.
+- `GUseFixedTimeStep` is set by Swat4.exe 0x10910f88..0x10910fc3 when the command line has `-FIXEDFPS=<n>` (n > 0), or -BENCHMARK / -RECORDMOVIE. So launching with `-fixedfps=N` = srand(0) every run, no binary patch.
+- Other srand users in Engine (0x105d9311 time()^0x33333333 etc.) sit in the GameSpy area (0x105cb8d0 thunk = UGameSpyManager::ServerSendChallengeString), online only.
+- Plan: gym launches with -fixedfps, mutator config `Seed` burns that many FRand() draws in PostBeginPlay -> per-game reproducible streams. Must test: same seed = same layout? spawn picks may run before the mutator's PostBeginPlay.
+- DONE + tested 10-23 20:4x: mutator `?SMSeed=<n>` burns n*13 FRand draws in PostBeginPlay (logs `SwatMinds seed n next=`). gymrun `RNG_SEED[slot]` adds `?SMSeed` + `-fixedfps=30` (FIXEDFPS). Test (scratchpad seedtest.py, out Documents/SwatMindsGym/seedtest), FoodWall 90 s: seed 5 twice -> same next=4186, same layout [-1,-2 -1,-3 -1,-4]; seed 9 -> next=21094, 4 suspects [-1,-3 -2,-3 -2,-5 -3,-4]. Late values drift slightly (paint 0.93 vs 0.92: threads/Havok). frames=2700 at 90 s = 30 fps fixed.
+- `--rng-seeds` (search): game number g of every candidate gets seed g (common random numbers). Off by default; data.jsonl rows get `rng_seed`. Not yet used by autogym (gym stopped).
