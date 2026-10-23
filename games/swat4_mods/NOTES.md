@@ -503,3 +503,4 @@ User: "instead of like just following like a train, they try to stay close in a 
 See FRIDAY-PLAN.md: carry-over checks, Frozen Synapse 2 + Door Kickers 1 training gyms, paintball lessons, missing perception, later human-level "ATV pack" constraint + director.
 
 - 10-22 23:25: gym stopped by user ("lets stop the gym for now"). Last game 21:38 (SP-FoodWall reeval, sim cycle 565). Curriculum: active 3, 0 promotions, rates Fairfax 0.83 / FoodWall 0.33 / ConvStore 0.0. STOP flag left in autogym/; SwatMinds.ini = .play again (bBubble=True).
+- 10-23 13:34: gym RESTARTED (user: "lets pick up the gym and use local models for researching"), ini = .lastgym, --maps = curriculum.json order, first cycle 566 SP-ConvenienceStore. Strata research x3 running (runs/swat4-cqb-curriculum, swat4-humanlike-ai, swat4-tactics-sim-transfer in Documents/Tools/llm/research/runs), GPU token "swat4" gpu 0 released by the batch script.
