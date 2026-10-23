@@ -73,3 +73,18 @@ clear (susFree 0 and offDown 0), offDown/game, arrests/game, kills vs arrests, t
 
 ### Friday route (from recon)
 Both games: train in Python sims built from the games' own data (DK XML stats/levels, FS2 rules/team defs), share one top-down squad sim core (LOS, doors, FOV, reaction time, simultaneous turns). Real-game checks later: DK replays, FS2 Charon turn files / soak mode.
+
+## Research 10-23 (Strata research.py, 3 runs; 5 arXiv ids title-checked OK)
+Reports: `Documents/Tools/llm/research/runs/swat4-{cqb-curriculum,humanlike-ai,tactics-sim-transfer}/report.md`.
+### For the stalled gym (ConvStore 0 %, FoodWall 33 %)
+- **Room Clearance with Feudal HRL** (arXiv 2105.11328): commander gives orders, sub-agents execute; solves floorplans plain RL can't. Matches "policy library + selector" (phase 2) -> split the search: tune per-behaviour knobs (entry / hold / bubble) separately instead of one joint vector.
+- **Teammate-skill curriculum** (2312.11768): learner paired with *weaker* teammates, decreasing over time, gives best team reward. Gym version = the "assist that fades": weaker suspects (skill/morale knob) on hard maps first, raise as clear rate climbs.
+- **Adversarial curriculum** (2509.03771): an attacker generates scenarios that hit the defenders' weak spots. Gym version: suspect-placement search that maximises officer failure on ConvStore, alternated with officer search (sim already does self-play; extend to engine spawn picks).
+- **Tactical reward shaping** (JSEE 2024): ally-focused threat advice (cover the teammate under most threat) beat self-focused. Our bubble GuardScore already leans this way; candidate gym knob: weight on "teammate in danger".
+- Train low-level behaviours first, then the commander (2505.08995).
+### For phase 3/4 (human-like)
+- Reaction ~250 ms; action delay hurts RL agents unless they predict ahead (1810.07286, "At Human Speed"); GameAIPro2 ch.5 on agent reaction time.
+- Vision: focal 15-30 deg, periphery to ~120 deg with an awareness meter filled faster by fast movers; hearing as SNR (sound minus ambient).
+- LKP memory with confidence decay; rubber-banding must stay under the detection threshold; tweak behaviour (lines, timing) not speed (Mario Kart blue shell / Forza Drivatar backlash). GameAIPro ch.42 rubber-banding system.
+### Ports
+- No prior work found training AI inside DK/FS (run 3 thin: store pages + forums only). Keep the "own Python sim from game data" route.
