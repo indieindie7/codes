@@ -82,7 +82,7 @@ src/hydrowater.h only. Do not touch tests. Reply with a first line `Title: <at m
     if sum(1 for l in diff.splitlines() if l[:1] in "+-" and l[:3] not in ("+++", "---")) > 60:
         print("patch too large"); sys.exit(1)
     open(base + ".patch", "w", encoding="utf-8", newline="\n").write(diff if diff.endswith("\n") else diff + "\n")
-    chk = subprocess.run(["git", "apply", "--check", base + ".patch"], cwd=ROOT, capture_output=True, text=True)
+    chk = subprocess.run(["git", "apply", "--recount", "--check", base + ".patch"], cwd=ROOT, capture_output=True, text=True)
     if chk.returncode: print("git apply --check failed:", chk.stderr.strip()); sys.exit(1)
     title = ""
     for ln in reply.strip().splitlines():
@@ -91,19 +91,29 @@ src/hydrowater.h only. Do not touch tests. Reply with a first line `Title: <at m
             continue
         if t.lower().startswith("title:"): title = t.split(":", 1)[1].strip(); break
         if not title: title = t
-    files = re.findall(r"^\+\+\+ b/(\S+)", patch, re.M)
-    hunk = re.search(r"^@@[^\n]*@@[ \t]*(.*)$", patch, re.M)
+    files = re.findall(r"^\+\+\+ b/(\S+)", diff, re.M)
+    hunk = re.search(r"^@@[^\n]*@@[ \t]*(.*)$", diff, re.M)
     where = ", ".join(os.path.basename(f) for f in files) + (f" ({hunk.group(1).strip()[:40]})" if hunk and hunk.group(1).strip() else "")
     if len(title) > 70 or not title: title = where or "solver patch"
     else: title = title + " @ " + where
     targets = [os.path.join(ROOT, f) for f in files]
     build = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", os.path.join(ROOT, "build.ps1")]
-    test = [{"type": "backup", "target": t} for t in targets] + [
-        {"name": "apply", "cmd": ["git", "apply", base + ".patch"], "cwd": ROOT, "timeout": 60},
+    # next ideas.py id (max + 1, as ideas.py add computes it); the verdict step needs it before add
+    try:
+        ideas_json = json.load(open(os.path.join(os.path.dirname(IDEAS), "ideas.json"), encoding="utf-8"))
+        next_id = (max(x["id"] for x in ideas_json) + 1) if ideas_json else 1
+    except Exception:
+        next_id = 0
+    score_log = os.path.join(LOGS, f"idea{next_id}_score.log").replace("\\", "/")
+    # autorun reorders steps by estimate: every step names what it waits for, backups first
+    test = [{"name": "backup", "type": "backup", "target": t} for t in targets] + [
+        {"name": "apply", "cmd": ["git", "apply", "--recount", base + ".patch"], "cwd": ROOT, "timeout": 60, "after": "backup"},
         {"name": "build", "cmd": build, "cwd": ROOT, "timeout": 600, "after": "apply"},
         {"name": "score", "type": "postcheck", "cmd": [PY, os.path.join(HERE, "score_irl.py")], "cwd": ROOT,
          "min_rows": 20, "revert": targets, "timeout": 1800, "after": "build"},
-        {"name": "rebuild", "cmd": build, "cwd": ROOT, "timeout": 600, "after": "score"}]
+        {"name": "rebuild", "cmd": build, "cwd": ROOT, "timeout": 600, "after": "score"},
+        {"name": "verdict", "cmd": ["py", "-3.13", "-I", os.path.join(HERE, "write_verdict.py"), str(next_id), score_log],
+         "cwd": ROOT, "timeout": 60, "after": "rebuild"}]
     json.dump(test, open(base + ".test.json", "w", encoding="utf-8"), indent=1)
     print("patch", base + ".patch"); print("title", title)
     if a.dry: print("dry run, not queued"); return
