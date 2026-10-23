@@ -308,6 +308,20 @@ Foam on real water (2026-10-10), corrected: the Practice pool runs 80 sheets on 
 
 Depth colour (2026-10-11, commit fc81684): each cell's depth gives a tint `depth_colour * (1 - exp(-d / depth_scale))` in the mesh's blue byte and the world texture's blue channel; the shader dims red first, then green, and fills with a dark water colour. Foam streaks (2026-10-11): the world texture is now 1024 x 512, its right half holding the flow direction (RG, 128 = still) scaled by `1 - exp(-speed / streak_speed)`; the shader blends the foam lace toward four noise layers stretched 5x along fixed axes (0, 45, 90, 135 degrees), weighted by cos^4 of the angle to the flow, so foam draws as streaks where the water moves. Fixed axes keep the noise from smearing where the flow turns. Neither is seen in a frame yet.
 
+## Regressive tuner (2026-10-23)
+
+`tests/tune.py` is a (1+λ) evolution strategy ("regressive fuzzy" search, user 10-23) over the coarse-solver knobs `alpha`, `c_adapt`, `edge_damp`, `cfl`, `recon`. Each candidate is scored on scenes dam / drop / bump / wade / ritter at t = 0.5, 1, 2, 3 s: RMSE of eta against a reference, plus 50 × volume drift and 0.002 × sub-steps. References: the same solver at dx/4 (`--ref same` keeps default knobs, `--ref min` least damping) and, for `ritter`, the exact Ritter (1892) dam-break solution. Every eval is logged to `tests/tune*/log.jsonl`; `best.json` holds the winner. One eval ≈ 0.02 s, so a 15 × 12 run takes seconds. `tests/tune_check.py alpha=.. edge_damp=..` reruns the milestone harness tests with overrides.
+
+Findings (seeds 2–4, 10–15 gens × 12):
+- `recon` on wins everywhere, including against the exact solution (ritter 0.718 → 0.893 when off).
+- `alpha` settles at 0.82–0.91 with every reference; 0.85 is a safe default candidate.
+- `c_adapt` only acts in body stamping (`hydrowater.c` stamp loop), so the dam/drop/bump scenes do not see it; in `wade` it ran to the top bound (0.6) against the dx/4 reference. That reference is biased: a fine run with the same knobs rewards mimicking its own damping, and `--ref min` flipped the c_adapt optimum from 0.02 to 0.55. Needs an external truth (a measured bow-wave height, or the game's own stamp) before trusting a value.
+- `edge_damp` 1.0 (none) is closest to Ritter; the 0.7 default costs accuracy at the wet/dry front for stability we have not seen fail in the harness.
+- Harness with alpha 0.85 / edge_damp 1.0 vs defaults: dam front 1300 vs 1120 units at 3 s, film cells 0 vs 1, no negatives, drift 3e-8; drop foam peak 0.50 vs 0.40; buoyancy and wading unchanged. In-game check pending before the ini defaults move.
+- Strata (local LLM, via autorun `queue_hwtune.json`) read the log digest and only confirmed the surface reading (low c_adapt + high edge_damp score best); it did not catch that c_adapt is body-only. Use it for digests, not for solver reasoning.
+
+Next for the tuner: score foam/air knobs against the foam test videos (needs a visual metric), and add a scene with the game's own stamp so c_adapt gets a real target.
+
 ## Ideas not built yet (2026-10-11)
 
 Collected from the Crimson Desert water breakdown, the KWS2 videos and Sea of Thieves. Rough order of value per effort:
