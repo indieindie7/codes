@@ -99,7 +99,8 @@ def engine_step(cycle, map_, secs, log):
     d = OUT / "engine" / map_
     reeval = cycle % REEVAL_EVERY == REEVAL_EVERY - 1 and (d / "search.json").exists()
     args = ["--reeval", "1"] if reeval else ["--search", "1"]
-    run([PY, "-I", str(HERE / "swat4_gymrun.py"), *args, "--secs", str(secs), "--map", map_, "--out", str(d), "--seed", str(cycle)], log)
+    run([PY, "-I", str(HERE / "swat4_gymrun.py"), *args, "--secs", str(secs), "--map", map_, "--out", str(d), "--seed", str(cycle),
+         "--rng-seeds"], log)  # user 10-23: fixed engine seeds per game number (common random numbers) from the next gym start
 
 
 def report(t0, cycles):
