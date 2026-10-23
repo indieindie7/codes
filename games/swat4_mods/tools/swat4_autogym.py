@@ -28,7 +28,14 @@ def clear_rate(map_):
     f = OUT / "engine" / map_ / "data.jsonl"
     if not f.exists():
         return 0.0, 0
-    rows = [json.loads(l) for l in f.read_text().splitlines() if l.strip()][-PROMOTE_GAMES:]
+    rows = [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
+    # 10-23 eval-best gate: promotion counts only games played with the current best's knobs (reeval games), not
+    # exploration games of fresh candidates, which mostly fail and would hold every map below the bar
+    sj = OUT / "engine" / map_ / "search.json"
+    best = (json.loads(sj.read_text()).get("best") or {}).get("knobs") if sj.exists() else None
+    if best:
+        rows = [r for r in rows if r.get("knobs") == best]
+    rows = rows[-PROMOTE_GAMES:]
     ok = sum(1 for r in rows if r.get("last") and r["last"]["susFree"] == 0 and r["last"]["offDown"] == 0)
     return (ok / len(rows) if rows else 0.0), len(rows)
 

@@ -29,6 +29,8 @@ TALLY = re.compile(r"SwatMinds tally t=(\d+) score=\w+ orders=(\d+) susDown=(\d+
 KEYS = ["t", "orders", "susDown", "susArrest", "susFree", "hostSecured", "offDown", "intel"]
 EXTRA = re.compile(r"paint=([\d.]+) tap=([\d.]+) tapN=(\d+) dirFace=([\d.]+) dirN=(\d+) dirMiss=(\d+) dirNoShow=(\d+)")  # 10-20 coverage paint + director
 EXTRA_KEYS = ["paint", "tap", "tapN", "dirFace", "dirN", "dirMiss", "dirNoShow"]
+HOSTLEFT = re.compile(r"hostLeft=(\d+)")  # 10-23: hostages still conscious and not restrained
+EARLY = re.compile(r"SwatMinds early end t=(\d+) why=(\w+)")  # 10-23 bEarlyExit: the mutator quit at the first tally after a clear / officer down
 COMPLY = re.compile(r"cwHold=(\d+) cwShot=(\d+) cwComply=(\d+)")  # 10-20 c ROE: compliance holds posted, broken by suspect fire, suspects that complied
 
 
@@ -49,6 +51,7 @@ def prep_slot(k):
     ini = (SYS / "Swat4.ini").read_text(encoding="latin-1")
     if not os.environ.get("GYM_D3D"):  # GYM_D3D=1: keep the real renderer (speed comparison)
         ini = re.sub(r"(?m)^RenderDevice=.*$", "RenderDevice=Engine.NullRenderDevice", ini)
+    ini = re.sub(r"(?m)^(MusicVolume|AmbientVolume|SoundVolume|VoiceVolume)=.*$", r"\1=0.0", ini)  # user 10-23: gym games muted
     ini = re.sub(r"(?m)^WindowedViewportX=.*$", "WindowedViewportX=320", ini)
     ini = re.sub(r"(?m)^WindowedViewportY=.*$", "WindowedViewportY=240", ini)
     (SYS / f"Gym{k}.ini").write_text(ini, encoding="latin-1")
@@ -59,7 +62,8 @@ def launch(k, mode, map_, extra, secs):
     # the live file is exec'd ONCE (each exec stalls the game ~6-9 s wall: level time ran at 0.2-0.35x with LiveInterval 3);
     # the mutator then tallies and quits by itself at ExitAfter level seconds, which flushes the log
     lines = LIVE.read_text(encoding="latin-1").splitlines() + ["set SwatMinds.SwatMindsMutator bGhostPlayer True", "set SwatMinds.SwatMindsMutator bTraj True",
-             "set SwatMinds.SwatMindsMutator LiveInterval 1000000", f"set SwatMinds.SwatMindsMutator ExitAfter {secs}", "set SwatMinds.SwatMindsMutator Dilation 4"] + list(extra) + MODES[mode]
+             "set SwatMinds.SwatMindsMutator LiveInterval 1000000", f"set SwatMinds.SwatMindsMutator ExitAfter {secs}", "set SwatMinds.SwatMindsMutator Dilation 4",
+             "set SwatMinds.SwatMindsMutator bEarlyExit True"] + list(extra) + MODES[mode]
     (SYS / f"GymLive{k}.txt").write_text("\n".join(lines) + "\n", encoding="latin-1")
     log = SYS / f"gym{k}.log"
     log.unlink(missing_ok=True)
@@ -110,6 +114,11 @@ def parse(log):
     cw = COMPLY.findall(txt)
     if last and cw:
         last.update(cwHold=int(cw[-1][0]), cwShot=int(cw[-1][1]), cwComply=int(cw[-1][2]))
+    hl, ee = HOSTLEFT.findall(txt), EARLY.search(txt)
+    if last and hl:
+        last["hostLeft"] = int(hl[-1])
+    if last and ee:
+        last.update(endT=int(ee.group(1)), end=ee.group(2))
     cmds = re.findall(r"SwatMinds officers (MoveAndClear|BangAndClear|BreachAndClear|BreachBangAndClear|secure|timeout)", txt)
     return dict(last=last, cmds={c: cmds.count(c) for c in set(cmds)}, traj=len(TRAJ.findall(txt)),
                 asserts=len(re.findall(r"Assertion failed", txt)), crash="Critical:" in txt)
@@ -126,6 +135,14 @@ def traj(log):
         elif out and ("SwatMinds officers " in line or "SwatMinds intel " in line):
             out.append(dict(t=out[-1]["t"], ev=line.split("SwatMinds ", 1)[1][:200]))
     return out
+
+
+def layout(frames):
+    """spawn signature: enemy start cells (512 uu) from the first traj frame; same string = same suspect layout"""
+    fr = next((f for f in frames if "pawns" in f), None)
+    if not fr:
+        return None
+    return " ".join(sorted(f"{x // 512},{y // 512}" for k, (x, y, w, st) in fr["pawns"].items() if k[0] == "E"))
 
 
 def summarize():
@@ -193,10 +210,59 @@ def run_knobs(knobs, a, d):
     with open(OUT / "data.jsonl", "a") as f:
         for l, r in zip(logs, rows):
             tj = l.with_suffix(".traj.jsonl")  # one frame per line, next to the game log (data.jsonl stays small)
-            tj.write_text("".join(json.dumps(fr) + "\n" for fr in traj(l)))
+            frames = traj(l)
+            tj.write_text("".join(json.dumps(fr) + "\n" for fr in frames))
+            r["layout"] = layout(frames)  # 10-23: per-spawn-layout fail stats (overseer)
             f.write(json.dumps(dict(ts=time.strftime("%Y-%m-%d %H:%M:%S"), map=a.map, secs=a.secs, knobs=knobs, set=a.set,
                                     log=str(l), traj_file=str(tj), score=cand_score(r["last"]), **r)) + "\n")
     return rows
+
+
+RUNGS = [3, 6, 12, 24]  # 10-23 successive halving: games a candidate must reach before it may climb further
+
+
+def reeval_pick(state):
+    """which candidate gets the next 3 games. 1) the strongest challenger above the best still under 6 games;
+    2) successive halving: at each rung (6, 12, 24 games) the top half of the candidates that reached the rung below
+    and are within 1.0 of the best get rerun up to the next rung (lowest rung first); 3) else the best itself."""
+    sc = [t for t in state["tried"] if t["score"] is not None]
+    b = state["best"]
+    ch = [t for t in sc if t.get("games", 0) < 6 and t["score"] > b["score"]]
+    if ch:
+        return max(ch, key=lambda t: t["score"])["n"]
+    for lo, hi in zip(RUNGS[1:], RUNGS[2:]):
+        pool = sorted([t for t in sc if t.get("games", 0) >= lo], key=lambda t: -t["score"])
+        top = pool[:max(2, len(pool) // 2)]
+        up = [t for t in top if t.get("games", 0) < hi and t["score"] >= b["score"] - 1.0 and t["n"] != b["n"]]
+        if up:
+            return max(up, key=lambda t: t["score"])["n"]
+    return b["n"]
+
+
+def surrogate_propose(tried, rng, n_pool=60, k=7):
+    """10-23: CMA-style + k-NN surrogate. Pool = Gaussian mutations of the best + samples from a diagonal Gaussian fit to
+    the top 8 means (score-weighted); every pool point is predicted by inverse-distance k-NN over all tried candidates
+    (normalised knob space, neighbours weighted by games) and the best upper bound (mean + 0.5 * spread) is run."""
+    sc = [t for t in tried if t["score"] is not None and t.get("games", 0) > 0]
+    names = list(KNOBS)
+    norm = lambda kn: [(kn.get(n, (KNOBS[n][0] + KNOBS[n][1]) / 2) - KNOBS[n][0]) / (KNOBS[n][1] - KNOBS[n][0]) for n in names]
+    X = [(norm(t["knobs"]), t["score"], t["games"]) for t in sc]
+    top = sorted(sc, key=lambda t: -t["score"])[:8]
+    w = [len(top) - i for i in range(len(top))]
+    mu = [sum(wi * norm(t["knobs"])[j] for wi, t in zip(w, top)) / sum(w) for j in range(len(names))]
+    sd = [max(0.05, (sum(wi * (norm(t["knobs"])[j] - mu[j]) ** 2 for wi, t in zip(w, top)) / sum(w)) ** 0.5) for j in range(len(names))]
+    best = norm(max([t for t in sc if t.get("games", 0) >= 6] or sc, key=lambda t: t["score"])["knobs"])
+    pool = [[min(1, max(0, rng.gauss(best[j], 0.2))) for j in range(len(names))] for _ in range(n_pool // 2)]
+    pool += [[min(1, max(0, rng.gauss(mu[j], sd[j]))) for j in range(len(names))] for _ in range(n_pool - n_pool // 2)]
+
+    def pred(z):
+        d = sorted(((sum((a - b) ** 2 for a, b in zip(z, x)) ** 0.5, s, g) for x, s, g in X))[:k]
+        ws = [g / (dd + 0.05) for dd, s, g in d]
+        m = sum(wi * s for wi, (dd, s, g) in zip(ws, d)) / sum(ws)
+        v = sum(wi * (s - m) ** 2 for wi, (dd, s, g) in zip(ws, d)) / sum(ws)
+        return m + 0.5 * v ** 0.5
+    z = max(pool, key=pred)
+    return {n: round(KNOBS[n][0] + z[j] * (KNOBS[n][1] - KNOBS[n][0]), 2) for j, n in enumerate(names)}
 
 
 def search(a):
@@ -223,15 +289,19 @@ def search(a):
             # 10-23: rerun the strongest unsure challenger (< 6 games, mean above the best) before the best itself;
             # before this only the best was ever rerun, so 3-game candidates could never reach the 6 games needed to win
             # (ConvStore: best #0 had 249 games, #56 at 4.67 over 3 never retried)
-            ch = [t for t in state["tried"] if t["score"] is not None and t.get("games", 0) < 6 and t["score"] > state["best"]["score"]]
-            pick = max(ch, key=lambda t: t["score"])["n"] if ch else state["best"]["n"]
+            pick = reeval_pick(state)
             rec = next(t for t in state["tried"] if t["n"] == pick)
             rows = run_knobs(rec["knobs"], a, sdir / f"c{rec['n']:03d}_r{len(rec['run_scores'])}")
             rec["run_scores"] += [cand_score(r["last"]) for r in rows]
             rec["last"] += [r["last"] for r in rows]
         else:
             n = len(state["tried"])
-            knobs, src = propose(state["tried"], rng), "es"
+            scored = [t for t in state["tried"] if t["score"] is not None]
+            # 10-23: every 2nd new candidate comes from the k-NN surrogate once 12 candidates are scored, else ES mutation
+            if len(scored) >= 12 and n % 2 == 0:
+                knobs, src = surrogate_propose(state["tried"], rng), "surr"
+            else:
+                knobs, src = propose(state["tried"], rng), "es"
             inj = OUT / "inject.json"  # 10-23: candidates queued by tools/swat4_overseer.py (Strata) go first; games judge them
             q = json.loads(inj.read_text()) if inj.exists() else []
             if q:

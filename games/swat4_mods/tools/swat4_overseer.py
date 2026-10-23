@@ -78,6 +78,65 @@ def checks(maps, st, hist):
     return out
 
 
+def load_traj(path):
+    try:
+        return [json.loads(l) for l in Path(path).read_text().splitlines() if l.strip()]
+    except OSError:
+        return []
+
+
+def failures(m, n=60):
+    """10-23 failure-cause digest: for the failed games among the last n of map m, read the traj frames and name what
+    happened: each officer that went down (time, nearest conscious suspect distance) and each suspect left free
+    (its last spot vs its spawn). Also per spawn layout (gymrun row "layout") games and clear share."""
+    f = OUT / "engine" / m / "data.jsonl"
+    rows = [json.loads(l) for l in f.read_text().splitlines()[-n:] if l.strip()] if f.exists() else []
+    causes, lay = {}, {}
+    for r in rows:
+        L = r.get("last") or {}
+        if not L:
+            continue
+        ok = L["offDown"] == 0 and L["susFree"] == 0
+        g = lay.setdefault(r.get("layout") or "?", [0, 0]); g[0] += 1; g[1] += ok
+        if ok:
+            continue
+        fr = [x for x in load_traj(r.get("traj_file", "")) if "pawns" in x]
+        if not fr:
+            causes["no traj"] = causes.get("no traj", 0) + 1
+            continue
+        downed = set()
+        for x in fr:
+            for k, (px, py, w, s) in x["pawns"].items():
+                if k[0] == "O" and s == "d" and k not in downed:
+                    downed.add(k)
+                    es = [((px - ex) ** 2 + (py - ey) ** 2) ** 0.5 for e, (ex, ey, ew, es_) in x["pawns"].items() if e[0] == "E" and es_ == "c"]
+                    d = min(es) if es else None
+                    when = "early (<60 s)" if x["t"] < 60 else "mid (60-180 s)" if x["t"] < 180 else "late (>180 s)"
+                    near = "no suspect up" if d is None else "suspect within 600 uu" if d < 600 else "suspect 600-1500 uu" if d < 1500 else "suspect beyond 1500 uu (unseen shooter?)"
+                    c = f"officer down {when}, {near}"
+                    causes[c] = causes.get(c, 0) + 1
+        first, lastf = fr[0]["pawns"], fr[-1]["pawns"]
+        for k, (px, py, w, s) in lastf.items():
+            if k[0] == "E" and s == "c":
+                sx, sy = first.get(k, [px, py])[:2]
+                moved = ((px - sx) ** 2 + (py - sy) ** 2) ** 0.5
+                c = "suspect free, never left spawn area (room never cleared?)" if moved < 400 else "suspect free, moved away (fled / flanked)"
+                causes[c] = causes.get(c, 0) + 1
+    return sorted(causes.items(), key=lambda kv: -kv[1]), lay
+
+
+def failure_lines(maps):
+    out = []
+    for m in maps:
+        c, lay = failures(m)
+        if c:
+            out.append(f"{m} failure causes (last 60 games): " + "; ".join(f"{k} x{v}" for k, v in c[:5]))
+        bad = sorted(((g, ok, k) for k, (g, ok) in lay.items() if g >= 3), key=lambda t: t[1] / t[0])[:3]
+        if len(lay) > 1 and bad:
+            out.append(f"{m} worst spawn layouts ({len(lay)} seen): " + "; ".join(f"[{k}] clear {ok}/{g}" for g, ok, k in bad))
+    return out
+
+
 def digest(maps, st, flags):
     lines = [f"Curriculum: active maps {maps}, clear rates (last 6 games) {st.get('rates')}, promotions {len(st.get('promotions', []))}",
              "Promotion needs clear rate >= 0.8 on every active map. clear = no suspect free and no officer down.",
@@ -85,7 +144,8 @@ def digest(maps, st, flags):
              "Knob box (name: lo..hi): " + ", ".join(f"{k}: {lo}..{hi}" for k, (lo, hi, _) in KNOBS.items()),
              "Knob meaning: IntelW weight of shared intel; IntelRange/IntelLife radius and seconds intel lasts; OrderTimeout s before an order is dropped; "
              "OfficerThink s between officer decisions (lower = faster); MaxDoorDist reach for door picks; ComplyWait s officers hold a compliant suspect (<=0 off).",
-             "Health checks: " + ("; ".join(flags) if flags else "none")]
+             "Health checks: " + ("; ".join(flags) if flags else "none"),
+             "Failure causes from game trajectories (use these to pick knobs that fix the main cause):", *failure_lines(maps)]
     for m in maps:
         s = search_state(m)
         sc = sorted([t for t in s["tried"] if t.get("score") is not None], key=lambda t: -t["score"])[:8]
@@ -105,7 +165,7 @@ def gpu(cmd, *args):
 def ask_strata(text):
     sysmsg = ("You tune a SWAT 4 squad AI training gym. Read the digest. Propose knob sets likely to raise the clear rate "
               "on the weakest active maps, using the patterns in the top candidates (what the good ones share, what is untried). "
-              "Reply with ONLY a JSON object: {\"notes\": [<=4 short strings>], \"proposals\": [{\"map\": <map>, \"knobs\": {<all knob names>: number}, \"why\": <short>}]}. "
+              "Name the top failure cause per map in notes. Reply with ONLY a JSON object: {\"notes\": [<=4 short strings>], \"proposals\": [{\"map\": <map>, \"knobs\": {<all knob names>: number}, \"why\": <short>}]}. "
               f"At most {MAX_QUEUE} proposals per map, values inside the box.")
     body = json.dumps({"messages": [{"role": "system", "content": sysmsg}, {"role": "user", "content": text}],
                        "temperature": 0.4, "top_p": 0.95, "max_tokens": 1500,
@@ -169,6 +229,7 @@ def one_pass(hist, use_llm):
             notes = ["LLM skipped: GPU busy (" + g.strip().splitlines()[-1][:80] + ")" if g.strip() else "LLM skipped: no GPU token"]
     block = [f"## {time.strftime('%Y-%m-%d %H:%M')} pass (cycles {cycles()}, maps {maps})",
              "checks: " + ("; ".join(flags) if flags else "ok"),
+             *[f"- fail {x}" for x in failure_lines(maps)],
              *[f"- strata: {n}" for n in notes], *[f"- queued {q}" for q in queued],
              *[f"- verdict {v}" for v in strata_results(maps)], ""]
     wf = OUT / "WATCH.md"
