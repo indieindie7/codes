@@ -338,7 +338,7 @@ Results (seed 3):
 | tuner, lab only, 6 gens | 1.472 at edge_damp 0.69 | recon off wins by 0.02 (fewer steps) |
 | tuner, ritter+lab, 8 gens | 1.476, Ritter rmse 0.387 | alpha 0.903, edge_damp 0.713, cfl 0.5, recon on |
 
-Sensitivity: with edge_damp 0.7 the front speed stays 1.44–1.48 across thresholds 0.1–5 % and H 100–400 (except the coarsest cases); undamped it drifts with resolution. So `edge_damp` is doing the job of the bed friction the solver lacks, and the shipped default 0.7 already lands on the lab mean. The Ritter-only tuner's push to edge_damp 1.0 (above) was toward the ideal, not reality: keep 0.7. Carry-over from Ritter: alpha ≈ 0.9 and recon on cost nothing here.
+Sensitivity: with edge_damp 0.7 the front speed stays 1.44–1.48 across thresholds 0.1–5 % and H 100–400 (except the coarsest cases); undamped it drifts with resolution. So `edge_damp` is doing the job of the bed friction the solver lacks, and the shipped default 0.7 already lands on the lab mean. The Ritter-only tuner's push to edge_damp 1.0 (above) was toward the ideal, not reality: keep 0.7. Correction to the Ritter numbers above: `alpha` only scales the push from a *changing bed* (hydrowater.c, displacement step), so in dam/ritter/lab it does nothing; alpha 1.0, 0.82 and 0.5 give identical scores (ritter rmse 0.3514, dam 0.8773). The tuner's "alpha 0.82–0.91" was a random walk on a flat knob. Defaults stay alpha 1.0, c_adapt 0.2, edge_damp 0.7, recon on; the only tuner result that moves a default is none.
 
 Still missing for a real IRL score: a front-shape or gauge-depth series (Lobovsky's H1–H4 are plots only; would need digitizing), a wading bow-wave measurement for `c_adapt`, and a foam/spray metric.
 
