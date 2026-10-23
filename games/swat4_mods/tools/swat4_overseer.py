@@ -18,7 +18,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from swat4_gymrun import KNOBS  # noqa: E402  (same box the search uses)
+from swat4_gymrun import KNOBS, cand_score  # noqa: E402  (same box the search uses)
 
 OUT = Path("C:/Users/john/Documents/SwatMindsGym/autogym")
 GPUQ = Path.home() / ".claude/skills/local-gpu-ai/gpu_queue.py"
@@ -68,7 +68,7 @@ def checks(maps, st, hist):
         if len(ch) >= 3:
             out.append(f"{m}: {len(ch)} challengers above best #{b['n']} ({b['score']}) still under 6 games")
         rows = [json.loads(l) for l in (OUT / "engine" / m / "data.jsonl").read_text().splitlines()[-30:] if l.strip()]
-        sus = [r for r in rows if r.get("score") is not None and r["score"] >= 3 and r.get("last") and (r["last"]["offDown"] or r["last"]["susFree"])]
+        sus = [r for r in rows if r.get("last") and cand_score(r["last"]) >= 3 and (r["last"]["offDown"] or r["last"]["susFree"])]
         if sus:
             out.append(f"{m}: {len(sus)} of last {len(rows)} games scored >= 3 but lost an officer / left a suspect free (score loophole?)")
     rates = st.get("rates", {})
@@ -81,7 +81,7 @@ def checks(maps, st, hist):
 def digest(maps, st, flags):
     lines = [f"Curriculum: active maps {maps}, clear rates (last 6 games) {st.get('rates')}, promotions {len(st.get('promotions', []))}",
              "Promotion needs clear rate >= 0.8 on every active map. clear = no suspect free and no officer down.",
-             "Score per game = 2*arrests + hostagesSecured - 2*officersDown - suspectsFree + 2*paintShare - 0.5*missedThreats.",
+             "Score per game = 2*arrests + hostagesSecured - 2*officersDown - 2*suspectsFree + 2*paintShare - 0.5*missedThreats + 3 if clear.",
              "Knob box (name: lo..hi): " + ", ".join(f"{k}: {lo}..{hi}" for k, (lo, hi, _) in KNOBS.items()),
              "Knob meaning: IntelW weight of shared intel; IntelRange/IntelLife radius and seconds intel lasts; OrderTimeout s before an order is dropped; "
              "OfficerThink s between officer decisions (lower = faster); MaxDoorDist reach for door picks; ComplyWait s officers hold a compliant suspect (<=0 off).",

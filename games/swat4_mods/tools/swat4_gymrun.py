@@ -160,7 +160,15 @@ def cand_score(last):
         return None
     # 10-20: + 2 * mean painted share (coverage of seen nav points), - 0.5 per director threat seen but never faced
     # 10-20 b: arrests count double (SWAT rules: kills cost the mission), so +2 per arrest
-    return 2 * last["susArrest"] + last["hostSecured"] - 2 * last["offDown"] - last["susFree"] + 2 * last.get("paint", 0) - 0.5 * last.get("dirMiss", 0)
+    # 10-23 (SCORE_V 2): + 3 for a clear game (no officer down, no suspect free), suspect free costs 2. Before, an extra
+    # arrest (+2) outweighed a free suspect (-1): 60 of 165 FoodWall games scoring >= 3 were failures; on stored games the
+    # top-quarter clear share goes FoodWall 0.71 -> 0.96, ConvStore 0.52 -> 0.66 (max possible 0.68)
+    clear = last["offDown"] == 0 and last["susFree"] == 0
+    return (2 * last["susArrest"] + last["hostSecured"] - 2 * last["offDown"] - 2 * last["susFree"] + 2 * last.get("paint", 0)
+            - 0.5 * last.get("dirMiss", 0) + (3 if clear else 0))
+
+
+SCORE_V = 2  # bump when cand_score changes: search() rescores stored candidates from their saved tallies
 
 
 def propose(tried, rng, n_random=4, sigma=0.2):
@@ -196,6 +204,15 @@ def search(a):
     sdir = OUT / "search_logs"; sdir.mkdir(exist_ok=True)
     sj = OUT / "search.json"
     state = json.loads(sj.read_text()) if sj.exists() else dict(tried=[], best=None)
+    if state["tried"] and state.get("score_v") != SCORE_V:
+        for t in state["tried"]:
+            t["run_scores"] = [cand_score(l) for l in t["last"]]
+            ok = [x for x in t["run_scores"] if x is not None]
+            t["score"], t["games"] = (round(sum(ok) / len(ok), 3) if ok else None), len(ok)
+        sc_all = [t for t in state["tried"] if t["score"] is not None]
+        sure = [t for t in sc_all if t.get("games", 0) >= 6] or sc_all
+        state["best"] = max(sure, key=lambda t: t["score"]) if sure else None
+    state["score_v"] = SCORE_V
     rng = random.Random(a.seed + len(state["tried"]) + int(time.time()) % 100000)
     kill()
     for k in range(1, 4):
