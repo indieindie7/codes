@@ -583,3 +583,15 @@ bubble runs while the player has no order (any player order, their own fall in t
 re-issue backoff 6 s. Also: a bubble job that ends with its target still open is skipped 20 s (BubBanA/BubBanT; was
 re-picked every tick, 4 lines/s). Test esctest (1 slot FoodWall 90 s, escort+bubble): 0 FallIn re-orders, bubble log
 lines 66 -> 15. Real-play check still needed.
+
+## TOMORROW (user, 10-23 late): player-session officer behaviour
+Recording: Videos/2026-10-23 22-14-28.mp4; play log SMRec_SP-FoodWall_2026-10-23_22-13-26_0..7.txt. User has more to say about it.
+User verbatim: "first they just go alone when thhe player is playing, on player sessiosn they should be more passive and
+leave room for the player to play or make decisions. it should be more like they let the player take command and use the
+player data just to understand as data points. lets have them pair up too"
+To do:
+- Player session (not gym/ghost): officers passive, no solo pushes; the player leads and decides. Director/auto orders off
+  or advisory; bubble only guards around the player, never clears ahead.
+- Player data (SMRec / model) = observations for understanding, not commands to follow.
+- Pairs: officers move/guard in 2-man pairs (Red/Blue elements), buddy covers buddy.
+- First: watch the video + log to see where they went off alone.
