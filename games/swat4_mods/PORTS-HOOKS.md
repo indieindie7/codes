@@ -41,3 +41,17 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
 2. DK1: dump PDB symbol RVAs (llvm-pdbutil / py `pdbparse`) for the AI/command functions; dbghelp.dll proxy logging
    `Server_ProcessCommand` to learn the order format, then inject orders.
 3. Both: observation = PrintWindow frames now; later read game state from hooked functions.
+
+## FS2 script bridge: WORKS (2026-10-24)
+- Root `main.cs` (plain .cs, backup `main.cs.orig`) gets one line: `exec("smbridge/bridge.cs")`.
+  `tools/fs2_bridge.cs` = bridge source; `tools/fs2bridge.py --install` sets it up.
+- `py -3.13 -I tools/fs2bridge.py '<TorqueScript>'` (or `-f file.cs`): game polls `smbridge/in.txt` every 200 ms,
+  evals each line; `SMB_out(x)` appends to `smbridge/out.txt`. Round trip ~0.7 s.
+- Window must NOT be minimized (engine nearly stalls). Restore with ShowWindow(SW_SHOWNOACTIVATE=4) +
+  SetWindowPos(HWND_BOTTOM, NOACTIVATE): runs behind other windows, no focus change. PrintWindow capture works then.
+- Menu buttons are script calls (walk dump: claude-cap/fs2walk-*.txt): QUICK SKIRMISH `testFS2Skirmish()` (tested: loads
+  "Light Extermination" turn 1/8, root gui MainScreenGui), AI MATCHES `loadScoreAttackGui()`, CUSTOM GAME
+  `startCustomModeGui()`, SKIRMISH GENERATOR `loadSkirmishGenerator()`, QUIT `quit()`.
+- `getAITurn` and `startGetAITurnThreaded` exist (isFunction 1). Console log: `%APPDATA%\FrozenSynapse2\console.log`.
+- `dumpConsoleFunctions()` is huge and blocks the game for a while; grep the log after it settles.
+- Launched with `-log 1`; added `steam_appid.txt` (445020) so the exe starts directly.
