@@ -93,3 +93,11 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
   in 8 s, then crash at `loadMTStage3` "Generating floor splat details" (3 of 3 now). So it is NOT the window being behind/unfocused.
   Next: skip the 3D outcome load (headless path: `serverSoakTest*`, `collateTurnFiles`, `$gcmAISim`), or version.dll hook to
   catch the crash; or stay on `testFS2Skirmish()` turn 0->1 only (one Charon turn per match = still usable data).
+- **10-24 later: `playQuickFS2Skirmish()` (the real QUICK SKIRMISH button, menu id 2139) = no crash.** Real generated level
+  (948 nav nodes), 6 units, turn 0->1 in 15 s with Charon on both sides. `testFS2Skirmish` / `playRandomSPMatch` levels have
+  0 nav nodes and "end" at once (0 kills) -> that is the crash path. `$gcmAISim=1` makes `shouldISkipOutcome()` return 1.
+  - Open: the turn-1 submit does not advance. Trace: `spSubmitTurn()` runs, but no Charon ("Applying AI") and no
+    spSubmitTurnStage2; it reloads the same turn (loadMTStage2..4, `do3DOutcome:: turn 0 1`), getTurnThatWeAreIn()=0.
+    Next: check `$alreadySubmittedMT` / `alreadySubmittedTurn()`, `preSubmitCall`, `continueSPMatch()`; maybe the 3D
+    outcome must finish (`endFancyOutcome()` / `onEnterPlanningAfterFirstOutcome()`) before planning turn 1.
+  - Test scripts: %TEMP%/fs2t3.py (quitSP, playQuickFS2Skirmish, submit loop).
