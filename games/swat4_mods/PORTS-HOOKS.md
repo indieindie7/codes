@@ -55,3 +55,12 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
 - `getAITurn` and `startGetAITurnThreaded` exist (isFunction 1). Console log: `%APPDATA%\FrozenSynapse2\console.log`.
 - `dumpConsoleFunctions()` is huge and blocks the game for a while; grep the log after it settles.
 - Launched with `-log 1`; added `steam_appid.txt` (445020) so the exe starts directly.
+- Script fns found via `dumpConsoleFunctions()` (blocks ~50 s at -log 1): `AISoak`, `soakTest`, `serverSoakTest*`, `doGetAITurn`,
+  `getAITurn`, `startGetAITurnThreaded`, `guiPrime`, `controllerPrimeTurn`, `doCharonAllAtEnd`, `getUnitIdIsAlive/...`,
+  `getUnitFromUnitSet`, `updateUnitCounters`. Arg lists unknown (.dso).
+- `AISoak()` = online league soak: offline it fails (missing league objects, `quickStartNewMapGame` not found).
+- **`doGetAITurn()` in a skirmish runs Charon "StandardAI" for ALL units of both teams** (log: units 1-3 team 1,
+  4-7 team 2, "3 best plans, chose one with N edges", friendly-fire checks). `guiPrime()` afterwards: the game
+  went to a loading/tips screen (not checked yet whether the turn played out or the match reset).
+- Next: check what prime did (out.txt + console.log), find the per-unit plan readout and set-plan calls, then
+  loop doGetAITurn+guiPrime as an AI-vs-AI soak for data; then swap our policy for Charon on team 1.
