@@ -70,7 +70,9 @@ def launch(front=False):
         if os.path.exists(IN):
             os.remove(IN)
         si = subprocess.STARTUPINFO(); si.dwFlags = 1; si.wShowWindow = 1 if front else 4  # SW_SHOWNORMAL / SW_SHOWNOACTIVATE (a minimized start hangs the load)
-        subprocess.Popen([os.path.join(GAME, "FrozenSynapse2.exe"), "-log", "1"], cwd=GAME, startupinfo=si)
+        # DXVK d3d9.dll in the game dir + this filter = render on the 3060, the 4070 Ti stays free for the user
+        env = dict(os.environ, DXVK_FILTER_DEVICE_NAME="RTX 3060", DXVK_LOG_PATH=os.environ["TEMP"])
+        subprocess.Popen([os.path.join(GAME, "FrozenSynapse2.exe"), "-log", "1"], cwd=GAME, startupinfo=si, env=env)
     # restore (async: a hung window must not block us) until it stays up
     for _ in range(60):
         time.sleep(2)
@@ -98,7 +100,9 @@ def match(mi, out):
     # (skirmish.cs "Cannot re-declare object [csMGSSettings]"): leave first
     run('Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); if (Canvas.getContent().getName() !$= "MainScreenGui") quitSP();')
     time.sleep(8)
-    run("Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); playQuickFS2Skirmish();")
+    run("Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); if (!isFunction(\"playQuickFS2Skirmish\")) Canvas.setContent(GSBRowserGui);")
+    time.sleep(5)  # exec()ing skirmishGenerator.cs by hand instead left the game hung after the load
+    run("playQuickFS2Skirmish();")
     t0 = time.time()
     while turn() != 0 or not any(alive()):
         if time.time() - t0 > 120:

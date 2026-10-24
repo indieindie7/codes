@@ -113,3 +113,11 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
   Fresh-launch gotchas: `quitSP()` on MainScreenGui crashes (now guarded); a minimized start (SW_SHOWMINNOACTIVE) left the game
   hung after the match load (now SW_SHOWNOACTIVATE). An un-minimized run also hung at 0 % CPU after load, while the user's
   UE5 game was on the GPUs: retest when no game is running.
+- **Render on the 3060 while the user games (10-24):** DXVK 3.1.1 x64 `d3d9.dll` copied into the FS2 game dir
+  (`Documents\Tools\dxvk\dxvk-3.1.1`); `fs2soak.launch()` sets `DXVK_FILTER_DEVICE_NAME="RTX 3060"` and
+  `DXVK_LOG_PATH=%TEMP%`; `%TEMP%\FrozenSynapse2_d3d9.log` shows the 4070 Ti "Skipping: Device filter". Undo = delete the dll.
+  Fresh launch: `playQuickFS2Skirmish` is undefined on MainScreenGui; `Canvas.setContent(GSBRowserGui)` defines it (exec of
+  skirmishGenerator.cs by hand hung the game after load). `$pref::video::fullScreen` set 0 (backup prefs.cs.smbak).
+  Open: on DXVK every first submit crashes at `FrozenSynapse2.dll+0x489080` right after
+  "Applying AI for player 1" (Charon plans for 5-8 are made), with or without `$gcmAIDoesBothSides`. The native-D3D9 soak
+  (d7f8923) logged player 8 first and did not crash, so DXVK is the prime suspect; check on native D3D9 once gpu 0 is free.
