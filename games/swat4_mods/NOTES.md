@@ -536,3 +536,12 @@ User: "yes, build the strata overseer for the gym".
 - DONE + tested 10-23 20:4x: mutator `?SMSeed=<n>` burns n*13 FRand draws in PostBeginPlay (logs `SwatMinds seed n next=`). gymrun `RNG_SEED[slot]` adds `?SMSeed` + `-fixedfps=30` (FIXEDFPS). Test (scratchpad seedtest.py, out Documents/SwatMindsGym/seedtest), FoodWall 90 s: seed 5 twice -> same next=4186, same layout [-1,-2 -1,-3 -1,-4]; seed 9 -> next=21094, 4 suspects [-1,-3 -2,-3 -2,-5 -3,-4]. Late values drift slightly (paint 0.93 vs 0.92: threads/Havok). frames=2700 at 90 s = 30 fps fixed.
 - `--rng-seeds` (search): game number g of every candidate gets seed g (common random numbers). Off by default; data.jsonl rows get `rng_seed`. Not yet used by autogym (gym stopped).
 - 10-23 user: "yes, use --rng-seeds in autogym from the next gym start". autogym now passes --rng-seeds. Old candidates' earlier games were random-seeded; their later games take seeds by game number. Gym still stopped (restart: NOTES 10-23 20:3x line).
+
+## 10-23 night: director spawns (bDirSpawn)
+- User: "we should wire up the director too and let it increase or decrease dyanmic random spawn as ais are having difficulty".
+- Mutator `UpdateDirSpawn()` (called from Tick after UpdateDirector). Every DirSpawnInterval=20 s: stress = stress*DirDecay(0.7) + officer HP lost/100 + new officer downs (AI officers only).
+  - stress < DirCalm 0.3, free suspects <= DirFreeMax 1, director suspects alive < DirSpawnMax 3, no officer down, before ExitAfter-DirSpawnStop(90): spawn one suspect at a random (FRand reservoir) EnemySpawner DirectorMin..2*DirectorRange from SqC that no SqEye can see. Used spawner: HasSpawned=false; empty Archetypes copied from first EnemySpawner that has some. `Spawner.SpawnArchetype(PickArchetype(Archetypes))` (SpawnFromLocalProperties asserts no custom scenario).
+  - stress > DirHard 1.0: Destroy one unseen director suspect > DirectorMin away.
+  - Logs `SwatMinds director spawn|cull ...`; tally ends `dirSpawn= dirCull= stress=`; gymrun parse() puts them in `last`.
+- Test (scratchpad dirtest.py, out Documents/SwatMindsGym/dirtest), FoodWall 300 s, seeds 1-3: slot 1 spawned SwatEnemy3 at EnemySpawner27 t=163 dist=1317 (27 candidates); slots 2/3 none (2 suspects stayed free, gate DirFreeMax=1). No new script warnings (only stock Login/AdminLogin ones). No cull seen yet (stress stayed 0: officers took no damage).
+- Score: spawned suspects already count in susDown/susArrest/susFree; no extra credit yet. Watch whether candidates that clear fast get punished by extra free suspects at timeout.

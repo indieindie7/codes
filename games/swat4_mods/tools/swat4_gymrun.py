@@ -29,6 +29,7 @@ TALLY = re.compile(r"SwatMinds tally t=(\d+) score=\w+ orders=(\d+) susDown=(\d+
 KEYS = ["t", "orders", "susDown", "susArrest", "susFree", "hostSecured", "offDown", "intel"]
 EXTRA = re.compile(r"paint=([\d.]+) tap=([\d.]+) tapN=(\d+) dirFace=([\d.]+) dirN=(\d+) dirMiss=(\d+) dirNoShow=(\d+)")  # 10-20 coverage paint + director
 EXTRA_KEYS = ["paint", "tap", "tapN", "dirFace", "dirN", "dirMiss", "dirNoShow"]
+DIRSPAWN = re.compile(r"dirSpawn=(\d+) dirCull=(\d+) stress=([\d.]+)")  # 10-23 director spawns (mutator bDirSpawn)
 HOSTLEFT = re.compile(r"hostLeft=(\d+)")  # 10-23: hostages still conscious and not restrained
 EARLY = re.compile(r"SwatMinds early end t=(\d+) why=(\w+)")  # 10-23 bEarlyExit: the mutator quit at the first tally after a clear / officer down
 COMPLY = re.compile(r"cwHold=(\d+) cwShot=(\d+) cwComply=(\d+)")  # 10-20 c ROE: compliance holds posted, broken by suspect fire, suspects that complied
@@ -122,6 +123,9 @@ def parse(log):
     if last and cw:
         last.update(cwHold=int(cw[-1][0]), cwShot=int(cw[-1][1]), cwComply=int(cw[-1][2]))
     hl, ee = HOSTLEFT.findall(txt), EARLY.search(txt)
+    ds = DIRSPAWN.findall(txt)
+    if last and ds:
+        last.update(dirSpawn=int(ds[-1][0]), dirCull=int(ds[-1][1]), stress=float(ds[-1][2]))
     if last and hl:
         last["hostLeft"] = int(hl[-1])
     if last and ee:

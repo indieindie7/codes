@@ -100,6 +100,18 @@ var array<float> CoverPosted;
 var config bool  bDirector;
 var config float DirectorInterval, DirectorRange, DirectorMin, DirectorTimeout;
 var float NextDirector, DirStart, DirSeenAt, DirFaceSum;
+// director spawns (10-23): officer stress (health lost, downs) decays per check; calm squad -> one extra suspect at an
+// unseen EnemySpawner, struggling squad -> an unseen director-spawned suspect is removed again
+var config bool  bDirSpawn;
+var config float DirSpawnInterval;  // seconds between stress checks
+var config int   DirSpawnMax;       // director suspects alive at once
+var config int   DirFreeMax;        // spawn only while at most this many suspects are free
+var config float DirCalm, DirHard;  // stress below = spawn, above = cull
+var config float DirDecay;          // stress kept per check
+var config float DirSpawnStop;      // no spawns this many s before ExitAfter (gym: room to finish)
+var float NextDirSpawn, DirStress;
+var int PrevOffHP, PrevOffDown, DirSpawnN, DirCullN;
+var array<Pawn> DirSpawned;
 var int DirN, DirMiss, DirNoShow;
 var Pawn DirPawn;
 var vector DirPt;
@@ -296,6 +308,8 @@ function Timer()
         UpdateSectors();
     if (bDirector && bPaint && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
         UpdateDirector();
+    if (bDirSpawn && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
+        UpdateDirSpawn();
     if (ComplyWait > 0 && OfficersReadyAt > 0.0 && Level.TimeSeconds >= OfficersReadyAt)
         UpdateComply();
     if (bAutoOfficers && Level.TimeSeconds >= NextOfficerThink)
@@ -665,7 +679,7 @@ function Tally()
             OD++;
     }
     R = "SwatMinds tally t="$int(Level.TimeSeconds)$" score="$bScoreDoors$" orders="$Orders$" susDown="$SD$" susArrest="$SA$" susFree="$SL$" hostSecured="$HS$" offDown="$OD$" intel="$IntelLoc.Length$" wall="$(Level.Hour*3600+Level.Minute*60+Level.Second)$"."$Level.Millisecond$" frames="$Frames$" dil="$Level.TimeDilation
-        $" paint="$(PaintSum / Max(1, PaintN))$" tap="$(TapSum / Max(1, TapN))$" tapN="$TapN$" dirFace="$(DirFaceSum / Max(1, DirN))$" dirN="$DirN$" dirMiss="$DirMiss$" dirNoShow="$DirNoShow$" cwHold="$CwHold$" cwShot="$CwShot$" cwComply="$CwComply$" hostLeft="$HL;
+        $" paint="$(PaintSum / Max(1, PaintN))$" tap="$(TapSum / Max(1, TapN))$" tapN="$TapN$" dirFace="$(DirFaceSum / Max(1, DirN))$" dirN="$DirN$" dirMiss="$DirMiss$" dirNoShow="$DirNoShow$" cwHold="$CwHold$" cwShot="$CwShot$" cwComply="$CwComply$" hostLeft="$HL$" dirSpawn="$DirSpawnN$" dirCull="$DirCullN$" stress="$DirStress;
     PrevHS = TallyHS; TallyFree = SL; TallyOff = OD; TallyHostLeft = HL; TallyHS = HS;
     SideLog(R);
 }
@@ -1898,6 +1912,100 @@ function UpdateDirector()
     Log("SwatMinds director send t="$int(Level.TimeSeconds)$" pt="$int(DirPt.X)$","$int(DirPt.Y)$" age="$int(Level.TimeSeconds - PaintTime[Best])$" by="$BestE$" dist="$int(BestD), 'SwatMinds');
 }
 
+function bool SquadSees(vector T)
+{
+    local int k;
+    for (k = 0; k < SqEye.Length; k++)
+        if (FastTrace(T, SqEye[k]))
+            return true;
+    return false;
+}
+
+function UpdateDirSpawn()
+{
+    local Pawn P;
+    local int HP, Down, Free, Live, i, n;
+    local float W;
+    local EnemySpawner S, Pick, Donor;
+    local Actor A;
+
+    if (NextDirSpawn == 0)
+    {
+        NextDirSpawn = Level.TimeSeconds + DirSpawnInterval;
+        PrevOffHP = -1;
+    }
+    if (Level.TimeSeconds < NextDirSpawn || SqEye.Length == 0)
+        return;
+    NextDirSpawn = Level.TimeSeconds + DirSpawnInterval;
+
+    foreach DynamicActors(class'Pawn', P)
+    {
+        if (P.IsA('SwatOfficer') && !P.IsA('SwatPlayer'))
+        {
+            if (P.IsConscious()) HP += Max(0, P.Health);
+            else Down++;
+        }
+        else if (P.IsA('SwatEnemy') && P.IsConscious() && !ISwatAI(P).IsArrested())
+            Free++;
+    }
+    if (PrevOffHP >= 0)
+        DirStress = DirStress * DirDecay + Max(0, PrevOffHP - HP) / 100.0 + (Down - PrevOffDown);
+    PrevOffHP = HP; PrevOffDown = Down;
+
+    for (i = DirSpawned.Length - 1; i >= 0; i--)
+        if (DirSpawned[i] == None || DirSpawned[i].bDeleteMe || !DirSpawned[i].IsConscious() || ISwatAI(DirSpawned[i]).IsArrested())
+            DirSpawned.Remove(i, 1);
+    Live = DirSpawned.Length;
+
+    if (DirStress > DirHard)
+    {
+        for (i = 0; i < DirSpawned.Length; i++)
+            if (!SquadSees(DirSpawned[i].Location + vect(0,0,40)) && VSize(DirSpawned[i].Location - SqC) > DirectorMin)
+            {
+                Log("SwatMinds director cull t="$int(Level.TimeSeconds)$" "$DirSpawned[i].Name$" stress="$DirStress$" free="$Free, 'SwatMinds');
+                DirSpawned[i].Destroy();
+                DirSpawned.Remove(i, 1);
+                DirCullN++;
+                break;
+            }
+        return;
+    }
+    if (DirStress > DirCalm || Free > DirFreeMax || Live >= DirSpawnMax || Down > 0)
+        return;
+    if (ExitAfter > 0 && Level.TimeSeconds > ExitAfter - DirSpawnStop)
+        return;
+
+    // unseen spawner DirectorMin..DirectorRange*2 from the squad, random pick (seeded rand with -fixedfps)
+    foreach AllActors(class'EnemySpawner', S)
+    {
+        if (S.Archetypes.Length > 0 && Donor == None)
+            Donor = S;
+        W = VSize(S.Location - SqC);
+        if (S.Disabled || W < DirectorMin || W > 2 * DirectorRange || SquadSees(S.Location + vect(0,0,40)))
+            continue;
+        n++;
+        if (FRand() * n < 1.0)
+            Pick = S;
+    }
+    if (Pick == None || Donor == None)
+    {
+        Log("SwatMinds director spawn none t="$int(Level.TimeSeconds)$" cand="$n$" donor="$Donor, 'SwatMinds');
+        return;
+    }
+    if (Pick.Archetypes.Length == 0)
+        Pick.Archetypes = Donor.Archetypes;
+    Pick.HasSpawned = false;  // reuse is fine: SpawnArchetype only asserts !HasSpawned
+    A = Pick.SpawnArchetype(class'Archetype'.static.PickArchetype(Pick.Archetypes));
+    if (Pawn(A) == None)
+    {
+        Log("SwatMinds director spawn failed t="$int(Level.TimeSeconds)$" at="$Pick.Name, 'SwatMinds');
+        return;
+    }
+    DirSpawned[DirSpawned.Length] = Pawn(A);
+    DirSpawnN++;
+    Log("SwatMinds director spawn t="$int(Level.TimeSeconds)$" "$A.Name$" at="$Pick.Name$" dist="$int(VSize(A.Location - SqC))$" stress="$DirStress$" free="$Free$" cand="$n, 'SwatMinds');
+}
+
 function EndDirector()
 {
     if (DirGoal != None)
@@ -2023,6 +2131,14 @@ defaultproperties
     DirectorRange=2500.0
     DirectorMin=700.0
     DirectorTimeout=30.0
+    bDirSpawn=true
+    DirSpawnInterval=20.0
+    DirSpawnMax=3
+    DirFreeMax=1
+    DirCalm=0.3
+    DirHard=1.0
+    DirDecay=0.7
+    DirSpawnStop=90.0
     OfficerThink=2.0
     MaxDoorDist=2500.0
     OrderTimeout=90.0
