@@ -547,3 +547,16 @@ User: "yes, build the strata overseer for the gym".
 - Score: spawned suspects already count in susDown/susArrest/susFree; no extra credit yet. Watch whether candidates that clear fast get punished by extra free suspects at timeout.
 - Cull test 10-23 21:1x, ArmsDeal 300 s, seeds 1-3 (scratchpad dirtest2.py, out Documents/SwatMindsGym/dirtest). Run A, defaults: 0 spawns (stress 2.0/4.0/3.06; ArmsDeal never calm, and 15+ free suspects block the spawn gate), so nothing to cull. Run B, live `set` DirFreeMax 20 + DirCalm 0.9: slot 1 spawned 3 (t=23/43/63) and culled SwatEnemy15 at t=203, stress 4.0; slot 2 spawned 1 at t=23 and culled it at t=43, stress 2.0; slot 3 spawned 3, stress peaked 0.57, no cull. Both paths work. Only stock warnings (arms_thug1 InitializeWeapon is also in run A).
 - Defaults stay as they are (DirFreeMax 1 = spawn only near the end of a clear). On hard maps the director mostly just stays out of the way.
+
+## 10-23 night: player recorder (bRecordPlayer)
+- User: "please do. also if possible add in the log all the available data you can but dont add it as a golden rule buut just a more '''human like''' data set. and also lets add that when the fellow swat members speak their voicelines and i can hear it, it gets logged and that if i can see them in my screen their data gets logged in that moment too like as '''information the player has''' as the player can only assume the other swats not seen are in similar state as they were last seen"
+- Goal: human play log for a director player model (offline training, bake back to UnrealScript). Player-side info only, not expert labels.
+- Config: bRecordPlayer (class default false; ON in SwatMinds.ini.play + .ini since 10-23), RecInterval 0.25 s, RecFOV 100 deg, RecFlush 10 s, bRecordGhost false (test only). gymrun launches set bRecordPlayer False.
+- Files: `F:\gogGames\SWAT 4\SwatMinds\System\SMRec_<map>_<Y-M-D_h-m-s>_<part>.txt`. FileLog buffers until CloseLog, so lines are buffered and a closed part file is written every RecFlush s (+ on Destroyed); a loader joins parts in order.
+- Lines (prefix `t=<level s>`):
+  - `S p= v= yaw= pitch= hp= crouch= fire= alt= item= ammo= |see K:Name:x,y,z:yaw:state[:hpN] ... |mem K:Name:age_s:x,y,z:state ...` (K = P/O/E/H; state d=down a=arrested y=complying c=other, + `/ItemClass`; hp only for officers in view; mem = last place/state seen, the player's assumption).
+  - `hear K:Name <Schema> cat=<SoundCategory> d= see=0|1`: SoundInstance actors from a pawn, playing and not Muted (= in earshot). `say <Schema>` = the player's own sounds. Footsteps included (cat=Footsteps); filter on the training side.
+  - `ev hurt|shot|item|firstseen|change old>new`.
+- "In view" = cone dot > cos(RecFOV/2) from eye along PC.Rotation + FastTrace to pawn +30/0/-30 z. Gaps: round cone not screen rect, no lean, pawns/glass/smoke/dark don't block, no flash blindness, no min on-screen size.
+- Smoke test (scratchpad rectest.py, 1 slot FoodWall 120 s seed 1, ghost + bRecordGhost): 11 parts, 475 lines, 221 samples; hear lines mostly footsteps + officer speech (b2_CouldntCompleteMove x14), say s1_spottedcontact; firstseen OfficerBlueOne0 t=16.76; mem ages + positions correct. A non-ghost minimized slot pauses (unpause only runs for ghosts).
+- Next: loader/trainer for the director player model; optional visibility upgrades above.

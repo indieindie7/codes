@@ -68,7 +68,7 @@ def launch(k, mode, map_, extra, secs):
     # the mutator then tallies and quits by itself at ExitAfter level seconds, which flushes the log
     lines = LIVE.read_text(encoding="latin-1").splitlines() + ["set SwatMinds.SwatMindsMutator bGhostPlayer True", "set SwatMinds.SwatMindsMutator bTraj True",
              "set SwatMinds.SwatMindsMutator LiveInterval 1000000", f"set SwatMinds.SwatMindsMutator ExitAfter {secs}", "set SwatMinds.SwatMindsMutator Dilation 4",
-             "set SwatMinds.SwatMindsMutator bEarlyExit True"] + list(extra) + MODES[mode]
+             "set SwatMinds.SwatMindsMutator bEarlyExit True", "set SwatMinds.SwatMindsMutator bRecordPlayer False"] + list(extra) + MODES[mode]
     (SYS / f"GymLive{k}.txt").write_text("\n".join(lines) + "\n", encoding="latin-1")
     log = SYS / f"gym{k}.log"
     log.unlink(missing_ok=True)

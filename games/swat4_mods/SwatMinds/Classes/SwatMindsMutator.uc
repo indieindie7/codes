@@ -151,6 +151,27 @@ var float SpeedW0, SpeedT0;
 var config bool bClockProbe;       // log dt/level time/wall every 200 frames (gym speed check)
 var int Frames;                    // Tick count, for fps= in the tally line
 var string LastLive;
+// player recorder (10-23): what a human player did and what they could know, for imitation / player models.
+// Only player-side info: own state + input, pawns in view right now (on screen and in line of sight), sounds the player
+// actually heard (SoundInstance not muted = in earshot), and a "last seen" memory for everyone out of view.
+// It is a human-like data set, not expert labels. File: System\SMRec_<map>_<date>.log, one per mission.
+var config bool  bRecordPlayer;
+var config float RecInterval;       // seconds between state samples
+var config float RecFOV;            // degrees, screen cone used for "in view" (wider than the HUD FOV to cover the corners)
+var config float RecFlush;          // seconds between part files
+var config bool  bRecordGhost;      // test only: also record a gym ghost player (minimized slots need the ghost unpause)
+var string RecBase;
+var array<string> RecBuf;
+var int RecPart;
+var float NextRecFlush;
+var float NextRec, RecLastHP;
+var int RecLastAmmo;
+var string RecLastItem;
+var array<Pawn> MemP;               // player's memory: last time / place / state each pawn was seen
+var array<float> MemT;
+var array<vector> MemL;
+var array<string> MemS;
+var array<Actor> HeardSnd;          // sound instances already logged (pruned when they stop)
 var config bool  bTraj;            // log one "traj" line of all pawn positions every TrajInterval (gym demos/data)
 var config float TrajInterval;
 var float NextTraj;
@@ -339,6 +360,8 @@ function Timer()
         else
             ConsoleCommand("exit");
     }
+    if (bRecordPlayer)
+        RecordPlayer();
     if (bTraj && Level.TimeSeconds >= NextTraj)
     {
         NextTraj = Level.TimeSeconds + TrajInterval;
@@ -703,6 +726,172 @@ function SideLog(string R)
 }
 
 // one line per TrajInterval: <kind><n>:x,y,yaw,state for every officer (O), suspect (E), hostage (H); state c=free a=arrested d=down
+function string RecKind(Pawn P)
+{
+    if (P.IsA('SwatPlayer')) return "P";
+    if (P.IsA('SwatOfficer')) return "O";
+    if (P.IsA('SwatEnemy')) return "E";
+    if (P.IsA('SwatHostage')) return "H";
+    return "";
+}
+
+// what the player can tell by looking: d=down a=arrested y=complying w=item out (name) c=other
+function string RecState(Pawn P)
+{
+    local HandheldEquipment It;
+    local string S;
+    if (!P.IsConscious()) return "d";
+    if (P.IsA('SwatPawn') && SwatPawn(P).IsArrested()) return "a";
+    if (P.IsCompliant()) S = "y"; else S = "c";
+    It = P.GetActiveItem();
+    if (It != None) S = S$"/"$It.Class.Name;
+    return S;
+}
+
+function string V3(vector V)
+{
+    return int(V.X)$","$int(V.Y)$","$int(V.Z);
+}
+
+function RecLine(string S)
+{
+    if (RecBase == "")
+    {
+        RecBase = "SMRec_"$Left(string(Level), InStr(string(Level)$".", "."))$"_"$Level.Year$"-"$Level.Month$"-"$Level.Day$"_"$Level.Hour$"-"$Level.Minute$"-"$Level.Second;
+        RecBuf[0] = "# SwatMinds player recorder v1. S=sample, see=in view now, mem=last seen (age s), hear=sound in earshot, say=player sound, ev=event";
+        NextRecFlush = Level.TimeSeconds + RecFlush;
+    }
+    RecBuf[RecBuf.Length] = "t="$int(Level.TimeSeconds * 100) / 100.0$" "$S;
+    if (Level.TimeSeconds >= NextRecFlush)
+        RecFlushNow();
+}
+
+function RecFlushNow()
+{
+    local FileLog FL;
+    local int i;
+    NextRecFlush = Level.TimeSeconds + RecFlush;
+    if (RecBuf.Length == 0)
+        return;
+    FL = Spawn(class'FileLog');
+    if (FL == None)
+        return;
+    FL.OpenLog(RecBase$"_"$RecPart);
+    for (i = 0; i < RecBuf.Length; i++)
+        FL.Logf(RecBuf[i]);
+    FL.CloseLog();
+    FL.Destroy();
+    RecBuf.Remove(0, RecBuf.Length);
+    RecPart++;
+}
+
+function bool PlayerSees(vector Eye, vector Dir, Pawn P)
+{
+    local vector D;
+    D = P.Location - Eye;
+    if (Normal(D) dot Dir < Cos(RecFOV * 0.5 * 0.0174533))
+        return false;
+    return FastTrace(P.Location + vect(0,0,30), Eye) || FastTrace(P.Location, Eye) || FastTrace(P.Location - vect(0,0,30), Eye);
+}
+
+function RecordPlayer()
+{
+    local PlayerController PC;
+    local Pawn Me, P;
+    local vector Eye, Dir;
+    local string S, See, Mem, St;
+    local int i, Ammo;
+    local bool bFound;
+    local HandheldEquipment It;
+    local SoundInstance SI;
+
+    PC = Level.GetLocalPlayerController();
+    if (PC == None || PC.Pawn == None || (bGhostPlayer && !bRecordGhost))
+        return;
+    Me = PC.Pawn;
+    Eye = Me.Location + Me.EyePosition();
+    Dir = vector(PC.Rotation);
+
+    // sounds: every new instance in earshot (not muted) from a pawn; the player's own sounds as "say"
+    for (i = HeardSnd.Length - 1; i >= 0; i--)
+        if (HeardSnd[i] == None || HeardSnd[i].bDeleteMe || !SoundInstance(HeardSnd[i]).IsPlaying)
+            HeardSnd.Remove(i, 1);
+    foreach DynamicActors(class'SoundInstance', SI)
+    {
+        if (!SI.IsPlaying || SI.Muted || Pawn(SI.Source) == None || SI.Schema == None)
+            continue;
+        bFound = false;
+        for (i = 0; i < HeardSnd.Length && !bFound; i++)
+            bFound = HeardSnd[i] == SI;
+        if (bFound)
+            continue;
+        HeardSnd[HeardSnd.Length] = SI;
+        P = Pawn(SI.Source);
+        if (P == Me)
+            RecLine("say "$SI.Schema.Name$" cat="$SI.SoundCategory);
+        else
+            RecLine("hear "$RecKind(P)$":"$P.Name$" "$SI.Schema.Name$" cat="$SI.SoundCategory$" d="$int(VSize(P.Location - Eye))$" see="$int(PlayerSees(Eye, Dir, P)));
+    }
+
+    // events between samples: damage taken, shots (ammo drop), item switch
+    It = Me.GetActiveItem();
+    Ammo = -1;
+    if (FiredWeapon(It) != None && FiredWeapon(It).Ammo != None)
+        Ammo = FiredWeapon(It).Ammo.RoundsRemainingBeforeReload();
+    if (RecLastHP > 0 && Me.Health < RecLastHP)
+        RecLine("ev hurt "$int(RecLastHP - Me.Health)$" hp="$Me.Health);
+    if (It != None && string(It.Class.Name) == RecLastItem && Ammo >= 0 && Ammo < RecLastAmmo)
+        RecLine("ev shot "$(RecLastAmmo - Ammo)$" ammo="$Ammo);
+    if (It != None && string(It.Class.Name) != RecLastItem)
+        RecLine("ev item "$It.Class.Name);
+    RecLastHP = Me.Health;
+    RecLastAmmo = Ammo;
+    if (It != None) RecLastItem = string(It.Class.Name);
+
+    if (Level.TimeSeconds < NextRec)
+        return;
+    NextRec = Level.TimeSeconds + RecInterval;
+
+    S = "S p="$V3(Me.Location)$" v="$V3(Me.Velocity)$" yaw="$(PC.Rotation.Yaw & 65535)$" pitch="$(PC.Rotation.Pitch & 65535)
+        $" hp="$Me.Health$" crouch="$int(Me.bIsCrouched)$" fire="$PC.bFire$" alt="$PC.bAltFire
+        $" item="$RecLastItem$" ammo="$Ammo;
+
+    foreach DynamicActors(class'Pawn', P)
+    {
+        if (P == Me || RecKind(P) == "")
+            continue;
+        St = RecState(P);
+        for (i = 0; i < MemP.Length; i++)
+            if (MemP[i] == P)
+                break;
+        if (PlayerSees(Eye, Dir, P))
+        {
+            See = See$" "$RecKind(P)$":"$P.Name$":"$V3(P.Location)$":"$(P.Rotation.Yaw & 65535)$":"$St;
+            if (P.IsA('SwatOfficer')) See = See$":hp"$P.Health;
+            if (i == MemP.Length)
+            {
+                MemP[i] = P;
+                RecLine("ev firstseen "$RecKind(P)$":"$P.Name$" d="$int(VSize(P.Location - Eye)));
+            }
+            else if (MemS[i] != St)
+                RecLine("ev change "$RecKind(P)$":"$P.Name$" "$MemS[i]$">"$St);
+            MemT[i] = Level.TimeSeconds;
+            MemL[i] = P.Location;
+            MemS[i] = St;
+        }
+        else if (i < MemP.Length)
+            Mem = Mem$" "$RecKind(P)$":"$P.Name$":"$int(Level.TimeSeconds - MemT[i])$":"$V3(MemL[i])$":"$MemS[i];
+    }
+    RecLine(S$" |see"$See$" |mem"$Mem);
+}
+
+event Destroyed()
+{
+    if (RecBase != "")
+        RecFlushNow();
+    Super.Destroyed();
+}
+
 function Traj()
 {
     local Pawn P;
@@ -2147,6 +2336,11 @@ defaultproperties
     IntelRange=1200.0
     IntelLife=60.0
     TrajInterval=1.0
+    bRecordPlayer=false
+    RecInterval=0.25
+    RecFOV=100.0
+    RecFlush=10.0
+    bRecordGhost=false
     SpeedTarget=1.0
     MaxDilation=8.0
     bComms=true
