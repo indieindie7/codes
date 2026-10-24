@@ -571,3 +571,15 @@ User: "yes, build the strata overseer for the gym".
 - Model: standardized features (constant ones scale 1), logistic regression (numpy GD, l2 0.01), time split per session 80/20, test AUC. Skips a label with < 5 positives or negatives. `--ini` prints PMFeat[i]=(Name,Mean,Scale) + PM_<label>[i] weights for a later UnrealScript evaluator.
 - Ghost smoke logs: 2 sessions, 0 hurt/shot -> not trained (needs real play). Synthetic check (3 sessions, hurt/shot only while an enemy is in view): fight5 AUC 0.82, hurt10 0.72, top weights seeE/seeEarmed/seeEclose. Pipeline works.
 - Next: user plays a few missions (recorder ON), then train; then wire the forecast into UpdateDirSpawn as the stress input.
+
+## 10-23 night: officer "pathfinding" = escort/bubble FallIn loop (fixed)
+User video (Videos/2026-10-23 21-46-10.mp4) + SMRec_SP-FoodWall_2026-10-23_21-44-27: officers clumped/shuffled at the
+FoodWall start, b2_CouldntCompleteMove + RepliedFallIn every ~2 s, Swat4.log "escort FallIn" every ~2 s.
+Not the engine pathfinder. Cause: bubble guard moves (MoveToLocationGoal pri 95, PostMove) interrupt the escort FallIn's
+MoveInFormationGoal (pri 90); SDK FallInAction.goalNotAchievedCB plays CouldntCompleteMove and InstantFails the whole
+fall in on ANY move failure; the bubble gate (UpdateSectors: !IsFallingIn) dropped the bubble, the escort re-issued FallIn.
+Fix: BubbleOn() (bBubble && bPaint && bPaintInit) -> escort issues no FallIn (clears its own one); EscortActive() gate:
+bubble runs while the player has no order (any player order, their own fall in too, wins); train mode still rides FallIn,
+re-issue backoff 6 s. Also: a bubble job that ends with its target still open is skipped 20 s (BubBanA/BubBanT; was
+re-picked every tick, 4 lines/s). Test esctest (1 slot FoodWall 90 s, escort+bubble): 0 FallIn re-orders, bubble log
+lines 66 -> 15. Real-play check still needed.

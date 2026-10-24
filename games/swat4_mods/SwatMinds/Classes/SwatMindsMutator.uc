@@ -59,6 +59,8 @@ var config float BubbleThink, BubbleMin, BubbleMax, SecureRange;
 var array<Pawn> BubPawn;
 var array<byte> BubTask;           // 0 guard, 1 restrain, 2 evidence
 var array<Actor> BubTarget;
+var array<Actor> BubBanA;           // job targets whose job ended unfinished, and until when they are skipped
+var array<float> BubBanT;
 var array<vector> BubPt, BubMovePt;
 var array<float> BubNext, BubBiasT, BubAimT, BubMoveT;
 var array<int> BubBias;            // own random bearing around the player
@@ -119,6 +121,8 @@ var MoveToLocationGoal DirGoal;
 var array<Door> UsedDoors;
 var array<Pawn> SecureAsked;
 var float NextOfficerWhy;
+var bool  bEscortFell;              // the escort (not the player) ordered the current FallIn
+var float NextEscortFallIn;
 var float LastOrderTime;
 var Door LastOrderDoor;
 var config float OrderTimeout;
@@ -1058,8 +1062,22 @@ function AutoOfficers()
     if (bEscort)
     {
         if (!Squad.IsFallingIn())
+            bEscortFell = false;
+        if (BubbleOn())
+        {
+            // the bubble moves the officers itself; a formation FallIn under it fights its moves (see EscortActive)
+            if (bEscortFell)
+            {
+                Squad.ClearCommandGoal();
+                bEscortFell = false;
+                Log("SwatMinds officers escort FallIn cleared for the bubble t="$Level.TimeSeconds, 'SwatMinds');
+            }
+        }
+        else if (!Squad.IsFallingIn() && Level.TimeSeconds >= NextEscortFallIn)
         {
             Squad.FallIn(Giver, Giver.Location);
+            bEscortFell = true;
+            NextEscortFallIn = Level.TimeSeconds + 6.0;   // a failed formation move ends the FallIn: no 2 s re-order loop
             Orders++;
             Log("SwatMinds officers escort FallIn t="$Level.TimeSeconds, 'SwatMinds');
         }
@@ -1146,6 +1164,20 @@ function ClearSectors()
 // they stand on (alternating if two stand on the same side). Lanes are parallel to the player's facing,
 // measured from each officer, and are refreshed every tick, so it also holds while moving.
 // AimAtPointGoal pri 40 < attack 80 / engage 85: a spotted enemy still wins.
+function bool BubbleOn()
+{
+    return bBubble && bPaint && bPaintInit;
+}
+
+// bubble: it runs while the player has given no order (any player order, their own fall in too, wins);
+// train: it rides on the FallIn formation (aim goals only, no moves)
+function bool EscortActive(OfficerTeamInfo Squad)
+{
+    if (BubbleOn())
+        return !Squad.IsExecutingCommandGoal();
+    return Squad.IsFallingIn();
+}
+
 function UpdateSectors()
 {
     local OfficerTeamInfo Squad;
@@ -1161,7 +1193,7 @@ function UpdateSectors()
 
     Squad = SwatAIRepository(Level.AIRepo).GetElementSquad();
     PC = Level.GetLocalPlayerController();
-    if (Squad == None || PC == None || PC.Pawn == None || !Squad.IsFallingIn())
+    if (Squad == None || PC == None || PC.Pawn == None || !EscortActive(Squad))
     {
         if (SectorGoals.Length > 0)
             ClearSectors();
@@ -1358,6 +1390,14 @@ function UpdateBubble(Pawn Me, array<Pawn> Offs)
             continue;
         }
         S = S$" "$Offs[k].Name$"=done";
+        if (Now - BubThreatT > 2.0 && BubTarget[b] != None
+            && ((BubTask[b] == 2 && IEvidence(BubTarget[b]).CanBeUsedNow())
+                || (BubTask[b] == 1 && Pawn(BubTarget[b]).IsConscious() && !ISwatAI(BubTarget[b]).IsArrested())))
+        {
+            BubBanA[BubBanA.Length] = BubTarget[b];
+            BubBanT[BubBanT.Length] = Now + 20.0;
+            S = S$"(unfinished, skip 20s)";
+        }
         ReleaseBubJob(b);
         BubNext[b] = 0;
     }
@@ -1564,6 +1604,16 @@ function bool BubClaimed(Actor A)
     for (b = 0; b < BubPawn.Length; b++)
         if (BubTask[b] != 0 && BubTarget[b] == A)
             return true;
+    for (b = BubBanA.Length - 1; b >= 0; b--)
+    {
+        if (BubBanA[b] == None || Level.TimeSeconds >= BubBanT[b])
+        {
+            BubBanA.Remove(b, 1);
+            BubBanT.Remove(b, 1);
+        }
+        else if (BubBanA[b] == A)
+            return true;
+    }
     return false;
 }
 
