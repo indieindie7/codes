@@ -89,3 +89,7 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
   - Untested cause: the window parked behind/unfocused (d3d9 device) vs an engine bug in this offline path.
     Next: one run with FS2 visible in front (needs the user's screen free), else skip the 3D outcome
     (look for a headless outcome: `serverSoakTest*`, `collateTurnFiles`, `$gcmAISim`) or the version.dll hook.
+- **Front-window run (10-24 afternoon): same crash.** FS2 launched visible in front, skirmish -> `playRandomSPMatch()` -> turn 0->1
+  in 8 s, then crash at `loadMTStage3` "Generating floor splat details" (3 of 3 now). So it is NOT the window being behind/unfocused.
+  Next: skip the 3D outcome load (headless path: `serverSoakTest*`, `collateTurnFiles`, `$gcmAISim`), or version.dll hook to
+  catch the crash; or stay on `testFS2Skirmish()` turn 0->1 only (one Charon turn per match = still usable data).

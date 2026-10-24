@@ -57,7 +57,7 @@ def turn():
     return int(t) if t.lstrip("-").isdigit() else -1
 
 
-def launch():
+def launch(front=False):
     """Start FS2 (if not running) without taking focus, then park it behind
     all windows un-minimized (minimized = engine nearly stalls)."""
     import ctypes, subprocess
@@ -67,7 +67,7 @@ def launch():
     if "FrozenSynapse2" not in subprocess.run(["tasklist"], capture_output=True, text=True).stdout:
         if os.path.exists(IN):
             os.remove(IN)
-        si = subprocess.STARTUPINFO(); si.dwFlags = 1; si.wShowWindow = 7  # SW_SHOWMINNOACTIVE
+        si = subprocess.STARTUPINFO(); si.dwFlags = 1; si.wShowWindow = 1 if front else 7  # SW_SHOWNORMAL / SW_SHOWMINNOACTIVE
         subprocess.Popen([os.path.join(GAME, "FrozenSynapse2.exe"), "-log", "1"], cwd=GAME, startupinfo=si)
     # restore (async: a hung window must not block us) until it stays up
     for _ in range(60):
@@ -76,7 +76,12 @@ def launch():
             h = find("FrozenSynapse2")
         except SystemExit:
             continue
-        if u32.IsIconic(h):
+        if front:
+            u32.ShowWindowAsync(h, 9)  # SW_RESTORE
+            u32.SetForegroundWindow(h)
+            if not u32.IsIconic(h) and _ > 15:
+                break
+        elif u32.IsIconic(h):
             u32.ShowWindowAsync(h, 4)  # SW_SHOWNOACTIVATE
             u32.SetWindowPos(h, 1, 0, 0, 0, 0, 0x1 | 0x2 | 0x10 | 0x4000)  # HWND_BOTTOM, NOSIZE|NOMOVE|NOACTIVATE|ASYNC
         elif os.path.exists(os.path.join(GAME, "smbridge", "out.txt")) and time.time() - os.path.getmtime(os.path.join(GAME, "smbridge", "out.txt")) < 600:
@@ -121,9 +126,10 @@ def match(mi, out):
 
 
 if __name__ == "__main__":
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 3
-    path = sys.argv[2] if len(sys.argv) > 2 else "fs2soak.jsonl"
-    launch()
+    a = [x for x in sys.argv[1:] if x != "--front"]
+    n = int(a[0]) if a else 3
+    path = a[1] if len(a) > 1 else "fs2soak.jsonl"
+    launch("--front" in sys.argv)
     with open(path, "a") as out:
         for mi in range(n):
             match(mi, out)
