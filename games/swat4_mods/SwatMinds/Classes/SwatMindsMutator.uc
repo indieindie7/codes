@@ -157,7 +157,11 @@ var string LastLive;
 // It is a human-like data set, not expert labels. File: System\SMRec_<map>_<date>.log, one per mission.
 var config bool  bRecordPlayer;
 var config float RecInterval;       // seconds between state samples
-var config float RecFOV;            // degrees, screen cone used for "in view" (wider than the HUD FOV to cover the corners)
+var config float RecFOV;            // unused since 10-23 (in view = real screen rect from PC.FOVAngle + resolution)
+var config float RecMinPix;         // a pawn shorter than this many screen pixels does not count as seen
+var config float RecAspect;         // fallback width/height when GETCURRENTRES gives nothing
+var float RecResX, RecResY, NextRecRes, RecTanH, RecTanV;
+var bool RecBlind;
 var config float RecFlush;          // seconds between part files
 var config bool  bRecordGhost;      // test only: also record a gym ghost player (minimized slots need the ghost unpause)
 var string RecBase;
@@ -785,20 +789,62 @@ function RecFlushNow()
     RecPart++;
 }
 
-function bool PlayerSees(vector Eye, vector Dir, Pawn P)
+// screen size for the view frustum, re-read every 5 s (resolution can change in the menu)
+function RecUpdateView(PlayerController PC)
 {
-    local vector D;
-    D = P.Location - Eye;
-    if (Normal(D) dot Dir < Cos(RecFOV * 0.5 * 0.0174533))
+    local string R;
+    local int X;
+    if (Level.TimeSeconds >= NextRecRes)
+    {
+        NextRecRes = Level.TimeSeconds + 5;
+        R = PC.ConsoleCommand("GETCURRENTRES");
+        X = InStr(R, "x");
+        if (X > 0)
+        {
+            RecResX = float(Left(R, X));
+            RecResY = float(Mid(R, X + 1));
+        }
+        if (RecResX < 1 || RecResY < 1)
+        {
+            RecResY = 768;
+            RecResX = 768 * RecAspect;
+        }
+    }
+    // FOVAngle is horizontal and follows zoom
+    RecTanH = Tan(FClamp(PC.FOVAngle, 1, 170) * 0.5 * 0.0174533);
+    RecTanV = RecTanH * RecResY / RecResX;
+}
+
+// in view = some part of the pawn's cylinder is inside the screen rect, it is at least RecMinPix tall on screen,
+// and a line from the camera reaches its head, chest or knees. Flashbanged = sees nothing.
+function bool PlayerSees(vector Eye, rotator Rot, Pawn P)
+{
+    local vector D, X, Y, Z;
+    local float F, R, H;
+    if (RecBlind)
         return false;
-    return FastTrace(P.Location + vect(0,0,30), Eye) || FastTrace(P.Location, Eye) || FastTrace(P.Location - vect(0,0,30), Eye);
+    GetAxes(Rot, X, Y, Z);
+    D = P.Location - Eye;
+    F = D dot X;
+    if (F < 10)
+        return false;
+    R = P.CollisionRadius / F;
+    H = P.CollisionHeight / F;
+    if (Abs(D dot Y) / F - R > RecTanH || Abs(D dot Z) / F - H > RecTanV)
+        return false;
+    if (H / RecTanV * RecResY < RecMinPix)
+        return false;
+    H = P.CollisionHeight * 0.7;
+    return FastTrace(P.Location + vect(0,0,1) * H, Eye) || FastTrace(P.Location, Eye) || FastTrace(P.Location - vect(0,0,1) * H, Eye);
 }
 
 function RecordPlayer()
 {
     local PlayerController PC;
     local Pawn Me, P;
-    local vector Eye, Dir;
+    local vector Eye;
+    local rotator Dir;
+    local Actor VA;
     local string S, See, Mem, St;
     local int i, Ammo;
     local bool bFound;
@@ -809,8 +855,10 @@ function RecordPlayer()
     if (PC == None || PC.Pawn == None || (bGhostPlayer && !bRecordGhost))
         return;
     Me = PC.Pawn;
-    Eye = Me.Location + Me.EyePosition();
-    Dir = vector(PC.Rotation);
+    // the real camera: eye height, lean offset/roll, sting shake (same call the engine makes each frame)
+    PC.PlayerCalcView(VA, Eye, Dir);
+    RecUpdateView(PC);
+    RecBlind = SwatPawn(Me) != None && SwatPawn(Me).IsFlashbanged();
 
     // sounds: every new instance in earshot (not muted) from a pawn; the player's own sounds as "say"
     for (i = HeardSnd.Length - 1; i >= 0; i--)
@@ -853,8 +901,10 @@ function RecordPlayer()
     NextRec = Level.TimeSeconds + RecInterval;
 
     S = "S p="$V3(Me.Location)$" v="$V3(Me.Velocity)$" yaw="$(PC.Rotation.Yaw & 65535)$" pitch="$(PC.Rotation.Pitch & 65535)
-        $" hp="$Me.Health$" crouch="$int(Me.bIsCrouched)$" fire="$PC.bFire$" alt="$PC.bAltFire
+        $" hp="$Me.Health$" crouch="$int(Me.bIsCrouched)$" lean="$int(Me.LeanState)$" fov="$int(PC.FOVAngle)$" fire="$PC.bFire$" alt="$PC.bAltFire
         $" item="$RecLastItem$" ammo="$Ammo;
+    if (SwatPawn(Me) != None)
+        S = S$" flash="$int(RecBlind)$" gas="$int(SwatPawn(Me).IsGassed())$" stung="$int(SwatPawn(Me).IsStung());
 
     foreach DynamicActors(class'Pawn', P)
     {
@@ -2339,6 +2389,8 @@ defaultproperties
     bRecordPlayer=false
     RecInterval=0.25
     RecFOV=100.0
+    RecMinPix=6.0
+    RecAspect=1.7778
     RecFlush=10.0
     bRecordGhost=false
     SpeedTarget=1.0
