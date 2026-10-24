@@ -64,3 +64,28 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
   went to a loading/tips screen (not checked yet whether the turn played out or the match reset).
 - Next: check what prime did (out.txt + console.log), find the per-unit plan readout and set-plan calls, then
   loop doGetAITurn+guiPrime as an AI-vs-AI soak for data; then swap our policy for Charon on team 1.
+
+## FS2 AI-vs-AI soak (2026-10-24)
+- `trace(1)` / `trace(0)` through the bridge prints the full script call chain to console.log: best tool for the .dso-only scripts.
+- Prime button = `guiPrime()` -> `mtSubmitTurn()` -> MessageBoxOKCancel "Submit Turn" -> `doMTSubmitTurn()` -> `spSubmitTurn()`
+  -> `spSubmitTurnStage2()` -> `getAITurn(spbase.enc, aiturn.enc, spSubmitTurnStage3, 1)` -> `spSubmitTurnStage3()` -> `loadMT(...)` (outcome).
+  Skip the dialog: call `spSubmitTurn()` directly.
+- **`$gThreadCharon=1` (default) loses the callback**: `scriptFinishAIStepping` does `call($aiTurnCallback)` with it empty
+  -> ": Unknown command." and the loading screen hangs. **`$gThreadCharon=0`** = synchronous Charon, callback fires, turn advances.
+- **`$gcmAIDoesBothSides=1`**: Charon plans team 1 (the "human" team) too ("Applying AI for player 1..3", winning plans).
+- State reads: `getCurrentTurnNumber()`, `getUnitIdIsAlive(id)` (ids 1..7 in Light Extermination; missing ids log an error, return 0).
+- `testFS2Skirmish()` starts a match fine; **`playRandomSPMatch()` from the menu crashes the game** (skirmish.cs "Cannot re-declare object [csMGSSettings]").
+- Minimized FS2 stalls and can hang (Not Responding) during outcome playback; `ShowWindow` on a hung window blocks the caller,
+  so restore with `ShowWindowAsync(h,4)` + `SetWindowPos(HWND_BOTTOM, NOACTIVATE|ASYNC)`.
+- `tools/fs2soak.py [matches] [out.jsonl]`: launches FS2 behind if needed, per match `testFS2Skirmish()`, per turn the
+  globals above + `spSubmitTurn()`, waits for the turn number, logs JSONL (alive before/after, plan edges per unit, secs).
+- Built-in: `map/scripts/AISim/AISim.cs.dso` is the city-mode "SIM GAME" (`$map.doSimWeekAIMatches`), not a general soak.
+- **Soak status (10-24 noon): the turn cycle works for ONE turn only.**
+  - `testFS2Skirmish()`: turn 0->1 ok; the turn-1 submit runs Charon (team 2 only, `$gcmAIDoesBothSides` ignored there),
+    then the game drops back to the main menu (`GSBrowser setupUI`). It's a dev test match, not a full one.
+  - `playRandomSPMatch()` called from inside a running skirmish loads the "Random AI Match" (5 turns, both sides on Charon),
+    turn 0->1 ok in ~8 s, then FS2 **crashes** in `loadMTStage3` "Generating floor splat details" (2 of 2 runs;
+    once more right after `randspmatchpostload`). No dump written. From the menu it crashes at once (csMGSSettings).
+  - Untested cause: the window parked behind/unfocused (d3d9 device) vs an engine bug in this offline path.
+    Next: one run with FS2 visible in front (needs the user's screen free), else skip the 3D outcome
+    (look for a headless outcome: `serverSoakTest*`, `collateTurnFiles`, `$gcmAISim`) or the version.dll hook.
