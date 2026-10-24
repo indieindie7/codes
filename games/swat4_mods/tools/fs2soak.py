@@ -69,7 +69,7 @@ def launch(front=False):
     if "FrozenSynapse2" not in subprocess.run(["tasklist"], capture_output=True, text=True).stdout:
         if os.path.exists(IN):
             os.remove(IN)
-        si = subprocess.STARTUPINFO(); si.dwFlags = 1; si.wShowWindow = 1 if front else 7  # SW_SHOWNORMAL / SW_SHOWMINNOACTIVE
+        si = subprocess.STARTUPINFO(); si.dwFlags = 1; si.wShowWindow = 1 if front else 4  # SW_SHOWNORMAL / SW_SHOWNOACTIVATE (a minimized start hangs the load)
         subprocess.Popen([os.path.join(GAME, "FrozenSynapse2.exe"), "-log", "1"], cwd=GAME, startupinfo=si)
     # restore (async: a hung window must not block us) until it stays up
     for _ in range(60):
@@ -96,7 +96,7 @@ def launch(front=False):
 def match(mi, out):
     # a second playRandomSPMatch() while a match is open crashes the game
     # (skirmish.cs "Cannot re-declare object [csMGSSettings]"): leave first
-    run("Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); quitSP();")
+    run('Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); if (Canvas.getContent().getName() !$= "MainScreenGui") quitSP();')
     time.sleep(8)
     run("Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); playQuickFS2Skirmish();")
     t0 = time.time()

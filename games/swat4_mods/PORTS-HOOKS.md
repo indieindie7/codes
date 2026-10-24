@@ -106,3 +106,10 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
   in the quick skirmish (team 1 has no plan). Turn 1 submits still reload turn 2 of 5 (screen "Turn 2 of 5"); trace of the turn-1
   submit = same chain as turn 0 (spSubmitTurnStage2 -> getAITurn -> doGetAITurn -> Stage3 -> loadMT), psychoff/*.enc rewritten.
   Next: diff spBaseBeforeAI.enc vs spbase.enc/pturn.enc to see whether the new turn is written; give team 1 a plan.
+- **10-24 evening, multi-turn probe (paused):** turn files in `%APPDATA%\FrozenSynapse2\psychoff\turnFiles\` are named by game
+  time in ms (`baseFile0.enc`, then `baseFile4992.enc`); the 2nd submit rewrote 4992 again, so game time never moves past the
+  end of turn 1 when the outcome playback is skipped. Next test (`%TEMP%/fs2t5.py`): `doGoToEndOfTurn();` (or
+  `eventOnReachEndOfOutcomePlayback()`, `doGoToTime`, `moveSimToOutcomeTime`) between submits.
+  Fresh-launch gotchas: `quitSP()` on MainScreenGui crashes (now guarded); a minimized start (SW_SHOWMINNOACTIVE) left the game
+  hung after the match load (now SW_SHOWNOACTIVATE). An un-minimized run also hung at 0 % CPU after load, while the user's
+  UE5 game was on the GPUs: retest when no game is running.
