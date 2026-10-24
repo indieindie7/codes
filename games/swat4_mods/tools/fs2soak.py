@@ -3,8 +3,10 @@
   py -3.13 -I fs2soak.py [matches=3] [out=fs2soak.jsonl]
 
 Needs the smbridge (fs2bridge.py --install) and FS2 running, not minimized.
-Per match: testFS2Skirmish() (QUICK SKIRMISH; playRandomSPMatch() crashes
-the game from the menu: skirmish.cs csMGSSettings re-declare). Per turn:
+Per match: quitSP() + playQuickFS2Skirmish() (the real QUICK SKIRMISH button;
+testFS2Skirmish / playRandomSPMatch build levels with 0 nav nodes and crash at
+"Generating floor splat details"). Only turn 0->1 advances so far: later
+submits run Charon + loadMT but reload the same turn (PORTS-HOOKS.md). Per turn:
 $gcmAIDoesBothSides=1 + $gThreadCharon=0 (threaded Charon loses the
 $aiTurnCallback and the turn hangs on the loading screen), spSubmitTurn(),
 wait for getCurrentTurnNumber() to move, log alive flags + plan sizes.
@@ -94,13 +96,12 @@ def launch(front=False):
 def match(mi, out):
     # a second playRandomSPMatch() while a match is open crashes the game
     # (skirmish.cs "Cannot re-declare object [csMGSSettings]"): leave first
-    if mi:
-        run("Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); quitSP();")
-        time.sleep(8)
-    run("Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); testFS2Skirmish();")
+    run("Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); quitSP();")
+    time.sleep(8)
+    run("Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); playQuickFS2Skirmish();")
     t0 = time.time()
     while turn() != 0 or not any(alive()):
-        if time.time() - t0 > 90:
+        if time.time() - t0 > 120:
             return print("match load timeout")
         time.sleep(2)
     time.sleep(5)  # post-load schedules (randSPMatchPostLoad)
@@ -109,7 +110,7 @@ def match(mi, out):
         pos = os.path.getsize(LOG)
         t1 = time.time()
         run("Canvas.popDialog(MessageLoading); $gcmAIDoesBothSides=1; $gThreadCharon=0; spSubmitTurn();")
-        while turn() <= before and time.time() - t1 < 300:  # -1 = no reply while busy
+        while turn() <= before and time.time() - t1 < (300 if before == 0 else 30):  # -1 = no reply while busy
             time.sleep(2)
         txt, _ = log_tail(pos)
         plans = {int(p): (int(e) if e else 0) for p, e in re.findall(

@@ -101,3 +101,8 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
     Next: check `$alreadySubmittedMT` / `alreadySubmittedTurn()`, `preSubmitCall`, `continueSPMatch()`; maybe the 3D
     outcome must finish (`endFancyOutcome()` / `onEnterPlanningAfterFirstOutcome()`) before planning turn 1.
   - Test scripts: %TEMP%/fs2t3.py (quitSP, playQuickFS2Skirmish, submit loop).
+- **Soak WORKS (one turn per match):** `py -3.13 -I tools/fs2soak.py 3 out.jsonl` -> 3 matches, turn 0->1 in ~11 s each, no crash,
+  plan edges per unit logged (e.g. {4: 67, 5: 75, 6: 11}). Only AI-team units (4+) show plans: `$gcmAIDoesBothSides` seems ignored
+  in the quick skirmish (team 1 has no plan). Turn 1 submits still reload turn 2 of 5 (screen "Turn 2 of 5"); trace of the turn-1
+  submit = same chain as turn 0 (spSubmitTurnStage2 -> getAITurn -> doGetAITurn -> Stage3 -> loadMT), psychoff/*.enc rewritten.
+  Next: diff spBaseBeforeAI.enc vs spbase.enc/pturn.enc to see whether the new turn is written; give team 1 a plan.
