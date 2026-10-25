@@ -28,6 +28,7 @@ struct hw_sheet {
     float *dye;              /* tint carried by the flow (silt, blood) */
     float *scum;             /* floating surface layer (idea 9) */
     float *spray; int nspray;
+    float *sprayC;           /* idea 20: 2x2 velocity gradient (du/dx du/dz dv/dx dv/dz) gathered when each drop left the sheet */
     hw_foam_params fp;
     unsigned rng;
 };
@@ -51,10 +52,11 @@ HW_API hw_sheet *hw_create(int w, int h, float dx, float g, float cfl)
     s->ftmp = plane(s); s->atmp = plane(s); s->stir = plane(s); s->dye = plane(s); s->scum = plane(s);
     s->pullu = plane(s); s->pullv = plane(s);
     s->spray = (float *)calloc(HW_SPRAY_CAP * 8, sizeof(float));
+    s->sprayC = (float *)calloc(HW_SPRAY_CAP * 4, sizeof(float));
     s->rng = 0x9e3779b9u;
     s->fp.foam_gain = 0.8f; s->fp.air_gain = 3.0f; s->fp.foam_life = 2.5f; s->fp.lace = 0.25f;
     s->fp.bubble_rise = 25.0f; s->fp.air_to_foam = 0.35f; s->fp.spread = 3.0f;
-    s->fp.spray_rate = 30.0f; s->fp.spray_foam = 0.15f; s->fp.spray_drag = 0.5f; s->fp.spray_max = 4096; s->fp.spray_vol = 0.05f;
+    s->fp.spray_rate = 30.0f; s->fp.spray_foam = 0.15f; s->fp.spray_drag = 0.5f; s->fp.spray_max = 4096; s->fp.spray_vol = 0.05f; s->fp.spray_apic = 1.0f;
     s->fp.scum_cover = 0.0f; s->fp.scum_regrow = 90.0f; s->fp.debris_wake = 1.0f;
     s->fp.dye_gain = 0.6f; s->fp.dye_life = 12.0f;
     s->fp.shear_gain = 0.5f; s->fp.kin_floor = 0.3f; s->fp.kin_lo = 0.02f; s->fp.kin_hi = 0.5f;
@@ -78,7 +80,7 @@ HW_API void hw_destroy(hw_sheet *s)
     free(s->hA); free(s->huA); free(s->hvA); free(s->hB); free(s->huB); free(s->hvB);
     free(s->hC); free(s->huC); free(s->hvC); free(s->u); free(s->v); free(s->c);
     free(s->B); free(s->wall); free(s->b); free(s->bprev); free(s->edge); free(s->Beff);
-    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->dye); free(s->scum); free(s->spray); free(s->pullu); free(s->pullv);
+    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->dye); free(s->scum); free(s->spray); free(s->sprayC); free(s->pullu); free(s->pullv);
     free(s->wallx); free(s->wally); free(s);
 }
 
@@ -569,6 +571,55 @@ static float sample_wet(const hw_sheet *s, const float *p, float x, float z)
     return wsum > 1e-4f ? sum / wsum : 0.0f;
 }
 
+/* idea 20 (APIC spray): a drop leaving a cell takes its share of water and momentum and remembers
+   the local velocity gradient C (Jiang 2015 affine particle-in-cell, here a 2x2 for the sheet);
+   when it lands, volume and momentum go back over the 2x2 cells under it, v + C (x_cell - x_drop),
+   so angled spray drives the water it lands in. spray_apic scales the momentum part (0 = volume only). */
+static void spray_leave(hw_sheet *s, int i, int j, float *p, float *C)
+{
+    int k = AT(s, i, j), kw = AT(s, i > 0 ? i - 1 : i, j), ke = AT(s, i < s->w - 1 ? i + 1 : i, j);
+    int ks = AT(s, i, j > 0 ? j - 1 : j), kn = AT(s, i, j < s->h - 1 ? j + 1 : j);
+    float dv = s->fp.spray_vol * p[7], inv;
+    if (s->wall[kw] > 0 || s->hA[kw] < WET_FOAM) kw = k;
+    if (s->wall[ke] > 0 || s->hA[ke] < WET_FOAM) ke = k;
+    if (s->wall[ks] > 0 || s->hA[ks] < WET_FOAM) ks = k;
+    if (s->wall[kn] > 0 || s->hA[kn] < WET_FOAM) kn = k;
+    inv = 1.0f / ((ke == kw ? 1 : 2) * s->dx);
+    C[0] = (s->u[ke] - s->u[kw]) * inv; C[2] = (s->v[ke] - s->v[kw]) * inv;
+    inv = 1.0f / ((kn == ks ? 1 : 2) * s->dx);
+    C[1] = (s->u[kn] - s->u[ks]) * inv; C[3] = (s->v[kn] - s->v[ks]) * inv;
+    /* the drop carries water (idea 12b): the cell loses what it takes, the landing cell gets it back */
+    if (dv > 0 && s->hA[k] > 4 * dv) {
+        s->hA[k] -= dv;
+        s->huA[k] -= dv * p[3]; s->hvA[k] -= dv * p[5];
+    } else p[7] = -p[7];   /* a dry-ish cell lends nothing: size < 0 marks an empty drop */
+}
+
+static void spray_land(hw_sheet *s, int k, const float *p, const float *C)
+{
+    float vol = s->fp.spray_vol * p[7], apic = s->fp.spray_apic, fx, fz, wsum = 0, w[4];
+    int i0, j0, q, kk[4], ok[4];
+    if (vol <= 0) return;
+    fx = p[0] / s->dx - 0.5f; fz = p[2] / s->dx - 0.5f;
+    i0 = (int)floorf(fx); j0 = (int)floorf(fz); fx -= i0; fz -= j0;
+    w[0] = (1 - fx) * (1 - fz); w[1] = fx * (1 - fz); w[2] = (1 - fx) * fz; w[3] = fx * fz;
+    for (q = 0; q < 4; q++) {
+        int i = i0 + (q & 1), j = j0 + (q >> 1);
+        ok[q] = i >= 0 && j >= 0 && i < s->w && j < s->h;
+        if (ok[q]) { kk[q] = AT(s, i, j); ok[q] = s->wall[kk[q]] <= 0; }
+        if (ok[q]) wsum += w[q];
+    }
+    if (wsum <= 0) { s->hA[k] += vol; s->huA[k] += apic * vol * p[3]; s->hvA[k] += apic * vol * p[5]; return; }
+    for (q = 0; q < 4; q++) {
+        float xc, zc, vx, vz, vq;
+        if (!ok[q]) continue;
+        vq = vol * w[q] / wsum;
+        xc = (i0 + (q & 1) + 0.5f) * s->dx - p[0]; zc = (j0 + (q >> 1) + 0.5f) * s->dx - p[2];
+        vx = p[3] + C[0] * xc + C[1] * zc; vz = p[5] + C[2] * xc + C[3] * zc;
+        s->hA[kk[q]] += vq; s->huA[kk[q]] += apic * vq * vx; s->hvA[kk[q]] += apic * vq * vz;
+    }
+}
+
 static void spray_spawn(hw_sheet *s, int i, int j, float strength, float dt, float nx, float nz)
 {
     int k = AT(s, i, j);
@@ -594,10 +645,7 @@ static void spray_spawn(hw_sheet *s, int i, int j, float strength, float dt, flo
         p[4] = up;
         p[6] = 0;
         p[7] = 0.5f + frand(s);
-        {   /* the drop carries water (idea 12b): the cell loses what it takes, the landing cell gets it back */
-            float dv = s->fp.spray_vol * p[7];
-            if (dv > 0 && s->hA[k] > 4 * dv) s->hA[k] -= dv; else p[7] = -p[7];   /* a dry-ish cell lends nothing: size < 0 marks an empty drop */
-        }
+        spray_leave(s, i, j, p, s->sprayC + 4 * (s->nspray - 1));
     }
 }
 
@@ -619,7 +667,7 @@ static void spray_step(hw_sheet *s, float dt)
             if (s->wall[k] > 0) dead = 1;
             else if (p[6] > 3.0f || (p[4] < 0 && p[1] <= s->Beff[k] + s->hA[k])) {   /* landed (or too old: dropped where it is) */
                 dead = 1;
-                if (p[7] > 0) s->hA[k] += s->fp.spray_vol * p[7];   /* its water lands here */
+                spray_land(s, k, p, s->sprayC + 4 * m);   /* its water and momentum land here (idea 20) */
                 if (s->hA[k] >= WET_FOAM) {
                     s->foam[k] += s->fp.spray_foam * fabsf(p[7]);
                     s->air[k] += 0.5f * s->fp.spray_foam * fabsf(p[7]);
@@ -628,7 +676,7 @@ static void spray_step(hw_sheet *s, float dt)
                 }
             }
         }
-        if (!dead) { if (n != m) memcpy(s->spray + n * 8, p, 8 * sizeof(float)); n++; }
+        if (!dead) { if (n != m) { memcpy(s->spray + n * 8, p, 8 * sizeof(float)); memcpy(s->sprayC + n * 4, s->sprayC + m * 4, 4 * sizeof(float)); } n++; }
     }
     s->nspray = n;
 }
@@ -808,6 +856,20 @@ HW_API float *hw_foam(hw_sheet *s) { return s->foam; }
 HW_API float *hw_air(hw_sheet *s) { return s->air; }
 HW_API float *hw_dye(hw_sheet *s) { return s->dye; }
 HW_API const float *hw_spray(const hw_sheet *s, int *count) { if (count) *count = s->nspray; return s->spray; }
+HW_API int hw_spray_add(hw_sheet *s, float x, float y, float z, float vx, float vy, float vz, float size, int carry)
+{
+    int i = (int)floorf(x / s->dx), j = (int)floorf(z / s->dx), k;
+    int cap = s->fp.spray_max < HW_SPRAY_CAP ? s->fp.spray_max : HW_SPRAY_CAP;
+    float *p;
+    if (i < 0 || j < 0 || i >= s->w || j >= s->h || s->nspray >= cap || size <= 0) return 0;
+    k = AT(s, i, j);
+    if (s->wall[k] > 0) return 0;
+    p = s->spray + 8 * s->nspray++;
+    p[0] = x; p[1] = y; p[2] = z; p[3] = vx; p[4] = vy; p[5] = vz; p[6] = 0; p[7] = size;
+    if (carry) spray_leave(s, i, j, p, s->sprayC + 4 * (s->nspray - 1));
+    else { float *C = s->sprayC + 4 * (s->nspray - 1); C[0] = C[1] = C[2] = C[3] = 0; p[7] = -size; }
+    return 1;
+}
 HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p) { s->fp = *p; }
 HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p) { *p = s->fp; }
 

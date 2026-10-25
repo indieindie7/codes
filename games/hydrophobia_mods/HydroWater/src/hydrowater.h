@@ -64,6 +64,7 @@ typedef struct hw_foam_params {
     float shear_gain;   /* trapped air: foam from the velocity difference to the neighbours (0.5) */
     float kin_floor;    /* gate = kin_floor + (1 - kin_floor) * I_k; 1 = no gate (0.3) */
     float kin_lo, kin_hi; /* I_k clamp window (0.02, 0.5) */
+    float spray_apic;   /* idea 20: share of a landing drop's momentum (v + C (x_cell - x_drop), APIC) given to the 2x2 cells under it (1); 0 = volume only */
 } hw_foam_params;
 
 #define HW_SPRAY_CAP 8192
@@ -133,6 +134,10 @@ HW_API float hw_body_force(const hw_sheet *s, const float *probes, int n, float 
 HW_API float *hw_foam(hw_sheet *s);
 HW_API float *hw_air(hw_sheet *s);
 HW_API const float *hw_spray(const hw_sheet *s, int *count);
+/* add one drop from outside (a swimmer's stroke, a hit): position, velocity, size 0.5..1.5; carry = 1
+ * takes spray_vol * size of water (and its momentum) from the cell under it, 0 = a render-only drop.
+ * Returns 0 when off the sheet, on a wall or at the cap. */
+HW_API int hw_spray_add(hw_sheet *s, float x, float y, float z, float vx, float vy, float vz, float size, int carry);
 HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p);
 HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p);
 /* splash event (bullet, explosion, a body falling in): add foam and air within radius r */
