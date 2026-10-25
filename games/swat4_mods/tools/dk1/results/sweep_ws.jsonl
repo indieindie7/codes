@@ -1,0 +1,4 @@
+{"brain": "pairs", "map": "0/84", "secs": 17.6, "game_ms": 19536, "state": 11, "troopers_alive": 0, "troopers": 4, "suspects_alive": 20, "suspects": 25, "win": false, "orders": 14}
+{"brain": "pairs", "map": "0/130", "secs": 8.3, "game_ms": 10464, "state": 11, "troopers_alive": 0, "troopers": 3, "suspects_alive": 24, "suspects": 26, "win": false, "orders": 7}
+{"brain": "pairs", "map": "0/200", "secs": 26.0, "game_ms": 27120, "state": 11, "troopers_alive": 0, "troopers": 4, "suspects_alive": 31, "suspects": 32, "win": false, "orders": 21}
+{"map": "0/262", "brain": "pairs", "error": true}

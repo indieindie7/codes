@@ -177,6 +177,11 @@ static void run_line(char *line, FILE *out)
                 *(int *)(h + 0x19c), n);
         if (seg) fprintf(out, " seg b10 %d cur %d pts %d", seg[0x10], *(int *)(seg + 0xc), *(int *)(seg + 0x28));
         fprintf(out, "\n");
+    } else if (!strcmp(tok, "maps")) {
+        /* map list counts: Game::GetMapList(i) = g_pGame+0x74+i*0x10, List {cap, data, count} */
+        BYTE *g = *(BYTE **)F(0x3caa0c);
+        int i;
+        for (i = 0; i < 4; i++) fprintf(out, "list %d count %d\n", i, *(int *)(g + 0x74 + i * 0x10 + 8));
     } else if (!strcmp(tok, "poke")) {
         /* poke id off byte: one byte of a human (debug) */
         unsigned id = (unsigned)atoi(strtok(NULL, " \t\r\n"));
