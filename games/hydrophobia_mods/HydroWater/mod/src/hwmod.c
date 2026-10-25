@@ -79,6 +79,8 @@ static struct {
     float glow_colour[3];
     int spray_draw;     /* draw the solver's spray drops as particles after the water (1 = default, 0 = off) */
     float spray_size;   /* drop size scale (1 = default) */
+    float spray_blob;   /* ideas 12b + 23: drops drawn as a metaball field (neighbouring drops merge into blobs, shaded by the field's slope)
+                           and drops just above the surface flatten into it instead of sitting on it as balls (0 = plain sprites, 1 = default) */
     float spray_colour[4];
     float scum;         /* floating surface layer (algae, oil) coverage 0..1 that drifts with the flow and parts around Kate: 0 = off (default) */
     float scum_colour[3];
@@ -95,7 +97,7 @@ static struct {
     float swim;         /* idea 25: swimmer wake when Kate swims (bow bump and shoulder trough, kick strip, white water by effort): 0 = off, 1 = default */
     float swim_depth;   /* water deeper than this under her means she is swimming, not wading (150) */
     float swim_spray;   /* stroke spray: a handful of drops thrown ahead every 0.6 s, alternating sides (0 = off, 1 = default) */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 150.0f, 1.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 150.0f, 1.0f };
 static const char *const FOAM_KEYS[14] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life", "shear_gain", "kin_floor", "kin_lo", "kin_hi" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -191,6 +193,7 @@ static void ReadIni(void)
         else if (!_stricmp(k, "debris_wake")) cfg.debris_wake = (float)atof(v);
         else if (!_stricmp(k, "scum_colour")) sscanf(v, "%f %f %f", &cfg.scum_colour[0], &cfg.scum_colour[1], &cfg.scum_colour[2]);
         else if (!_stricmp(k, "spray_size")) cfg.spray_size = (float)atof(v);
+        else if (!_stricmp(k, "spray_blob")) cfg.spray_blob = (float)atof(v);
         else if (!_stricmp(k, "spray_colour")) sscanf(v, "%f %f %f %f", &cfg.spray_colour[0], &cfg.spray_colour[1], &cfg.spray_colour[2], &cfg.spray_colour[3]);
         else if (!_stricmp(k, "glow_colour")) sscanf(v, "%f %f %f", &cfg.glow_colour[0], &cfg.glow_colour[1], &cfg.glow_colour[2]);
         else if (!_stricmp(k, "foam_normals")) cfg.foam_normals = (float)atof(v);
@@ -2066,21 +2069,42 @@ static float *g_spray_vb;
 static const char SPRAY_VS[] =
     "float4 hwM0 : register(c0); float4 hwM1 : register(c1); float4 hwM2 : register(c2); float4 hwM3 : register(c3);\n"
     "float4 hwSc : register(c4);\n"
-    "struct VI { float3 p : POSITION; float4 c : TEXCOORD0; };\n"
-    "struct VO { float4 pos : POSITION; float2 uv : TEXCOORD0; float2 ac : TEXCOORD1; };\n"
+    "struct VI { float3 p : POSITION; float4 c : TEXCOORD0; float4 n0 : TEXCOORD1; float4 n1 : TEXCOORD2; float4 n2 : TEXCOORD3; float4 n3 : TEXCOORD4; float4 n4 : TEXCOORD5; float4 n5 : TEXCOORD6; };\n"
+    "struct VO { float4 pos : POSITION; float2 uv : TEXCOORD0; float2 ac : TEXCOORD1; float4 n0 : TEXCOORD2; float4 n1 : TEXCOORD3; float4 n2 : TEXCOORD4; float4 n3 : TEXCOORD5; float4 n4 : TEXCOORD6; float4 n5 : TEXCOORD7; };\n"
+    /* ideas 12b + 23: a neighbour (dx, dy, dz, r) in world units becomes (x, y, r) in the drop's sprite space (1 = this drop's radius), w = 1 if present */
+    "#define HW_NB(n) (n.w > 0.0f ? float4(lerp(float2(dot(n.xyz, hwM0.xyz), dot(n.xyz, hwM1.xyz)), n.x * hwM0.xy + n.y * hwM1.xy + n.z * hwM2.xy, hwSc.z) / (i.c.z * hwSc.xy), n.w / i.c.z, 1.0f) : float4(0.0f, 0.0f, 0.0f, 0.0f))\n"
     "VO main(VI i) {\n"
     "  VO o; float4 p = float4(i.p, 1.0f);\n"
     "  float4 a = float4(dot(p, hwM0), dot(p, hwM1), dot(p, hwM2), dot(p, hwM3));\n"
     "  float4 b = p.x * hwM0 + p.y * hwM1 + p.z * hwM2 + hwM3;\n"
     "  float4 cl = lerp(a, b, hwSc.z);\n"
-    "  cl.xy += i.c.xy * i.c.z * float2(hwSc.x, hwSc.y);\n"
-    "  o.pos = cl; o.uv = i.c.xy; o.ac = float2(i.c.w, 0.0f); return o; }\n";
+    "  cl.xy += i.c.xy * i.c.z * hwSc.w * float2(hwSc.x, hwSc.y);\n"   /* hwSc.w = 1.6 in blob mode: the quad covers the merges with its neighbours */
+    "  o.pos = cl; o.uv = i.c.xy * hwSc.w; o.ac = float2(i.c.w, 0.0f);\n"
+    "  o.n0 = HW_NB(i.n0); o.n1 = HW_NB(i.n1); o.n2 = HW_NB(i.n2); o.n3 = HW_NB(i.n3); o.n4 = HW_NB(i.n4); o.n5 = HW_NB(i.n5); return o; }\n";
+#define SPRAY_VF 31   /* floats a vertex: position, (cx, cy, r, a), 6 neighbours (dx, dy, dz, r) */
 static const char SPRAY_PS[] =
     "float4 hwCol : register(c0);\n"
-    "struct VO { float4 pos : POSITION; float2 uv : TEXCOORD0; float2 ac : TEXCOORD1; };\n"
+    "float4 hwBlob : register(c1);\n"   /* x = spray_blob */
+    "struct VO { float4 pos : POSITION; float2 uv : TEXCOORD0; float2 ac : TEXCOORD1; float4 n0 : TEXCOORD2; float4 n1 : TEXCOORD3; float4 n2 : TEXCOORD4; float4 n3 : TEXCOORD5; float4 n4 : TEXCOORD6; float4 n5 : TEXCOORD7; };\n"
+    /* metaball kernel (1 - d2/R2)^2 inside R = 1.3 radii; f = value, g = its gradient in sprite space */
+    "#define HW_K(q, r) { float2 hq = (q); float hr2 = 1.69f * (r) * (r); float hv = saturate(1.0f - dot(hq, hq) / hr2); f += hv * hv; g += hq * (-4.0f * hv / hr2); }\n"
     "float4 main(VO i) : COLOR {\n"
-    "  float d = dot(i.uv, i.uv); float a = saturate(1.0f - d); a *= a;\n"
-    "  float lit = 0.8f + 0.3f * saturate(i.uv.y + 0.4f) - 0.25f * d;\n"   /* a little brighter on top, dimmer at the rim */
+    "  if (hwBlob.x <= 0.0f) {\n"
+    "    float d = dot(i.uv, i.uv); float a = saturate(1.0f - d); a *= a;\n"
+    "    float lit = 0.8f + 0.3f * saturate(i.uv.y + 0.4f) - 0.25f * d;\n"   /* a little brighter on top, dimmer at the rim */
+    "    return float4(hwCol.rgb * lit, a * hwCol.a * i.ac.x); }\n"
+    "  float f = 0.0f; float2 g = 0.0f;\n"
+    "  HW_K(i.uv, 1.0f)\n"
+    "  if (i.n0.w > 0.0f) HW_K(i.uv - i.n0.xy, i.n0.z)\n"
+    "  if (i.n1.w > 0.0f) HW_K(i.uv - i.n1.xy, i.n1.z)\n"
+    "  if (i.n2.w > 0.0f) HW_K(i.uv - i.n2.xy, i.n2.z)\n"
+    "  if (i.n3.w > 0.0f) HW_K(i.uv - i.n3.xy, i.n3.z)\n"
+    "  if (i.n4.w > 0.0f) HW_K(i.uv - i.n4.xy, i.n4.z)\n"
+    "  if (i.n5.w > 0.0f) HW_K(i.uv - i.n5.xy, i.n5.z)\n"
+    "  float a = smoothstep(0.23f, 0.47f, f);\n"   /* threshold 0.35: a lone drop keeps about 0.83 of its radius; touching drops bridge */
+    "  float3 nrm = normalize(float3(-g, 2.0f));\n"
+    "  float lit = 0.62f + 0.38f * saturate(dot(nrm, float3(0.29f, 0.78f, 0.55f))) + 0.5f * pow(saturate(dot(nrm, float3(0.19f, 0.86f, 0.47f))), 24.0f);\n"
+    "  lit *= 1.0f - 0.2f * (1.0f - saturate((f - 0.35f) * 3.0f));\n"   /* rim a little darker, the core bright (idea 14 for blobs) */
     "  return float4(hwCol.rgb * lit, a * hwCol.a * i.ac.x); }\n";
 
 static int StrHasI(const char *s, const char *sub)
@@ -2182,12 +2206,12 @@ static int SprayCompile(const char *src, const char *prof, void **out)
 static int SprayInit(IDirect3DDevice9 *dev)
 {
     void *vb = NULL, *pb = NULL;
-    D3DVERTEXELEMENT9 el[3];
+    D3DVERTEXELEMENT9 el[9];
     int i;
     memset(el, 0, sizeof el);
     el[0].Type = D3DDECLTYPE_FLOAT3; el[0].Usage = D3DDECLUSAGE_POSITION;
-    el[1].Offset = 12; el[1].Type = D3DDECLTYPE_FLOAT4; el[1].Usage = D3DDECLUSAGE_TEXCOORD;
-    el[2].Stream = 0xFF; el[2].Type = D3DDECLTYPE_UNUSED;
+    for (i = 1; i < 8; i++) { el[i].Offset = (WORD)(12 + 16 * (i - 1)); el[i].Type = D3DDECLTYPE_FLOAT4; el[i].Usage = D3DDECLUSAGE_TEXCOORD; el[i].UsageIndex = (BYTE)(i - 1); }
+    el[8].Stream = 0xFF; el[8].Type = D3DDECLTYPE_UNUSED;
     if (!SprayCompile(SPRAY_VS, "vs_3_0", &vb) || !SprayCompile(SPRAY_PS, "ps_3_0", &pb)) { ReleaseCom(&vb); ReleaseCom(&pb); return 0; }
     if (IDirect3DDevice9_CreateVertexShader(dev, (const DWORD *)BufPtr(vb), &g_spray_vs) != D3D_OK ||
         IDirect3DDevice9_CreatePixelShader(dev, (const DWORD *)BufPtr(pb), &g_spray_ps) != D3D_OK ||
@@ -2199,7 +2223,7 @@ static int SprayInit(IDirect3DDevice9 *dev)
     ReleaseCom(&vb); ReleaseCom(&pb);
     if (!g_spray_idx) {
         g_spray_idx = (WORD *)malloc((size_t)HW_SPRAY_CAP * 6 * sizeof(WORD));
-        g_spray_vb = (float *)malloc((size_t)HW_SPRAY_CAP * 28 * sizeof(float));
+        g_spray_vb = (float *)malloc((size_t)HW_SPRAY_CAP * 4 * SPRAY_VF * sizeof(float));
         if (!g_spray_idx || !g_spray_vb) return 0;
         for (i = 0; i < HW_SPRAY_CAP; i++) {
             WORD *q = g_spray_idx + i * 6, v = (WORD)(i * 4);
@@ -2208,6 +2232,41 @@ static int SprayInit(IDirect3DDevice9 *dev)
     }
     Log("spray: particle shaders ready (cap %d drops)", HW_SPRAY_CAP);
     return 1;
+}
+
+
+/* ideas 12b + 23: give every drop its 6 nearest neighbours within 2.6 radii (world offsets) so the
+   pixel shader can sum their metaball kernels; a hash grid over the drop positions keeps it O(n). */
+static void BlobNeighbours(int n)
+{
+    enum { NB = 4096 };
+    static int head[NB], next[HW_SPRAY_CAP];
+    float cs = 10.0f * (cfg.spray_size > 0.1f ? cfg.spray_size : 0.1f), inv = 1.0f / cs;
+    int k;
+    memset(head, -1, sizeof head);
+    for (k = 0; k < n; k++) {
+        const float *v = g_spray_vb + k * 4 * SPRAY_VF;
+        int hx = (int)floorf(v[0] * inv), hy = (int)floorf(v[1] * inv), hz = (int)floorf(v[2] * inv);
+        unsigned hh = ((unsigned)hx * 73856093u ^ (unsigned)hy * 19349663u ^ (unsigned)hz * 83492791u) & (NB - 1);
+        next[k] = head[hh]; head[hh] = k;
+    }
+    for (k = 0; k < n; k++) {
+        float *v = g_spray_vb + k * 4 * SPRAY_VF, r = v[5], lim = 2.6f * r, best[6][5];
+        int hx = (int)floorf(v[0] * inv), hy = (int)floorf(v[1] * inv), hz = (int)floorf(v[2] * inv), nb = 0, dx, dy, dz, q, m;
+        for (dz = -1; dz <= 1; dz++) for (dy = -1; dy <= 1; dy++) for (dx = -1; dx <= 1; dx++) {
+            unsigned hh = ((unsigned)(hx + dx) * 73856093u ^ (unsigned)(hy + dy) * 19349663u ^ (unsigned)(hz + dz) * 83492791u) & (NB - 1);
+            int j;
+            for (j = head[hh]; j >= 0; j = next[j]) {
+                const float *u = g_spray_vb + j * 4 * SPRAY_VF;
+                float ox = u[0] - v[0], oy = u[1] - v[1], oz = u[2] - v[2], d2 = ox * ox + oy * oy + oz * oz;
+                if (j == k || d2 > lim * lim) continue;
+                if (nb < 6) m = nb++;
+                else { m = 0; for (q = 1; q < 6; q++) if (best[q][4] > best[m][4]) m = q; if (best[m][4] <= d2) continue; }
+                best[m][0] = ox; best[m][1] = oy; best[m][2] = oz; best[m][3] = u[5]; best[m][4] = d2;
+            }
+        }
+        for (m = 0; m < nb; m++) for (q = 0; q < 4; q++) memcpy(v + q * SPRAY_VF + 7 + m * 4, best[m], 4 * sizeof(float));
+    }
 }
 
 static void DrawSpray(IDirect3DDevice9 *dev)
@@ -2245,16 +2304,26 @@ static void DrawSpray(IDirect3DDevice9 *dev)
         for (k = 0; k < sn->nspray && n < HW_SPRAY_CAP; k++, n++) {
             static const float cx[4] = { -1, 1, 1, -1 }, cy[4] = { -1, -1, 1, 1 };
             const float *p = sn->spray + k * 8;
-            float *v = g_spray_vb + n * 28;
+            float *v = g_spray_vb + n * 4 * SPRAY_VF;
             float wx = sn->ox + p[0], wy = sn->oy + p[2], wz = -p[1];
             float r = (1.5f + 2.0f * p[7]) * cfg.spray_size, a = p[6] < 0.08f ? p[6] * 12.5f : 1.0f;   /* fades in over the first 80 ms */
             int q;
-            for (q = 0; q < 4; q++) { v[q * 7] = wx; v[q * 7 + 1] = wy; v[q * 7 + 2] = wz; v[q * 7 + 3] = cx[q]; v[q * 7 + 4] = cy[q]; v[q * 7 + 5] = r; v[q * 7 + 6] = a; }
+            if (cfg.spray_blob > 0.0f && sn->surf && sn->dx > 0.0f) {
+                /* idea 23: smooth-min with the sheet: a drop within 1.5 radii of the surface spreads out and sinks into it */
+                int ci = (int)(p[0] / sn->dx), cj = (int)(p[2] / sn->dx);
+                if (ci >= 0 && cj >= 0 && ci < sn->w && cj < sn->h && sn->surf[cj * sn->w + ci] > -1e29f) {
+                    float hs = p[1] - sn->surf[cj * sn->w + ci], fl = hs < 0.0f ? 1.0f : hs < 1.5f * r ? 1.0f - hs / (1.5f * r) : 0.0f;
+                    r *= 1.0f + 0.5f * fl; a *= 1.0f - 0.7f * fl;
+                }
+            }
+            memset(v, 0, 4 * SPRAY_VF * sizeof(float));
+            for (q = 0; q < 4; q++) { float *w = v + q * SPRAY_VF; w[0] = wx; w[1] = wy; w[2] = wz; w[3] = cx[q]; w[4] = cy[q]; w[5] = r; w[6] = a; }
         }
     }
     ReleaseSRWLockShared(&g_lock);
     if (g_spray_logged < 3 && n) { Log("spray: matrix form %c, fx %.3f fy %.3f, %d drops drawn", form ? 'B' : 'A', fx, fy, n); g_spray_logged++; }
     if (!n) return;
+    if (cfg.spray_blob > 0.0f) BlobNeighbours(n);
     if (IDirect3DDevice9_CreateStateBlock(dev, D3DSBT_ALL, &sb) != D3D_OK) return;
     IDirect3DDevice9_SetRenderState(dev, D3DRS_ZENABLE, D3DZB_TRUE);
     IDirect3DDevice9_SetRenderState(dev, D3DRS_ZWRITEENABLE, FALSE);
@@ -2274,11 +2343,13 @@ static void DrawSpray(IDirect3DDevice9 *dev)
     IDirect3DDevice9_SetPixelShader(dev, g_spray_ps);
     IDirect3DDevice9_SetStreamSourceFreq(dev, 0, 1);
     IDirect3DDevice9_SetVertexShaderConstantF(dev, 0, m, 4);
-    sc[0] = fx; sc[1] = fy; sc[2] = (float)form; sc[3] = 0.0f;
+    sc[0] = fx; sc[1] = fy; sc[2] = (float)form; sc[3] = cfg.spray_blob > 0.0f ? 1.6f : 1.0f;
     IDirect3DDevice9_SetVertexShaderConstantF(dev, 4, sc, 1);
     col[0] = cfg.spray_colour[0]; col[1] = cfg.spray_colour[1]; col[2] = cfg.spray_colour[2]; col[3] = cfg.spray_colour[3];
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 0, col, 1);
-    IDirect3DDevice9_DrawIndexedPrimitiveUP(dev, D3DPT_TRIANGLELIST, 0, (UINT)n * 4, (UINT)n * 2, g_spray_idx, D3DFMT_INDEX16, g_spray_vb, 28);
+    col[0] = cfg.spray_blob; col[1] = col[2] = col[3] = 0.0f;
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 1, col, 1);
+    IDirect3DDevice9_DrawIndexedPrimitiveUP(dev, D3DPT_TRIANGLELIST, 0, (UINT)n * 4, (UINT)n * 2, g_spray_idx, D3DFMT_INDEX16, g_spray_vb, SPRAY_VF * sizeof(float));
     IDirect3DStateBlock9_Apply(sb);
     IDirect3DStateBlock9_Release(sb);
 }
