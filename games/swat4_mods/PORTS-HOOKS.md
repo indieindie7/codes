@@ -121,6 +121,18 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
   submit, retried until `getTurnThatWeAreIn()` catches up (too early = no-op, game sits on OUTCOME). (4) Launch via
   `steam.exe -applaunch 445020 -log 1` (playtime tracking; works while another game runs); `FS2_STEAM=0` = direct start + DXVK.
   Charon plans only units 5-8; team 1 (1-4) stands still: that is our AI's slot (via fs2bridge). Ends with quitSP() to menu.
+- **Gym (10-24 night):** `fs2soak.py N out.jsonl --brain idle|rush|pairs --map NAME`. Our side = `tools/fs2brain.py`:
+  `units()` reads ids 1..15 in one bridge call (`getTeamOfPlayerWithId` 1/2/0, `getUnitIdIsAlive`, `getPosOfPlayerWithId`
+  "x y" / "-1 -1"); ids per team vary by map (seen 1-3 vs 4-6, and 1-4 vs 5-8), so the old fixed `[:3]`/`[3:7]` split is gone.
+  Moves: `planAddWaypoint(0, unitId, x, y, 0)` (verified: unit moved toward the waypoint in one turn; 1st/5th args unknown,
+  0 works). `planAddOrder` (4..15 args) not decoded yet. Each match ends with a `score` record (alive per team, kills, deaths,
+  win 1/2/0). **Fixed map** = `tools/fs2_fixedmap.cs`, a package around `startSkirmish(%setup, %enc)`: no file ->
+  `saveEncounter(%file, %enc)` (file FIRST; the other order writes nothing; test1.enc = 149927 bytes); file -> `%e = new
+  ScriptEncounter(); %e.loadEncounter(%file); %enc = %e;` (the global `loadEncounter()` is void). Verified: random start
+  gave unit 1 at 1485.3 1937.64, two test1 starts both 2795.99 2253.94. Exec the package ONCE per game run (a re-exec after
+  deactivatePackage breaks Parent::, "Unknown command startSkirmish"); `use_map()` guards with `$smFixedLoaded`.
+  `setRandomSeed()` before `playQuickFS2Skirmish()` does not fix the map. Chain: playQuickFS2Skirmish ->
+  getCityMapGenEnc(MPS_SkirmishExtCityMap,0) -> levelGenFS2(psychoff/offlineCityMapGen/genFileN.enc (201), ...) -> startSkirmish.
 - **Render on the 3060 while the user games (10-24):** DXVK 3.1.1 x64 `d3d9.dll` copied into the FS2 game dir
   (`Documents\Tools\dxvk\dxvk-3.1.1`); `fs2soak.launch()` sets `DXVK_FILTER_DEVICE_NAME="RTX 3060"` and
   `DXVK_LOG_PATH=%TEMP%`; `%TEMP%\FrozenSynapse2_d3d9.log` shows the 4070 Ti "Skipping: Device filter". Undo = delete the dll.

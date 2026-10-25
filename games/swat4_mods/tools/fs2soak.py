@@ -1,6 +1,11 @@
-"""Frozen Synapse 2 AI-vs-AI soak: Charon plays both teams, we log each turn.
+"""Frozen Synapse 2 gym: our brain (fs2brain.py) plays team 1, Charon team 2.
 
-  py -3.13 -I fs2soak.py [matches=3] [out=fs2soak.jsonl]
+  py -3.13 -I fs2soak.py [matches=3] [out=fs2soak.jsonl] [--brain idle|rush|pairs] [--map NAME]
+
+--map NAME: fixed map via fs2_fixedmap.cs (startSkirmish hook): the first start
+saves its encounter to %APPDATA%/FrozenSynapse2/smmaps/NAME.enc, later starts
+load it (same layout + deployment). Each match ends with a "score" record:
+alive per team, kills each way, win (1 = team 1, 2 = Charon, 0 = turn cap).
 
 Needs the smbridge (fs2bridge.py --install) and FS2 running, not minimized.
 Per match: quitSP() + playQuickFS2Skirmish() (the real QUICK SKIRMISH button;
@@ -10,8 +15,8 @@ tracking) and waits for the startup sequence to finish (wait_setup). Per turn:
 $gThreadCharon=0 (threaded Charon loses the $aiTurnCallback and the turn hangs
 on the loading screen), spSubmitTurn(), wait for getCurrentTurnNumber() to move,
 doGoToEndOfTurn() to skip the outcome playback, log alive flags + plan sizes.
-Charon plans only the AI team (units 5-8); the player team (1-4) gets no plans:
-that side is where our AI plugs in. Run 10 (10-24): 2 matches, 7 turns, no crash.
+Charon plans only team 2; team 1 is ours (fs2brain, planned before each submit).
+Run 10 (10-24): 2 matches, 7 turns, no crash.
 """
 import json, os, re, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -135,7 +140,16 @@ def launch(front=False):
         print("startup sequence not seen finishing")
 
 
-def match(mi, out):
+def use_map(name):
+    """Exec the fixed-map hook once per game run (a re-exec breaks Parent::)."""
+    import shutil
+    from fs2bridge import GAME
+    shutil.copy(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fs2_fixedmap.cs"), os.path.join(GAME, "smbridge", "fixedmap.cs"))
+    run(f'if (!$smFixedLoaded) {{ exec("smbridge/fixedmap.cs"); $smFixedLoaded = 1; }} $smMapFile = "{name}";')
+
+
+def match(mi, out, brain="idle", mapname=""):
+    import fs2brain
     # a second playRandomSPMatch() while a match is open crashes the game
     # (skirmish.cs "Cannot re-declare object [csMGSSettings]"): leave first
     run('Canvas.popDialog(MessageLoading); Canvas.popDialog(AILoadingGui); if (Canvas.getContent().getName() !$= "MainScreenGui") quitSP();')
@@ -153,6 +167,7 @@ def match(mi, out):
         before, a0 = turn(), alive()
         pos = os.path.getsize(LOG)
         t1 = time.time()
+        fs2brain.BRAINS[brain](fs2brain.units())
         run("Canvas.popDialog(MessageLoading); $gThreadCharon=0; spSubmitTurn();")  # $gcmAIDoesBothSides=1 stalls the 2nd submit and gives the player side no plans anyway
         while turn() <= before and time.time() - t1 < (300 if before == 0 else 30):  # -1 = no reply while busy
             time.sleep(2)
@@ -173,21 +188,37 @@ def match(mi, out):
         plans = {int(p): (int(e) if e else 0) for p, e in re.findall(
             r"Applying AI for player (\d+).*?\n\s*(?:winning plan has (\d+) edges|player has no winning plan)", txt)}
         a1, now = alive(), turn()
-        rec = dict(match=mi, turn=before, next=now, secs=round(time.time() - t1, 1),
+        us = fs2brain.units()
+        n1 = sum(u["alive"] for u in us if u["team"] == 1); n2 = sum(u["alive"] for u in us if u["team"] == 2)
+        rec = dict(match=mi, brain=brain, map=mapname or "random", t1_alive=n1, t2_alive=n2, turn=before, next=now, secs=round(time.time() - t1, 1),
                    alive_before=a0, alive_after=a1, plan_edges=plans,
                    ended=("onEndMatch" in txt or "GameOver" in txt or "activeGameNotifyGameEnded" in txt))
         out.write(json.dumps(rec) + "\n"); out.flush()
         print(f"m{mi} t{before}->{now} {rec['secs']}s alive {''.join(map(str, a1[:7]))} plans {plans}")
-        if now <= before or rec["ended"] or (a1 and not any(a1[:3])) or (a1 and not any(a1[3:7])):
+        if now <= before or rec["ended"] or not n1 or not n2:
             break
+    if "us" in locals():
+        t1n = sum(u["team"] == 1 for u in us); t2n = sum(u["team"] == 2 for u in us)
+        sc = dict(score=1, match=mi, brain=brain, map=mapname or "random", turns=now,
+                  t1_alive=n1, t2_alive=n2, kills=t2n - n2, deaths=t1n - n1,
+                  win=1 if n1 and not n2 else 2 if n2 and not n1 else 0)
+        out.write(json.dumps(sc) + "\n"); out.flush()
+        print("score", sc)
 
 
 if __name__ == "__main__":
-    a = [x for x in sys.argv[1:] if x != "--front"]
-    n = int(a[0]) if a else 3
-    path = a[1] if len(a) > 1 else "fs2soak.jsonl"
-    launch("--front" in sys.argv)
-    with open(path, "a") as out:
-        for mi in range(n):
-            match(mi, out)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("matches", nargs="?", type=int, default=3)
+    ap.add_argument("out", nargs="?", default="fs2soak.jsonl")
+    ap.add_argument("--brain", default="idle")
+    ap.add_argument("--map", default="")
+    ap.add_argument("--front", action="store_true")
+    o = ap.parse_args()
+    launch(o.front)
+    if o.map:
+        use_map(o.map)
+    with open(o.out, "a") as out:
+        for mi in range(o.matches):
+            match(mi, out, o.brain, o.map)
     run('Canvas.popDialog(MessageLoading); quitSP();')  # back to the menu, not a frozen OUTCOME screen
