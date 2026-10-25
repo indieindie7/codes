@@ -47,6 +47,17 @@ milestone on top. Our own code, plain C99, no game data.
 Costs: a 120 x 60 sheet steps in well under a millisecond per frame in this unoptimised scalar
 build; the five tests together run in about two seconds.
 
+## Status: handed off (2026-10-25)
+
+Development on this side stops here; the mod is published as is (release `HydroWater-0.1.0`, PR indieindie7/codes#16 merged). Anyone can pick it up. What works in game, tested 2026-10-25 (build 408fc87):
+
+- The game's water runs on HydroWater: wading wake, foam from the field, drenched look, caustics and underwater fog, spray drops, swimmer wake (`swim_depth` 100; 150 never fired, the depth under a swimming Kate reads 115-117).
+- Seen in the test videos: V wake and stirred surface behind Kate, faint foam wisps, heavy foam on the big scripted waves. Stroke spray is drawn (log "spray: matrix form A, ... drops drawn") but 1-8 drops at a time, too few and short-lived to see; no white water at the arms yet.
+- Open: more and longer-lived stroke drops, arm white water, foam amount on breaking waves, the soft depth fade of spray (some water pixel shaders bind `s_DepthBuffer` at s2/s3, see the sampler log).
+- Lesson: one build per in-game look is too slow. The next attempt (a separate project) rebuilds the water in Bevy and scores it against video automatically.
+
+Pick up here: `mod/README.txt` (ini keys), `games/hydrophobia-water-upgrade.md` (every idea with its commit id), `HydroWater.log` lines "spray:", "swim:", "kate:". Build with `build.ps1`, `mod/build.ps1`, `mod/tests/build.ps1` (must print ALL PASSED), `mod/package.ps1`.
+
 ## Next
 
 - 2026-10-25: ideas 20 (APIC spray landing), 22 (foam look: `foam_spec`, `foam_blur`, `depth_tint`, `shore_wet`), 23 + 12b part 2 (metaball spray, `spray_blob`), 24 (underwater `caustics`, `under_fog`), 25 (swimmer wake, `swim`, `swim_depth`, `swim_spray`) and the idea-13 sampler log are in one build, offline-tested only. Next: play with the default ini, read `HydroWater.log` for the "spray:" and "swim:" lines, then tune or turn off keys one at a time. The full list is in `games/hydrophobia-water-upgrade.md`, "Ideas not built yet".
