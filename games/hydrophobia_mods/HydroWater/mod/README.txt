@@ -50,7 +50,7 @@ depth_tint          how fast deep water loses red then green (1 = default, 0 = c
 shore_wet           wet, darker, shinier ground where a sheet thins out (1 = default, 0 = off)
 caustics            light web on floors and walls under the water, brighter where the surface slopes (1 = default, 0 = off)
 under_fog           teal fog on what is under the water, thicker with depth (1 = default, 0 = off)
-swim                swimmer wake once the water under Kate is deeper than swim_depth (150): bow bump, shoulder trough, kick strip (1 = default, 0 = off)
+swim                swimmer wake once the water under Kate is deeper than swim_depth (100): bow bump, shoulder trough, kick strip (1 = default, 0 = off)
 swim_spray          her strokes throw drops ahead every 0.6 s, one arm then the other (1 = default, 0 = off)
 foam_dump           1 = write the patched water shader to HydroWater_shaderN.hlsl
 alpha, c_adapt, edge_damp  tuning, see the comments in the file

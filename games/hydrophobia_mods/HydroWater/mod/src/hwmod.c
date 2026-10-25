@@ -95,9 +95,9 @@ static struct {
                            3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
                            Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
     float swim;         /* idea 25: swimmer wake when Kate swims (bow bump and shoulder trough, kick strip, white water by effort): 0 = off, 1 = default */
-    float swim_depth;   /* water deeper than this under her means she is swimming, not wading (150) */
+    float swim_depth;   /* water deeper than this under her means she is swimming, not wading (100; 10-25 log: swimming in A1 read depth 115-117, wading 110) */
     float swim_spray;   /* stroke spray: a handful of drops thrown ahead every 0.6 s, alternating sides (0 = off, 1 = default) */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 150.0f, 1.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 100.0f, 1.0f };
 static const char *const FOAM_KEYS[14] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life", "shear_gain", "kin_floor", "kin_lo", "kin_hi" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
