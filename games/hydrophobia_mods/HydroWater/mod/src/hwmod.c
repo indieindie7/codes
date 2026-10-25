@@ -72,6 +72,8 @@ static struct {
     float foam_spec;    /* idea 22: bubble glints, specular on the foam that grows with its thickness (0 = off, 1 = default) */
     float foam_blur;    /* idea 22: foam coverage smeared along the flow by its speed, so moving foam streaks (0 = off, 1 = default) */
     float depth_tint;   /* idea 22: how fast deep water loses red then green and fills with the water colour (1 = as before, 0 = none, 2 = murky) */
+    float caustics;     /* idea 24: light caustics on floors and walls under the water, from the sheet's slope and a moving web (0 = off, 1 = default) */
+    float under_fog;    /* idea 24: teal fog on what is under the water, thicker the deeper it is (0 = off, 1 = default) */
     float shore_wet;    /* idea 22: wet ground at the edge of a sheet: the bed darkens and shines where the water thins out (0 = off, 1 = default) */
     float foam_glow;    /* bioluminescent foam in dark scenes: 0 = off (default), 1 = full */
     float glow_colour[3];
@@ -93,7 +95,7 @@ static struct {
     float swim;         /* idea 25: swimmer wake when Kate swims (bow bump and shoulder trough, kick strip, white water by effort): 0 = off, 1 = default */
     float swim_depth;   /* water deeper than this under her means she is swimming, not wading (150) */
     float swim_spray;   /* stroke spray: a handful of drops thrown ahead every 0.6 s, alternating sides (0 = off, 1 = default) */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 150.0f, 1.0f };
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 150.0f, 1.0f };
 static const char *const FOAM_KEYS[14] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life", "shear_gain", "kin_floor", "kin_lo", "kin_hi" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -180,6 +182,9 @@ static void ReadIni(void)
         else if (!_stricmp(k, "foam_blur")) cfg.foam_blur = (float)atof(v);
         else if (!_stricmp(k, "depth_tint")) cfg.depth_tint = (float)atof(v);
         else if (!_stricmp(k, "shore_wet")) cfg.shore_wet = (float)atof(v);
+        else if (!_stricmp(k, "caustics")) cfg.caustics = (float)atof(v);
+        else if (!_stricmp(k, "under_fog")) cfg.under_fog = (float)atof(v);
+
         else if (!_stricmp(k, "foam_glow")) cfg.foam_glow = (float)atof(v);
         else if (!_stricmp(k, "spray_draw")) cfg.spray_draw = atoi(v);
         else if (!_stricmp(k, "scum")) cfg.scum = (float)atof(v);
@@ -971,7 +976,7 @@ static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g)
 /* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
 /* c222 = (seconds, ripple strength, crest glow on, splotch strength), c221 = (dye colour, dye strength),
    c220 = (foam normals strength, 0, 0, 0) */
-static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\nfloat4 hwBody : register(c216);\nfloat4 hwGlow : register(c215);\nsampler2D hwScumTex : register(s14);\nfloat4 hwScum : register(c214);\nfloat4 hwFx2 : register(c213);\n";  /* hwFx2: foam_spec, foam_blur, depth_tint, shore_wet (idea 22) */  /* hwScum: strength, colour; s14 R = the floating layer */  /* hwGlow: foam glow strength, colour */  /* hwBody: meniscus, Kate (x, y, body radius, strength) */
+static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\nfloat4 hwBody : register(c216);\nfloat4 hwGlow : register(c215);\nsampler2D hwScumTex : register(s14);\nfloat4 hwScum : register(c214);\nfloat4 hwFx2 : register(c213);\nfloat4 hwFx3 : register(c212);\n";  /* hwFx3: caustics, under_fog, 0, 0 (idea 24) */  /* hwFx2: foam_spec, foam_blur, depth_tint, shore_wet (idea 22) */  /* hwScum: strength, colour; s14 R = the floating layer */  /* hwGlow: foam glow strength, colour */  /* hwBody: meniscus, Kate (x, y, body radius, strength) */
 static const char FOAM_TEX_LINE[] =
     "  float2 hwU = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "  float4 hwT = tex2Dlod(hwFoamTex, float4(hwU.x * 0.5f, hwU.y, 0.0f, 0.0f));\n"
@@ -1039,6 +1044,37 @@ static const char WET_HLSL[] =
     "      specularStrength = lerp(specularStrength, saturate(specularStrength * 1.5f + 0.3f), hwWt);\n"
     "      specularPower *= 1.0f + 0.5f * hwWt;\n"
     "    }\n"
+    "    if ((hwFx3.x > 0.0f || hwFx3.y > 0.0f) && hwWu.x > 0.0f && hwWu.x < 1.0f && hwWu.y > 0.0f && hwWu.y < 1.0f) {\n"
+    "      /* idea 24: the underwater look. The foam texture's blue is the sheet's depth over this spot and its alpha the\n"
+    "         high-water mark, so a texel below that mark with water over it is under the surface. Caustics: a web of\n"
+    "         light from two moving value-noise layers, sharpened, brightened where the sheet's slope focuses light, fading with\n"
+    "         depth; fog: the deeper the water above, the more the floor sinks into teal. */\n"
+    "      float4 hwUt = tex2Dlod(hwFoamTex, float4(hwWu.x * 0.5f, hwWu.y, 0.0f, 0.0f));\n"
+    "      float hwUa = tex2Dlod(hwFoamTex, float4(0.5f + hwWu.x * 0.5f, hwWu.y, 0.0f, 0.0f)).a * 255.0f;\n"
+    "      float hwUm = hwWet.x + (hwUa - 1.0f) * (1.0f / 254.0f) * hwWet.y;\n"
+    "      float hwUnder = hwUa > 0.5f ? saturate((hwUm - hwWet.z * vertexPosition.z) * (1.0f / 10.0f)) * saturate(hwUt.b * 20.0f) : 0.0f;\n"
+    "      if (hwUnder > 0.0f) {\n"
+    "        float hwDeep = saturate(hwUt.b * 1.5f); /* blue = 1 - exp(-depth / depth_scale), times depth_colour */\n"
+    "        if (hwFx3.x > 0.0f) {\n"
+    "          float2 hwCq = vertexPosition.xy * (1.0f / 28.0f);\n"
+    "          float hwE1 = 1.5f / 512.0f;\n"
+    "          float hwBx = tex2Dlod(hwFoamTex, float4(min(hwWu.x * 0.5f + hwE1, 0.4995f), hwWu.y, 0.0f, 0.0f)).b - tex2Dlod(hwFoamTex, float4(max(hwWu.x * 0.5f - hwE1, 0.0005f), hwWu.y, 0.0f, 0.0f)).b;\n"
+    "          float hwBy = tex2Dlod(hwFoamTex, float4(hwWu.x * 0.5f, hwWu.y + hwE1, 0.0f, 0.0f)).b - tex2Dlod(hwFoamTex, float4(hwWu.x * 0.5f, hwWu.y - hwE1, 0.0f, 0.0f)).b;\n"
+    "          float hwSlope = saturate(length(float2(hwBx, hwBy)) * 40.0f);\n"
+    "          float hwC1 = HW_VN(hwCq + hwTime.x * float2(0.21f, 0.13f));\n"
+    "          float hwC2 = HW_VN(hwCq * 1.7f - hwTime.x * float2(0.11f, 0.19f) + float2(13.0f, 29.0f));\n"
+    "          float hwWeb = pow(saturate(1.0f - abs(hwC1 - 0.5f) * 2.2f) * saturate(1.0f - abs(hwC2 - 0.5f) * 2.2f), 1.5f);\n"
+    "          float hwCa = hwWeb * (1.0f + 2.0f * hwSlope) * (1.0f - 0.7f * hwDeep) * hwUnder * hwFx3.x;\n"
+    "          diffuseMapSample.rgb *= 1.0f + 0.9f * hwCa;\n"
+    "        }\n"
+    "        if (hwFx3.y > 0.0f) {\n"
+    "          float hwFg = saturate(hwDeep * hwFx3.y) * hwUnder;\n"
+    "          float hwUl = dot(diffuseMapSample.rgb, float3(0.3f, 0.59f, 0.11f));\n"
+    "          diffuseMapSample.rgb = lerp(diffuseMapSample.rgb, float3(0.05f, 0.30f, 0.33f) * (0.4f + 0.8f * hwUl), hwFg * 0.75f);\n"
+    "          specularStrength *= 1.0f - 0.5f * hwFg;\n"
+    "        }\n"
+    "      }\n"
+    "    }\n"
     "    if (hwKate.w > 0.0f) { /* drenched Kate: c218 = (x, y, world z of her wet line, freshness), c217 = (how much of her is soaked, world z of the splash top, splash density, drench_mask) */\n"
     "      float2 hwKd = vertexPosition.xy - hwKate.xy;\n"
     "      float hwKr = dot(hwKd, hwKd);\n"
@@ -1091,16 +1127,17 @@ static const char WET_HLSL[] =
 
 __attribute__((used)) char *hw_wet_inject(const char *src, size_t len, size_t *outlen)
 {
-    size_t na = sizeof WET_ANCHOR - 1, ng = sizeof FOAM_TEX_GLOBALS - 1, nw = sizeof WET_GLOBALS - 1, nh = sizeof WET_HLSL - 1, nb, o;
+    size_t na = sizeof WET_ANCHOR - 1, ng = sizeof FOAM_TEX_GLOBALS - 1, nw = sizeof WET_GLOBALS - 1, nh = sizeof WET_HLSL - 1, nd = sizeof FOAM_DEFS - 1, nb, o;
     const char *q = FindN(src, len, WET_ANCHOR, na), *beta;
     char *out;
     if (!q || FindN(q + na, len - (size_t)(q + na - src), WET_ANCHOR, na) || !FindN(src, len, WET_NEED, sizeof WET_NEED - 1)
         || FindN(src, len, "vReflectionSample", 17)) return NULL;
     beta = FindN(src, len, "float2 fBetaControl = ", 22) ? "#define HW_BETA fBetaControl.x\n" : "#define HW_BETA 1.0f\n";
     nb = strlen(beta);
-    out = (char *)malloc(ng + nw + nb + len + nh + 1);
+    out = (char *)malloc(nd + ng + nw + nb + len + nh + 1);
     if (!out) return NULL;
-    memcpy(out, FOAM_TEX_GLOBALS, ng); memcpy(out + ng, WET_GLOBALS, nw); memcpy(out + ng + nw, beta, nb); o = ng + nw + nb;
+    memcpy(out, FOAM_DEFS, nd); o = nd;   /* idea 24: HW_VN for the caustics web */
+    memcpy(out + o, FOAM_TEX_GLOBALS, ng); o += ng; memcpy(out + o, WET_GLOBALS, nw); o += nw; memcpy(out + o, beta, nb); o += nb;
     memcpy(out + o, src, (size_t)(q - src)); o += (size_t)(q - src);
     memcpy(out + o, WET_HLSL, nh); o += nh;
     memcpy(out + o, q, len - (size_t)(q - src)); o += len - (size_t)(q - src);
@@ -1999,6 +2036,10 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     xf[2] = cfg.depth_tint > 4.0f ? 4.0f : cfg.depth_tint < 0.0f ? 0.0f : cfg.depth_tint;
     xf[3] = cfg.shore_wet > 2.0f ? 2.0f : cfg.shore_wet < 0.0f ? 0.0f : cfg.shore_wet;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 213, xf, 1);
+    xf[0] = cfg.caustics > 2.0f ? 2.0f : cfg.caustics < 0.0f ? 0.0f : cfg.caustics;
+    xf[1] = cfg.under_fog > 2.0f ? 2.0f : cfg.under_fog < 0.0f ? 0.0f : cfg.under_fog;
+    xf[2] = 0.0f; xf[3] = 0.0f;
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 212, xf, 1);
     if (InterlockedIncrement(&g_foam_tex_logged) == 1 || g_foam_tex_logged % 2000 == 0)
         Log("foam: world texture over %d sheets, x %.0f..%.0f y %.0f..%.0f, texel %.1f", n, x0, x1, y0, y1, cell);
 }
