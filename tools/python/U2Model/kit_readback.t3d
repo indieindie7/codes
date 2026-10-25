@@ -1,0 +1,227 @@
+Begin StaticMesh Name=wall_door
+Version=2.000000 BoundingBox.Min.X=-256.000000 BoundingBox.Min.Y=-256.000000 BoundingBox.Min.Z=0.000000 BoundingBox.Max.X=256.000000 BoundingBox.Max.Y=-224.000000 BoundingBox.Max.Z=384.000000
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 13
+Vertex 0 -256.0000 -224.0000 256.0000 1.00000 0.50000
+Vertex 1 -256.0000 -224.0000 0.0000 1.00000 0.00000
+Vertex 2 -80.0000 -224.0000 256.0000 0.65625 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 3145776
+Vertex 0 256.0000 -224.0000 384.0000 0.00000 0.75000
+Vertex 1 -256.0000 -224.0000 384.0000 1.00000 0.75000
+Vertex 2 256.0000 -224.0000 256.0000 0.00000 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 2097184
+Vertex 0 256.0000 -224.0000 384.0000 0.06250 0.75000
+Vertex 1 256.0000 -224.0000 0.0000 0.06250 0.00000
+Vertex 2 256.0000 -256.0000 0.0000 0.00000 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 6750329
+Vertex 0 256.0000 -256.0000 384.0000 0.00000 0.75000
+Vertex 1 256.0000 -224.0000 384.0000 0.06250 0.75000
+Vertex 2 256.0000 -256.0000 0.0000 0.00000 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 2949152
+Vertex 0 256.0000 -256.0000 384.0000 1.00000 0.75000
+Vertex 1 256.0000 -256.0000 256.0000 1.00000 0.50000
+Vertex 2 -256.0000 -256.0000 256.0000 0.00000 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 6619222
+Vertex 0 -256.0000 -256.0000 384.0000 0.00000 0.75000
+Vertex 1 256.0000 -256.0000 384.0000 1.00000 0.75000
+Vertex 2 -256.0000 -256.0000 256.0000 0.00000 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 3145776
+Vertex 0 256.0000 -256.0000 0.0000 1.00000 0.06250
+Vertex 1 256.0000 -224.0000 0.0000 1.00000 0.00000
+Vertex 2 80.0000 -224.0000 0.0000 0.65625 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 6619235
+Vertex 0 80.0000 -256.0000 0.0000 0.65625 0.06250
+Vertex 1 256.0000 -256.0000 0.0000 1.00000 0.06250
+Vertex 2 80.0000 -224.0000 0.0000 0.65625 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 655373
+Vertex 0 -256.0000 -256.0000 384.0000 0.06250 0.75000
+Vertex 1 -256.0000 -256.0000 0.0000 0.06250 0.00000
+Vertex 2 -256.0000 -224.0000 0.0000 0.00000 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 3145776
+Vertex 0 -256.0000 -224.0000 384.0000 0.00000 0.75000
+Vertex 1 -256.0000 -256.0000 384.0000 0.06250 0.75000
+Vertex 2 -256.0000 -224.0000 0.0000 0.00000 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 4325408
+Vertex 0 -80.0000 -256.0000 0.0000 0.34375 0.06250
+Vertex 1 -80.0000 -224.0000 0.0000 0.34375 0.00000
+Vertex 2 -256.0000 -224.0000 0.0000 0.00000 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 3145776
+Vertex 0 -256.0000 -224.0000 384.0000 0.00000 0.06250
+Vertex 1 256.0000 -224.0000 384.0000 1.00000 0.06250
+Vertex 2 -256.0000 -256.0000 384.0000 0.00000 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 95026896
+Vertex 0 80.0000 -224.0000 0.0000 0.34375 0.00000
+Vertex 1 256.0000 -224.0000 0.0000 0.00000 0.00000
+Vertex 2 80.0000 -224.0000 256.0000 0.34375 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 19
+Vertex 0 -256.0000 -224.0000 0.0000 1.00000 0.00000
+Vertex 1 -80.0000 -224.0000 0.0000 0.65625 0.00000
+Vertex 2 -80.0000 -224.0000 256.0000 0.65625 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 7864421
+Vertex 0 -256.0000 -224.0000 384.0000 1.00000 0.75000
+Vertex 1 -256.0000 -224.0000 256.0000 1.00000 0.50000
+Vertex 2 256.0000 -224.0000 256.0000 0.00000 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 2097184
+Vertex 0 -256.0000 -256.0000 0.0000 0.00000 0.06250
+Vertex 1 -80.0000 -256.0000 0.0000 0.34375 0.06250
+Vertex 2 -256.0000 -224.0000 0.0000 0.00000 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 5636197
+Vertex 0 256.0000 -224.0000 384.0000 1.00000 0.06250
+Vertex 1 256.0000 -256.0000 384.0000 1.00000 0.00000
+Vertex 2 -256.0000 -256.0000 384.0000 0.00000 0.00000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 26
+Vertex 0 256.0000 -224.0000 0.0000 0.00000 0.00000
+Vertex 1 256.0000 -224.0000 256.0000 0.00000 0.50000
+Vertex 2 80.0000 -224.0000 256.0000 0.34375 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 92979720
+Vertex 0 -256.0000 -256.0000 0.0000 0.00000 0.00000
+Vertex 1 -256.0000 -256.0000 256.0000 0.00000 0.50000
+Vertex 2 -80.0000 -256.0000 256.0000 0.34375 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 3145776
+Vertex 0 256.0000 -256.0000 0.0000 1.00000 0.00000
+Vertex 1 80.0000 -256.0000 0.0000 0.65625 0.00000
+Vertex 2 80.0000 -256.0000 256.0000 0.65625 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 3145776
+Vertex 0 256.0000 -256.0000 256.0000 1.00000 0.50000
+Vertex 1 256.0000 -256.0000 0.0000 1.00000 0.00000
+Vertex 2 80.0000 -256.0000 256.0000 0.65625 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlWall_U06A500
+SmoothingMask 0
+PolyFlags 25
+Vertex 0 -80.0000 -256.0000 0.0000 0.34375 0.00000
+Vertex 1 -256.0000 -256.0000 0.0000 0.00000 0.00000
+Vertex 2 -80.0000 -256.0000 256.0000 0.34375 0.50000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlBase_U06B459b
+SmoothingMask 0
+PolyFlags 2949164
+Vertex 0 -80.0000 -224.0000 0.0000 0.03125 0.00000
+Vertex 1 -80.0000 -256.0000 0.0000 0.06250 0.00000
+Vertex 2 -80.0000 -224.0000 256.0000 0.03125 0.25000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlBase_U06B459b
+SmoothingMask 0
+PolyFlags 3145776
+Vertex 0 80.0000 -224.0000 0.0000 0.06250 0.00000
+Vertex 1 80.0000 -224.0000 256.0000 0.06250 0.25000
+Vertex 2 80.0000 -256.0000 256.0000 0.03125 0.25000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlBase_U06B459b
+SmoothingMask 0
+PolyFlags 3342397
+Vertex 0 -80.0000 -224.0000 256.0000 0.00000 0.06250
+Vertex 1 -80.0000 -256.0000 256.0000 0.00000 0.03125
+Vertex 2 80.0000 -224.0000 256.0000 0.15625 0.06250
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlBase_U06B459b
+SmoothingMask 0
+PolyFlags 3145776
+Vertex 0 -80.0000 -256.0000 256.0000 0.00000 0.03125
+Vertex 1 80.0000 -256.0000 256.0000 0.15625 0.03125
+Vertex 2 80.0000 -224.0000 256.0000 0.15625 0.06250
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlBase_U06B459b
+SmoothingMask 0
+PolyFlags 2818080
+Vertex 0 80.0000 -256.0000 0.0000 0.03125 0.00000
+Vertex 1 80.0000 -224.0000 0.0000 0.06250 0.00000
+Vertex 2 80.0000 -256.0000 256.0000 0.03125 0.25000
+End Triangle
+Begin Triangle
+Texture Mission_06T.Surface_Wall.MetlBase_U06B459b
+SmoothingMask 0
+PolyFlags 3211316
+Vertex 0 -80.0000 -256.0000 0.0000 0.06250 0.00000
+Vertex 1 -80.0000 -256.0000 256.0000 0.06250 0.25000
+Vertex 2 -80.0000 -224.0000 256.0000 0.03125 0.25000
+End Triangle
+End StaticMesh

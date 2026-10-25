@@ -13,6 +13,7 @@
  *   (3) smooth buoyancy is hw_body_force(), a query, so it has no switch
  *   face_walls    (4a) walls on faces, plus the automatic dry-ledge rule
  *   clamps        (8) velocity cap 0.5 dx/dt, edge damping, no 1000 h cap
+ *   foam          (7) foam, entrained air and spray drops read from the field (render-only)
  *
  * Plain C99, no dependencies. Built as a DLL for the Python harness (tests/harness.py) and
  * meant to become the drop-in for the game's step function later (same per-cell state).
@@ -34,7 +35,39 @@ typedef struct hw_opts {
     float alpha;        /* stage 1 wave amplitude scale, 0.5..1 (default 1) */
     float c_adapt;      /* stage 2 adaptation rate (default 0.2) */
     float edge_damp;    /* stage 8 velocity scale within 2 cells of a wet/dry edge (default 0.7) */
+    int recon;          /* stage 5: minmod-limited linear reconstruction of eta, u, v at faces */
+    int foam;           /* stage 7: foam, air and spray planes (never feed back into the flow) */
 } hw_opts;
+
+/* stage 7 tuning; hw_create sets the defaults shown */
+typedef struct hw_foam_params {
+    float foam_gain;    /* foam added per second at full source strength (0.8) */
+    float air_gain;     /* entrained air added per second at full source strength (3) */
+    float foam_life;    /* seconds for thick foam to thin out (2.5) */
+    float lace;         /* decay floor: thin foam lasts foam_life / lace (0.25) */
+    float bubble_rise;  /* bubble rise speed, units/s; deep water holds its air longer (25) */
+    float air_to_foam;  /* share of surfacing air that turns into foam (0.35) */
+    float spread;       /* foam diffusion rate per second (3) */
+    float spray_rate;   /* spray drops per cell per second at full strength (30) */
+    float spray_foam;   /* foam left where a drop lands (0.15) */
+    float spray_drag;   /* air drag on drops, per second (0.5) */
+    int spray_max;      /* drop limit, at most HW_SPRAY_CAP (4096) */
+    float spray_vol;    /* depth (units) a drop of size 1 carries out of its cell and back into the cell it lands in (0.05); 0 = render-only drops */
+    float scum_cover;   /* surface layer (algae, oil, leaves) coverage 0..1 that drifts with the flow, parts around bodies and is broken by rough water; 0 = none (default) */
+    float scum_regrow;  /* seconds for the layer to grow back toward scum_cover (90) */
+    float debris_wake;  /* wakes behind bodies stamped in from outside (hw_foam_stir): blobs of pushed cells get a foam trail and a wake pull (1); 0 = off */
+    float dye_gain;     /* silt or dye stirred up per second at full churn (0.6) */
+    float dye_life;     /* seconds for dye to fade to a third; it outlasts foam so it shows the flow (12) */
+    /* Ihmsen 2012 potentials (appended, keep the order above): the field-born sources (breaking,
+     * bore, shear, rapids) are gated by the cell's kinetic energy I_k = h|v|^2/(g dx^2) clamped
+     * kin_lo..kin_hi, so slow water foams little however steep; bodies (impact, slam) are not. */
+    float shear_gain;   /* trapped air: foam from the velocity difference to the neighbours (0.5) */
+    float kin_floor;    /* gate = kin_floor + (1 - kin_floor) * I_k; 1 = no gate (0.3) */
+    float kin_lo, kin_hi; /* I_k clamp window (0.02, 0.5) */
+    float spray_apic;   /* idea 20: share of a landing drop's momentum (v + C (x_cell - x_drop), APIC) given to the 2x2 cells under it (1); 0 = volume only */
+} hw_foam_params;
+
+#define HW_SPRAY_CAP 8192
 
 typedef struct hw_sheet hw_sheet;
 
@@ -93,6 +126,42 @@ HW_API int hw_probe(const hw_sheet *s, float x, float z, float *eta, float *u, f
 HW_API float hw_body_force(const hw_sheet *s, const float *probes, int n, float V, float A_eff,
                            float rho, float dt_ramp, float c_d, float k_damp,
                            const float *body_vel, float *force);
+
+/* --- stage 7: foam, air and spray (hw_opts.foam) ---
+ * updated once per hw_step from the frame's flow; all three are for the renderer only.
+ * foam: surface coverage 0..1 (white). air: bubbles in the column 0..1 (pale, milky water).
+ * spray: count drops of 8 floats (x, y, z, vx, vy, vz, age s, size 0.5..1.5); y is height. */
+HW_API float *hw_foam(hw_sheet *s);
+HW_API float *hw_air(hw_sheet *s);
+HW_API const float *hw_spray(const hw_sheet *s, int *count);
+/* add one drop from outside (a swimmer's stroke, a hit): position, velocity, size 0.5..1.5; carry = 1
+ * takes spray_vol * size of water (and its momentum) from the cell under it, 0 = a render-only drop.
+ * Returns 0 when off the sheet, on a wall or at the cap. */
+HW_API int hw_spray_add(hw_sheet *s, float x, float y, float z, float vx, float vy, float vz, float size, int carry);
+HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p);
+HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p);
+/* splash event (bullet, explosion, a body falling in): add foam and air within radius r */
+HW_API void hw_foam_add(hw_sheet *s, float x, float z, float r, float foam, float air);
+/* dye: a tint carried by the flow 0..1 (silt churned up by bodies and rough water; blood or any
+ * other source through hw_dye_add). Advected like foam, spreads a little, fades over dye_life. */
+HW_API float *hw_dye(hw_sheet *s);
+HW_API void hw_dye_add(hw_sheet *s, float x, float z, float r, float amount);
+/* scum: a floating surface layer 0..1 (idea 9). Advected with the flow like dye, never fades,
+ * broken up by breaking water, grows back over scum_regrow. hw_scum_fill seeds every wet cell
+ * at scum_cover (mottled); hw_scum_push shoves the layer within r of (x, z) out into a ring
+ * around it over about a quarter second (call every step while a body is there). */
+HW_API float *hw_scum(hw_sheet *s);
+HW_API void hw_scum_fill(hw_sheet *s);
+HW_API void hw_scum_push(hw_sheet *s, float x, float z, float r, float dt);
+/* stir from outside: hu, hv are the momentum planes (same padded layout, row stride `stride`)
+ * after something outside the solver changed them, e.g. a game stamping body velocities into
+ * the sheet; the change against the last step churns foam and air there. Call before copying
+ * them in. */
+HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stride);
+/* wake pull: for this step only, the foam, air and dye within r of (x, z) on the side the unit
+ * vector (bx, bz) points to drift toward (x, z) at up to `speed` world units per second, so a
+ * moving body drags its wake along instead of leaving a column behind. Call every step. */
+HW_API void hw_foam_pull(hw_sheet *s, float x, float z, float bx, float bz, float r, float speed);
 
 /* advance by dt seconds (sub-stepped by CFL); returns the number of sub-steps */
 HW_API int hw_step(hw_sheet *s, float dt);

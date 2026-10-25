@@ -1,6 +1,6 @@
 """HydroWater test harness: the upgrade plan's first-milestone tests, baseline vs upgraded.
 
-    python tests\harness.py [test ...]        (tests: rest, dam, crate, wading, tub; default all)
+    python tests\harness.py [test ...]        (tests: foam, apic, rest, dam, crate, wading, tub; default all)
 
 Needs numpy and Pillow (the kimodo venv has both). Writes PNG frames and a summary.txt per test
 into tests\out\<test>\ and prints the numbers that matter. Units: dx = 20, g = 980 (think cm),
@@ -23,7 +23,8 @@ DX, G = 20.0, 980.0
 class Opts(ctypes.Structure):
     _fields_ = [("displacement", ctypes.c_int), ("capped_stamp", ctypes.c_int),
                 ("face_walls", ctypes.c_int), ("clamps", ctypes.c_int),
-                ("alpha", ctypes.c_float), ("c_adapt", ctypes.c_float), ("edge_damp", ctypes.c_float)]
+                ("alpha", ctypes.c_float), ("c_adapt", ctypes.c_float), ("edge_damp", ctypes.c_float),
+                ("recon", ctypes.c_int), ("foam", ctypes.c_int)]
 
 
 lib = ctypes.CDLL(DLL)
@@ -36,7 +37,7 @@ lib.hw_set_opts.argtypes = [P, ctypes.POINTER(Opts)]
 for name in ("hw_width", "hw_height", "hw_stride"):
     getattr(lib, name).restype = ctypes.c_int
     getattr(lib, name).argtypes = [P]
-for name in ("hw_depth", "hw_hu", "hw_hv", "hw_u", "hw_v", "hw_bed", "hw_wall", "hw_body"):
+for name in ("hw_depth", "hw_hu", "hw_hv", "hw_u", "hw_v", "hw_bed", "hw_wall", "hw_body", "hw_foam", "hw_air"):
     getattr(lib, name).restype = ctypes.POINTER(F)
     getattr(lib, name).argtypes = [P]
 lib.hw_fill.argtypes = [P, F]
@@ -52,6 +53,21 @@ lib.hw_probe.restype = ctypes.c_int
 lib.hw_probe.argtypes = [P, F, F] + [ctypes.POINTER(F)] * 5
 lib.hw_body_force.restype = F
 lib.hw_body_force.argtypes = [P, ctypes.POINTER(F), ctypes.c_int, F, F, F, F, F, F, ctypes.POINTER(F), ctypes.POINTER(F)]
+lib.hw_spray.restype = ctypes.POINTER(F)
+lib.hw_spray.argtypes = [P, ctypes.POINTER(ctypes.c_int)]
+lib.hw_foam_add.argtypes = [P, F, F, F, F, F]
+
+
+class FoamP(ctypes.Structure):
+    _fields_ = [(n, F) for n in ("foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread",
+                                 "spray_rate", "spray_foam", "spray_drag")] + [("spray_max", ctypes.c_int)] +                [(n, F) for n in ("spray_vol", "scum_cover", "scum_regrow", "debris_wake", "dye_gain", "dye_life",
+                                 "shear_gain", "kin_floor", "kin_lo", "kin_hi", "spray_apic")]
+
+
+lib.hw_get_foam_params.argtypes = [P, ctypes.POINTER(FoamP)]
+lib.hw_set_foam_params.argtypes = [P, ctypes.POINTER(FoamP)]
+lib.hw_spray_add.argtypes = [P, F, F, F, F, F, F, F, ctypes.c_int]
+lib.hw_spray_add.restype = ctypes.c_int
 lib.hw_step.restype = ctypes.c_int
 lib.hw_step.argtypes = [P, F]
 lib.hw_volume.restype = ctypes.c_double
@@ -67,7 +83,7 @@ class Sheet:
         self.stride = lib.hw_stride(self.s)
         o = Opts()
         if upgraded:
-            o.displacement = o.capped_stamp = o.face_walls = o.clamps = 1
+            o.displacement = o.capped_stamp = o.face_walls = o.clamps = o.recon = 1
         for k, v in kw.items():
             setattr(o, k, v)
         lib.hw_set_opts(self.s, ctypes.byref(o))
@@ -95,6 +111,7 @@ class Sheet:
         self.steps += n
         return n
     def volume(self): return lib.hw_volume(self.s)
+    def wall_rect(self, i0, j0, i1, j1): lib.hw_wall_rect(self.s, i0, j0, i1, j1)
     def bodies_begin(self): lib.hw_bodies_begin(self.s)
     def body_box(self, x0, z0, x1, z1, yb, yt): return lib.hw_body_box(self.s, x0, z0, x1, z1, yb, yt)
     def body_disc(self, x, z, r, yb, yt): return lib.hw_body_disc(self.s, x, z, r, yb, yt)
@@ -111,6 +128,29 @@ class Sheet:
         f = (F * 3)()
         ratio = lib.hw_body_force(self.s, arr, len(probes), V, A, rho, ramp, cd, kdamp, bv, f)
         return list(f), ratio
+
+    def foam_params(self, **kw):
+        fp = FoamP()
+        lib.hw_get_foam_params(self.s, ctypes.byref(fp))
+        for k, v in kw.items():
+            setattr(fp, k, v)
+        lib.hw_set_foam_params(self.s, ctypes.byref(fp))
+        return fp
+
+    def spray_add(self, x, y, z, vx, vy, vz, size=1.0, carry=1):
+        return lib.hw_spray_add(self.s, x, y, z, vx, vy, vz, size, carry)
+
+    def momentum(self):
+        """(sum h u, sum h v) * dx^2: the sheet's horizontal momentum (density 1)."""
+        d = self.depth
+        return float((d * self.u).sum() * DX * DX), float((d * self.v).sum() * DX * DX)
+
+    def spray(self):
+        n = ctypes.c_int(0)
+        p = lib.hw_spray(self.s, ctypes.byref(n))
+        if n.value == 0:
+            return np.zeros((0, 8), np.float32)
+        return np.ctypeslib.as_array(p, shape=(n.value * 8,)).reshape(-1, 8).copy()
 
     def close(self): lib.hw_destroy(self.s); self.s = None
 
@@ -333,7 +373,120 @@ def test_tub():
     report("tub", lines)
 
 
-TESTS = {"rest": test_rest, "dam": test_dam, "crate": test_crate, "wading": test_wading, "tub": test_tub}
+def test_foam():
+    """Stage 7: foam and bubbles where the flow breaks, none in still water, no effect on the flow."""
+    import look
+    lines = []
+    od = outdir("foam")
+    # still water makes no foam
+    s = Sheet(40, 40, True, foam=1)
+    s.fill(40.0)
+    for f in range(120):
+        s.step(1 / 60)
+    lines.append("still: max foam %.2e, max air %.2e, spray %d" % (
+        s.plane("hw_foam").max(), s.plane("hw_air").max(), len(s.spray())))
+    s.close()
+
+    # flood through a doorway into a shallow room with two pillars
+    def flood(foam):
+        s = Sheet(120, 72, True, foam=foam)
+        s.wall_rect(35, 0, 37, 28); s.wall_rect(35, 44, 37, 72)
+        s.wall_rect(62, 18, 66, 24); s.wall_rect(62, 46, 66, 52)
+        s.wall_rect(96, 30, 100, 40)
+        d = s.depth
+        d[:, :35] = 70.0
+        d[:, 37:] = 8.0
+        d[s.plane("hw_wall") > 0.5] = 0
+        return s
+    a, b = flood(0), flood(1)
+    wall = b.plane("hw_wall") > 0.5
+    frames, peak_spray, cover, nan = [], 0, [], False
+    for f in range(360):
+        a.step(1 / 60); b.step(1 / 60)
+        sp = b.spray()
+        peak_spray = max(peak_spray, len(sp))
+        fo = b.plane("hw_foam")
+        nan |= bool(np.isnan(fo).any() or np.isnan(b.plane("hw_air")).any())
+        wet = b.depth > 0.5
+        cover.append(float((fo[wet] > 0.2).mean()))
+        if f % 3 == 0:
+            img = look.render(b, sp, f / 60, wall)
+            if f % 30 == 0:
+                img.save(os.path.join(od, "flood_%03d.png" % f))
+            frames.append(img.resize((img.width // 2, img.height // 2), Image.LANCZOS))
+    frames[0].save(os.path.join(od, "flood.gif"), save_all=True, append_images=frames[1:], duration=50, loop=0)
+    same = bool(np.array_equal(a.depth, b.depth))
+    lines.append("flood: flow identical with foam on %s, foam cover >0.2 peak %.0f%% at %.1f s, %.0f%% at 6 s, peak spray %d, NaN %s" % (
+        same, 100 * max(cover), cover.index(max(cover)) / 60, 100 * cover[-1], peak_spray, nan))
+    a.close(); b.close()
+
+    # a crate dropped into a still pool
+    s = Sheet(80, 80, True, foam=1)
+    s.fill(40.0)
+    side, y, vy = 80.0, 90.0, -400.0
+    frames, peak_spray = [], 0
+    for f in range(240):
+        dt = 1 / 60
+        if y > 10:
+            vy -= G * dt; y = max(10.0, y + vy * dt)
+        s.bodies_begin()
+        s.body_box(40 * DX - side / 2, 40 * DX - side / 2, 40 * DX + side / 2, 40 * DX + side / 2, y, y + side)
+        s.step(dt)
+        sp = s.spray()
+        peak_spray = max(peak_spray, len(sp))
+        if f % 2 == 0:
+            img = look.render(s, sp, f / 60)
+            if f in (10, 20, 40, 80, 160):
+                img.save(os.path.join(od, "drop_%03d.png" % f))
+            frames.append(img.resize((img.width // 2, img.height // 2), Image.LANCZOS))
+    frames[0].save(os.path.join(od, "drop.gif"), save_all=True, append_images=frames[1:], duration=33, loop=0)
+    lines.append("drop: peak spray %d, max foam at 4 s %.2f, max air at 4 s %.2f" % (
+        peak_spray, s.plane("hw_foam").max(), s.plane("hw_air").max()))
+    s.close()
+    report("foam", lines)
+
+
+def test_apic():
+    """Idea 20: drops thrown at an angle into still water land as volume AND momentum (APIC, 2x2 affine
+    velocity), so the water they land in flows along their heading; spray_apic = 0 is the old volume-only
+    landing. Volume is conserved either way (carry = 1 takes the water from the cell the drop left)."""
+    lines = []
+    od = outdir("apic")
+    for apic in (1.0, 0.0):
+        s = Sheet(60, 60, True, foam=1)
+        s.fill(40.0)
+        s.foam_params(spray_rate=0.0, spray_apic=apic, spray_vol=0.5)   # no field-born spray, fat drops
+        for f in range(30):
+            s.step(1 / 60)
+        v0 = s.volume()
+        added, px = 0, []
+        rng = np.random.default_rng(7)
+        for n in range(400):
+            x = 15 * DX + rng.uniform(-DX, DX); z = 30 * DX + rng.uniform(-DX, DX)
+            vx, vz = 240.0 + rng.uniform(-20, 20), rng.uniform(-20, 20)
+            if s.spray_add(x, 41.0, z, vx, 160.0, vz, 1.0, 1):
+                added += 1; px.append(vx)
+        p_in = 0.5 * 1.0 * sum(px) * DX * DX   # spray_vol * size * vx per drop, times the cell area
+        land_at, frames = None, []
+        for f in range(90):
+            s.step(1 / 60)
+            if land_at is None and len(s.spray()) == 0:
+                land_at = f
+                s.step(1 / 60)   # the landing deposit reaches the derived u plane on the next step
+                mx, mz = s.momentum()
+                u_land = s.u.copy(); d_land = s.depth.copy()
+        if land_at is None:
+            land_at = 89; mx, mz = s.momentum(); u_land = s.u.copy(); d_land = s.depth.copy()
+        png(os.path.join(od, "u_apic%d.png" % int(apic)), u_land, -20, 20)
+        png(os.path.join(od, "eta_apic%d.png" % int(apic)), d_land, 39.0, 41.0)
+        wet = d_land > 0.5
+        lines.append("spray_apic %.0f: %d drops, all landed by %.2f s, volume drift %.2e, x momentum %.3g of %.3g thrown (%.0f%%), z momentum %.3g, mean u %.2f, max u %.2f" % (
+            apic, added, land_at / 60, (s.volume() - v0) / v0, mx, p_in, 100 * mx / p_in, mz, u_land[wet].mean(), u_land.max()))
+        s.close()
+    report("apic", lines)
+
+
+TESTS = {"foam": test_foam, "apic": test_apic, "rest": test_rest, "dam": test_dam, "crate": test_crate, "wading": test_wading, "tub": test_tub}
 
 if __name__ == "__main__":
     names = sys.argv[1:] or list(TESTS)

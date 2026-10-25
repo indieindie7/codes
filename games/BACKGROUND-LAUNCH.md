@@ -1,0 +1,169 @@
+# Running old games in the background (how each chat does it)
+
+Goal shared by all chats: a script drives and captures the game while the user
+keeps using the PC. That means no stolen focus, no cursor clipping, and no
+global SendInput/keybd_event. Every method below follows the same rules:
+
+- **Fake focus inside the process.** Never acquire the real input device.
+- **Input goes to the game's own window or code.** Use window-targeted
+  PostMessage, injection inside the game, or a fake DirectInput device.
+- **Park the window off-screen or on another monitor.** Capture frames with
+  PrintWindow or the game's own screenshot command.
+- **Leave the user's settings alone.** Use throwaway config copies, or restore
+  the originals afterwards.
+- **Run one instance at a time.** Kill the game before replacing a DLL it has loaded.
+
+---
+
+## 1. Unreal II: U2Input proxy and U2Pilot (unreal2 chat)
+
+### U2Input (`tools/C/U2Input/`)
+
+**What it is.** U2Input is a `dinput8.dll` proxy placed in `<game>\System\`.
+- Log: `U2Input.log`
+- Control pipe: `\.\pipe\U2Input-<pid>`
+
+**`focus on` (fake focus).** It IAT-patches these WinDrv imports:
+- `GetFocus`
+- `GetForegroundWindow`
+- `GetCursorPos`
+- `SetCursorPos`
+- `ClipCursor`
+
+It also fakes `Acquire`.
+- The real device is never acquired. An earlier version acquired it, and the
+  game confined the user's cursor 27 times.
+
+**How Unreal II reads input:**
+- **Mouse:** DirectInput8 buffered `GetDeviceData`. The proxy feeds fake deltas into it.
+- **Keyboard:** window messages. The proxy posts `WM_KEYDOWN`, `WM_KEYUP` and `WM_CHAR`.
+- **Menu pointer:** `GetCursorPos` is re-read on `WM_MOUSEMOVE`.
+  - `cursor X Y` posts `WM_MOUSEMOVE`.
+  - Clicks are fake DirectInput buttons.
+
+**Clients:**
+- `u2input.py`: the low-level pipe client.
+- `u2ctl.py`: the high-level driver. It supports `exec "cmd"` through the
+  console, `press`, `hold W 1.5`, `look`, `fire`, `click X Y` and `run file`.
+
+**Window and capture:**
+- `U2PILOT_PARK=X,Y` parks the window, for example `-1800,60` on the left monitor.
+- `probe.py` captures with PrintWindow. This works even behind a browser.
+
+### U2Pilot `--background` (`tools/python/U2Pilot/`)
+
+Run it with `python u2pilot.py scripts/<x>.txt --background`.
+
+**Driver.** The steps run inside the game through the `PilotDriver` mutator.
+- The runner writes the steps to `System\U2Pilot.ini`.
+- Input goes through a `PlayerInput` subclass, so the real keyboard and mouse are never touched.
+
+**Launch:**
+- The game starts without focus and is then kept off-screen.
+- If the game grabs focus after a cutscene, the runner gives it straight back.
+- If the game clips the cursor, the runner releases it.
+
+**Settings stay untouched.** The game runs with throwaway configs:
+- `-ini=PilotRun.ini -userini=PilotRunUser.ini`
+- mouse capture off
+- `-nosound`
+- a 960x540 window
+
+**Frames and logs:**
+- Frames come from the game's own `shot` command, so recording works while the window is hidden.
+- `-forcelogflush` and the `?PilotRun=<id>` tag let the runner follow the live log step by step.
+- Results go to `runs\<time>_<script>\`.
+
+**Borderless.** Use dgVoodoo with `FullScreenMode=true` and
+`FullscreenAttributes=fake`. The Borderless Gaming `dxgi.dll` squashed the
+window, so it was moved aside.
+
+**Caveats:**
+- The game stalls while loading if it is unfocused.
+- Killing the game leaves `Running.ini` behind, so the next start runs crash recovery.
+
+## 2. Advent Rising (advent rising modding chat)
+
+**Launch.** Start the exe directly with the Steam environment set:
+
+```powershell
+$env:SteamAppId='3800'; $env:SteamGameId='3800'
+$env:PATH = "<Steam folder>;$env:PATH"
+Start-Process "$g\System\advent.exe" -WorkingDirectory "$g\System"
+```
+
+- Check that no other instance is running first. Two instances corrupt the ini.
+- Read `System\Advent.log` afterwards.
+
+**Background runs.** Advent has no DirectInput proxy and no fake focus.
+- `AdventMod/test_run.ps1` parks the game window off the left edge of the screen (`SetWindowPos`), hands focus straight back to the previous window (`AttachThreadInput` + `SetForegroundWindow`), and grabs screenshots with `PrintWindow`.
+- The game is driven from inside by script: ModPilot steps (`GOTO`, `SPAWNPACK`, `FLOORMAP` and others) run by the mod, not by injected input.
+- `AdventNative.dll` only does a borderless resize/restore of the game window.
+
+## 3. Hydrophobia: Prophecy, the HydroWater mod (this chat)
+
+HydroWater is a `dinput8.dll` proxy. The background switches live in `HydroWater.ini` in the game folder.
+
+| Key | Effect |
+|---|---|
+| `borderless = 1` | Borderless window at desktop size. The swap chain is kept, not exclusive fullscreen. |
+| `background = 1` | Fake focus. The user32 calls `GetForegroundWindow`, `GetFocus`, `GetActiveWindow` and friends are hot-patched in-process, with E9 detours chained if another hook got there first. DirectInput devices are switched to background/non-exclusive cooperative level. The game keeps running and rendering unfocused. |
+| `control = 1` | The game polls the control file `HydroWater.cmd` in its folder. |
+
+**Control file commands.** Write one line per command, CRLF-terminated.
+
+| Command | Effect |
+|---|---|
+| `shot <path.bmp>` | Saves a frame from the game's own back buffer. |
+| `chapter <n>` | Loads a level. Use it from a fresh menu, or from inside a level. |
+| `continue` | Continues the game. |
+| `state` | Logs the game state: 0x29 menu, 2 playing, 0x1a popup. |
+| `key <vk>` | Posts a key to the game window. |
+| `look dx dy [steps]` | Turns the camera (control = 1 redirects `GetRawInputData`; WM_INPUT with a marker handle). Verified in chapter 1 (2026-10-10): two still frames differed by 1.1, and after `look 3000 0 30` the camera had swung around Kate (28.2). |
+| `click [r] [x y]` | Posts `WM_MOUSEMOVE` and then button down/up messages. The game reads mouse buttons from window messages and only the deltas from raw input. |
+
+**Write each command atomically.** Write to `HydroWater.tmp`, rename it to `HydroWater.cmd`, and wait for the game to take it (the file disappears) before the next one. A plain overwrite can be read half-written: the game reads nothing, deletes the file, and the command is lost (seen once with `chapter 1`). Builds after 2026-10-10 also take the file by renaming it to `HydroWater.cmd.run` first, which fails while a writer still has it open.
+
+**Real mouse is ignored in background mode.** With background = 1 the hook zeroes the user's own raw mouse movement, so the off-screen camera only moves for `look` (before this, the camera wandered with the user's mouse and still frames never matched).
+
+**Getting to water.** The menu ignores `click`; use keys. From the main menu: `key d0 150` twice (Down), `key 1c 150` (Enter, Challenge Room), `key 1c 150` (Enter, Practice). It loads "chapter 40" in about 60 s and logs "foam: first water mesh coloured". Kate spawns facing a wall; the pool (containers, red crate, a waterfall) is behind her to the right. `key 05` ('4') turns on water powers, then `click X Y` fires them. `look` turns are not repeatable here (the camera eases on its own), so sweep and keep the best frame. Chapter select is unreliable for this: chapter 2 renders black off-screen.
+
+**Write the path as an argument.** In bash, never put the path inside the printf format string, or its backslashes become escapes:
+
+```bash
+printf 'shot %s\r\n' "$(cygpath -w "$S/x.bmp")" > "$G/HydroWater.cmd"
+```
+
+**Launch steps:**
+1. Run `steam://rungameid/92000`. The exe is SteamStub-wrapped, so it is never patched on disk.
+2. The settings launcher dialog always appears. The script presses Start with `BM_CLICK` (control id 1) on the dialog's handle. No real click is needed.
+3. Park the window at off-screen coordinates, then capture it with PrintWindow or `shot`.
+   Wait about 25 s after Start first: a window parked 3 s after Start never presented
+   (`presents 0`, no `shot` handled), while one parked at 25 s ran normally.
+
+**Caveat (2026-10-10).** Since the Steam update of 2026-10-09,
+`background=1` and `control=1` crash inside `gameoverlayrenderer.dll`
+right after the device is created.
+- Borderless alone works, and so does `control=1` with `background=0`. So the crash comes from the `background=1` hooks (the user32 hot-patches or the DirectInput background level).
+- `-nopause` alone does **not** help: unfocused, the game stops presenting, so frames go stale and control commands are never read.
+- **Workaround that works (2026-10-10): launch outside the Steam client** so the overlay is never injected:
+  ```powershell
+  $env:SteamAppId='92000'; $env:SteamGameId='92000'
+  $env:PATH = "<Steam folder>;$env:PATH"
+  Start-Process "$g\HydroPC.exe" -WorkingDirectory $g -ArgumentList '-nopause'
+  ```
+  With `background=1, control=1` the game then runs fully unfocused and off-screen: chapters load, `shot` returns live frames, and the control file's `key <name> [ms]` (DirectInput names such as `w`, `s`, `a`, `d`, `space`, `esc`; anything else is read as a hex DIK code) moves Kate. Popups close with `click r X Y` on their Close button.
+- The shipped default is `borderless=1, background=0, control=0` until the overlay crash is fixed.
+
+---
+
+## Quick comparison
+
+| | Unreal II | Advent | Hydrophobia |
+|---|---|---|---|
+| Hook point | dinput8 proxy plus mutator | Steam env launch, DI proxy approach | dinput8 proxy |
+| Fake focus | IAT patches in WinDrv | same idea | user32 hot-patches plus DI background level |
+| Input | pipe: posted messages and fake DI mouse | same idea | control file: posted messages |
+| Script channel | named pipe, U2Pilot.ini | none | `HydroWater.cmd` |
+| Capture | PrintWindow, game `shot` | Advent.log | `shot` from the back buffer, PrintWindow |
+| Window | parked, dgVoodoo borderless | normal | borderless, parked |
