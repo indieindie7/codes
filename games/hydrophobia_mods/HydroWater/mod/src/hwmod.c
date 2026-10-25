@@ -2374,12 +2374,48 @@ static CreatePS_t g_orig_create_ps;
 static DIP_t g_orig_dip;
 static DP_t g_orig_dp;
 
+/* idea 13: the samplers (RegisterSet 3) of a pixel shader's CTAB, as "name s<reg> ..." (the water
+   shader's own ones, hwFoamTex s15 and hwScumTex s14 among them). Logged so a later soft-depth step
+   (drops fading where they cut the scene) knows whether the game binds its depth texture there. */
+static void ListPsSamplers(const DWORD *fn, char *names, size_t nn)
+{
+    UINT i;
+    size_t used = 0;
+    names[0] = 0;
+    for (i = 1; i < 65536; ) {
+        DWORD t = fn[i];
+        if (t == 0x0000FFFF) break;
+        if ((t & 0xFFFF) == 0xFFFE) {
+            DWORD len = (t >> 16) & 0x7FFF;
+            if (len >= 2 && fn[i + 1] == 0x42415443) {   /* 'CTAB' */
+                const BYTE *tb = (const BYTE *)&fn[i + 2];
+                const CtabHdr *h = (const CtabHdr *)tb;
+                const CtabConst *c = (const CtabConst *)(tb + h->ConstantInfo);
+                DWORD k;
+                for (k = 0; k < h->Constants && k < 64; k++) {
+                    const char *nm = (const char *)tb + c[k].Name;
+                    int r;
+                    if (c[k].RegisterSet != 3) continue;   /* D3DXRS_SAMPLER */
+                    r = snprintf(names + used, nn > used ? nn - used : 0, "%s s%u ", nm, (unsigned)c[k].RegisterIndex);
+                    if (r < 0 || (size_t)r >= nn - used) used = nn - 1; else used += (size_t)r;
+                }
+            }
+            i += 1 + len;
+            continue;
+        }
+        i += 1 + ((t >> 24) & 0x0F);
+    }
+    if (!used) snprintf(names, nn, "(none in the constant table)");
+}
+
 static HRESULT WINAPI CreatePSHook(IDirect3DDevice9 *self, const DWORD *fn, IDirect3DPixelShader9 **out)
 {
     HRESULT hr = g_orig_create_ps(self, fn, out);
     if (hr == D3D_OK && out && *out && fn && BytecodeHas(fn, "hwFoamXf")) {
+        char names[512];
         if (g_nwater_ps < 8) g_water_ps[g_nwater_ps++] = *out;
-        Log("spray: water pixel shader %p (%d known)", (void *)*out, g_nwater_ps);
+        ListPsSamplers(fn, names, sizeof names);
+        Log("spray: water pixel shader %p (%d known), samplers: %s", (void *)*out, g_nwater_ps, names);
     }
     return hr;
 }
