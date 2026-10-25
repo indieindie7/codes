@@ -52,6 +52,10 @@ typedef struct hw_foam_params {
     float spray_foam;   /* foam left where a drop lands (0.15) */
     float spray_drag;   /* air drag on drops, per second (0.5) */
     int spray_max;      /* drop limit, at most HW_SPRAY_CAP (4096) */
+    float spray_vol;    /* depth (units) a drop of size 1 carries out of its cell and back into the cell it lands in (0.05); 0 = render-only drops */
+    float scum_cover;   /* surface layer (algae, oil, leaves) coverage 0..1 that drifts with the flow, parts around bodies and is broken by rough water; 0 = none (default) */
+    float scum_regrow;  /* seconds for the layer to grow back toward scum_cover (90) */
+    float debris_wake;  /* wakes behind bodies stamped in from outside (hw_foam_stir): blobs of pushed cells get a foam trail and a wake pull (1); 0 = off */
     float dye_gain;     /* silt or dye stirred up per second at full churn (0.6) */
     float dye_life;     /* seconds for dye to fade to a third; it outlasts foam so it shows the flow (12) */
     /* Ihmsen 2012 potentials (appended, keep the order above): the field-born sources (breaking,
@@ -137,11 +141,22 @@ HW_API void hw_foam_add(hw_sheet *s, float x, float z, float r, float foam, floa
  * other source through hw_dye_add). Advected like foam, spreads a little, fades over dye_life. */
 HW_API float *hw_dye(hw_sheet *s);
 HW_API void hw_dye_add(hw_sheet *s, float x, float z, float r, float amount);
+/* scum: a floating surface layer 0..1 (idea 9). Advected with the flow like dye, never fades,
+ * broken up by breaking water, grows back over scum_regrow. hw_scum_fill seeds every wet cell
+ * at scum_cover (mottled); hw_scum_push shoves the layer within r of (x, z) out into a ring
+ * around it over about a quarter second (call every step while a body is there). */
+HW_API float *hw_scum(hw_sheet *s);
+HW_API void hw_scum_fill(hw_sheet *s);
+HW_API void hw_scum_push(hw_sheet *s, float x, float z, float r, float dt);
 /* stir from outside: hu, hv are the momentum planes (same padded layout, row stride `stride`)
  * after something outside the solver changed them, e.g. a game stamping body velocities into
  * the sheet; the change against the last step churns foam and air there. Call before copying
  * them in. */
 HW_API void hw_foam_stir(hw_sheet *s, const float *hu, const float *hv, int stride);
+/* wake pull: for this step only, the foam, air and dye within r of (x, z) on the side the unit
+ * vector (bx, bz) points to drift toward (x, z) at up to `speed` world units per second, so a
+ * moving body drags its wake along instead of leaving a column behind. Call every step. */
+HW_API void hw_foam_pull(hw_sheet *s, float x, float z, float bx, float bz, float r, float speed);
 
 /* advance by dt seconds (sub-stepped by CFL); returns the number of sub-steps */
 HW_API int hw_step(hw_sheet *s, float dt);

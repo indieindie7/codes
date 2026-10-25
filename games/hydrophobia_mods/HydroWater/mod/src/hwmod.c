@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
 #include <stdint.h>
 #include "../../src/hydrowater.h"
 
@@ -63,15 +64,33 @@ static struct {
     float crest_height; /* how far (world units) a crest stands above its neighbours to glow about two thirds of full */
     float wake;         /* V wake behind Kate (Kelvin angle arms of foam): 0 = off, 1 = default */
     float wake_length;  /* length (world units) of each arm at full speed */
+    float wake_pull;    /* low pressure behind Kate drags foam, dye and air into her wake: 0 = off, 1 = default */
     float splotch;      /* big slow patches that break up wide thin foam: 0 = off, 1 = default */
+    float foam_rim;     /* rim-bright, core-dark foam lumps (cheap self-shadow): 0 = off, 1 = default */
+    float foam_cells;   /* cell-holed foam net (AC Black Flag wake foam): 0 = off, 1 = default */
+    float foam_dots;    /* thin foam breaks into dots instead of fading: 0 = off, 1 = default */
+    float foam_glow;    /* bioluminescent foam in dark scenes: 0 = off (default), 1 = full */
+    float glow_colour[3];
+    int spray_draw;     /* draw the solver's spray drops as particles after the water (1 = default, 0 = off) */
+    float spray_size;   /* drop size scale (1 = default) */
+    float spray_colour[4];
+    float scum;         /* floating surface layer (algae, oil) coverage 0..1 that drifts with the flow and parts around Kate: 0 = off (default) */
+    float scum_colour[3];
+    float debris_wake;  /* foam trail and wake pull behind every body the game stamps into the water (crates, planks): 0 = off, 1 = default */ /* r g b and opacity */
     float foam_normals; /* foam lit as if raised (Crest's foam-gradient normals): 0 = off, 1 = default, at most 2 */
     float wet;          /* surfaces the water left stay darker and glossier, then dry: 0 = off, 1 = default, at most 1.5 */
     float wet_dry;      /* how fast (world units a second) the high-water mark sinks as things dry */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, 0, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.5f };
+    float drench;       /* Kate just out of the water: wet skin sheen, soaked cloth, running water, drips */
+    float drench_splash; /* how much of her the spray wets in patches when she runs through shallow water (0..1) */
+    float meniscus;     /* the water surface bows down around Kate's body with a foam ring on the rim (0 = off, 1 = default) */
+    float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
+                           3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
+                           Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
 static const char *const FOAM_KEYS[14] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life", "shear_gain", "kin_floor", "kin_lo", "kin_hi" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
-static volatile LONG g_presents;    /* IDirect3DDevice9::Present calls (control = 1) */
+static volatile LONG g_presents;    /* frames seen by the EndScene hook */
 
 /* ---------------------------------------------------------------- logging */
 static CRITICAL_SECTION g_logcs;
@@ -145,10 +164,26 @@ static void ReadIni(void)
         else if (!_stricmp(k, "crest_height")) cfg.crest_height = (float)atof(v);
         else if (!_stricmp(k, "wake")) cfg.wake = (float)atof(v);
         else if (!_stricmp(k, "wake_length")) cfg.wake_length = (float)atof(v);
+        else if (!_stricmp(k, "wake_pull")) cfg.wake_pull = (float)atof(v);
         else if (!_stricmp(k, "splotch")) cfg.splotch = (float)atof(v);
+        else if (!_stricmp(k, "foam_rim")) cfg.foam_rim = (float)atof(v);
+        else if (!_stricmp(k, "foam_cells")) cfg.foam_cells = (float)atof(v);
+        else if (!_stricmp(k, "foam_dots")) cfg.foam_dots = (float)atof(v);
+        else if (!_stricmp(k, "foam_glow")) cfg.foam_glow = (float)atof(v);
+        else if (!_stricmp(k, "spray_draw")) cfg.spray_draw = atoi(v);
+        else if (!_stricmp(k, "scum")) cfg.scum = (float)atof(v);
+        else if (!_stricmp(k, "debris_wake")) cfg.debris_wake = (float)atof(v);
+        else if (!_stricmp(k, "scum_colour")) sscanf(v, "%f %f %f", &cfg.scum_colour[0], &cfg.scum_colour[1], &cfg.scum_colour[2]);
+        else if (!_stricmp(k, "spray_size")) cfg.spray_size = (float)atof(v);
+        else if (!_stricmp(k, "spray_colour")) sscanf(v, "%f %f %f %f", &cfg.spray_colour[0], &cfg.spray_colour[1], &cfg.spray_colour[2], &cfg.spray_colour[3]);
+        else if (!_stricmp(k, "glow_colour")) sscanf(v, "%f %f %f", &cfg.glow_colour[0], &cfg.glow_colour[1], &cfg.glow_colour[2]);
         else if (!_stricmp(k, "foam_normals")) cfg.foam_normals = (float)atof(v);
         else if (!_stricmp(k, "wet")) cfg.wet = (float)atof(v);
         else if (!_stricmp(k, "wet_dry")) cfg.wet_dry = (float)atof(v);
+        else if (!_stricmp(k, "drench")) cfg.drench = (float)atof(v);
+        else if (!_stricmp(k, "drench_splash")) cfg.drench_splash = (float)atof(v);
+        else if (!_stricmp(k, "meniscus")) cfg.meniscus = (float)atof(v);
+        else if (!_stricmp(k, "drench_mask")) cfg.drench_mask = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
@@ -192,7 +227,10 @@ typedef struct foam_snap {
     BYTE *flowu, *flowv;        /* w*h each: flow direction times streak amount, 128 + 127 x (-1..1) */
     BYTE *dye;                  /* w*h: the dye carried by the flow (world texture alpha only; the mesh has no free channel) */
     BYTE *crest;                /* w*h: crest glow, how far the surface stands above its neighbours (world texture only) */
+    BYTE *scum;                 /* w*h: the floating surface layer (scum texture s14) */
     float *surf;                /* w*h: water surface height (bed + depth, the sheet's up axis), -1e30 where dry */
+    float *spray;               /* HW_SPRAY_CAP x 8: the spray drops (x, height, z, vx, vy, vz, age, size), drawn as particles */
+    int nspray;
     float fmax;         /* largest shown foam since the last stats line (0..1, after foam_strength) */
     unsigned fcells;    /* cell-steps with shown foam above 0.1 since the last stats line */
     float ox, oy, dx;   /* world position of cell (0,0) and cell size, copied each step (the sheet may be freed on a level change) */
@@ -252,18 +290,22 @@ static bridge *Find(uint32_t *S, int w, int h)
             hw_foam_params fp;
             float *f = &fp.foam_gain;   /* the first seven floats, in FOAM_KEYS order */
             int n;
-            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * (7 + sizeof(float)));
+            foam_snap *sn = (foam_snap *)calloc(1, sizeof *sn + (size_t)w * h * (8 + sizeof(float)));
             hw_get_foam_params(b->hw, &fp);
             for (n = 0; n < 7; n++) if (cfg.foam_p[n] >= 0.0f) f[n] = cfg.foam_p[n];
-            if (cfg.foam_p[7] >= 0.0f) fp.spray_rate = cfg.foam_p[7];   /* drops aren't drawn in the game yet: 0 by default */
+            if (cfg.foam_p[7] >= 0.0f) fp.spray_rate = cfg.foam_p[7];   /* library default 30 a cell a second; the drops are drawn (spray_draw) */
             if (cfg.foam_p[8] >= 0.0f) fp.dye_gain = cfg.foam_p[8];
             if (cfg.foam_p[9] >= 0.0f) fp.dye_life = cfg.foam_p[9];
             if (cfg.foam_p[10] >= 0.0f) fp.shear_gain = cfg.foam_p[10];
             if (cfg.foam_p[11] >= 0.0f) fp.kin_floor = cfg.foam_p[11];
             if (cfg.foam_p[12] >= 0.0f) fp.kin_lo = cfg.foam_p[12];
             if (cfg.foam_p[13] >= 0.0f) fp.kin_hi = cfg.foam_p[13];
+            if (cfg.scum > 0.0f) { fp.scum_cover = cfg.scum > 1.0f ? 1.0f : cfg.scum; }
+            fp.debris_wake = cfg.debris_wake < 0.0f ? 0.0f : cfg.debris_wake;
             hw_set_foam_params(b->hw, &fp);
-            if (sn) { sn->w = w; sn->h = h; sn->surf = (float *)(sn + 1); sn->foam = (BYTE *)(sn->surf + (size_t)w * h); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; sn->dye = sn->flowv + (size_t)w * h; sn->crest = sn->dye + (size_t)w * h; }
+            if (cfg.scum > 0.0f) hw_scum_fill(b->hw);
+            if (sn) { sn->w = w; sn->h = h; sn->surf = (float *)(sn + 1); sn->foam = (BYTE *)(sn->surf + (size_t)w * h); sn->air = sn->foam + (size_t)w * h; sn->depth = sn->air + (size_t)w * h; sn->flowu = sn->depth + (size_t)w * h; sn->flowv = sn->flowu + (size_t)w * h; sn->dye = sn->flowv + (size_t)w * h; sn->crest = sn->dye + (size_t)w * h; sn->scum = sn->crest + (size_t)w * h; }
+            if (sn) sn->spray = (float *)calloc((size_t)HW_SPRAY_CAP * 8, sizeof(float));
             b->snap = sn;
         }
         Log("sheet %p: %d x %d cells (stride %u), dx %.1f g %.1f cfl %.2f, now on HydroWater (%d sheets)",
@@ -392,16 +434,31 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                             }
                         }
                     }
+                    if (cfg.wake_pull > 0.0f) {
+                        /* wake pull: the water closing in behind her drags the surface layer after her,
+                           so the foam and silt gather in a streak instead of staying in a column */
+                        float bx = -vx / (v * dt), bz = -vz / (v * dt), sp = 0.45f * v;
+                        if (sp > 110.0f) sp = 110.0f;
+                        hw_foam_pull(b->hw, x - ox, z - oz, bx, bz, rad * 3.0f, sp * (cfg.wake_pull > 1.0f ? 1.0f : cfg.wake_pull));
+                    }
                     g_body_foam++;
                     g_kate_h = kp[2];
                     if (ci >= 2 && cj >= 2 && ci < w + 2 && cj < h + 2) { g_kate_bed = gbed[cj * gs + ci]; g_kate_depth = gh[cj * gs + ci]; }
                 }
             }
+            if (cfg.scum > 0.0f && !above) hw_scum_push(b->hw, x - ox, z - oz, rad * 1.6f, dt);   /* she parts the surface layer; it closes behind her */
             b->kx = x; b->kz = z; b->kseen = 1;
         }
     }
     if (cfg.opts.displacement) hw_bodies_begin(b->hw);   /* no bodies registered yet (stage 1 hook pending) */
     hw_step(b->hw, dt);
+    if (cfg.opts.foam && b->snap && b->snap->spray) {   /* the drops, for the particle pass */
+        int ns = 0;
+        const float *sp = hw_spray(b->hw, &ns);
+        if (ns > HW_SPRAY_CAP) ns = HW_SPRAY_CAP;
+        memcpy(b->snap->spray, sp, (size_t)ns * 8 * sizeof(float));
+        b->snap->nspray = ns;
+    }
     if (cfg.opts.foam && b->snap) {
         foam_snap *sn = b->snap;
         const float *pf = hw_foam(b->hw), *pa = hw_air(b->hw);
@@ -409,7 +466,7 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
            scaled to reach 1 at f = 1 */
         float k = 3.0f * cfg.foam_strength, kn = k > 0.01f ? 1.0f / (1.0f - expf(-k)) : 0.0f;
         float dk = cfg.depth_scale > 1.0f ? 1.0f / cfg.depth_scale : 0.0f, dc = cfg.depth_colour > 1.0f ? 1.0f : cfg.depth_colour;
-        const float *pd = hw_depth(b->hw), *pu = hw_u(b->hw), *pv = hw_v(b->hw), *py = hw_dye(b->hw), *pb = hw_bed(b->hw);
+        const float *pd = hw_depth(b->hw), *pu = hw_u(b->hw), *pv = hw_v(b->hw), *py = hw_dye(b->hw), *pb = hw_bed(b->hw), *psc = hw_scum(b->hw);
         float ck = cfg.crest_glow > 0.0f && cfg.crest_height > 0.01f ? 1.0f / cfg.crest_height : 0.0f, cg = cfg.crest_glow > 1.0f ? 1.0f : cfg.crest_glow;
         float sk = cfg.streak_speed > 1.0f ? 1.0f / cfg.streak_speed : 0.0f, sc = cfg.foam_streaks > 1.0f ? 1.0f : cfg.foam_streaks;
         int j;
@@ -440,7 +497,9 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                     sn->flowv[j * w + i] = (BYTE)(128 + (int)(127.0f * v * m));
                 }
                 {   float y = py[(j + 2) * hs + i + 2];
-                    sn->dye[j * w + i] = (BYTE)(y <= 0.0f ? 0 : y >= 1.0f ? 255 : (int)(y * 255.0f + 0.5f)); }
+                    sn->dye[j * w + i] = (BYTE)(y <= 0.0f ? 0 : y >= 1.0f ? 255 : (int)(y * 255.0f + 0.5f));
+                    y = psc[(j + 2) * hs + i + 2];
+                    sn->scum[j * w + i] = (BYTE)(y <= 0.0f ? 0 : y >= 1.0f ? 255 : (int)(y * 255.0f + 0.5f)); }
                 {   int c = (j + 2) * hs + i + 2;
                     sn->surf[j * w + i] = pd[c] > 0.5f ? pd[c] + pb[c] : -1e30f; }
                 {   /* crest glow: the surface above the mean of its wet neighbours, 1 - exp(-bump / crest_height) */
@@ -504,8 +563,8 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                 g_body_foam = 0; g_body_vmax = 0.0f;
             }
         }
-        Log("mesh hook: %ld rebuilds, %ld no bridge, %ld size mismatch, %ld sheets coloured; shaders %ld compiled, %ld patched, %ld water-like without anchor",
-            g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheets, g_shader_calls, g_foam_patched, g_shader_water_noanchor);
+        Log("mesh hook: %ld rebuilds, %ld no bridge, %ld size mismatch, %ld sheets coloured; shaders %ld compiled, %ld patched, %ld water-like without anchor, %ld wet",
+            g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheets, g_shader_calls, g_foam_patched, g_shader_water_noanchor, g_wet_patched);
     }
     return dt;
 }
@@ -658,18 +717,22 @@ static int Install(void)
  * red pushes past, giving opaque bright foam with crisp edges over the water, lit from the
  * scene, and slightly lighter water where green says there is air. If the patched text fails to compile, the original is compiled instead.
  * Compiled shaders are cached in shaderCacheDX.bin, which would keep the unpatched water; with
- * foam on, the exe's file name string is changed to shaderCacheHW.bin (same length) before the
- * cache is opened, so the game's own cache stays untouched and a second one is built. */
+ * foam on, the exe's file name string is changed to shaderCacheXY.bin (same length) before the
+ * cache is opened, so the game's own cache stays untouched and a second one is built. XY is a hash
+ * of every bit of HLSL the mod adds (and of the switches that decide what gets added), so a new
+ * build or a changed ini never picks up shaders compiled from older text. */
 #define VA_SHADER_CACHE_NAME 0xeaf830u
 static const char CACHE_NAME_GAME[] __attribute__((unused)) = "shaderCacheDX.bin";
-static const char CACHE_NAME_HW[] __attribute__((unused))   = "shaderCacheHE.bin";
-static const char CACHE_NAME_T2[] __attribute__((unused))   = "shaderCacheTE.bin";   /* foam_test 2: bands drawn by the shader */   /* rename (same length) when FOAM_HLSL changes */
+static char CACHE_NAME_HW[] = "shaderCacheHW.bin";   /* the two letters after "shaderCache" are set by PatchCacheName */
 static const char FOAM_ANCHOR[] = "reflectionColour = vReflectionSample * fFresRefl.xxxx;";
 static const char FOAM_DEFS[] =
     "\n#ifndef HW_VN\n"
     "#define HW_H(q) frac(sin(dot((q), float2(127.1f, 311.7f))) * 43758.5453f)\n"
     "#define HW_VN(p) lerp(lerp(HW_H(floor(p)), HW_H(floor(p) + float2(1.0f, 0.0f)), smoothstep(0.0f, 1.0f, frac(p).x)), "
     "lerp(HW_H(floor(p) + float2(0.0f, 1.0f)), HW_H(floor(p) + float2(1.0f, 1.0f)), smoothstep(0.0f, 1.0f, frac(p).x)), smoothstep(0.0f, 1.0f, frac(p).y))\n"
+    "#endif\n"
+    "#ifndef HW_CELL\n"
+    "#define HW_H2(q) frac(sin(float2(dot((q), float2(127.1f, 311.7f)), dot((q), float2(269.5f, 183.3f)))) * 43758.5453f)\n"
     "#endif\n";
 static const char FOAM_HLSL[] =
     "{ /* HydroWater foam: foam toned to the scene laid over the water with crisp feathered edges (the threshold\n"
@@ -679,6 +742,7 @@ static const char FOAM_HLSL[] =
     "  float hwD = saturate(1.0f - vertexColour.b);\n"
     "  float2 hwV = float2(0.0f, 0.0f);\n"
     "  float hwDy = 0.0f;\n"
+    "  float hwSc = 0.0f;\n"
     "  float hwCr = 0.0f;\n"
     "  float hwSp = 0.0f;\n"
     "  float hwFn = 0.0f;\n"
@@ -710,15 +774,55 @@ static const char FOAM_HLSL[] =
     "  float hwTh = 1.0f - hwLace;\n"
     "  float hwCov = smoothstep(hwTh - 0.14f, hwTh + 0.14f, hwF * 0.97f) * saturate(hwF * 6.0f);\n"
     "  hwCov *= 0.55f + 0.33f * saturate(hwF);\n"
+    "  float hwCellRim = 0.0f;\n"
+    "  if (hwFx.z > 0.0f) { /* cell-holed foam (AC Black Flag wake foam): a coarse Worley net about 85 world units\n"
+    "     per cell; the middle of each cell is a hole showing water, the net between the cells is a sharp bright rim */\n"
+    "    float2 hwCp = vertexPosition.xy * (1.0f / 85.0f) + float2(0.37f, 0.61f) * hwTime.x * 0.02f;\n"
+    "    float2 hwCi = floor(hwCp), hwCf = frac(hwCp);\n"
+    "    float hwD1 = 8.0f, hwD2 = 8.0f;\n"
+    "    for (int hwY = -1; hwY <= 1; hwY++) for (int hwX = -1; hwX <= 1; hwX++) {\n"
+    "      float2 hwO = float2(hwX, hwY);\n"
+    "      float2 hwR = hwO + HW_H2(hwCi + hwO) - hwCf;\n"
+    "      float hwDd = dot(hwR, hwR);\n"
+    "      if (hwDd < hwD1) { hwD2 = hwD1; hwD1 = hwDd; } else if (hwDd < hwD2) hwD2 = hwDd;\n"
+    "    }\n"
+    "    float hwEdge = sqrt(hwD2) - sqrt(hwD1);          /* 0 on the border between two cells, larger in the middle */\n"
+    "    float hwNet = 1.0f - smoothstep(0.08f, 0.22f, hwEdge);\n"
+    "    /* thin and middling foam keeps only the net; thick foam fills the holes in, so lumps stay solid */\n"
+    "    float hwHole = (1.0f - hwNet) * (1.0f - smoothstep(0.45f, 0.85f, hwF));\n"
+    "    hwCov *= 1.0f - hwFx.z * 0.85f * hwHole;\n"
+    "    hwCellRim = hwNet * smoothstep(0.1f, 0.4f, hwF) * hwFx.z;\n"
+    "  }\n"
+    "  if (hwFx.w > 0.0f) { /* dotted fringe: where the foam thins out it breaks into small bright dots instead of fading */\n"
+    "    float hwDn3 = HW_VN(hwP * 9.0f + float2(43.0f, 29.0f));\n"
+    "    float hwThin = saturate(hwF * 6.0f) * (1.0f - smoothstep(0.1f, 0.3f, hwF));\n"
+    "    float hwDot = smoothstep(0.62f, 0.72f, hwDn3 + 0.5f * saturate(hwF * 4.0f)) * hwThin;\n"
+    "    hwCov = max(hwCov, hwFx.w * 0.6f * hwDot);\n"
+    "  }\n"
     "  float hwLum = dot(vRefractionSample.rgb + vReflectionSample.rgb, float3(0.299f, 0.587f, 0.114f));\n"
     "  float hwLit = clamp(0.45f + 0.9f * hwLum, 0.45f, 1.15f);\n"
     "  float3 hwTr = exp(-float3(2.0f, 0.85f, 0.65f) * hwD);\n"
     "  float3 hwDeep = lerp(float3(0.03f, 0.10f, 0.10f), vFogColour.rgb * 0.5f, 0.3f) * saturate(0.25f + 0.75f * hwLum);\n"
     "  refractionColour.rgb = refractionColour.rgb * hwTr + hwDeep * (1.0f - hwTr.g) * fFresRefr;\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwDyC * hwLit * fFresRefr, saturate(hwDy) * 0.8f);\n"
+    "  if (hwSc > 0.0f) { /* floating layer (idea 9): mats of algae or scum where the layer is thick, carried by the flow, parting around Kate */\n"
+    "    float hwScN = 0.6f * HW_VN(hwP * 1.7f + float2(11.0f, 7.0f)) + 0.4f * HW_VN(hwP * 5.5f + float2(3.0f, 23.0f));\n"
+    "    float hwScA = smoothstep(1.0f - hwSc - 0.12f, 1.0f - hwSc + 0.12f, hwScN) * 0.9f;\n"
+    "    refractionColour.rgb = lerp(refractionColour.rgb, hwScum.yzw * (0.35f + 0.75f * hwLum), hwScA);\n"
+    "  }\n"
     "  /* crest glow: light through the thin top of a wave, a green-blue lift, more where the water is shallow */\n"
     "  refractionColour.rgb += float3(0.07f, 0.40f, 0.34f) * (hwCr * hwLit * fFresRefr * (0.55f + 0.45f * hwTr.g));\n"
     "  float3 hwFoam = lerp(float3(0.95f, 0.97f, 1.0f), vFogColour.rgb, 0.12f) * (hwLit * 0.5f) * (0.8f + 0.2f * hwN2);\n"
+    "  if (hwFx.y > 0.0f) { /* rim bright, core dark (BeamNG smoke trick): a thick lump shadows its own middle, its thin edge is lit through */\n"
+    "    float hwCore = smoothstep(0.45f, 0.95f, hwF) * (0.6f + 0.4f * hwLace);\n"
+    "    float hwRim = smoothstep(0.06f, 0.3f, hwF) * (1.0f - smoothstep(0.3f, 0.65f, hwF));\n"
+    "    hwFoam *= 1.0f + hwFx.y * (0.2f * hwRim - 0.3f * hwCore);\n"
+    "  }\n"
+    "  hwFoam *= 1.0f + 0.15f * hwCellRim;\n"
+    "  if (hwGlow.x > 0.0f) { /* bioluminescent foam (KWS2): in dark scenes the foam gives off its own faint light */\n"
+    "    float hwDark = 1.0f - smoothstep(0.06f, 0.3f, hwLum);\n"
+    "    hwFoam += hwGlow.yzw * hwGlow.x * hwDark * (0.5f + 0.5f * hwLace) * smoothstep(0.05f, 0.3f, hwF);\n"
+    "  }\n"
     "  if (hwFn > 0.0f) { /* foam normals (Crest, MIT): the foam stands up as a height, so its edges catch and lose light */\n"
     "    float2 hwPl = hwP * 2.7f + float2(17.0f, 5.0f);\n"
     "    float2 hwGl = float2(HW_VN(hwPl + float2(0.25f, 0.0f)) - hwN2, HW_VN(hwPl + float2(0.0f, 0.25f)) - hwN2) * (2.7f / (34.0f * 0.25f));\n"
@@ -728,6 +832,16 @@ static const char FOAM_HLSL[] =
     "    refractionColour.rgb *= 1.0f - 0.15f * saturate(length(hwG) * 10.0f * hwFn) * (1.0f - hwCov);\n"
     "  }\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, refractionColour.rgb * 0.8f + float3(0.06f, 0.11f, 0.11f) * hwLit, hwA * 0.5f);\n"
+    "  if (hwBody.w > 0.0f) { /* meniscus around Kate (shading only, the pool meshes are never rebuilt): the surface bows down to her body,\n"
+    "     so the bowl darkens, its slope shades the reflection, and a foam ring sits on the rim */\n"
+    "    float2 hwBd = vertexPosition.xy - hwBody.xy; float hwBr = length(hwBd);\n"
+    "    float hwBowl = (1.0f - smoothstep(hwBody.z, hwBody.z * 1.9f, hwBr)) * hwBody.w;\n"
+    "    float hwBsh = dot(hwBd / max(hwBr, 1.0f), float2(0.6f, 0.8f)) * hwBowl;\n"
+    "    reflectionColour.rgb *= 1.0f - 0.3f * hwBowl - 0.35f * hwBsh;\n"
+    "    refractionColour.rgb *= 1.0f - 0.2f * hwBowl;\n"
+    "    float hwRing = (1.0f - smoothstep(0.0f, 8.0f, abs(hwBr - hwBody.z * 1.15f))) * hwBody.w * (0.35f + 0.65f * hwLace);\n"
+    "    hwCov = max(hwCov, hwRing * 0.7f);\n"
+    "  }\n"
     "  refractionColour.rgb = lerp(refractionColour.rgb, hwFoam, hwCov);\n"
     "  reflectionColour *= 1.0f - 0.9f * hwCov;\n"
     "  specularStrength *= 1.0f - hwCov;\n"
@@ -755,7 +869,7 @@ static const char FOAM_A_LINE[] = "  float hwA = saturate(1.0f - vertexColour.g)
 /* the world foam texture (see FoamTex below): sampler s15, mapping in c223 = (x0, y0, 1/width, 1/height) */
 /* c222 = (seconds, ripple strength, crest glow on, splotch strength), c221 = (dye colour, dye strength),
    c220 = (foam normals strength, 0, 0, 0) */
-static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\n";
+static const char FOAM_TEX_GLOBALS[] = "sampler2D hwFoamTex : register(s15);\nfloat4 hwFoamXf : register(c223);\nfloat4 hwTime : register(c222);\nfloat4 hwDyeCol : register(c221);\nfloat4 hwFx : register(c220);\nfloat4 hwBody : register(c216);\nfloat4 hwGlow : register(c215);\nsampler2D hwScumTex : register(s14);\nfloat4 hwScum : register(c214);\n";  /* hwScum: strength, colour; s14 R = the floating layer */  /* hwGlow: foam glow strength, colour */  /* hwBody: meniscus, Kate (x, y, body radius, strength) */
 static const char FOAM_TEX_LINE[] =
     "  float2 hwU = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "  float4 hwT = tex2Dlod(hwFoamTex, float4(hwU.x * 0.5f, hwU.y, 0.0f, 0.0f));\n"
@@ -777,6 +891,7 @@ static const char FOAM_TEX_LINE[] =
     "  hwD = max(hwD, hwT.b);\n"
     "  hwDy = hwT.a * hwDyeCol.a;\n"
     "  hwDyC = hwDyeCol.rgb;\n"
+    "  if (hwScum.x > 0.0f) hwSc = tex2Dlod(hwScumTex, float4(hwU.x, hwU.y, 0.0f, 0.0f)).r * hwScum.x;\n"
     "  if (hwTime.y > 0.0f && dot(hwV, hwV) > 0.0025f) {\n"
     "    /* ripples carried along by the flow: three fixed waves whose pattern moves with (u, v), drawn twice\n"
     "       half a cycle apart and cross-faded so the pattern can reset without a jump (stage 11). The\n"
@@ -802,9 +917,10 @@ static const char FOAM_TEX_LINE[] =
    darkens the albedo and raises the gloss below it, fading over 25 units */
 static const char WET_ANCHOR[] = "\tDS_WriteColour( wv, specularStrength";
 static const char WET_NEED[] = "float4 vertexPosition = vIn.m_vVertexPosition;";
-static const char WET_GLOBALS[] = "float4 hwWet : register(c219);\n";
+static const char WET_GLOBALS[] = "float4 hwWet : register(c219);\nfloat4 hwKate : register(c218);\nfloat4 hwKate2 : register(c217);\n";
 static const char WET_HLSL[] =
     "  { /* HydroWater wet surfaces: darker and glossier below the high-water mark */\n"
+    "    if (hwKate2.w > 2.5f) { float2 hwQd = vertexPosition.xy - hwKate.xy; diffuseMapSample.rgb = float3(hwKate.w > 0.0f ? 1.0f : 0.0f, dot(hwQd, hwQd) < 3600.0f ? 1.0f : 0.0f, frac(abs(vertexPosition.z) * 0.01f)); }\n" /* drench_mask 3 debug: red = drench constants set, green = within 60 units of her xy, blue = world z bands */
     "    float2 hwWu = (vertexPosition.xy - hwFoamXf.xy) * hwFoamXf.zw;\n"
     "    if (hwWet.w > 0.0f && hwWu.x > 0.0f && hwWu.x < 1.0f && hwWu.y > 0.0f && hwWu.y < 1.0f) {\n"
     "      float hwWa = tex2Dlod(hwFoamTex, float4(0.5f + hwWu.x * 0.5f, hwWu.y, 0.0f, 0.0f)).a * 255.0f;\n"
@@ -814,19 +930,68 @@ static const char WET_HLSL[] =
     "      specularStrength = lerp(specularStrength, saturate(specularStrength * 1.5f + 0.3f), hwWt);\n"
     "      specularPower *= 1.0f + 0.5f * hwWt;\n"
     "    }\n"
+    "    if (hwKate.w > 0.0f) { /* drenched Kate: c218 = (x, y, world z of her wet line, freshness), c217 = (how much of her is soaked, world z of the splash top, splash density, drench_mask) */\n"
+    "      float2 hwKd = vertexPosition.xy - hwKate.xy;\n"
+    "      float hwKr = dot(hwKd, hwKd);\n"
+    "      if (hwKr < 3600.0f) {\n"
+    "        float hwRad = saturate(2.0f - hwKr * (1.0f / 1800.0f)) * hwKate.w;\n"
+    "        float hwDz = vertexPosition.z - (hwKate.z + 3.0f * sin(hwKd.x * 0.35f + hwKd.y * 0.21f) + 2.0f * sin(hwKd.y * 0.53f - hwKd.x * 0.17f));\n" /* ragged line, not a level cut */
+    "        float hwKw = saturate(hwDz * 0.1f) * hwRad;\n"
+    "        float hwKc = saturate((hwDz + 14.0f) * (1.0f / 14.0f)) * hwRad;\n" /* cloth wicks a little above the line */
+    "        float hwSf = saturate(-hwDz / max(hwKate.z - hwKate2.y, 1.0f));\n" /* splashes: 0 at the wet line, 1 at the top of the spray */
+    "        float3 hwPc = floor(vertexPosition.xyz * (1.0f / 3.0f));\n"
+    "        float hwPh = frac(sin(dot(hwPc, float3(127.1f, 311.7f, 74.7f))) * 43758.547f);\n"
+    "        float3 hwPf = frac(vertexPosition.xyz * (1.0f / 3.0f)) - 0.5f;\n"
+    "        float hwPs = (1.0f - smoothstep(0.25f, 0.45f, length(hwPf))) * step(hwPh + 0.001f, hwKate2.z * (1.0f - hwSf)) * step(hwDz, 0.0f) * hwRad;\n"
+    "        hwKw = max(hwKw, 0.8f * hwPs);\n"
+    "        hwKc = max(hwKc, hwPs);\n"
+    "        float hwB = 1.0f;\n" /* the game's wetness mask: spec map .z, how wet the artists let this texel get */
+    "#if defined(_SpecSamplersOn) && _SpecSamplersOn\n"
+    "        if (g_bSpecularMapOn) hwB = HW_BETA;\n"
+    "#endif\n"
+    "        hwB = lerp(1.0f, hwB, saturate(hwKate2.w));\n"
+    "        float3 hwC = diffuseMapSample.rgb;\n"
+    "        float hwSk = (hwC.r > hwC.g && hwC.g > hwC.b) ? saturate(((hwC.r - hwC.b) / max(hwC.r, 0.01f) - 0.12f) * 6.0f) * saturate((0.65f - (hwC.r - hwC.b) / max(hwC.r, 0.01f)) * 6.0f) : 0.0f;\n"
+    "        float hwL = dot(hwC, float3(0.3f, 0.59f, 0.11f));\n"
+    "        float3 hwCl = lerp(hwL.xxx, hwC, 1.25f) * 0.7f;\n"
+    "        diffuseMapSample.rgb = lerp(hwC, lerp(hwCl, hwC * 0.95f, hwSk), lerp(hwKc, hwKw, hwSk) * hwB);\n"
+    "        specularStrength = lerp(specularStrength, lerp(saturate(specularStrength + 0.25f), saturate(specularStrength * 2.0f + 0.45f), hwSk), hwKw * lerp(0.4f, 1.0f, hwB));\n"
+    "        specularPower *= 1.0f + hwKw * lerp(0.4f, 1.0f, hwB) * (0.5f + 2.5f * hwSk);\n"
+    "        if (hwKate2.w > 1.5f) diffuseMapSample.rgb = lerp(diffuseMapSample.rgb, float3(1.0f, 0.0f, 0.0f), 0.8f * hwB * hwRad);\n" /* drench_mask 2: show the mask in red */
+    "        float hwCol = floor(dot(vertexPosition.xy, float2(0.7071f, 0.7071f)) * 0.6f);\n"
+    "        float hwH = frac(sin(hwCol * 12.9898f) * 43758.547f);\n"
+    "        float hwS = frac(vertexPosition.z * 0.04f + hwTime.x * (0.5f + hwH) + hwH * 7.0f);\n"
+    "        float hwRv = smoothstep(0.85f, 0.97f, hwS) * (1.0f - smoothstep(0.97f, 1.0f, hwS)) * step(hwH, 0.45f) * hwKw * hwKate.w;\n"
+    "        specularStrength = saturate(specularStrength + 0.6f * hwRv);\n"
+    "        diffuseMapSample.rgb *= 1.0f - 0.15f * hwRv;\n"
+    "      }\n"
+    "      if (hwKr < 6400.0f) { /* drips: round wet spots on flat ground around her */\n"
+    "        float3 hwNg = normalize(cross(ddx(vertexPosition.xyz), ddy(vertexPosition.xyz)));\n"
+    "        float2 hwG = vertexPosition.xy * (1.0f / 6.0f);\n"
+    "        float2 hwGi = floor(hwG);\n"
+    "        float hwR = frac(sin(dot(hwGi, float2(127.1f, 311.7f))) * 43758.547f);\n"
+    "        float2 hwGc = hwGi + 0.25f + 0.5f * frac(hwR * float2(17.0f, 31.0f));\n"
+    "        float hwDs = 1.0f - smoothstep(0.08f + 0.12f * hwR, 0.12f + 0.12f * hwR, length(hwG - hwGc));\n"
+    "        float hwDw = hwDs * step(0.55f, hwR) * saturate(abs(hwNg.z) * 4.0f - 3.0f) * saturate(1.0f - hwKr * (1.0f / 6400.0f)) * hwKate.w * hwKate2.x;\n"
+    "        diffuseMapSample.rgb *= 1.0f - 0.35f * hwDw;\n"
+    "        specularStrength = lerp(specularStrength, saturate(specularStrength * 1.5f + 0.35f), hwDw);\n"
+    "      }\n"
+    "    }\n"
     "  }\n"
     ;
 
 __attribute__((used)) char *hw_wet_inject(const char *src, size_t len, size_t *outlen)
 {
-    size_t na = sizeof WET_ANCHOR - 1, ng = sizeof FOAM_TEX_GLOBALS - 1, nw = sizeof WET_GLOBALS - 1, nh = sizeof WET_HLSL - 1, o;
-    const char *q = FindN(src, len, WET_ANCHOR, na);
+    size_t na = sizeof WET_ANCHOR - 1, ng = sizeof FOAM_TEX_GLOBALS - 1, nw = sizeof WET_GLOBALS - 1, nh = sizeof WET_HLSL - 1, nb, o;
+    const char *q = FindN(src, len, WET_ANCHOR, na), *beta;
     char *out;
     if (!q || FindN(q + na, len - (size_t)(q + na - src), WET_ANCHOR, na) || !FindN(src, len, WET_NEED, sizeof WET_NEED - 1)
         || FindN(src, len, "vReflectionSample", 17)) return NULL;
-    out = (char *)malloc(ng + nw + len + nh + 1);
+    beta = FindN(src, len, "float2 fBetaControl = ", 22) ? "#define HW_BETA fBetaControl.x\n" : "#define HW_BETA 1.0f\n";
+    nb = strlen(beta);
+    out = (char *)malloc(ng + nw + nb + len + nh + 1);
     if (!out) return NULL;
-    memcpy(out, FOAM_TEX_GLOBALS, ng); memcpy(out + ng, WET_GLOBALS, nw); o = ng + nw;
+    memcpy(out, FOAM_TEX_GLOBALS, ng); memcpy(out + ng, WET_GLOBALS, nw); memcpy(out + ng + nw, beta, nb); o = ng + nw + nb;
     memcpy(out + o, src, (size_t)(q - src)); o += (size_t)(q - src);
     memcpy(out + o, WET_HLSL, nh); o += nh;
     memcpy(out + o, q, len - (size_t)(q - src)); o += len - (size_t)(q - src);
@@ -896,7 +1061,7 @@ static HRESULT WINAPI CompileHook(const char *src, UINT len, const void *defs, v
     g_inject_tex = cfg.foam_tex && prof && !strcmp(prof, "ps_3_0");
     mod = (cfg.opts.foam && src) ? hw_foam_inject(src, srclen, &n) : NULL;
     if (!mod && g_inject_tex && cfg.opts.foam && cfg.wet > 0.0f && src && (mod = hw_wet_inject(src, srclen, &n)) != NULL) wet = 1;
-    if (cfg.foam_dump >= 2 && src && prof && prof[0] == 'p') {   /* foam_dump 2: every pixel shader, to find splice anchors */
+    if (cfg.foam_dump >= 2 && src && prof && (prof[0] == 'p' || (cfg.foam_dump >= 3 && prof[0] == 'v'))) {   /* foam_dump 2: every pixel shader, to find splice anchors; 3: vertex shaders too */
         static volatile LONG all;
         LONG d = InterlockedIncrement(&all);
         if (d <= 600) {
@@ -988,7 +1153,15 @@ static void PatchCacheName(void)
     static int done;
     char *s = (char *)Exe(VA_SHADER_CACHE_NAME);
     if (done || !cfg.opts.foam || !Readable(s, sizeof CACHE_NAME_GAME)) return;
-    const char *name = cfg.foam_test == 2 ? CACHE_NAME_T2 : CACHE_NAME_HW;
+    static const char abc[] = "ABCEFGHIJKLMNOPQRSTUVWYZ0123456789";   /* no D or X: never the game's own "DX" */
+    const char *parts[] = { FOAM_DEFS, FOAM_HLSL, FOAM_TEX_GLOBALS, WET_GLOBALS, WET_HLSL };
+    const char *name = CACHE_NAME_HW;
+    unsigned h = 2166136261u, k;
+    for (k = 0; k < sizeof parts / sizeof parts[0]; k++)
+        for (const char *c = parts[k]; *c; c++) h = (h ^ (unsigned char)*c) * 16777619u;
+    h = (h ^ (unsigned)(cfg.foam_test == 2) ^ (unsigned)(cfg.wet > 0.0f) << 1) * 16777619u;
+    CACHE_NAME_HW[11] = abc[h % (sizeof abc - 1)];
+    CACHE_NAME_HW[12] = abc[(h / (sizeof abc - 1)) % (sizeof abc - 1)];
     if (!memcmp(s, name, sizeof CACHE_NAME_HW)) { done = 1; return; }
     if (memcmp(s, CACHE_NAME_GAME, sizeof CACHE_NAME_GAME)) return;    /* not unpacked yet */
     if (PatchBytes(s, name, sizeof CACHE_NAME_HW)) { done = 1; Log("foam: shader cache is %s (the game's %s is left alone)", name, CACHE_NAME_GAME); }
@@ -1231,12 +1404,12 @@ static void PatchVtable(void *obj, int idx, void *hook, void **orig)
 }
 
 /* ---------------------------------------------------------------- control file (control = 1)
- * IDirect3DDevice9::Present (slot 17) is hooked as well. Every 250 ms it looks for
+ * IDirect3DDevice9::EndScene (slot 42) is hooked as well. Every 250 ms it looks for
  * HydroWater.cmd next to the DLL, reads it, deletes it and runs its lines:
  *   shot <file.bmp>   dump the back buffer (works hidden, off-screen, any mode)
  * This is the test-pilot channel; it costs one file probe every quarter second. */
-typedef HRESULT (WINAPI *Present_t)(IDirect3DDevice9 *, const RECT *, const RECT *, HWND, const RGNDATA *);
-static Present_t g_orig_present;
+typedef HRESULT (WINAPI *EndScene_t)(IDirect3DDevice9 *);
+static EndScene_t g_orig_endscene;
 static DWORD g_last_cmd_poll;
 
 static void SaveBackbuffer(IDirect3DDevice9 *dev, const char *path)
@@ -1420,6 +1593,8 @@ static void InjectLook(const char *args)
 }
 
 static void InjectKey(const char *args);
+static float g_kate_wet;   /* defined with the wet surfaces below */
+
 static void RunControlFile(IDirect3DDevice9 *dev)
 {
     ClickTick();
@@ -1446,41 +1621,29 @@ static void RunControlFile(IDirect3DDevice9 *dev)
         else if (!_strnicmp(line, "look ", 5)) InjectLook(line + 5);
         else if (!_strnicmp(line, "click", 5)) InjectClick(line[5] ? line + 6 : "");
         else if (!_stricmp(line, "state")) GameStateLog("now");
+        else if (!_stricmp(line, "kate")) {
+            const float *kp = KatePos();
+            if (kp) Log("control: kate at %.0f %.0f height %.0f, wet %.0f", kp[0], kp[1], kp[2], g_kate_wet);
+            else Log("control: kate: no player pawn");
+        }
         else Log("control: unknown command '%s'", line);
     }
     fclose(f);
     DeleteFileW(path);
 }
 
-/* After the intro the engine presents through the implicit swap chain
- * (IDirect3DSwapChain9::Present, slot 3), so that is hooked too. */
-typedef HRESULT (WINAPI *SwapPresent_t)(IDirect3DSwapChain9 *, const RECT *, const RECT *, HWND, const RGNDATA *, DWORD);
-static SwapPresent_t g_orig_swap_present;
-static volatile LONG g_swap_presents;
 static void FoamTexUpdate(IDirect3DDevice9 *dev);
-static HRESULT WINAPI SwapPresentHook(IDirect3DSwapChain9 *self, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty, DWORD flags)
-{
-    DWORD now = GetTickCount();
-    IDirect3DDevice9 *dev = NULL;
-    InterlockedIncrement(&g_swap_presents);
-    InterlockedIncrement(&g_presents);
-    if (IDirect3DSwapChain9_GetDevice(self, &dev) == D3D_OK) {
-        FoamTexUpdate(dev);
-        if (cfg.control && now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(dev); }
-        IDirect3DDevice9_Release(dev);
-    }
-    return g_orig_swap_present(self, src, dst, wnd, dirty, flags);
-}
 
 /* ---------------------------------------------------------------- world foam texture
  * The game rebuilds only the sheet meshes on its render list (in the Practice pool one sheet of
  * 80), so foam in vertex colours never reaches most water. Instead every sheet's foam and air are
  * written into one texture laid over the world (a texel per cell, covering all bridged sheets) at
- * each Present; the water shader reads it by world position (sampler s15, mapping in c223). The
+ * each frame; the water shader reads it by world position (sampler s15, mapping in c223). The
  * texture is twice as wide: the right half holds the flow direction for the foam streaks. The
  * sheet origin is at S+0x7c/S+0x80 and cells are dx = S+0x10 apart (FUN_00bf0e20). */
 #define FOAM_TEX_N 512
 static IDirect3DTexture9 *g_foam_tex;
+static IDirect3DTexture9 *g_scum_tex;   /* FOAM_TEX_N square, same mapping: R = the floating layer (idea 9) */
 static IDirect3DDevice9 *g_foam_tex_dev;
 static volatile LONG g_foam_tex_logged;
 
@@ -1489,7 +1652,7 @@ static volatile LONG g_foam_tex_logged;
  * g_wet_lo is the last surface seen there; a mark 80 below it is dropped. Kate carries her own mark
  * (how far above her the water was) out of the water, so she stays wet and leaves a wet trail. */
 static float *g_wet_m, *g_wet_lo;
-static float g_wet_x0, g_wet_y0, g_wet_cell, g_wet_sink, g_kate_wet = -1e30f, g_kate_surf = -1e30f;
+static float g_wet_x0, g_wet_y0, g_wet_cell, g_wet_sink, g_kate_wet = -1e30f, g_kate_surf = -1e30f, g_kate_fresh, g_wet_dt, g_kate_spl = -1e30f, g_kate_spd;
 static int g_kate_k = -1;   /* Kate's texel this frame, and (g_kate_surf) the highest water surface in it */
 static DWORD g_wet_tick;
 
@@ -1523,13 +1686,14 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     int i, j, n = 0;
     DWORD now = GetTickCount();
     if (!cfg.foam_tex || !cfg.opts.foam) return;
-    if (g_foam_tex && g_foam_tex_dev != dev) { g_foam_tex = NULL; }   /* new device: the old texture went with it */
+    if (g_foam_tex && g_foam_tex_dev != dev) { g_foam_tex = NULL; g_scum_tex = NULL; }   /* new device: the old textures went with it */
     if (!g_foam_tex) {
         if (IDirect3DDevice9_CreateTexture(dev, 2 * FOAM_TEX_N, FOAM_TEX_N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_foam_tex, NULL) != D3D_OK) {
             g_foam_tex = NULL; return;
         }
         g_foam_tex_dev = dev;
         Log("foam: world foam texture %dx%d created (right half: flow)", 2 * FOAM_TEX_N, FOAM_TEX_N);
+        if (cfg.scum > 0.0f && IDirect3DDevice9_CreateTexture(dev, FOAM_TEX_N, FOAM_TEX_N, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &g_scum_tex, NULL) != D3D_OK) { g_scum_tex = NULL; Log("scum: texture not created, the layer is off"); }
     }
     AcquireSRWLockShared(&g_lock);
     for (b = g_bridges; b; b = b->next) {
@@ -1555,6 +1719,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
         g_wet_tick = now;
         WetRemap(x0, y0, cell);
         sink = g_wet_sink = (cfg.wet_dry > 0.0f ? cfg.wet_dry : 0.0f) * dt;
+        g_wet_dt = dt;
         {   const float *kp = KatePos();
             int ki = kp ? (int)((kp[0] - x0) * inv) : -1, kj = kp ? (int)((kp[1] - y0) * inv) : -1;
             g_kate_k = ki >= 1 && kj >= 1 && ki < FOAM_TEX_N - 1 && kj < FOAM_TEX_N - 1 ? kj * FOAM_TEX_N + ki : -1;
@@ -1563,6 +1728,9 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
             if (g_wet_m[k] > -1e29f) { g_wet_m[k] -= sink; if (g_wet_m[k] < g_wet_lo[k] - 80.0f) g_wet_m[k] = -1e30f; }
     }
     if (IDirect3DTexture9_LockRect(g_foam_tex, 0, &lr, NULL, 0) == D3D_OK) {
+        D3DLOCKED_RECT ls = { 0, NULL };
+        if (g_scum_tex && IDirect3DTexture9_LockRect(g_scum_tex, 0, &ls, NULL, 0) != D3D_OK) ls.pBits = NULL;
+        if (ls.pBits) for (j = 0; j < FOAM_TEX_N; j++) memset((BYTE *)ls.pBits + (size_t)j * ls.Pitch, 0, FOAM_TEX_N * 4);
         for (j = 0; j < FOAM_TEX_N; j++) {
             memset((BYTE *)lr.pBits + (size_t)j * lr.Pitch, 0, FOAM_TEX_N * 4);
             memset((BYTE *)lr.pBits + (size_t)j * lr.Pitch + FOAM_TEX_N * 4, 128, FOAM_TEX_N * 4);   /* no flow */
@@ -1586,6 +1754,7 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                     if (a > row[tx * 4 + 1]) row[tx * 4 + 1] = a;   /* G: air */
                     if (sn->dye[j * sn->w + i] > row[tx * 4 + 3]) row[tx * 4 + 3] = sn->dye[j * sn->w + i];   /* A: dye */
                     if (d > row[tx * 4 + 0]) row[tx * 4 + 0] = d;   /* B: depth tint */
+                    if (ls.pBits) { BYTE *sr = (BYTE *)ls.pBits + (size_t)ty * ls.Pitch + tx * 4, sv = sn->scum[j * sn->w + i]; if (sv > sr[2]) sr[2] = sv; }   /* scum texture R */
                     {   /* right half, R/G: flow; the stronger one wins where sheets overlap */
                         BYTE *fl = row + (FOAM_TEX_N + tx) * 4;
                         int nu = sn->flowu[j * sn->w + i] - 128, nv = sn->flowv[j * sn->w + i] - 128, ou = fl[2] - 128, ov = fl[1] - 128;
@@ -1610,9 +1779,34 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
                 int ki = (int)((kp[0] - x0) * inv), kj = (int)((kp[1] - y0) * inv), di, dj;
                 float kh = -kp[2];
                 if (ki >= 1 && kj >= 1 && ki < FOAM_TEX_N - 1 && kj < FOAM_TEX_N - 1) {
-                    if (g_kate_wet > -1e29f) g_kate_wet -= g_wet_sink;
+                    if (g_kate_wet > -1e29f) g_kate_wet -= g_wet_sink * 0.3f;   /* clothes on her hold water longer than walls */
                     if (g_kate_surf > -1e29f && g_kate_surf - kh > g_kate_wet) g_kate_wet = g_kate_surf - kh;   /* real water only, not her own trail */
                     if (g_kate_wet > 400.0f) g_kate_wet = 400.0f;
+                    /* drench freshness: full while she stands in water, then fades over ~2.5 min */
+                    if (g_kate_surf > -1e29f && g_kate_surf - kh > -140.0f) g_kate_fresh = 1.0f;   /* any water above her ankles; the wet line limits how much of her */
+                    else if (g_kate_fresh > 0.0f) g_kate_fresh -= g_wet_dt * (1.0f / 150.0f);
+                    if (g_kate_fresh < 0.0f) g_kate_fresh = 0.0f;
+                    {   /* splashes: running through shallow water throws spray up her legs and body in patches;
+                           g_kate_spl is the spray top above her (like g_kate_wet), g_kate_spd how many patches are wet */
+                        static float px, py;
+                        static int pv;
+                        float d = g_kate_surf > -1e29f ? g_kate_surf - kh : -1e30f;
+                        if (pv && g_wet_dt > 0.0f && d > -140.0f && d < 60.0f) {   /* wading, not swimming */
+                            float vx = kp[0] - px, vy = kp[1] - py, v = sqrtf(vx * vx + vy * vy) / g_wet_dt;
+                            if (v > 60.0f && v < 3000.0f) {   /* a jump in position is a respawn */
+                                float a = (v - 60.0f) * (1.0f / 300.0f), top;
+                                if (a > 1.0f) a = 1.0f;
+                                top = d + 40.0f + 120.0f * a;
+                                if (top > g_kate_spl) g_kate_spl = top;
+                                g_kate_spd += a * g_wet_dt * 0.5f;
+                                if (g_kate_spd > 1.0f) g_kate_spd = 1.0f;
+                            }
+                        }
+                        px = kp[0]; py = kp[1]; pv = 1;
+                        if (g_kate_spl > -1e29f) g_kate_spl -= g_wet_sink;
+                        if (g_kate_spl > 400.0f) g_kate_spl = 400.0f;
+                        if (g_kate_fresh <= 0.0f) { g_kate_spd = 0.0f; g_kate_spl = -1e30f; }
+                    }
                     if (g_kate_wet > -150.0f)
                         for (dj = -1; dj <= 1; dj++)
                             for (di = -1; di <= 1; di++) {
@@ -1635,11 +1829,45 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
             xf[3] = cfg.wet > 1.5f ? 1.5f : cfg.wet;
         } else { xf[0] = xf[1] = xf[2] = xf[3] = 0.0f; }
         IDirect3DTexture9_UnlockRect(g_foam_tex, 0);
+        if (ls.pBits) IDirect3DTexture9_UnlockRect(g_scum_tex, 0);
         IDirect3DDevice9_SetPixelShaderConstantF(dev, 219, xf, 1);
+        {   const float *kp = KatePos();
+            float kc[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            if (kp && cfg.wet > 0.0f && cfg.drench > 0.0f && g_kate_wet > -150.0f && g_kate_fresh > 0.0f) {
+                kc[0] = kp[0]; kc[1] = kp[1]; kc[2] = -(-kp[2] + g_kate_wet);   /* world z of her wet line (z points down) */
+                kc[3] = sqrtf(g_kate_fresh) * (cfg.drench > 1.5f ? 1.5f : cfg.drench);   /* stays strong, then goes at the end */
+            }
+            IDirect3DDevice9_SetPixelShaderConstantF(dev, 218, kc, 1);
+            kc[0] = kc[3] > 0.0f ? (g_kate_wet + 150.0f) * (1.0f / 250.0f) : 0.0f;   /* soaked share: 0 feet only, 1 to the chest; scales the drips */
+            if (kc[0] > 1.0f) kc[0] = 1.0f;
+            if (kc[3] > 0.0f && g_kate_spl > g_kate_wet && cfg.drench_splash > 0.0f) {
+                kc[1] = -(-kp[2] + g_kate_spl);   /* world z of the spray top */
+                kc[2] = g_kate_spd * (cfg.drench_splash > 1.0f ? 1.0f : cfg.drench_splash);
+            } else { kc[1] = kc[2] = 0.0f; }
+            kc[3] = cfg.drench_mask;
+            IDirect3DDevice9_SetPixelShaderConstantF(dev, 217, kc, 1);
+            {   /* c216 meniscus: her position, body radius (wider when she swims, lying flat) and how deep she is in */
+                float d = (kp && g_kate_surf > -1e29f) ? g_kate_surf - (-kp[2]) : -1e30f, st = (d + 100.0f) * (1.0f / 60.0f);
+                if (st > 1.0f) st = 1.0f;
+                if (kp && cfg.meniscus > 0.0f && st > 0.0f) { kc[0] = kp[0]; kc[1] = kp[1]; kc[2] = d > 40.0f ? 30.0f : 16.0f; kc[3] = st * (cfg.meniscus > 1.0f ? 1.0f : cfg.meniscus); }
+                else kc[0] = kc[1] = kc[2] = kc[3] = 0.0f;
+                IDirect3DDevice9_SetPixelShaderConstantF(dev, 216, kc, 1);
+            }
+        }
     }
     ReleaseSRWLockShared(&g_lock);
     xf[0] = x0; xf[1] = y0; xf[2] = 1.0f / (cell * FOAM_TEX_N); xf[3] = xf[2];
     IDirect3DDevice9_SetTexture(dev, 15, (IDirect3DBaseTexture9 *)g_foam_tex);
+    if (g_scum_tex) {
+        IDirect3DDevice9_SetTexture(dev, 14, (IDirect3DBaseTexture9 *)g_scum_tex);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+        IDirect3DDevice9_SetSamplerState(dev, 14, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+    }
+    xf[0] = g_scum_tex ? (cfg.scum > 1.0f ? 1.0f : cfg.scum) : 0.0f; xf[1] = cfg.scum_colour[0]; xf[2] = cfg.scum_colour[1]; xf[3] = cfg.scum_colour[2];
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 214, xf, 1);
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
     IDirect3DDevice9_SetSamplerState(dev, 15, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
@@ -1650,19 +1878,335 @@ static void FoamTexUpdate(IDirect3DDevice9 *dev)
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 222, xf, 1);
     xf[0] = cfg.dye_colour[0]; xf[1] = cfg.dye_colour[1]; xf[2] = cfg.dye_colour[2]; xf[3] = cfg.dye;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 221, xf, 1);
-    xf[0] = cfg.foam_normals > 2.0f ? 2.0f : cfg.foam_normals < 0.0f ? 0.0f : cfg.foam_normals; xf[1] = xf[2] = xf[3] = 0.0f;
+    xf[0] = cfg.foam_normals > 2.0f ? 2.0f : cfg.foam_normals < 0.0f ? 0.0f : cfg.foam_normals; xf[1] = cfg.foam_rim > 1.0f ? 1.0f : cfg.foam_rim < 0.0f ? 0.0f : cfg.foam_rim;
+    xf[2] = cfg.foam_cells > 1.0f ? 1.0f : cfg.foam_cells < 0.0f ? 0.0f : cfg.foam_cells;
+    xf[3] = cfg.foam_dots > 1.0f ? 1.0f : cfg.foam_dots < 0.0f ? 0.0f : cfg.foam_dots;
     IDirect3DDevice9_SetPixelShaderConstantF(dev, 220, xf, 1);
+    xf[0] = cfg.foam_glow > 1.0f ? 1.0f : cfg.foam_glow < 0.0f ? 0.0f : cfg.foam_glow;
+    xf[1] = cfg.glow_colour[0]; xf[2] = cfg.glow_colour[1]; xf[3] = cfg.glow_colour[2];
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 215, xf, 1);
     if (InterlockedIncrement(&g_foam_tex_logged) == 1 || g_foam_tex_logged % 2000 == 0)
         Log("foam: world texture over %d sheets, x %.0f..%.0f y %.0f..%.0f, texel %.1f", n, x0, x1, y0, y1, cell);
 }
 
-static HRESULT WINAPI PresentHook(IDirect3DDevice9 *self, const RECT *src, const RECT *dst, HWND wnd, const RGNDATA *dirty)
+
+/* ---------------------------------------------------------------- spray drops drawn as particles (idea 6)
+ * The library throws spray drops (hw_spray: breaking crests, slams, impacts, falls); each sheet step
+ * copies them into its snapshot. The game's own draw calls are watched: when a draw used one of the
+ * foam-patched water pixel shaders, the drops are drawn right after it, once per scene, into the same
+ * render target with the same depth buffer (so Kate and the pool walls hide them). The camera comes
+ * from the water vertex shader's own constants: its constant table names the view-projection matrix,
+ * and the four registers are copied as they are. Billboards are made in clip space, so no view matrix
+ * is needed: a world radius r covers r x |column| clip units. Everything is restored from a state block. */
+static IDirect3DPixelShader9 *g_water_ps[8];
+static int g_nwater_ps;
+static volatile LONG g_spray_drawn;
+static int g_spray_reg = -2, g_spray_fail, g_spray_logged;
+static IDirect3DVertexShader9 *g_spray_vs;
+static IDirect3DPixelShader9 *g_spray_ps;
+static IDirect3DVertexDeclaration9 *g_spray_decl;
+static IDirect3DDevice9 *g_spray_dev;
+static WORD *g_spray_idx;
+static float *g_spray_vb;
+static const char SPRAY_VS[] =
+    "float4 hwM0 : register(c0); float4 hwM1 : register(c1); float4 hwM2 : register(c2); float4 hwM3 : register(c3);\n"
+    "float4 hwSc : register(c4);\n"
+    "struct VI { float3 p : POSITION; float4 c : TEXCOORD0; };\n"
+    "struct VO { float4 pos : POSITION; float2 uv : TEXCOORD0; float2 ac : TEXCOORD1; };\n"
+    "VO main(VI i) {\n"
+    "  VO o; float4 p = float4(i.p, 1.0f);\n"
+    "  float4 a = float4(dot(p, hwM0), dot(p, hwM1), dot(p, hwM2), dot(p, hwM3));\n"
+    "  float4 b = p.x * hwM0 + p.y * hwM1 + p.z * hwM2 + hwM3;\n"
+    "  float4 cl = lerp(a, b, hwSc.z);\n"
+    "  cl.xy += i.c.xy * i.c.z * float2(hwSc.x, hwSc.y);\n"
+    "  o.pos = cl; o.uv = i.c.xy; o.ac = float2(i.c.w, 0.0f); return o; }\n";
+static const char SPRAY_PS[] =
+    "float4 hwCol : register(c0);\n"
+    "struct VO { float4 pos : POSITION; float2 uv : TEXCOORD0; float2 ac : TEXCOORD1; };\n"
+    "float4 main(VO i) : COLOR {\n"
+    "  float d = dot(i.uv, i.uv); float a = saturate(1.0f - d); a *= a;\n"
+    "  float lit = 0.8f + 0.3f * saturate(i.uv.y + 0.4f) - 0.25f * d;\n"   /* a little brighter on top, dimmer at the rim */
+    "  return float4(hwCol.rgb * lit, a * hwCol.a * i.ac.x); }\n";
+
+static int StrHasI(const char *s, const char *sub)
 {
+    size_t n = strlen(sub), i;
+    for (; *s; s++) {
+        for (i = 0; i < n && s[i] && tolower((unsigned char)s[i]) == tolower((unsigned char)sub[i]); i++) ;
+        if (i == n) return 1;
+    }
+    return 0;
+}
+
+/* length in DWORDs of a shader function (version token, instructions and comments, end token) */
+static UINT CodeLen(const DWORD *c)
+{
+    UINT i = 1;
+    while (i < (1u << 20)) {
+        DWORD t = c[i];
+        if (t == 0x0000FFFF) return i + 1;
+        if ((t & 0xFFFF) == 0xFFFE) i += 1 + ((t >> 16) & 0x7FFF);
+        else i += 1 + ((t >> 24) & 0x0F);
+    }
+    return 0;
+}
+
+static int BytecodeHas(const DWORD *c, const char *s)
+{
+    UINT n = CodeLen(c), i, m = (UINT)strlen(s);
+    const char *p = (const char *)c;
+    if (!n) return 0;
+    for (i = 0; i + m <= n * 4; i++) if (p[i] == s[0] && !memcmp(p + i, s, m)) return 1;
+    return 0;
+}
+
+/* The constant table (CTAB comment) of a vertex shader: list its float4 constants into names and
+ * return the register of a 4-register one whose name says view-projection, or -1. */
+typedef struct { DWORD Size, Creator, Version, Constants, ConstantInfo, Flags, Target; } CtabHdr;
+typedef struct { DWORD Name; WORD RegisterSet, RegisterIndex, RegisterCount; DWORD Reserved, TypeInfo; } CtabConst;
+static int FindVsMatrix(IDirect3DVertexShader9 *vs, char *names, size_t nn)
+{
+    UINT sz = 0, i;
+    DWORD *code;
+    int reg = -1, alt = -1;
+    size_t used = 0;
+    names[0] = 0;
+    if (!vs || IDirect3DVertexShader9_GetFunction(vs, NULL, &sz) != D3D_OK || sz < 8) return -1;
+    code = (DWORD *)malloc(sz);
+    if (!code) return -1;
+    if (IDirect3DVertexShader9_GetFunction(vs, code, &sz) != D3D_OK) { free(code); return -1; }
+    for (i = 1; i < sz / 4; ) {
+        DWORD t = code[i];
+        if (t == 0x0000FFFF) break;
+        if ((t & 0xFFFF) == 0xFFFE) {
+            DWORD len = (t >> 16) & 0x7FFF;
+            if (len >= 2 && code[i + 1] == 0x42415443) {   /* 'CTAB' */
+                const BYTE *tb = (const BYTE *)&code[i + 2];
+                const CtabHdr *h = (const CtabHdr *)tb;
+                const CtabConst *c = (const CtabConst *)(tb + h->ConstantInfo);
+                DWORD k;
+                for (k = 0; k < h->Constants && k < 64; k++) {
+                    const char *nm = (const char *)tb + c[k].Name;
+                    int r;
+                    if (c[k].RegisterSet != 2) continue;   /* D3DXRS_FLOAT4 */
+                    r = snprintf(names + used, nn > used ? nn - used : 0, "%s c%u[%u] ", nm, (unsigned)c[k].RegisterIndex, (unsigned)c[k].RegisterCount);
+                    if (r < 0 || (size_t)r >= nn - used) used = nn - 1; else used += (size_t)r;
+                    if (c[k].RegisterCount == 4) {
+                        if (reg < 0 && (StrHasI(nm, "viewproj") || StrHasI(nm, "wvp"))) reg = c[k].RegisterIndex;
+                        else if (alt < 0 && StrHasI(nm, "proj")) alt = c[k].RegisterIndex;
+                    }
+                }
+            }
+            i += 1 + len;
+            continue;
+        }
+        i += 1 + ((t >> 24) & 0x0F);
+    }
+    free(code);
+    return reg >= 0 ? reg : alt;
+}
+
+static void *BufPtr(void *buf) { typedef void *(WINAPI *Ptr_t)(void *); return buf ? ((Ptr_t)(*(void ***)buf)[3])(buf) : NULL; }
+
+static int SprayCompile(const char *src, const char *prof, void **out)
+{
+    void *buf = NULL, *err = NULL;
+    HRESULT hr;
+    if (!g_orig_compile) { Log("spray: no shader compiler"); return 0; }
+    hr = g_orig_compile(src, (UINT)strlen(src), NULL, NULL, "main", prof, 0, &buf, &err, NULL);
+    if (hr < 0 || !buf) {
+        Log("spray: own %s shader failed (%08lx): %.400s", prof, (unsigned long)hr, err ? (const char *)BufPtr(err) : "(no message)");
+        ReleaseCom(&err); ReleaseCom(&buf);
+        return 0;
+    }
+    ReleaseCom(&err);
+    *out = buf;
+    return 1;
+}
+
+static int SprayInit(IDirect3DDevice9 *dev)
+{
+    void *vb = NULL, *pb = NULL;
+    D3DVERTEXELEMENT9 el[3];
+    int i;
+    memset(el, 0, sizeof el);
+    el[0].Type = D3DDECLTYPE_FLOAT3; el[0].Usage = D3DDECLUSAGE_POSITION;
+    el[1].Offset = 12; el[1].Type = D3DDECLTYPE_FLOAT4; el[1].Usage = D3DDECLUSAGE_TEXCOORD;
+    el[2].Stream = 0xFF; el[2].Type = D3DDECLTYPE_UNUSED;
+    if (!SprayCompile(SPRAY_VS, "vs_3_0", &vb) || !SprayCompile(SPRAY_PS, "ps_3_0", &pb)) { ReleaseCom(&vb); ReleaseCom(&pb); return 0; }
+    if (IDirect3DDevice9_CreateVertexShader(dev, (const DWORD *)BufPtr(vb), &g_spray_vs) != D3D_OK ||
+        IDirect3DDevice9_CreatePixelShader(dev, (const DWORD *)BufPtr(pb), &g_spray_ps) != D3D_OK ||
+        IDirect3DDevice9_CreateVertexDeclaration(dev, el, &g_spray_decl) != D3D_OK) {
+        Log("spray: shader or declaration creation failed");
+        ReleaseCom(&vb); ReleaseCom(&pb);
+        return 0;
+    }
+    ReleaseCom(&vb); ReleaseCom(&pb);
+    if (!g_spray_idx) {
+        g_spray_idx = (WORD *)malloc((size_t)HW_SPRAY_CAP * 6 * sizeof(WORD));
+        g_spray_vb = (float *)malloc((size_t)HW_SPRAY_CAP * 28 * sizeof(float));
+        if (!g_spray_idx || !g_spray_vb) return 0;
+        for (i = 0; i < HW_SPRAY_CAP; i++) {
+            WORD *q = g_spray_idx + i * 6, v = (WORD)(i * 4);
+            q[0] = v; q[1] = (WORD)(v + 1); q[2] = (WORD)(v + 2); q[3] = v; q[4] = (WORD)(v + 2); q[5] = (WORD)(v + 3);
+        }
+    }
+    Log("spray: particle shaders ready (cap %d drops)", HW_SPRAY_CAP);
+    return 1;
+}
+
+static void DrawSpray(IDirect3DDevice9 *dev)
+{
+    IDirect3DVertexShader9 *gvs = NULL;
+    IDirect3DStateBlock9 *sb = NULL;
+    float m[16], sc[4], col[4], fx, fy;
+    int n = 0, form;
+    bridge *b;
     DWORD now = GetTickCount();
-    InterlockedIncrement(&g_presents);
-    FoamTexUpdate(self);
-    if (cfg.control && now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(self); }
-    return g_orig_present(self, src, dst, wnd, dirty);
+    if (g_spray_fail) return;
+    if (g_spray_dev != dev) { g_spray_dev = dev; g_spray_vs = NULL; g_spray_ps = NULL; g_spray_decl = NULL; g_spray_reg = -2; }
+    if (!g_spray_vs && !SprayInit(dev)) { g_spray_fail = 1; return; }
+    if (IDirect3DDevice9_GetVertexShader(dev, &gvs) != D3D_OK || !gvs) return;
+    if (g_spray_reg == -2) {
+        char names[700];
+        g_spray_reg = FindVsMatrix(gvs, names, sizeof names);
+        if (g_spray_reg >= 0) Log("spray: water vertex shader constants: %s-> view-projection at c%d", names, g_spray_reg);
+        else Log("spray: no view-projection matrix found in the water vertex shader (%s), drops are not drawn", names);
+    }
+    IDirect3DVertexShader9_Release(gvs);
+    if (g_spray_reg < 0) return;
+    if (IDirect3DDevice9_GetVertexShaderConstantF(dev, (UINT)g_spray_reg, m, 4) != D3D_OK) return;
+    {   /* form A: clip = (p.c0, p.c1, p.c2, p.c3), then c3.xyz is the view z axis (unit); else form B: p.x c0 + p.y c1 + p.z c2 + c3 */
+        float l3 = sqrtf(m[12] * m[12] + m[13] * m[13] + m[14] * m[14]);
+        form = fabsf(l3 - 1.0f) < 0.02f ? 0 : 1;
+    }
+    if (form == 0) { fx = sqrtf(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]); fy = sqrtf(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]); }
+    else { fx = sqrtf(m[0] * m[0] + m[4] * m[4] + m[8] * m[8]); fy = sqrtf(m[1] * m[1] + m[5] * m[5] + m[9] * m[9]); }
+    AcquireSRWLockShared(&g_lock);
+    for (b = g_bridges; b; b = b->next) {
+        foam_snap *sn = b->snap;
+        int k;
+        if (!sn || !sn->spray || now - sn->tick > 1000) continue;
+        for (k = 0; k < sn->nspray && n < HW_SPRAY_CAP; k++, n++) {
+            static const float cx[4] = { -1, 1, 1, -1 }, cy[4] = { -1, -1, 1, 1 };
+            const float *p = sn->spray + k * 8;
+            float *v = g_spray_vb + n * 28;
+            float wx = sn->ox + p[0], wy = sn->oy + p[2], wz = -p[1];
+            float r = (1.5f + 2.0f * p[7]) * cfg.spray_size, a = p[6] < 0.08f ? p[6] * 12.5f : 1.0f;   /* fades in over the first 80 ms */
+            int q;
+            for (q = 0; q < 4; q++) { v[q * 7] = wx; v[q * 7 + 1] = wy; v[q * 7 + 2] = wz; v[q * 7 + 3] = cx[q]; v[q * 7 + 4] = cy[q]; v[q * 7 + 5] = r; v[q * 7 + 6] = a; }
+        }
+    }
+    ReleaseSRWLockShared(&g_lock);
+    if (g_spray_logged < 3 && n) { Log("spray: matrix form %c, fx %.3f fy %.3f, %d drops drawn", form ? 'B' : 'A', fx, fy, n); g_spray_logged++; }
+    if (!n) return;
+    if (IDirect3DDevice9_CreateStateBlock(dev, D3DSBT_ALL, &sb) != D3D_OK) return;
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_ZENABLE, D3DZB_TRUE);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_ZWRITEENABLE, FALSE);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_ZFUNC, D3DCMP_LESSEQUAL);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_ALPHABLENDENABLE, TRUE);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_BLENDOP, D3DBLENDOP_ADD);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_ALPHATESTENABLE, FALSE);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_CULLMODE, D3DCULL_NONE);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_STENCILENABLE, FALSE);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_FOGENABLE, FALSE);
+    IDirect3DDevice9_SetRenderState(dev, D3DRS_COLORWRITEENABLE, 0x0F);
+    IDirect3DDevice9_SetVertexDeclaration(dev, g_spray_decl);
+    IDirect3DDevice9_SetVertexShader(dev, g_spray_vs);
+    IDirect3DDevice9_SetPixelShader(dev, g_spray_ps);
+    IDirect3DDevice9_SetStreamSourceFreq(dev, 0, 1);
+    IDirect3DDevice9_SetVertexShaderConstantF(dev, 0, m, 4);
+    sc[0] = fx; sc[1] = fy; sc[2] = (float)form; sc[3] = 0.0f;
+    IDirect3DDevice9_SetVertexShaderConstantF(dev, 4, sc, 1);
+    col[0] = cfg.spray_colour[0]; col[1] = cfg.spray_colour[1]; col[2] = cfg.spray_colour[2]; col[3] = cfg.spray_colour[3];
+    IDirect3DDevice9_SetPixelShaderConstantF(dev, 0, col, 1);
+    IDirect3DDevice9_DrawIndexedPrimitiveUP(dev, D3DPT_TRIANGLELIST, 0, (UINT)n * 4, (UINT)n * 2, g_spray_idx, D3DFMT_INDEX16, g_spray_vb, 28);
+    IDirect3DStateBlock9_Apply(sb);
+    IDirect3DStateBlock9_Release(sb);
+}
+
+static void AfterDraw(IDirect3DDevice9 *dev)
+{
+    IDirect3DPixelShader9 *ps = NULL;
+    int i, hit = 0;
+    if (!cfg.spray_draw || g_spray_drawn || !g_nwater_ps) return;
+    if (IDirect3DDevice9_GetPixelShader(dev, &ps) != D3D_OK || !ps) return;
+    for (i = 0; i < g_nwater_ps; i++) if (g_water_ps[i] == ps) hit = 1;
+    IDirect3DPixelShader9_Release(ps);
+    if (!hit) return;
+    g_spray_drawn = 1;
+    DrawSpray(dev);
+}
+
+typedef HRESULT (WINAPI *CreatePS_t)(IDirect3DDevice9 *, const DWORD *, IDirect3DPixelShader9 **);
+typedef HRESULT (WINAPI *DIP_t)(IDirect3DDevice9 *, D3DPRIMITIVETYPE, INT, UINT, UINT, UINT, UINT);
+typedef HRESULT (WINAPI *DP_t)(IDirect3DDevice9 *, D3DPRIMITIVETYPE, UINT, UINT);
+static CreatePS_t g_orig_create_ps;
+static DIP_t g_orig_dip;
+static DP_t g_orig_dp;
+
+static HRESULT WINAPI CreatePSHook(IDirect3DDevice9 *self, const DWORD *fn, IDirect3DPixelShader9 **out)
+{
+    HRESULT hr = g_orig_create_ps(self, fn, out);
+    if (hr == D3D_OK && out && *out && fn && BytecodeHas(fn, "hwFoamXf")) {
+        if (g_nwater_ps < 8) g_water_ps[g_nwater_ps++] = *out;
+        Log("spray: water pixel shader %p (%d known)", (void *)*out, g_nwater_ps);
+    }
+    return hr;
+}
+
+static HRESULT WINAPI DIPHook(IDirect3DDevice9 *self, D3DPRIMITIVETYPE t, INT bv, UINT mi, UINT nv, UINT si, UINT pc)
+{
+    HRESULT hr = g_orig_dip(self, t, bv, mi, nv, si, pc);
+    AfterDraw(self);
+    return hr;
+}
+
+static HRESULT WINAPI DPHook(IDirect3DDevice9 *self, D3DPRIMITIVETYPE t, UINT sv, UINT pc)
+{
+    HRESULT hr = g_orig_dp(self, t, sv, pc);
+    AfterDraw(self);
+    return hr;
+}
+
+/* The per-frame work (foam texture, control file) runs in EndScene, at most once per 10 ms. It
+ * used to hook Present on the device and the swap chain, but the Steam overlay hooks those too,
+ * and now and then the two hooks called each other until the stack ran out (a startup crash in
+ * about one launch in three). The overlay leaves EndScene alone. For the first 20 seconds the log
+ * says once a second how many scenes ended and how many drew into the back buffer (in game
+ * about 180 a second, none into the back buffer; the shots still come out whole). */
+static HRESULT WINAPI EndSceneHook(IDirect3DDevice9 *self)
+{
+    static DWORD last, stat_tick, scenes, to_bb, logged;
+    DWORD now = GetTickCount();
+    IDirect3DSurface9 *rt = NULL, *bb = NULL;
+    scenes++;
+    if (logged < 20 && IDirect3DDevice9_GetRenderTarget(self, 0, &rt) == D3D_OK && rt) {
+        if (IDirect3DDevice9_GetBackBuffer(self, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb) == D3D_OK && bb) {
+            if (rt == bb) to_bb++;
+            if (now - stat_tick >= 1000) {
+                D3DSURFACE_DESC dr, db;
+                IDirect3DSurface9_GetDesc(rt, &dr); IDirect3DSurface9_GetDesc(bb, &db);
+                if (stat_tick) Log("endscene: %lu scenes/s, %lu into the back buffer; last rt %p %ux%u fmt %d ms %d, back buffer %p %ux%u fmt %d ms %d",
+                                   scenes, to_bb, (void *)rt, dr.Width, dr.Height, (int)dr.Format, (int)dr.MultiSampleType,
+                                   (void *)bb, db.Width, db.Height, (int)db.Format, (int)db.MultiSampleType), logged++;
+                stat_tick = now; scenes = to_bb = 0;
+            }
+            IDirect3DSurface9_Release(bb);
+        }
+        IDirect3DSurface9_Release(rt);
+    }
+    if (now - last >= 10) {
+        last = now;
+        InterlockedIncrement(&g_presents);
+        FoamTexUpdate(self);
+        if (cfg.control && now - g_last_cmd_poll >= 250) { g_last_cmd_poll = now; RunControlFile(self); }
+    }
+    g_spray_drawn = 0;
+    return g_orig_endscene(self);
 }
 
 static HRESULT WINAPI ResetHook(void *self, HW_D3DPP *pp)
@@ -1681,6 +2225,7 @@ static HRESULT WINAPI CreateDeviceHook(void *self, UINT adapter, UINT type, HWND
     HRESULT hr;
     HWND h = focus;
     if (pp && pp->hDeviceWindow) h = pp->hDeviceWindow;
+    Log("modules: overlay %p d3d9 %p user32 %p", (void *)GetModuleHandleW(L"gameoverlayrenderer.dll"), (void *)GetModuleHandleW(L"d3d9.dll"), (void *)GetModuleHandleW(L"user32.dll"));
     if (pp) Log("D3D device requested: %ux%u windowed=%d interval=%08lx swap=%u", pp->BackBufferWidth, pp->BackBufferHeight,
                 (int)pp->Windowed, (unsigned long)pp->PresentationInterval, pp->SwapEffect);
     AdoptWindow(h);
@@ -1689,17 +2234,15 @@ static HRESULT WINAPI CreateDeviceHook(void *self, UINT adapter, UINT type, HWND
     hr = g_orig_create_device(self, adapter, type, focus, flags, pp, dev);
     if (hr == 0 && dev && *dev) {
         if (!g_orig_reset) PatchVtable(*dev, 16, (void *)ResetHook, (void **)&g_orig_reset);
-        if ((cfg.control || (cfg.foam_tex && cfg.opts.foam)) && !g_orig_present) {
-            PatchVtable(*dev, 17, (void *)PresentHook, (void **)&g_orig_present);
-            Log("control: Present hooked (orig %p)", (void *)g_orig_present);
-            {
-                IDirect3DSwapChain9 *sc = NULL;
-                if (IDirect3DDevice9_GetSwapChain((IDirect3DDevice9 *)*dev, 0, &sc) == D3D_OK && sc) {
-                    PatchVtable(sc, 3, (void *)SwapPresentHook, (void **)&g_orig_swap_present);
-                    Log("control: swap chain Present hooked (orig %p)", (void *)g_orig_swap_present);
-                    IDirect3DSwapChain9_Release(sc);
-                }
-            }
+        if ((cfg.control || (cfg.foam_tex && cfg.opts.foam)) && !g_orig_endscene) {
+            PatchVtable(*dev, 42, (void *)EndSceneHook, (void **)&g_orig_endscene);
+            Log("control: EndScene hooked (orig %p)", (void *)g_orig_endscene);
+        }
+        if (cfg.spray_draw && cfg.opts.foam && cfg.foam_tex && !g_orig_dip) {
+            PatchVtable(*dev, 106, (void *)CreatePSHook, (void **)&g_orig_create_ps);
+            PatchVtable(*dev, 82, (void *)DIPHook, (void **)&g_orig_dip);
+            PatchVtable(*dev, 81, (void *)DPHook, (void **)&g_orig_dp);
+            Log("spray: draw hooks installed (CreatePixelShader, DrawIndexedPrimitive, DrawPrimitive)");
         }
     }
     Log("CreateDevice -> %08lx", (unsigned long)hr);
@@ -1925,6 +2468,8 @@ static const char *ModOff(DWORD a, DWORD *off)
     return n;
 }
 
+static HANDLE g_crashf = INVALID_HANDLE_VALUE;   /* HydroWater_crash.txt, opened at load so a crash needs no heap */
+
 static LONG WINAPI CrashLog(EXCEPTION_POINTERS *ep)
 {
     static volatile LONG seen;
@@ -1932,7 +2477,37 @@ static LONG WINAPI CrashLog(EXCEPTION_POINTERS *ep)
     const char *m;
     char line[1024];
     int i, n = 0, o;
-    if ((code != EXCEPTION_ACCESS_VIOLATION && code != 0xC0000374u) || InterlockedIncrement(&seen) > 8) return EXCEPTION_CONTINUE_SEARCH;
+    if ((code != EXCEPTION_ACCESS_VIOLATION && code != 0xC0000374u && code != EXCEPTION_STACK_OVERFLOW) || InterlockedIncrement(&seen) > 8) return EXCEPTION_CONTINUE_SEARCH;
+#ifdef _M_IX86
+    if (g_crashf != INVALID_HANDLE_VALUE) {   /* raw first, no heap, no locks: the module names below may hang */
+        const CONTEXT *c = ep->ContextRecord;
+        const DWORD *st = (const DWORD *)(uintptr_t)c->Esp;
+        DWORD w;
+        o = wsprintfA(line, "exc %08lx eip %08lx addr %08lx tid %lu eax %08lx ebx %08lx ecx %08lx edx %08lx esi %08lx edi %08lx ebp %08lx esp %08lx\r\n",
+                      code, c->Eip, ep->ExceptionRecord->NumberParameters > 1 ? (DWORD)ep->ExceptionRecord->ExceptionInformation[1] : 0,
+                      GetCurrentThreadId(), c->Eax, c->Ebx, c->Ecx, c->Edx, c->Esi, c->Edi, c->Ebp, c->Esp);
+        WriteFile(g_crashf, line, (DWORD)o, &w, NULL);
+        for (i = 0, o = 0; i < 64 && !IsBadReadPtr(st + i, 4); i++) o += wsprintfA(line + o, "%08lx%s", st[i], (i & 7) == 7 ? "\r\n" : " ");
+        WriteFile(g_crashf, line, (DWORD)o, &w, NULL);
+        WriteFile(g_crashf, "\r\n", 2, &w, NULL);
+        if (code == EXCEPTION_STACK_OVERFLOW) {   /* which return addresses repeat down the whole stack: the recursion cycle */
+            static DWORD key[4096], cnt[4096];
+            const DWORD *top = (const DWORD *)(uintptr_t)__readfsdword(4), *q;
+            for (q = st; q < top; q++) {
+                DWORD v = *q, h;
+                if (v < 0x00400000u || v >= 0x80000000u) continue;
+                for (h = (v * 2654435761u) >> 20; key[h] && key[h] != v; h = (h + 1) & 4095) ;
+                key[h] = v; cnt[h]++;
+            }
+            o = wsprintfA(line, "stack %08lx..%08lx, values seen 100+ times:\r\n", (DWORD)(uintptr_t)st, (DWORD)(uintptr_t)top);
+            for (i = 0, n = 0; i < 4096 && n < 48; i++)
+                if (cnt[i] >= 100) o += wsprintfA(line + o, "%08lx x%lu%s", key[i], cnt[i], (++n & 3) ? "  " : "\r\n");
+            WriteFile(g_crashf, line, (DWORD)o, &w, NULL);
+            WriteFile(g_crashf, "\r\n", 2, &w, NULL);
+            n = 0;
+        }
+    }
+#endif
     m = ModOff((DWORD)(uintptr_t)ep->ExceptionRecord->ExceptionAddress, &off);
     o = snprintf(line, sizeof line, "exception %08lx at %s+%lx (thread %lu), stack:", (unsigned long)code, m ? m : "?", (unsigned long)off, GetCurrentThreadId());
 #ifdef _M_IX86
@@ -1964,6 +2539,12 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         if (p) *p = 0;
         Log("HydroWater mod loaded into %ls (exe base %p)", g_dir, (void *)GetModuleHandleW(NULL));
         ReadIni();
+        {   wchar_t cp[MAX_PATH + 32]; char hd[160]; DWORD w; int k;
+            _snwprintf(cp, MAX_PATH + 32, L"%ls\\HydroWater_crash.txt", g_dir);
+            g_crashf = CreateFileW(cp, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            k = wsprintfA(hd, "start pid %lu: exe %p ntdll %p kernelbase %p mod %p\r\n", GetCurrentProcessId(), (void *)GetModuleHandleW(NULL),
+                          (void *)GetModuleHandleW(L"ntdll.dll"), (void *)GetModuleHandleW(L"kernelbase.dll"), (void *)inst);
+            if (g_crashf != INVALID_HANDLE_VALUE) WriteFile(g_crashf, hd, (DWORD)k, &w, NULL); }
         AddVectoredExceptionHandler(0, CrashLog);
         CreateThread(NULL, 0, Installer, NULL, 0, NULL);
     }
