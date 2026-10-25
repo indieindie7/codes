@@ -141,3 +141,57 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
   Open: on DXVK every first submit crashes at `FrozenSynapse2.dll+0x489080` right after
   "Applying AI for player 1" (Charon plans for 5-8 are made), with or without `$gcmAIDoesBothSides`. The native-D3D9 soak
   (d7f8923) logged player 8 first and did not crash, so DXVK is the prime suspect; check on native D3D9 once gpu 0 is free.
+
+## DK1 gym: native recon (2026-10-24 night)
+Tool `tools/dk1/dk1sym.py` (dbghelp on the shipped PDB, read only): `fn <mask>`, `sig <fn>`, `type <Name>` (fields/enums),
+`dis <fn>` (capstone, targets named). Exe image base 0x400000 (ASLR: use RVA + GetModuleHandle(NULL)).
+- RVAs: `Game::_instance` D 0x3caa08; `Entity::g_entityPool` Entity*[8192] 0x3c0c70; `Entity::s_playerTeam` 0x3c0c6c;
+  Game::Update(uint, InputQueue*) 0x1579d0; UpdateGameRunning(float) 0x156c80; Server_ProcessCommand(sClientCommand*) 0x169340;
+  Server_ProcessCommands() 0x1692f0; Server_ProcessHumanAddToPath 0x16a010; GetMapHumansList() -> List<Human*>* 0x159020;
+  RestartMap 0x1541d0; OnMissionCompleted 0x15b970; OnHumanDieEvent(sEventParams*) 0x159230; LevelStart 0x153860;
+  LevelEnd 0x153ae0; Server_PauseToggle(int) 0x160540; Human::SetAIPath(Waypoints*) 0xa6be0; GeneratePath(V2,V2,char*) 0x1620d0;
+  Net_BufferClientCommands 0x704e0. All thiscall (ecx = Game*), `ret 4` per arg.
+- `sClientCommand` (32 B): +0 type eClientCommand, +4 entity (uint id = index into g_entityPool), +8 v1 Vector2, +0x10 v2,
+  +0x18 i1, +0x1c i2. eClientCommand: 1 PAUSE_UNPAUSE, 2 ACTIVATE_GOCODE, 6 HUMAN_CREATE_PATH, 7 DELETE_PATH, 9 CHANGE_SELECTION,
+  10 ADD_TO_PATH, 11 DELETE_PATH_UP_TO_POINT, 12 STOP_MOVE_TOGGLE, 13 ACTIONWP_SET_ACTION, 16 ACTIONWP_SET_ORIENTATION, 24 COOP.
+- `List<T>` 16 B: +0 m_size, +4 m_list (T*), +8 m_elements, +0xc user-mem flag. (AddToPath loops count at +8 of the list.)
+- Entity: +0x18 m_type (2 = Human), +0x1c m_vOrigin V2, +0x24 rotation, +0x90 m_team, +0x94 m_id. Human (1000 B):
+  +0xa8 m_humanType, +0xfc m_state (eHumanState), +0x11c m_bSelected, +0x15c m_waypoints List<Waypoints*>,
+  +0x194 m_actionWaypoints List<ActionWaypoint*>, +0x2b4 m_pAIBrain, +0x334 m_AIState.
+- ADD_TO_PATH: entity -> Human, finds the action waypoint with flag bit 2 at +0xc0 (selected), Human::AddToPath(v1). So a
+  path must exist (CREATE_PATH first). Next: dis Server_ProcessCommand case 6, then build a 32-bit dbghelp.dll proxy (MSVC x86,
+  one export MiniDumpWriteDump forwarded to System32) that IAT-hooks PeekMessageW (main thread, every frame) and runs file
+  bridge commands `<game>\dk1bridge\in.txt` -> `out.txt` (humans dump, create path, go code, pause, restart).
+
+## DK1 gym: WORKS (2026-10-24 late)
+Files `tools/dk1/`: `dk1hook.c` + `dbghelp.def` + `build.bat` -> `bin/dbghelp.dll` (32-bit proxy, export MiniDumpWriteDump
+forwarded to System32; DllMain IAT-patches PeekMessageW/GetMessageW; bridge polled at most every 50 ms on the main thread),
+`dk1gym.py` (send/humans/launch/run), `dk1sym.py` (+ `xref <fn>`: every E8 call to it).
+- Install: kill game, wait 6 s, `cmd /c <full path>\tools\dk1\build.bat` (relative path fails), copy `bin\dbghelp.dll` to the
+  game dir, Steam `-applaunch 248610`, `dk1gym.py launch` (HWND_BOTTOM, no activate), ~30 s to menu.
+- Bridge: `in.txt` = "seq N" + commands; answer `out.txt` = "seq N", lines, "END". Each line runs in `__try`.
+  Commands: `humans` (id team type state x y segs), `state`, `load L I`, `setstate N`, `toggle N`, `pause/resume N`,
+  `move id x y`, `goto`, `path`, `cmd type ent v1x v1y v2x v2y i1 i2`, `dbg id`, `poke id off byte`, `restart`.
+- Game fields: +4 m_state (eState 5 MAIN_MENU, 6 GAME_LOADING, 7 LOADING_ALMOST_FINISHED waits a click (byte RVA 0x3bc314),
+  8 LOADING_FINISHED, 9 DEPLOY, 10 RUNNING, 11 ENDING, 12 ENDED), +0xc m_time (ms), +0x14 m_gameSpeed, +0x18 pause mask,
+  +0xc4 m_mapListIndex (eMapList 0 SINGLE 1 RANDOM 2 KILLHOUSE 3 CAMPAIGN 4 COOP), +0xc8 m_mapIndex, +0xcc m_pMap.
+  UpdateGameLoading calls LoadMap(+0xc4, +0xc8). SetState 0x14bb90. Server_Pause 0x1605e0 / Resume 0x160650 (resume does
+  nothing while lock bit 2 is set; use PauseToggle(0) -> mask 0x1000 = running). Tables: 0x3af854 resume {2,0x100000,0x200000},
+  0x3af894 first-unpause {0x1800000,0x800000,0x1000000}, 0x3af8b8 pause {1,0x40000,0x80000}.
+- Start flow: menu (5) -> `load 0 0` -> 7 -> `setstate 8` -> 10 (pause 3) -> `toggle 0` -> 0x1000, sim runs.
+  `load` straight from ENDING (11) crashes ("Game crashed :(" box); `setstate 5` first, wait 3 s, then load: 5 reloads OK.
+- Mission 0/0: humans 18-22 type 2 (suspects), 23-24 type 1 (troopers, start (794,321), (790,261)); +0x90 team reads 0 for all,
+  use m_humanType +0xa8. Dead = m_state +0xfc is 0 or 1 (Human::IsDead 0x2d0f0).
+- Moving a trooper (player-style): cmd 6 CREATE_PATH (case 0x1696e5: DeletePath, sets m_bSelected 0x11c=1, CreateActionWaypoint
+  at v2) then cmd 10 ADD_TO_PATH (v1 = point). Straight ADD_TO_PATH is clipped at the first wall, so `move` feeds every point of
+  GeneratePath (static stdcall `(int [h+0xa0], V2 from, V2 to)`, ret 0x14) and then clears 0x11c (= mouse-up).
+  Gate in Human::UpdateWaypointsMove 0x9b550: stop if ((flags 0x2b8 >> 5) | byte 0x29c) & 1 or (flags & 9) == 1; uses the last
+  m_waypoints segment (data h+0x160, count h+0x164) if seg+0x10 m_bCompleted == 0 and points != 0; while 0x11c == 1 it only walks
+  while seg+0xc m_iCurrentIndex < points-1 (so a path still "being drawn" stops at its last point).
+  Waypoints (48 B): +0xc m_iCurrentIndex, +0x10 m_bCompleted, +0x20 List<sPoint> (data +0x24, count +0x28); sPoint 12 B
+  {timeToWait, origin V2 +4}. `goto` (GeneratePath + SetAIPath) and cmd 2/12 alone do not move troopers.
+- Command jump table VA 0x569ee0, index type-1.
+- Gym: `dk1gym.py run N out.jsonl --brain idle|rush|pairs --secs S --map L/I` (one JSON record per match: troopers/suspects
+  alive, win, state, game_ms, orders). rush = each trooper to its nearest live suspect, pairs = whole team to the suspect nearest
+  the team centre; re-path only when the target moved > 48 px. Results 10-24, map 0/0: rush 4/4 wins (11.7-12.7 s, 2/2 troopers
+  alive, 0/5 suspects), pairs 1/1 win 11.7 s, idle 0 kills in 30 s. Mission 0 is too easy: next = harder maps.
