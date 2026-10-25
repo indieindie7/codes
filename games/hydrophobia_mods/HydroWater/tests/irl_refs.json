@@ -1,0 +1,5 @@
+[
+ {"name": "lobovsky2014_dambreak_front", "source": "Lobovsky, Botia-Vera, Castellana, Mas-Soler, Souto-Iglesias 2014, arXiv 1308.0115, Table 1: mean dry-bed front speed v/sqrt(gH) for t*>1 over ETSIN, Martin&Moyce 1952, Dressler 1954, Hu 2010, Koshizuka 1996",
+  "metric": "front_speed", "mean": 1.47, "band_lo": 1.14, "band_hi": 1.74,
+  "t_window": [1.0, 2.5], "columns": [100, 150, 200, 250, 300, 400], "wet_thresholds": [0.005, 0.01, 0.02, 0.05]}
+]

@@ -52,6 +52,14 @@ typedef struct hw_foam_params {
     float spray_foam;   /* foam left where a drop lands (0.15) */
     float spray_drag;   /* air drag on drops, per second (0.5) */
     int spray_max;      /* drop limit, at most HW_SPRAY_CAP (4096) */
+    float dye_gain;     /* silt or dye stirred up per second at full churn (0.6) */
+    float dye_life;     /* seconds for dye to fade to a third; it outlasts foam so it shows the flow (12) */
+    /* Ihmsen 2012 potentials (appended, keep the order above): the field-born sources (breaking,
+     * bore, shear, rapids) are gated by the cell's kinetic energy I_k = h|v|^2/(g dx^2) clamped
+     * kin_lo..kin_hi, so slow water foams little however steep; bodies (impact, slam) are not. */
+    float shear_gain;   /* trapped air: foam from the velocity difference to the neighbours (0.5) */
+    float kin_floor;    /* gate = kin_floor + (1 - kin_floor) * I_k; 1 = no gate (0.3) */
+    float kin_lo, kin_hi; /* I_k clamp window (0.02, 0.5) */
 } hw_foam_params;
 
 #define HW_SPRAY_CAP 8192
@@ -125,6 +133,10 @@ HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p);
 HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p);
 /* splash event (bullet, explosion, a body falling in): add foam and air within radius r */
 HW_API void hw_foam_add(hw_sheet *s, float x, float z, float r, float foam, float air);
+/* dye: a tint carried by the flow 0..1 (silt churned up by bodies and rough water; blood or any
+ * other source through hw_dye_add). Advected like foam, spreads a little, fades over dye_life. */
+HW_API float *hw_dye(hw_sheet *s);
+HW_API void hw_dye_add(hw_sheet *s, float x, float z, float r, float amount);
 /* stir from outside: hu, hv are the momentum planes (same padded layout, row stride `stride`)
  * after something outside the solver changed them, e.g. a game stamping body velocities into
  * the sheet; the change against the last step churns foam and air there. Call before copying

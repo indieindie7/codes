@@ -24,6 +24,7 @@ struct hw_sheet {
     /* stage 7 */
     float *foam, *air, *hprev, *impact, *ftmp, *atmp;
     float *stir;             /* velocity change pushed in from outside since the last foam pass */
+    float *dye;              /* tint carried by the flow (silt, blood) */
     float *spray; int nspray;
     hw_foam_params fp;
     unsigned rng;
@@ -45,12 +46,14 @@ HW_API hw_sheet *hw_create(int w, int h, float dx, float g, float cfl)
     s->u = plane(s); s->v = plane(s); s->c = plane(s);
     s->B = plane(s); s->wall = plane(s); s->b = plane(s); s->bprev = plane(s); s->edge = plane(s); s->Beff = plane(s);
     s->foam = plane(s); s->air = plane(s); s->hprev = plane(s); s->impact = plane(s);
-    s->ftmp = plane(s); s->atmp = plane(s); s->stir = plane(s);
+    s->ftmp = plane(s); s->atmp = plane(s); s->stir = plane(s); s->dye = plane(s);
     s->spray = (float *)calloc(HW_SPRAY_CAP * 8, sizeof(float));
     s->rng = 0x9e3779b9u;
     s->fp.foam_gain = 0.8f; s->fp.air_gain = 3.0f; s->fp.foam_life = 2.5f; s->fp.lace = 0.25f;
     s->fp.bubble_rise = 25.0f; s->fp.air_to_foam = 0.35f; s->fp.spread = 3.0f;
     s->fp.spray_rate = 30.0f; s->fp.spray_foam = 0.15f; s->fp.spray_drag = 0.5f; s->fp.spray_max = 4096;
+    s->fp.dye_gain = 0.6f; s->fp.dye_life = 12.0f;
+    s->fp.shear_gain = 0.5f; s->fp.kin_floor = 0.3f; s->fp.kin_lo = 0.02f; s->fp.kin_hi = 0.5f;
     s->wallx = (unsigned char *)calloc((size_t)s->n, 1);
     s->wally = (unsigned char *)calloc((size_t)s->n, 1);
     /* the border is wall in both models so nothing leaves the sheet */
@@ -71,7 +74,7 @@ HW_API void hw_destroy(hw_sheet *s)
     free(s->hA); free(s->huA); free(s->hvA); free(s->hB); free(s->huB); free(s->hvB);
     free(s->hC); free(s->huC); free(s->hvC); free(s->u); free(s->v); free(s->c);
     free(s->B); free(s->wall); free(s->b); free(s->bprev); free(s->edge); free(s->Beff);
-    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->spray);
+    free(s->foam); free(s->air); free(s->hprev); free(s->impact); free(s->ftmp); free(s->atmp); free(s->stir); free(s->dye); free(s->spray);
     free(s->wallx); free(s->wally); free(s);
 }
 
@@ -635,9 +638,9 @@ static void foam_pass(hw_sheet *s, float dt)
         for (i = 0; i < s->w; i++) {
             int k = AT(s, i, j), kn[4], q;
             float h = s->hA[k], eta, en[4], un[4], vn[4], c, gx, gz, slope, lap, rise, sp, fr;
-            float brk, bore, rapid, slam = 0, impact, src, out, snx = 0, snz = 0, sprayk;
+            float brk, bore, rapid, shear, kin, slam = 0, impact, src, out, snx = 0, snz = 0, sprayk;
             div[k] = 0;
-            if (!foam_cell(s, k)) { s->foam[k] = 0; s->air[k] = 0; continue; }
+            if (!foam_cell(s, k)) { s->foam[k] = 0; s->air[k] = 0; s->dye[k] = 0; continue; }
             kn[0] = AT(s, i - 1, j); kn[1] = AT(s, i + 1, j); kn[2] = AT(s, i, j - 1); kn[3] = AT(s, i, j + 1);
             eta = s->Beff[k] + h;
             c = sqrtf(s->g * h);
@@ -664,6 +667,18 @@ static void foam_pass(hw_sheet *s, float dt)
             brk = smooth01(0.15f, 0.5f, slope) * smooth01(0.02f, 0.2f, rise / c) * smooth01(0.02f, 0.2f, -lap);
             bore = smooth01(0.6f, 1.2f, fr) * smooth01(0.05f, 0.5f, -div[k] * dx / (sp + c));
             rapid = smooth01(1.5f, 3.0f, fr);
+            /* Ihmsen 2012: trapped air from the velocity difference to the neighbours (shear and
+               convergence alike), wave crest ~ brk, both gated by the kinetic energy of the cell */
+            {
+                float dv = 0;
+                for (q = 0; q < 4; q++) {
+                    float du = un[q] - s->u[k], dw = vn[q] - s->v[k];
+                    dv += sqrtf(du * du + dw * dw);
+                }
+                shear = smooth01(0.1f, 0.6f, 0.25f * dv / c);
+                kin = smooth01(fp->kin_lo, fp->kin_hi, h * sp * sp / (s->g * dx * dx));
+                kin = fp->kin_floor + (1 - fp->kin_floor) * kin;
+            }
             {   /* a body entering or leaving churns the water around its rim */
                 float im = s->impact[k];
                 for (q = 0; q < 4; q++) if (s->impact[kn[q]] > im) im = s->impact[kn[q]];
@@ -673,8 +688,12 @@ static void foam_pass(hw_sheet *s, float dt)
                 for (q = 0; q < 4; q++) if (s->stir[kn[q]] > im) im = s->stir[kn[q]];
                 impact += smooth01(0.05f, 0.4f, im / c);
             }
-            src = brk + bore + 0.1f * rapid + slam + impact;
+            src = kin * (brk + bore + fp->shear_gain * shear + 0.1f * rapid) + slam + impact;
             if (src > 2) src = 2;
+            /* silt: bodies churn it up most, a bore or rapids a little; it fades slowly */
+            s->dye[k] += (impact + 0.3f * bore + 0.15f * rapid) * fp->dye_gain * dt;
+            if (fp->dye_life > 0) s->dye[k] *= expf(-dt / fp->dye_life);
+            if (s->dye[k] > 1) s->dye[k] = 1;
             s->air[k] += src * fp->air_gain * dt;
             s->foam[k] += src * fp->foam_gain * dt;
             /* bubbles reach the top and become foam */
@@ -711,6 +730,21 @@ static void foam_pass(hw_sheet *s, float dt)
             if (!foam_cell(s, k)) continue;
             s->air[k] = sample_wet(s, s->ftmp, (i + 0.5f) * dx - s->u[k] * dt, (j + 0.5f) * dx - s->v[k] * dt);
         }
+    memcpy(s->ftmp, s->dye, bytes);
+    for (j = 0; j < s->h; j++)
+        for (i = 0; i < s->w; i++) {
+            int k = AT(s, i, j), kn[4], q;
+            float d, sum = 0;
+            if (!foam_cell(s, k)) continue;
+            /* dye drifts with the flow and spreads at half the foam rate (a cloud, not lines) */
+            d = sample_wet(s, s->ftmp, (i + 0.5f) * dx - s->u[k] * dt, (j + 0.5f) * dx - s->v[k] * dt);
+            kn[0] = AT(s, i - 1, j); kn[1] = AT(s, i + 1, j); kn[2] = AT(s, i, j - 1); kn[3] = AT(s, i, j + 1);
+            for (q = 0; q < 4; q++)
+                sum += (face_open(s, i, j, q) && foam_cell(s, kn[q])) ? s->ftmp[kn[q]] : s->ftmp[k];
+            s->atmp[k] = (1 - 0.5f * spread) * d + 0.5f * spread * 0.25f * sum;
+        }
+    for (j = 0; j < s->h; j++)
+        for (i = 0; i < s->w; i++) { int k = AT(s, i, j); if (foam_cell(s, k)) s->dye[k] = s->atmp[k]; }
     /* spread: f <- d f + (1 - d)/4 sum(open wet neighbours) */
     memcpy(s->ftmp, s->foam, bytes);
     for (j = 0; j < s->h; j++)
@@ -727,6 +761,7 @@ static void foam_pass(hw_sheet *s, float dt)
 
 HW_API float *hw_foam(hw_sheet *s) { return s->foam; }
 HW_API float *hw_air(hw_sheet *s) { return s->air; }
+HW_API float *hw_dye(hw_sheet *s) { return s->dye; }
 HW_API const float *hw_spray(const hw_sheet *s, int *count) { if (count) *count = s->nspray; return s->spray; }
 HW_API void hw_set_foam_params(hw_sheet *s, const hw_foam_params *p) { s->fp = *p; }
 HW_API void hw_get_foam_params(const hw_sheet *s, hw_foam_params *p) { *p = s->fp; }
@@ -760,6 +795,23 @@ HW_API void hw_foam_add(hw_sheet *s, float x, float z, float r, float foam, floa
             if (w <= 0) continue;
             s->foam[k] += foam * w; if (s->foam[k] > 1) s->foam[k] = 1;
             s->air[k] += air * w; if (s->air[k] > 1) s->air[k] = 1;
+        }
+}
+
+HW_API void hw_dye_add(hw_sheet *s, float x, float z, float r, float amount)
+{
+    int i, j, i0 = (int)floorf((x - r) / s->dx), i1 = (int)floorf((x + r) / s->dx);
+    int j0 = (int)floorf((z - r) / s->dx), j1 = (int)floorf((z + r) / s->dx);
+    for (j = j0; j <= j1; j++)
+        for (i = i0; i <= i1; i++) {
+            int k;
+            float ox = (i + 0.5f) * s->dx - x, oz = (j + 0.5f) * s->dx - z, w;
+            if (i < 0 || j < 0 || i >= s->w || j >= s->h) continue;
+            k = AT(s, i, j);
+            if (!foam_cell(s, k)) continue;
+            w = 1 - (ox * ox + oz * oz) / (r * r);
+            if (w <= 0) continue;
+            s->dye[k] += amount * w; if (s->dye[k] > 1) s->dye[k] = 1;
         }
 }
 

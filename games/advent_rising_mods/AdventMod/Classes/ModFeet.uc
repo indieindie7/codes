@@ -359,7 +359,7 @@ function ListOnly()
 
 defaultproperties
 {
-	bFootIK=False
+	bFootIK=True
 	bPlayerFeet=True
 	bAIFeet=True
 	MaxDrop=12

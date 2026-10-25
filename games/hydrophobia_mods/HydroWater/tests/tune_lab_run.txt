@@ -1,0 +1,7 @@
+default 0.2129  no_recon 0.1924
+gen 1 best 0.2129 {"alpha": 1.0, "c_adapt": 0.2, "edge_damp": 0.7, "cfl": 0.5, "recon": 1}
+gen 2 best 0.2099 {"alpha": 1.0, "c_adapt": 0.13, "edge_damp": 0.704, "cfl": 0.5, "recon": 1}
+gen 3 best 0.2099 {"alpha": 1.0, "c_adapt": 0.13, "edge_damp": 0.704, "cfl": 0.5, "recon": 1}
+gen 4 best 0.2099 {"alpha": 1.0, "c_adapt": 0.13, "edge_damp": 0.704, "cfl": 0.5, "recon": 1}
+gen 5 best 0.1985 {"alpha": 0.995, "c_adapt": 0.161, "edge_damp": 0.737, "cfl": 0.485, "recon": 0}
+gen 6 best 0.1924 {"alpha": 0.927, "c_adapt": 0.281, "edge_damp": 0.692, "cfl": 0.5, "recon": 0}

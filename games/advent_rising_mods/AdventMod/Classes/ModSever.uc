@@ -5,7 +5,7 @@
 //     the hit: the head (DecapChance), an arm or a leg from the joint hit down
 //     (LimbChance);
 //   - a corpse shot SeverHits times in the same limb loses it.
-// The part is hidden with SetBoneScale(0) (its bone and all below it) and the
+// The part is hidden with SetBoneScale(0.01) (its bone and all below it) and the
 // matching gib piece (ModGibParts, cut from the game's own mesh, meat on the cut)
 // flies off along the shot, with a spurt of blood from the cut. Humans and Seeker
 // soldiers (the sets ModGibParts has). The pawn gets its bones back when the game
@@ -163,7 +163,7 @@ function Sever(Pawn P, int c, vector Dir)
 		S.Cap = Stump(P, c, Spot, Kind, K);
 	Gore.AddStreak(P, Spot, S.Cap, 1.5);     // blood runs down from the cut
 	Done[Done.Length] = S;
-	P.SetBoneScale(c, 0.0, Cuts[c].Bone);
+	P.SetBoneScale(c, 0.01, Cuts[c].Bone);  // not 0: a zero-size bone breaks a Karma ragdoll (GPF)
 	// the piece (or pieces: an arm cut at the shoulder throws upper and lower arm)
 	Parts = Cuts[c].Parts;
 	while (Parts != "")
