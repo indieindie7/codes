@@ -113,6 +113,14 @@ Builds on FRIDAY-PLAN.md "Recon results". Measured on the user's running games.
   Fresh-launch gotchas: `quitSP()` on MainScreenGui crashes (now guarded); a minimized start (SW_SHOWMINNOACTIVE) left the game
   hung after the match load (now SW_SHOWNOACTIVATE). An un-minimized run also hung at 0 % CPU after load, while the user's
   UE5 game was on the GPUs: retest when no game is running.
+- **Multi-turn soak WORKS (10-24 night, run 10):** 2 matches, 7 turns (m0 0->2 team wiped, m1 0->5 turn limit), no crash,
+  15-31 s per turn. Fixes: (1) ROOT CAUSE of the `FrozenSynapse2.dll+0x489080` crash (native D3D9 too, DXVK innocent): on a
+  fresh launch the startup sequence (`nextSSStage 0..4` -> `SSReadyForMain 4` -> `[mtInGame] endGame` -> MainScreenGui) is
+  still running; a match started before it ends is torn down (load timeout) and a submit in it crashes in Charon apply.
+  `wait_setup()` waits for it. (2) `$gcmAIDoesBothSides=1` stalls the 2nd submit: dropped. (3) `doGoToEndOfTurn()` after each
+  submit, retried until `getTurnThatWeAreIn()` catches up (too early = no-op, game sits on OUTCOME). (4) Launch via
+  `steam.exe -applaunch 445020 -log 1` (playtime tracking; works while another game runs); `FS2_STEAM=0` = direct start + DXVK.
+  Charon plans only units 5-8; team 1 (1-4) stands still: that is our AI's slot (via fs2bridge). Ends with quitSP() to menu.
 - **Render on the 3060 while the user games (10-24):** DXVK 3.1.1 x64 `d3d9.dll` copied into the FS2 game dir
   (`Documents\Tools\dxvk\dxvk-3.1.1`); `fs2soak.launch()` sets `DXVK_FILTER_DEVICE_NAME="RTX 3060"` and
   `DXVK_LOG_PATH=%TEMP%`; `%TEMP%\FrozenSynapse2_d3d9.log` shows the 4070 Ti "Skipping: Device filter". Undo = delete the dll.
