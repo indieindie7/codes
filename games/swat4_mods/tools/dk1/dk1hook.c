@@ -19,6 +19,7 @@
 #define RVA_PROCESS_COMMAND 0x169340  /* void Game::Server_ProcessCommand(sClientCommand*) */
 #define RVA_RESTART_MAP     0x1541d0  /* void Game::RestartMap() */
 #define RVA_SET_STATE       0x14bb90  /* void Game::SetState(eState) */
+#define RVA_FINISH_DEPLOY   0x16afd0  /* void Game::Client_FinishDeploy() */
 #define RVA_PAUSE           0x1605e0  /* void Game::Server_Pause(int) */
 #define RVA_RESUME          0x160650  /* void Game::Server_Resume(int) */
 #define RVA_PAUSE_TOGGLE    0x160540  /* void Game::Server_PauseToggle(int) */
@@ -185,6 +186,30 @@ static void run_line(char *line, FILE *out)
         if (!h || *(int *)(h + 0x18) != 2 || off < 0 || off >= 0x400) { fprintf(out, "ERR poke\n"); return; }
         h[off] = (BYTE)atoi(strtok(NULL, " \t\r\n"));
         fprintf(out, "OK poke\n");
+    } else if (!strcmp(tok, "deploy")) {
+        /* maps with a deploy screen stop in eState 9 DEPLOY with troopers at their default entry points:
+           Game::Client_FinishDeploy() = the GO button */
+        ((Void_t)F(RVA_FINISH_DEPLOY))(g, 0);
+        fprintf(out, "OK deploy state %d\n", *(int *)((BYTE *)g + 4));
+    } else if (!strcmp(tok, "deploygo")) {
+        /* the GO button itself: DeployScreen::OnDeployGO (game+0x28 = DeployScreen) */
+        BYTE *ds = *(BYTE **)((BYTE *)g + 0x28);
+        if (!ds) { fprintf(out, "ERR no deployscreen\n"); return; }
+        ((Void_t)F(0x88c20))(ds, 0);
+        fprintf(out, "OK deploygo state %d ds %d\n", *(int *)((BYTE *)g + 4), *(int *)(ds + 4));
+    } else if (!strcmp(tok, "dslots")) {
+        /* DeployScreen (game+0x28) slots: array +0xc, count +0x10, 0x14 bytes each; GetDeployedHumans
+           takes slot+4 (object, its +0x70 == Entity::s_playerTeam) when slot+8 != 0 */
+        BYTE *ds = *(BYTE **)((BYTE *)g + 0x28);
+        int i, n;
+        if (!ds) { fprintf(out, "ERR no deployscreen\n"); return; }
+        n = *(int *)(ds + 0x10);
+        fprintf(out, "ds state %d n %d playerTeam %d\n", *(int *)(ds + 4), n, *(int *)F(0x3c0c6c));  /* Entity::s_playerTeam */
+        for (i = 0; i < n && i < 64; i++) {
+            int *s = (int *)(*(BYTE **)(ds + 0xc) + i * 0x14);
+            BYTE *o = (BYTE *)s[1];
+            fprintf(out, "%d: %x %p %x %x %x obj70 %d\n", i, s[0], o, s[2], s[3], s[4], o ? *(int *)(o + 0x70) : -1);
+        }
     } else if (!strcmp(tok, "restart")) {
         ((Void_t)F(RVA_RESTART_MAP))(g, 0);
         fprintf(out, "OK restart\n");

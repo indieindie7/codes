@@ -195,3 +195,25 @@ forwarded to System32; DllMain IAT-patches PeekMessageW/GetMessageW; bridge poll
   alive, win, state, game_ms, orders). rush = each trooper to its nearest live suspect, pairs = whole team to the suspect nearest
   the team centre; re-path only when the target moved > 48 px. Results 10-24, map 0/0: rush 4/4 wins (11.7-12.7 s, 2/2 troopers
   alive, 0/5 suspects), pairs 1/1 win 11.7 s, idle 0 kills in 30 s. Mission 0 is too easy: next = harder maps.
+
+## DK1 gym on harder maps + workshop maps (2026-10-24/25)
+- **Deploy screen** (maps that stop in eState 9): bridge `deploygo` = DeployScreen::OnDeployGO (RVA 0x88c20, this = *(game+0x28)), as the GO button; reaches RUNNING with the troopers. The bare `deploy` (Game::Client_FinishDeploy 0x16afd0) also reached RUNNING but **dropped the troopers**. `dslots` dumps the DeployScreen slots (array +0xc, count +0x10, 0x14 bytes; slot+4 = trooper obj, its +0x70 == Entity::s_playerTeam (RVA 0x3c0c6c); slot+8 != 0 = placed at a spot). OnDeployGO shows a message box when no trooper is placed.
+- dk1gym fixes: loading blocks the bridge 10+ s (state() polls with 60 s timeout); run_match waits up to 10 s for troopers; bridge seq is now ms (seconds-seqs collided between back-to-back runs and read stale answers).
+- `results/sweep.sh [out] [map:brain ...]`: kills + relaunches the game after a failed run ("Game crashed :(" box).
+- Results (`tools/dk1/results/sweep.jsonl` + `sweep_retry.jsonl`, 90 s cap, rush / pairs):
+
+| map | troopers / suspects | rush | pairs |
+|---|---|---|---|
+| 0/0 | 2 / 5 | win | win |
+| 0/10 | 2 / 11 | lose (4 left) | win |
+| 0/20 | 4 / 16 | lose | lose |
+| 0/30 | 2 / 9 | lose | lose |
+| 0/40 | 4 / 21 | lose | win |
+| 0/50 | 4 / 16 | lose (timeout) | win |
+| 0/60 | 8 / 21 | crash once | lose |
+| 0/70 | 6 / 22 | lose | lose |
+| 0/80 | 6 / 16 | win (retry) | lose |
+| 0/90..0/120 | - | crash | crash |
+
+  Losses with troopers alive and eState 11 = mission failed by objective (hostage/VIP), not wiped out. 0/90+ crash every time, also from a fresh launch: probably past the end of eMapList 0. Pairs beats rush on 0/10, 0/40, 0/50: grouping matters, a real signal for the squad brain.
+- **Workshop maps:** `tools/workshop.py list|get <appid> ...` (browse page ids + public GetPublishedFileDetails file_url, no login). DK1: 92 top-rated "Levels" items (724 MB) in `F:\DK1Workshop\<id>\`, 89 unpacked to `<game>\mods\ws<id>\` (zip = folder with mod.xml + levels_<name>/); 2743310779 bad zip, 3494161399 no mod.xml. Not yet checked: whether the game loads them without the in-game Mods menu, and their eMapList/index. FS2 has no Steam Workshop.

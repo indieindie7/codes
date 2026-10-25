@@ -16,7 +16,7 @@ BR = os.path.join(GAME, "dk1bridge")
 IN, OUT = os.path.join(BR, "in.txt"), os.path.join(BR, "out.txt")
 STEAM_APPID = "248610"
 SWAT = 0  # m_team of the player's troopers (checked against s_playerTeam in the dump)
-_seq = [int(time.time())]
+_seq = [int(time.time() * 1000)]  # ms: back-to-back runs in one second reused seconds-seqs and read stale answers
 
 
 def send(cmds, timeout=10):
@@ -66,9 +66,9 @@ def launch():
         return h
 
 
-def state():
+def state(timeout=10):
     """m_state, game time (ms), pause mask."""
-    f = send(["state"])[0].split()
+    f = send(["state"], timeout)[0].split()
     return dict(state=int(f[0]), time=int(f[5]), pause=int(f[9], 16))
 
 
@@ -81,10 +81,20 @@ def start_mission(lst=0, idx=0):
     send([f"load {lst} {idx}"])
     for _ in range(60):
         time.sleep(0.5)
-        if state()["state"] == 7:  # LOADING_ALMOST_FINISHED waits for a click
+        if state(60)["state"] == 7:  # LOADING_ALMOST_FINISHED waits for a click (loading blocks the bridge 10+ s)
             break
     send(["setstate 8"])
     time.sleep(1)
+    if state()["state"] == 9:  # map with a deploy screen: GO with the default entry points
+        # DeployScreen::OnDeployGO, as the button; the bare Game::Client_FinishDeploy (`deploy`)
+        # reached RUNNING but dropped the deployed troopers (10-24)
+        send(["deploygo"])
+        for _ in range(40):  # RUNNING comes a second or two later
+            time.sleep(0.5)
+            if state()["state"] == 10:
+                break
+        else:
+            print("WARN still in DEPLOY after deploygo", file=sys.stderr)
     send(["toggle 0"])
 
 
@@ -111,6 +121,10 @@ def brain_orders(name, troopers, suspects, last):
 
 def run_match(brain="rush", secs=60, lst=0, idx=0):
     start_mission(lst, idx)
+    for _ in range(20):  # troopers can show up a moment after RUNNING
+        if any(h["type"] == 1 for h in humans()):
+            break
+        time.sleep(0.5)
     t0, last, orders = time.time(), {}, 0
     while True:
         hs = humans()
