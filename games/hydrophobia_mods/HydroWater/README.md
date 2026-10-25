@@ -49,6 +49,8 @@ build; the five tests together run in about two seconds.
 
 ## Next
 
+- 2026-10-25: ideas 20 (APIC spray landing), 22 (foam look: `foam_spec`, `foam_blur`, `depth_tint`, `shore_wet`), 23 + 12b part 2 (metaball spray, `spray_blob`), 24 (underwater `caustics`, `under_fog`), 25 (swimmer wake, `swim`, `swim_depth`, `swim_spray`) and the idea-13 sampler log are in one build, offline-tested only. Next: play with the default ini, read `HydroWater.log` for the "spray:" and "swim:" lines, then tune or turn off keys one at a time. The full list is in `games/hydrophobia-water-upgrade.md`, "Ideas not built yet".
+
 - Stage 5 is in as `recon` (minmod-limited reconstruction of eta, u, v at faces; all five
   milestone tests pass with it on, dam front 1120 vs 1300 units at 3 s, still water exact).
   Stage 7 (splash and foam from the field) is the next visible gain; 9 (tile sleeping) and 10 (SSE/AVX2) once a real room is hooked up.

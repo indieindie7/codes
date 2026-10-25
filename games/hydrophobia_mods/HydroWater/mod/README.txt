@@ -42,6 +42,16 @@ spray_draw          spray drops from breaking water drawn as particles over the 
 wake_pull           foam and silt behind Kate are dragged along into her wake (1 = default, 0 = off)
 meniscus            the water bows down around Kate's body with a foam ring on the rim (1 = default, 0 = off)
 drench_mask         0 = soak everywhere (default), 1 = only where the game's wetness mask allows, 2 = show it
+spray_apic          drops carry the water's local velocity gradient and give it back on landing (1 = default, 0 = off)
+spray_blob          drops drawn as merging blobs that flatten into the sheet when they touch it (1 = default, 0 = plain sprites)
+foam_spec           bubble glints and a little specular on thick foam (1 = default, 0 = off, up to 2)
+foam_blur           moving foam streaks along the flow, still foam stays crisp (1 = default, 0 = off, up to 3)
+depth_tint          how fast deep water loses red then green (1 = default, 0 = clear, 2 = murky)
+shore_wet           wet, darker, shinier ground where a sheet thins out (1 = default, 0 = off)
+caustics            light web on floors and walls under the water, brighter where the surface slopes (1 = default, 0 = off)
+under_fog           teal fog on what is under the water, thicker with depth (1 = default, 0 = off)
+swim                swimmer wake once the water under Kate is deeper than swim_depth (150): bow bump, shoulder trough, kick strip (1 = default, 0 = off)
+swim_spray          her strokes throw drops ahead every 0.6 s, one arm then the other (1 = default, 0 = off)
 foam_dump           1 = write the patched water shader to HydroWater_shaderN.hlsl
 alpha, c_adapt, edge_damp  tuning, see the comments in the file
 max_cells           grids with more cells than this stay on the game's solver
