@@ -86,7 +86,10 @@ static struct {
     float drench_mask;  /* 0 = soak everywhere, 1 = only where the game's own wetness mask (spec map .z, "beta control") allows, 2 = show that mask in red,
                            3 = debug colours: red = drench constants set, green = within 60 units of her, blue = world z bands.
                            Default 0: Kate's own textures have the mask at 0 (10-17 test), so 1 left her dry. */
-} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f };
+    float swim;         /* idea 25: swimmer wake when Kate swims (bow bump and shoulder trough, kick strip, white water by effort): 0 = off, 1 = default */
+    float swim_depth;   /* water deeper than this under her means she is swimming, not wading (150) */
+    float swim_spray;   /* stroke spray: a handful of drops thrown ahead every 0.6 s, alternating sides (0 = off, 1 = default) */
+} cfg = { MODE_HW, { 0, 0, 0, 1, 1.0f, 0.2f, 0.7f, 1, 1 }, 600, 4096, 1, 0, 0, 0, { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }, 0, 2.0f, 1, 1.0f, 150.0f, 1.0f, 120.0f, 1.0f, 1.0f, { 0.30f, 0.25f, 0.16f }, 1.0f, 3.0f, 1.0f, 160.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, { 0.25f, 0.75f, 1.0f }, 1, 1.0f, { 0.9f, 0.95f, 1.0f, 0.8f }, 0.0f, { 0.14f, 0.22f, 0.06f }, 1.0f, 1.0f, 1.0f, 1.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 150.0f, 1.0f };
 static const char *const FOAM_KEYS[14] = { "foam_gain", "air_gain", "foam_life", "lace", "bubble_rise", "air_to_foam", "spread", "spray_rate", "dye_gain", "dye_life", "shear_gain", "kin_floor", "kin_lo", "kin_hi" };
 
 static wchar_t g_dir[MAX_PATH];     /* folder of this DLL */
@@ -184,6 +187,9 @@ static void ReadIni(void)
         else if (!_stricmp(k, "drench_splash")) cfg.drench_splash = (float)atof(v);
         else if (!_stricmp(k, "meniscus")) cfg.meniscus = (float)atof(v);
         else if (!_stricmp(k, "drench_mask")) cfg.drench_mask = (float)atof(v);
+        else if (!_stricmp(k, "swim")) cfg.swim = (float)atof(v);
+        else if (!_stricmp(k, "swim_depth")) cfg.swim_depth = (float)atof(v);
+        else if (!_stricmp(k, "swim_spray")) cfg.swim_spray = (float)atof(v);
         else if (!_stricmp(k, "dye_colour")) sscanf(v, "%f %f %f", &cfg.dye_colour[0], &cfg.dye_colour[1], &cfg.dye_colour[2]);
         else {
             int n;
@@ -260,6 +266,8 @@ typedef struct bridge {
     float dm, du, dh;   /* largest outside change of momentum, velocity grid and depth since the last stats line */
     float kx, kz;       /* where Kate was at this sheet's last step */
     int kseen;
+    float swim_t;       /* idea 25: seconds since her last stroke on this sheet */
+    int swim_side;      /* which arm the next stroke spray comes from (+1 / -1) */
     foam_snap *volatile snap;
     struct bridge *next;
 } bridge;
@@ -326,6 +334,50 @@ static volatile LONG g_mesh_calls, g_mesh_nobridge, g_mesh_badsize, g_mesh_sheet
 static const uint32_t *g_mesh_seen[256];
 static volatile LONG g_shader_calls, g_shader_water_noanchor;
 static volatile LONG g_foam_patched, g_foam_failed, g_foam_dumps, g_wet_patched;
+static volatile LONG g_swim_steps, g_swim_strokes;   /* idea 25: steps with Kate swimming, strokes thrown, since the last stats line */
+static unsigned g_swim_rng = 0x9e3779b9u;
+static float SwimRand(void) { g_swim_rng = g_swim_rng * 1664525u + 1013904223u; return (g_swim_rng >> 8) * (1.0f / 16777216.0f); }
+
+/* idea 25: a swimmer pushes a bump of water ahead of her chest and leaves a trough at her
+   shoulders; stamped straight into the depth plane, volume kept (the bump is what the trough
+   gave up), the solver then spreads it into a real bow wave and wake. (bx,bz) points back. */
+static void SwimStamp(float *hh, const float *hwall, int gs, int w, int h, float dxs,
+                      float x, float z, float bx, float bz, float rad, float amount)
+{
+    float ax = x - bx * rad, az = z - bz * rad;                  /* bump centre ahead */
+    float tx = x + bx * rad * 1.3f, tz = z + bz * rad * 1.3f;    /* trough centre behind */
+    float got = 0.0f, want = 0.0f;
+    int i, j, i0 = (int)((x - 3 * rad) / dxs), i1 = (int)((x + 3 * rad) / dxs);
+    int j0 = (int)((z - 3 * rad) / dxs), j1 = (int)((z + 3 * rad) / dxs);
+    if (i0 < 0) i0 = 0;
+    if (j0 < 0) j0 = 0;
+    if (i1 >= w) i1 = w - 1;
+    if (j1 >= h) j1 = h - 1;
+    for (j = j0; j <= j1; j++)
+        for (i = i0; i <= i1; i++) {
+            int k = (j + 2) * gs + i + 2;
+            float cx = (i + 0.5f) * dxs, cz = (j + 0.5f) * dxs, d2, wgt;
+            if (hwall[k] > 0.0f || hh[k] < 8.0f) continue;
+            d2 = ((cx - tx) * (cx - tx) + (cz - tz) * (cz - tz)) / (rad * rad);
+            if (d2 < 1.0f) {
+                wgt = amount * (1.0f - d2);
+                if (wgt > hh[k] - 8.0f) wgt = hh[k] - 8.0f;
+                hh[k] -= wgt; got += wgt;
+            }
+            d2 = ((cx - ax) * (cx - ax) + (cz - az) * (cz - az)) / (rad * rad * 0.6f);
+            if (d2 < 1.0f) want += 1.0f - d2;
+        }
+    if (want <= 0.0f || got <= 0.0f) return;
+    for (j = j0; j <= j1; j++)
+        for (i = i0; i <= i1; i++) {
+            int k = (j + 2) * gs + i + 2;
+            float cx = (i + 0.5f) * dxs, cz = (j + 0.5f) * dxs, d2;
+            if (hwall[k] > 0.0f || hh[k] < 8.0f) continue;
+            d2 = ((cx - ax) * (cx - ax) + (cz - az) * (cz - az)) / (rad * rad * 0.6f);
+            if (d2 < 1.0f) hh[k] += got * (1.0f - d2) / want;
+        }
+}
+
 static volatile LONG g_body_foam;   /* steps where a moving body added foam, since the last stats line */
 static float g_body_vmax;           /* Kate's top speed over any sheet since the last stats line */
 static float g_kate_h, g_kate_bed, g_kate_depth;   /* her height and the bed and depth under her at the last foam add */
@@ -441,6 +493,36 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                         if (sp > 110.0f) sp = 110.0f;
                         hw_foam_pull(b->hw, x - ox, z - oz, bx, bz, rad * 3.0f, sp * (cfg.wake_pull > 1.0f ? 1.0f : cfg.wake_pull));
                     }
+                    if (cfg.swim > 0.0f && gh[cj * gs + ci] > cfg.swim_depth) {
+                        /* idea 25: swimming (the water under her is too deep to stand in) */
+                        float bx = -(x - b->kx) / (v * dt), bz = -(z - b->kz) / (v * dt), sg = cfg.swim > 1.0f ? 1.0f : cfg.swim;
+                        float eff = 0.3f + 0.7f * a;   /* effort: slow strokes make little white water */
+                        g_swim_steps++;
+                        SwimStamp(hh, hwall, hs, w, h, dxs, x - ox, z - oz, bx, bz, rad * 1.2f, sg * 25.0f * eff * dt);   /* into our copy of the planes, before hw_step */
+                        /* kick strip: a narrow churned line straight behind her feet */
+                        hw_foam_add(b->hw, x - ox + bx * rad * 1.8f, z - oz + bz * rad * 1.8f, rad * 0.6f, 4.0f * sg * eff * dt, 2.5f * sg * eff * dt);
+                        hw_foam_add(b->hw, x - ox + bx * rad * 3.0f, z - oz + bz * rad * 3.0f, rad * 0.5f, 2.0f * sg * eff * dt, 1.0f * sg * eff * dt);
+                        /* white water around her arms by effort */
+                        hw_foam_add(b->hw, x - ox, z - oz, rad * 1.4f, 2.5f * sg * eff * dt, 1.5f * sg * eff * dt);
+                        b->swim_t += dt;
+                        if (cfg.swim_spray > 0.0f && b->swim_t > 0.6f / (0.6f + 0.4f * a)) {
+                            /* stroke: an arm comes out and throws a handful of drops ahead, one side then the other */
+                            float px, pz, speed = v > 300.0f ? 300.0f : v;
+                            int n, cnt = (int)(5 + 7 * a);
+                            if (b->swim_side == 0) b->swim_side = 1;
+                            px = -bz * b->swim_side; pz = bx * b->swim_side;
+                            b->swim_t = 0.0f; b->swim_side = -b->swim_side;
+                            for (n = 0; n < cnt; n++) {
+                                float r1 = SwimRand(), r2 = SwimRand(), r3 = SwimRand();
+                                float sx = x - ox + px * rad * 0.9f - bx * rad * (0.2f + 0.6f * r1);
+                                float sz = z - oz + pz * rad * 0.9f - bz * rad * (0.2f + 0.6f * r1);
+                                hw_spray_add(b->hw, sx, gbed[cj * gs + ci] + gh[cj * gs + ci] + 5.0f, sz,
+                                             -bx * (0.6f * speed + 60.0f * r2) + px * (30.0f + 40.0f * r3), 110.0f + 120.0f * r2,
+                                             -bz * (0.6f * speed + 60.0f * r2) + pz * (30.0f + 40.0f * r3), 0.5f + 0.8f * r3, 1);
+                            }
+                            g_swim_strokes++;
+                        }
+                    } else b->swim_t = 0.0f;
                     g_body_foam++;
                     g_kate_h = kp[2];
                     if (ci >= 2 && cj >= 2 && ci < w + 2 && cj < h + 2) { g_kate_bed = gbed[cj * gs + ci]; g_kate_depth = gh[cj * gs + ci]; }
@@ -560,6 +642,8 @@ __attribute__((used, noinline)) float hw_hook_step(uint32_t *S, float dt)
                 if (kp) Log("kate: at %.0f %.0f height %.0f; %ld foam adds, top speed over water %.0f (last add: bed %.0f depth %.1f height %.0f)",
                             kp[0], kp[1], kp[2], g_body_foam, g_body_vmax, g_kate_bed, g_kate_depth, g_kate_h);
                 else Log("kate: no player pawn");
+                if (g_swim_steps) Log("swim: %ld steps swimming, %ld strokes thrown (swim_depth %.0f)", g_swim_steps, g_swim_strokes, cfg.swim_depth);
+                g_swim_steps = 0; g_swim_strokes = 0;
                 g_body_foam = 0; g_body_vmax = 0.0f;
             }
         }
