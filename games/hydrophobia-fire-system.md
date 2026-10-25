@@ -1,13 +1,13 @@
 # Hydrophobia: Prophecy, the fire system (decompiled 2026-10-25)
 
 Index
-1. What it is (l10-17)
+1. What it is (l12-18)
 2. Data: the fire list and the burning pieces (l19-25)
-3. Update order, per frame (l27-33)
-4. Extinguish by water (l35-42)
-5. Floating fire on the water (l44-50)
-6. Burn level, heat haze, fire light (l52-56)
-7. Where the code is (l58-75)
+3. Update order, per frame (l26-32)
+4. Extinguish by water (l33-40)
+5. Floating fire on the water (l41-47)
+6. Burn level, heat haze, fire light (l48-52)
+7. Where the code is (l53-70)
 
 ## 1. What it is
 Three cooperating parts in `HydroPC.exe` (HydroEngine, D3D9, Havok 2010):
