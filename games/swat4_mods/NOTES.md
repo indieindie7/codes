@@ -674,3 +674,20 @@ Ref: video-notes tree/339 (Fallout 4 ACT mod: LOS-confirmed callouts, suppressio
 - C logs: iq mostly 0.8-0.9 (439 of 470 adds); comms 243 radio / 147 voice / 80 none; 705 told (553 radio, 131 muffled, 21 voice), 245 crises from alerts; all goals BarricadeGoal.
 - Caveat: auto officers give ~0.2 orders per game here (squad barely clears JewelryHeist), so suspects come to the officers; hostages are ~never secured. This measures suspect lethality, not a full mission.
 - Verdict: on high-skill suspects two-mode (iq tilt) doubles officer losses vs stock (0.78 vs 0.39, 36 games/arm). Alerts send everyone into barricades (radio net reaches all), which slightly lowers losses vs B: dug-in suspects stop coming to the officers. Next ideas: high-iq alert receivers should split (some hold, some flank toward LKP) = step 3 group roles; and fix auto-officer order flow on JewelryHeist before trusting mission metrics.
+
+## 10-26 two-mode step 3 built (hold/flank roles)
+- SwatMindsMutator.uc: config bRoles (default false), FlankShare 0.4, FlankMin 400, FlankMax 1100. Mind gets Role (0/1 hold/2 flank, sticky) + GoalAt.
+- React(): a told suspect with iq >= 0.5 gets a role once; flankers run (InvestigateGoal) to FlankPoint() = nav FlankMin..FlankMax from the LKP, not in LOS of it, scored most opposite to the flanker's own approach; holders barricade as before.
+- Also changed for all alert arms: React() no longer re-posts a goal when the LKP moved < 300 uu (every 5 s alert used to restart the barricade = stutter).
+- Gym SP-JewelryHeist, 18 seeded games x 2 officer modes, 300 s, out F:/gogGames/SWAT 4/SwatMinds/gym_2mode4/{C_alerts,D_roles} (A/B from gym_2mode3, unchanged code paths):
+
+| arm | mode | susDown | susArrest | susFree | offDown |
+|---|---|---|---|---|---|
+| C' alerts (no re-post) | nearest | 2.72 | 0.0 | 10.39 | 1.0 |
+| C' alerts (no re-post) | scored | 2.72 | 0.06 | 10.22 | 1.0 |
+| D alerts + roles | nearest | 3.06 | 0.0 | 9.94 | 1.0 |
+| D alerts + roles | scored | 3.11 | 0.17 | 9.89 | 0.89 |
+
+- Mean offDown: A stock 0.39, B two-mode 0.78, old C 0.67, C' 1.0, D 0.94. Mean susDown: C' 2.72, D 3.08.
+- D logs: 168 flank goals vs 336 barricades (flank share ~1/3 of tells), 504 tells (373 radio).
+- Verdict: the re-post fix is the big win: alerts now 2.6x stock officer losses (1.0 vs 0.39). Roles add no lethality on top (0.94, within noise) and flankers die more (+0.36 susDown): they run in exposed. Keep bRoles off. Best suspect set for a hard mode: bTwoMode + bAlerts. Possible next: flankers walk/slow + wait for holders to engage first (timed pincer), or flank only when the LKP officer is engaged.
