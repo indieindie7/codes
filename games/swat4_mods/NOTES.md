@@ -638,3 +638,22 @@ Ref: video-notes tree/339 (Fallout 4 ACT mod: LOS-confirmed callouts, suppressio
 
 - Crisis triggers fired: seen 34, engage 22, fear 1 (B logs). Asserts in B (4) are stock engine ones (SpawningManager line 482, Cuffs ValidateUse), not ours.
 - Verdict: no gain at step 1. Officer losses same (mean 0.50 both); two-mode suspects end free less often (2.45 vs 2.95), so the iq tilt alone makes them slightly easier. Expected: without alerts/coordination, iq only reshuffles solo choices. bTwoMode stays default false. Step 2 (alert spread w/ LKP, radio/voice/none) is where the design should pay; retest after it.
+
+## 10-26 two-mode step 2 built (alert spread w/ LKP)
+- SwatMindsMutator.uc: config bAlerts (default false), RadioShare 0.35 (scaled by iq/0.6), MuteShare 0.15, ShoutRange 1400, AlertGap 5. Mind gets Comms (0 none/1 voice/2 radio), LKP/LKPAt, AlertGoal.
+- Suspect sees officer -> LKP = nearest seen officer, Alert(): radio->radio anywhere, voice in LOS <= ShoutRange, "muffled" through walls <= ShoutRange/2; fresher LKP only. Receiver: stress +0.2, crisis "alert", React(): skip if stock state Aware; iq >= 0.5 BarricadeGoal toward LKP, else InvestigateGoal (run) to LKP. Goal released when done/down/compliant/own sighting. Sender says CallForHelp (rule 7).
+- Fixed step-1 bug: two-mode block had split `if (Seen>0) stress+ / else decay`, so stress decayed every tick in arm A. Step-1 A/B numbers are therefore slightly off.
+- Gym (9 seeded games x 2 officer modes, SP-FoodWall, 300 s), out F:/gogGames/SWAT 4/SwatMinds/gym_2mode2/{A_stock,B_two,C_alerts}:
+
+| arm | mode | susDown | susArrest | susFree | hostSecured | offDown |
+|---|---|---|---|---|---|---|
+| A stock | nearest | 1.22 | 0.11 | 2.33 | 0.33 | 0.22 |
+| A stock | scored | 1.11 | 0.0 | 2.67 | 0.89 | 0.67 |
+| B two-mode | nearest | 1.33 | 0.22 | 2.0 | 1.44 | 0.89 |
+| B two-mode | scored | 1.22 | 0.44 | 2.0 | 0.67 | 0.33 |
+| C two+alerts | nearest | 1.22 | 0.44 | 1.78 | 0.78 | 0.44 |
+| C two+alerts | scored | 1.0 | 0.56 | 2.33 | 0.44 | 0.78 |
+
+- Mean offDown: A 0.45, B 0.61, C 0.61. Mean susFree: A 2.5, B 2.0, C 2.06. Asserts all stock engine ones.
+- C logs: 49 told (6 voice, 43 muffled, 0 radio), 29 crises from alerts, all goals InvestigateGoal: FoodWall suspects are Low skill (iq ~0.3), so no barricades and radio is rare (both ends need it).
+- Verdict: with the stress fix, two-mode now hurts officers more than stock (+0.16 offDown); alerts work mechanically but add nothing over B on FoodWall. 9 games/arm is noisy (A changed a lot vs the step-1 run). Next: test on a map with Medium/High-skill suspects (barricade + radio paths), 18+ runs, then step 3 group roles.
