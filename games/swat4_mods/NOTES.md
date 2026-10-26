@@ -620,3 +620,21 @@ Ref: video-notes tree/339 (Fallout 4 ACT mod: LOS-confirmed callouts, suppressio
 - Gym: measure vs stock with existing autogym (officer losses, suspects alerted per entry, time-to-clear). DK1/FS2 brains can reuse the same two modes later.
 
 **Build order**: 1 mode flag + iq weights on heuristics; 2 alert spread w/ LKP + comms types; 3 group roles (hold/flank/ambush); 4 gym A/B.
+
+## 10-26 two-mode step 1 built (SwatMinds.u 07:36, 0 errors)
+- SwatMindsMutator.uc: Mind.Iq/bCrisis/CrisisAt; config `bTwoMode` (default false = stock baseline), `IqWeight=0.35`.
+- Iq = 0.3/0.6/0.9 from ISwatEnemy.GetEnemySkill (Low/Med/High) +-0.05. Logged on "SwatMinds add".
+- Crisis entry (log "SwatMinds crisis <pawn> why=hit|seen|fear|engage"): Timer on hit, officer seen, fear >= 0.3; Score() on first engage.
+- IqTilt multiplies emotion Base: attack 1+w*(0.6-Q)*2, cover 1+w*(Q-0.4)*2, flee 1+w*((1-Q)*shock*2-0.3) (shock = first 3 s of crisis), regroup 1+w*(Q-0.3)*2.
+- Gym A/B: `swat4_gymrun.py --runs 9 --secs 300 --jobs 3 --rng-seeds` into F:/gogGames/SWAT 4/SwatMinds/gym_2mode/A_stock and B_two (`--set "bTwoMode True"`).
+- Result (9 seeded games x 2 officer modes each, SP-FoodWall, 300 s):
+
+| arm | mode | susDown | susArrest | susFree | hostSecured | offDown |
+|---|---|---|---|---|---|---|
+| A stock | nearest | 0.67 | 0.11 | 3.0 | 0.89 | 0.56 |
+| A stock | scored | 0.78 | 0.22 | 2.89 | 0.56 | 0.44 |
+| B two-mode | nearest | 1.11 | 0.33 | 2.33 | 1.0 | 0.44 |
+| B two-mode | scored | 0.89 | 0.22 | 2.56 | 0.56 | 0.56 |
+
+- Crisis triggers fired: seen 34, engage 22, fear 1 (B logs). Asserts in B (4) are stock engine ones (SpawningManager line 482, Cuffs ValidateUse), not ours.
+- Verdict: no gain at step 1. Officer losses same (mean 0.50 both); two-mode suspects end free less often (2.45 vs 2.95), so the iq tilt alone makes them slightly easier. Expected: without alerts/coordination, iq only reshuffles solo choices. bTwoMode stays default false. Step 2 (alert spread w/ LKP, radio/voice/none) is where the design should pay; retest after it.
