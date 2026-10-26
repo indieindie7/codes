@@ -657,3 +657,20 @@ Ref: video-notes tree/339 (Fallout 4 ACT mod: LOS-confirmed callouts, suppressio
 - Mean offDown: A 0.45, B 0.61, C 0.61. Mean susFree: A 2.5, B 2.0, C 2.06. Asserts all stock engine ones.
 - C logs: 49 told (6 voice, 43 muffled, 0 radio), 29 crises from alerts, all goals InvestigateGoal: FoodWall suspects are Low skill (iq ~0.3), so no barricades and radio is rare (both ends need it).
 - Verdict: with the stress fix, two-mode now hurts officers more than stock (+0.16 offDown); alerts work mechanically but add nothing over B on FoodWall. 9 games/arm is noisy (A changed a lot vs the step-1 run). Next: test on a map with Medium/High-skill suspects (barricade + radio paths), 18+ runs, then step 3 group roles.
+
+## 10-26 two-mode 3-arm rerun on SP-JewelryHeist (high skill, 18 runs)
+- Same build as step 2. 18 seeded games x 2 officer modes per arm, 300 s, out F:/gogGames/SWAT 4/SwatMinds/gym_2mode3/{A_stock,B_two,C_alerts}.
+
+| arm | mode | susDown | susArrest | susFree | hostSecured | offDown |
+|---|---|---|---|---|---|---|
+| A stock | nearest | 2.67 | 0.11 | 10.22 | 0.06 | 0.33 |
+| A stock | scored | 2.17 | 0.11 | 10.72 | 0.0 | 0.44 |
+| B two-mode | nearest | 2.0 | 0.06 | 11.11 | 0.11 | 0.83 |
+| B two-mode | scored | 2.78 | 0.06 | 9.83 | 0.06 | 0.72 |
+| C two+alerts | nearest | 2.39 | 0.17 | 10.5 | 0.0 | 1.0 |
+| C two+alerts | scored | 2.72 | 0.06 | 10.28 | 0.0 | 0.33 |
+
+- Mean offDown: A 0.39, B 0.78, C 0.67. susFree ~10.5 in all arms.
+- C logs: iq mostly 0.8-0.9 (439 of 470 adds); comms 243 radio / 147 voice / 80 none; 705 told (553 radio, 131 muffled, 21 voice), 245 crises from alerts; all goals BarricadeGoal.
+- Caveat: auto officers give ~0.2 orders per game here (squad barely clears JewelryHeist), so suspects come to the officers; hostages are ~never secured. This measures suspect lethality, not a full mission.
+- Verdict: on high-skill suspects two-mode (iq tilt) doubles officer losses vs stock (0.78 vs 0.39, 36 games/arm). Alerts send everyone into barricades (radio net reaches all), which slightly lowers losses vs B: dug-in suspects stop coming to the officers. Next ideas: high-iq alert receivers should split (some hold, some flank toward LKP) = step 3 group roles; and fix auto-officer order flow on JewelryHeist before trusting mission metrics.
