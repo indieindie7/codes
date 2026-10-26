@@ -44,3 +44,7 @@ Sources disagree (a commercial chart lists carpet lower: 0.01/0.06/0.25), so tre
 5. Ship as a mod with the proxy DLL as an opt-in file; ask before replacing audio DLLs on the user's install.
 
 Risks: script traces cost VM time and BSP traces ignore static meshes unless blocked by collision (bTraceStaticMeshes-style flags vary; verify in the SDK source); surface type may be missing on BSP/mesh without a material assignment; DefOpenAL32 may be an older OpenAL 1.1 build lacking EFX; proxy DLL must match the exact call signatures and 32-bit calling convention (stdcall/cdecl) and the engine may anti-cheat-check files in multiplayer; Steam Audio's 32-bit build and its dependencies (Embree/IPP, may need disabling) unverified; hot-swapping reverb presets causes audible pops, so crossfade.
+
+## 4 Step 1 results (10-26)
+- DefOpenAL32.dll (Content + ContentExpansion System) = Creative DS3D wrapper 0.993, OpenAL 1.0, EAX 1-3, no EFX. Swat4.ini has UseEAX=False, Use3DSound=False.
+- Next: drop OpenAL Soft x86 in as DefOpenAL32.dll (back up stock), set UseEAX=True + Use3DSound=True, alsoft.ini hrtf=true; OpenAL Soft maps EAX calls to its EFX reverb, so the game's own per-zone EAX presets come back without a proxy. Per-source occlusion still needs a proxy later (mutator writes occlusion per sound to a file the proxy polls).

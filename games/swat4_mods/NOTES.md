@@ -691,3 +691,17 @@ Ref: video-notes tree/339 (Fallout 4 ACT mod: LOS-confirmed callouts, suppressio
 - Mean offDown: A stock 0.39, B two-mode 0.78, old C 0.67, C' 1.0, D 0.94. Mean susDown: C' 2.72, D 3.08.
 - D logs: 168 flank goals vs 336 barricades (flank share ~1/3 of tells), 504 tells (373 radio).
 - Verdict: the re-post fix is the big win: alerts now 2.6x stock officer losses (1.0 vs 0.39). Roles add no lethality on top (0.94, within noise) and flankers die more (+0.36 susDown): they run in exposed. Keep bRoles off. Best suspect set for a hard mode: bTwoMode + bAlerts. Possible next: flankers walk/slow + wait for holders to engage first (timed pincer), or flank only when the LKP officer is engaged.
+
+## 10-26 sound propagation (bPropagate) + player audio check
+- User: "lets implement both" (AI hearing propagation + player audio).
+- SwatMindsMutator.uc: config bPropagate (default false), WallLoss 0.35, DoorLoss 0.6. HearDist(From,To,How): clear line = real dist ("voice"; shut SwatDoor hit by actor Trace -> dist/DoorLoss "door shut"); blocked = min(dist/WallLoss "muffled", one hop via open/broken door From->door+40z->To with both legs FastTrace clear "via door"). Used by Alert voice (heard if <= ShoutRange) and SpreadFear heard (<= HearRange). Door list cached on first use.
+- Gym SP-JewelryHeist 18 seeded x 2 modes, bTwoMode+bAlerts+bPropagate, out F:/gogGames/SWAT 4/SwatMinds/gym_hear1/E_prop:
+
+| arm | mode | susDown | susArrest | susFree | offDown |
+|---|---|---|---|---|---|
+| E propagate | nearest | 2.44 | 0.17 | 10.28 | 0.72 |
+| E propagate | scored | 3.0 | 0.06 | 9.72 | 0.83 |
+
+- vs C' (gym_2mode4): offDown 1.0 -> 0.78, susDown 2.72 -> 2.72. Tells 1001 -> 720; muffled 131 -> 45, via door 19 (new), radio 368 -> 237, voice 11 -> 15. "door shut" never fired (FastTrace likely blocked by doors already -> those go wall/door-hop). 4 asserts = stock dropped-weapon FellOutOfWorld, not ours.
+- Verdict: walls now stop most shouts (old rule heard through any wall at 700 uu); suspects less omniscient, officers lose less. Keep off by default; realism knob for the hard set.
+- Player audio: Content\System\DefOpenAL32.dll = Creative "DS3D Wrapper" 0.993 (OpenAL 1.0, EAX 1-3 via EAXSet/EAXGet, no EFX). Swat4.ini [ALAudio.ALAudioSubsystem] UseEAX=False, Use3DSound=False; ALAudio.dll loads the AL dll at runtime (imports only Core/Engine/vorbisfile/MSVCR71). ContentExpansion\System has its own DefOpenAL32.dll. Plan: OpenAL Soft x86 (soft_oal.dll, emulates EAX since 1.23) renamed DefOpenAL32.dll + UseEAX=True + Use3DSound=True -> the game's own EAX zone reverb + HRTF via alsoft.ini. Download of OpenAL Soft blocked by the auto-mode classifier (external code) 10-26: user downloads or allows.

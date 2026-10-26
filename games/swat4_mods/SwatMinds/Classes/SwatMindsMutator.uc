@@ -16,6 +16,16 @@ struct Mind
     var float NextSay;          // comms: this suspect may speak again after this time
     var float RuleTime[8];      // comms: per-rule memory (last time each rule fired)
     var bool  bFearSaid, bAngerSaid; // threshold lines fire once per crossing
+    var float Iq;               // two-mode: training/iq from archetype skill (0.3/0.6/0.9)
+    var bool  bCrisis;          // two-mode: false = routine (patrol/idle), true = crisis
+    var float CrisisAt;
+    var byte  Comms;            // step 2 alerts: 0 none, 1 voice, 2 radio
+    var vector LKP;             // last known officer position (own sight or told)
+    var float LKPAt;            // when that sighting was made (0 = none)
+    var float NextAlert;
+    var SwatCharacterGoal AlertGoal; // investigate (low iq) or barricade (high iq) toward LKP
+    var byte  Role;             // step 3: 0 none yet, 1 hold, 2 flank (sticky once given)
+    var vector GoalAt;          // LKP the current alert goal was made for
 };
 
 var config bool  bEnabled;         // false = stock FRand choice
@@ -187,6 +197,20 @@ var config bool  bComms;           // suspect callouts from stock recorded lines
 var config float SayCooldown;      // per suspect
 var config float SayGap;           // between any two suspects
 var config float RuleCooldown;     // same rule, same suspect
+var config bool  bTwoMode;         // 10-26: routine/crisis modes, crisis choice tilted by iq
+var config float IqWeight;         // how hard iq tilts the crisis choice
+var config bool  bAlerts;          // 10-26 step 2: suspects who see an officer pass the LKP on by radio/voice
+var config float RadioShare;       // radio chance at iq 0.6 (scales with iq)
+var config float MuteShare;        // chance a suspect can't/won't call out
+var config float ShoutRange;       // voice: heard in LOS this far, through walls half as far
+var config float AlertGap;         // seconds between one suspect's alerts
+var config bool  bRoles;           // 10-26 step 3: told high-iq suspects split into hold (barricade) and flank
+var config float FlankShare;       // chance a told high-iq suspect becomes a flanker
+var config float FlankMin, FlankMax; // flank point distance band from the LKP
+var config bool  bPropagate;       // 10-26: sound walks through open doors; closed doors and walls cut it (Alert voice, SpreadFear heard)
+var config float WallLoss, DoorLoss; // loudness kept through a wall / a shut door (heard range x this)
+var array<Door> HearDoors;
+var bool bHearDoors;
 
 var array<Mind> Minds;
 var array<Pawn> DownOfficers;
@@ -241,6 +265,7 @@ function int FindMind(Pawn P)
 function int AddMind(Pawn P)
 {
     local int i;
+    local float Roll;
     i = Minds.Length;
     Minds.Length = i + 1;
     Minds[i].P = P;
@@ -248,8 +273,16 @@ function int AddMind(Pawn P)
     Minds[i].Nerve = 0.3 + FRand() * 0.5;
     if (ISwatAI(P).IsAggressive())
         Minds[i].Nerve = FMin(1.0, Minds[i].Nerve + 0.2);
+    Minds[i].Iq = 0.3 + 0.3 * ISwatEnemy(P).GetEnemySkill() + (FRand() - 0.5) * 0.1;
+    Roll = FRand();
+    if (Roll < RadioShare * Minds[i].Iq / 0.6)
+        Minds[i].Comms = 2;
+    else if (Roll > 1.0 - MuteShare)
+        Minds[i].Comms = 0;
+    else
+        Minds[i].Comms = 1;
     SwapAbilities(P);
-    Log("SwatMinds add "$P.Name$" nerve="$Minds[i].Nerve$" aggressive="$ISwatAI(P).IsAggressive(), 'SwatMinds');
+    Log("SwatMinds add "$P.Name$" nerve="$Minds[i].Nerve$" aggressive="$ISwatAI(P).IsAggressive()$" iq="$Minds[i].Iq$" comms="$Minds[i].Comms, 'SwatMinds');
     return i;
 }
 
@@ -297,6 +330,8 @@ function Timer()
     local CommanderAction CA;
     local int k;
     local bool bKnown;
+    local vector SeenAt;
+    local float SeenD;
     // GameStart() saves this map as last played after PostBeginPlay, so pick the next one a few seconds in
     if (bRandomInstantAction && !bIADone && Level.TimeSeconds > 3.0)
     {
@@ -403,6 +438,9 @@ function Timer()
         // hits are checked before the conscious filter so one-shot downs count
         Dmg = Minds[i].LastHealth - E.Health;
         Minds[i].LastHealth = E.Health;
+        if (Minds[i].AlertGoal != None && (Minds[i].AlertGoal.hasCompleted() || Minds[i].bDown || !E.IsConscious()
+            || E.IsCompliant() || ISwatAI(E).IsArrested()))
+            ReleaseAlert(i);
         if (Minds[i].bDown)
             continue;
         if (!E.IsConscious() || E.Health <= 0)
@@ -436,6 +474,8 @@ function Timer()
         foreach E.VisibleCollidingActors(class'Pawn', O, SeeOfficerRange)
             if (O != E && IsOfficerSide(O) && O.IsConscious())
             {
+                if (Seen == 0 || VSize(O.Location - E.Location) < SeenD)
+                    { SeenD = VSize(O.Location - E.Location); SeenAt = O.Location; }
                 Seen++;
                 if (VSize(O.Location - E.Location) < CloseRange)
                     Close++;
@@ -444,6 +484,25 @@ function Timer()
             Minds[i].Stress = FMin(1.0, Minds[i].Stress + 0.08 * Seen);
         else
             Minds[i].Stress = FMax(0.0, Minds[i].Stress - 0.04);
+        if (bTwoMode && !Minds[i].bCrisis)
+        {
+            if (Dmg > 0)
+                EnterCrisis(i, "hit");
+            else if (Seen > 0)
+                EnterCrisis(i, "seen");
+            else if (Minds[i].Fear >= 0.3)
+                EnterCrisis(i, "fear");
+        }
+        if (bAlerts && Seen > 0)
+        {
+            // own eyes: the alert goal is done, stock engage takes over
+            if (Minds[i].AlertGoal != None)
+                ReleaseAlert(i);
+            Minds[i].LKP = SeenAt;
+            Minds[i].LKPAt = Level.TimeSeconds;
+            if (Level.TimeSeconds >= Minds[i].NextAlert)
+                Alert(i);
+        }
         if (Close > 0)
             AddFear(i, 0.03 * Close * (1.0 - Minds[i].Nerve));
         // high stress wears down low nerve
@@ -505,6 +564,13 @@ function SpreadFear(Pawn Victim, float Amount, string Why)
         if (Dist <= AllyFearRange && (FastTrace(Victim.Location + vect(0,0,40), A.Location + vect(0,0,1) * A.BaseEyeHeight)
                                    || FastTrace(Victim.Location + vect(0,0,1) * Victim.BaseEyeHeight, A.Location + vect(0,0,1) * A.BaseEyeHeight)))
             { K = 1.0; How = "saw"; }
+        else if (bPropagate)
+        {
+            Dist = HearDist(Victim.Location + vect(0,0,40), A.Location + vect(0,0,1) * A.BaseEyeHeight, How);
+            if (Dist > HearRange)
+                continue;
+            K = HearFactor * (1.0 - 0.5 * Dist / HearRange); How = "heard";
+        }
         else if (Dist <= HearRange)
             { K = HearFactor * (1.0 - 0.5 * Dist / HearRange); How = "heard"; }   // fainter with distance
         else
@@ -554,6 +620,7 @@ function bool Say(int i, int Rule)
         case 4: SM.TriggerFleeSpeech();            Line = "Flee";          break;
         case 5: SM.TriggerUncompliantSpeech();     Line = "NonCompliant";  break;
         case 6: SM.TriggerDownedOfficerSpeech();   Line = "DownOfficer";   break;
+        case 7: SM.TriggerCallForHelpSpeech();     Line = "CalledForHelp"; break;
     }
     Minds[i].NextSay = T + SayCooldown;
     Minds[i].RuleTime[Rule] = T;
@@ -600,6 +667,195 @@ function Probe(int i, CommanderAction CA, int Seen)
         $" seen="$Seen$" aggr="$ISwatAI(Minds[i].P).IsAggressive(), 'SwatMinds');
 }
 
+function EnterCrisis(int i, string Why)
+{
+    Minds[i].bCrisis = true;
+    Minds[i].CrisisAt = Level.TimeSeconds;
+    Log("SwatMinds crisis "$Minds[i].P.Name$" why="$Why$" iq="$Minds[i].Iq$" fear="$Minds[i].Fear, 'SwatMinds');
+}
+
+// Sound path (bPropagate): effective distance From->To, bigger = fainter. Clear line = real
+// distance (a shut door in it divides by DoorLoss); blocked = through the wall (/ WallLoss) or
+// one hop through an open door (From->door->To, both legs clear), whichever is shorter.
+function float HearDist(vector From, vector To, out string How)
+{
+    local float D, Best, Dd;
+    local int k;
+    local Door Dr;
+    local SwatDoor SD;
+    local Actor Hit;
+    local vector HL, HN, DL;
+
+    D = VSize(To - From);
+    if (FastTrace(To, From))
+    {
+        How = "voice";
+        Hit = Trace(HL, HN, To, From, true);
+        SD = SwatDoor(Hit);
+        if (SD != None && !SD.IsOpen() && !SD.IsBroken())
+            { How = "door shut"; return D / DoorLoss; }
+        return D;
+    }
+    if (!bHearDoors)
+    {
+        foreach AllActors(class'Door', Dr)
+            HearDoors[HearDoors.Length] = Dr;
+        bHearDoors = true;
+    }
+    Best = D / WallLoss;
+    How = "muffled";
+    for (k = 0; k < HearDoors.Length; k++)
+    {
+        SD = SwatDoor(HearDoors[k]);
+        if (SD == None || !(SD.IsOpen() || SD.IsBroken()))
+            continue;
+        DL = SD.Location + vect(0,0,40);
+        Dd = VSize(DL - From) + VSize(To - DL);
+        if (Dd >= Best || !FastTrace(DL, From) || !FastTrace(To, DL))
+            continue;
+        Best = Dd;
+        How = "via door";
+    }
+    return Best;
+}
+
+// Step 2: pass the LKP on. Radio reaches radio carriers anywhere; voice reaches allies in
+// sight within ShoutRange, or through walls within half of it. Mute suspects tell no one.
+function Alert(int i)
+{
+    local int j, n;
+    local float Dist;
+    local Pawn S, A;
+    local string How;
+
+    S = Minds[i].P;
+    Minds[i].NextAlert = Level.TimeSeconds + AlertGap;
+    if (Minds[i].Comms == 0)
+        return;
+    for (j = 0; j < Minds.Length; j++)
+    {
+        A = Minds[j].P;
+        if (j == i || A == None || Minds[j].bDown || !A.IsConscious() || A.IsCompliant() || ISwatAI(A).IsArrested())
+            continue;
+        if (Minds[j].LKPAt >= Minds[i].LKPAt)
+            continue;
+        How = "";
+        if (Minds[i].Comms == 2 && Minds[j].Comms == 2)
+            How = "radio";
+        else
+        {
+            Dist = VSize(A.Location - S.Location);
+            if (bPropagate)
+            {
+                if (HearDist(S.Location + vect(0,0,1) * S.BaseEyeHeight, A.Location + vect(0,0,1) * A.BaseEyeHeight, How) > ShoutRange)
+                    How = "";
+            }
+            else if (Dist <= ShoutRange && FastTrace(A.Location + vect(0,0,1) * A.BaseEyeHeight, S.Location + vect(0,0,1) * S.BaseEyeHeight))
+                How = "voice";
+            else if (Dist <= ShoutRange * 0.5)
+                How = "muffled";
+        }
+        if (How == "")
+            continue;
+        Minds[j].LKP = Minds[i].LKP;
+        Minds[j].LKPAt = Minds[i].LKPAt;
+        Minds[j].Stress = FMin(1.0, Minds[j].Stress + 0.2);
+        if (bTwoMode && !Minds[j].bCrisis)
+            EnterCrisis(j, "alert");
+        React(j, How);
+        n++;
+    }
+    Log("SwatMinds alert "$S.Name$" comms="$Minds[i].Comms$" told="$n$" lkp="$int(Minds[i].LKP.X)$","$int(Minds[i].LKP.Y), 'SwatMinds');
+    if (n > 0)
+        Say(i, 7);
+}
+
+// Told, not seen: low iq runs to the LKP (investigate), high iq digs in facing it (barricade).
+// Engaged suspects (state Aware) keep their stock fight.
+function React(int j, string How)
+{
+    local Pawn A;
+    local vector Pt;
+
+    A = Minds[j].P;
+    if (int(ISwatEnemy(A).GetCurrentState()) >= 2)
+        return;
+    // same news again: keep the goal running (re-posting every alert made them stutter)
+    if (Minds[j].AlertGoal != None && VSize(Minds[j].LKP - Minds[j].GoalAt) < 300.0)
+        return;
+    if (bRoles && Minds[j].Iq >= 0.5 && Minds[j].Role == 0)
+    {
+        Minds[j].Role = 1;
+        if (FRand() < FlankShare)
+            Minds[j].Role = 2;
+    }
+    if (Minds[j].AlertGoal != None)
+        ReleaseAlert(j);
+    Minds[j].GoalAt = Minds[j].LKP;
+    if (Minds[j].Role == 2 && FlankPoint(A, Minds[j].LKP, Pt))
+    {
+        Minds[j].AlertGoal = new class'InvestigateGoal'(AI_Resource(A.characterAI), Pt, false);
+        How = How$" flank";
+    }
+    else if (Minds[j].Iq >= 0.5)
+        Minds[j].AlertGoal = new class'BarricadeGoal'(AI_Resource(A.characterAI), Minds[j].LKP, false, true);
+    else
+        Minds[j].AlertGoal = new class'InvestigateGoal'(AI_Resource(A.characterAI), Minds[j].LKP, false);
+    Minds[j].AlertGoal.AddRef();
+    Minds[j].AlertGoal.postGoal(None);
+    Log("SwatMinds told "$A.Name$" by="$How$" iq="$Minds[j].Iq$" goal="$Minds[j].AlertGoal.Class.Name, 'SwatMinds');
+}
+
+// Flank point: a nav FlankMin..FlankMax from the LKP, hidden from it, on the side most
+// unlike the flanker's straight approach (so it comes in from another angle).
+function bool FlankPoint(Pawn A, vector LKP, out vector Pt)
+{
+    local NavigationPoint N;
+    local float D, Best, Sc;
+    local vector Me;
+
+    Best = -2.0;
+    Me = Normal(A.Location - LKP);
+    for (N = Level.NavigationPointList; N != None; N = N.nextNavigationPoint)
+    {
+        D = VSize(N.Location - LKP);
+        if (D < FlankMin || D > FlankMax)
+            continue;
+        if (FastTrace(N.Location, LKP + vect(0,0,40)))
+            continue;
+        Sc = -(Normal(N.Location - LKP) dot Me) - D / FlankMax * 0.3;
+        if (Sc > Best)
+            { Best = Sc; Pt = N.Location; }
+    }
+    return Best > -2.0;
+}
+
+function ReleaseAlert(int i)
+{
+    Minds[i].AlertGoal.unPostGoal(None);
+    Minds[i].AlertGoal.Release();
+    Minds[i].AlertGoal = None;
+}
+
+// Two-mode tilt: low iq rushes, or bolts in the first 3 s of a crisis (surprise);
+// high iq takes cover and falls back to regroup.
+function float IqTilt(int i, int Kind)
+{
+    local float Q, Shock;
+    Q = Minds[i].Iq;
+    Shock = 0.0;
+    if (Level.TimeSeconds - Minds[i].CrisisAt < 3.0)
+        Shock = 1.0;
+    switch (Kind)
+    {
+        case 0: return 1.0 + IqWeight * (0.6 - Q) * 2.0;
+        case 1: return 1.0 + IqWeight * (Q - 0.4) * 2.0;
+        case 2: return 1.0 + IqWeight * ((1.0 - Q) * Shock * 2.0 - 0.3);
+        case 3: return 1.0 + IqWeight * (Q - 0.3) * 2.0;
+    }
+    return 1.0;
+}
+
 // Called by the Mind* actions. Kind: 0 attack, 1 cover, 2 flee, 3 regroup.
 function float Score(Pawn P, int Kind, float Stock)
 {
@@ -621,9 +877,15 @@ function float Score(Pawn P, int Kind, float Stock)
         case 2: Base = 0.70 * F * (1.0 - N) + 0.20 * S;        KindName = "flee";    break;
         case 3: Base = 0.40 * F + 0.20 * S;                    KindName = "regroup"; break;
     }
+    if (bTwoMode)
+    {
+        if (!Minds[i].bCrisis)
+            EnterCrisis(i, "engage");
+        Base *= IqTilt(i, Kind);
+    }
     // blend: stock keeps the situation (cover/escape available), emotion tilts it
     Result = FClamp(Stock * (1.0 - MindWeight) + Base * MindWeight + (FRand() - 0.5) * NoiseWeight, 0.0, 1.0);
-    Log("SwatMinds score "$P.Name$" "$KindName$" stock="$Stock$" mind="$Result$" f="$F$" a="$A$" s="$S$" n="$N, 'SwatMinds');
+    Log("SwatMinds score "$P.Name$" "$KindName$" stock="$Stock$" mind="$Result$" f="$F$" a="$A$" s="$S$" n="$N$" iq="$Minds[i].Iq$" two="$bTwoMode, 'SwatMinds');
     return Result;
 }
 
@@ -2392,6 +2654,20 @@ defaultproperties
     MoraleFromFear=0.25
     SeeOfficerRange=1500.0
     MindWeight=0.5
+    bTwoMode=false
+    IqWeight=0.35
+    bAlerts=false
+    RadioShare=0.35
+    MuteShare=0.15
+    ShoutRange=1400.0
+    AlertGap=5.0
+    bRoles=false
+    FlankShare=0.4
+    FlankMin=400.0
+    FlankMax=1100.0
+    bPropagate=false
+    WallLoss=0.35
+    DoorLoss=0.6
     AllyFearRange=1200.0
     CloseRange=400.0
     HearRange=3000.0
