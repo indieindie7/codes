@@ -595,3 +595,28 @@ To do:
 - Player data (SMRec / model) = observations for understanding, not commands to follow.
 - Pairs: officers move/guard in 2-man pairs (Red/Blue elements), buddy covers buddy.
 - First: watch the video + log to see where they went off alone.
+
+## 10-26 design: two-mode suspects (user idea)
+User: "have the enemies have like 2 behaviours, patrol/routine and another which is escape/survival/fight back by coordinating according to their iq/training and if they can communicate/alert the other enemies"
+Ref: video-notes tree/339 (Fallout 4 ACT mod: LOS-confirmed callouts, suppression, LKP memory, ambush).
+
+**Modes**
+- ROUTINE: stock Idling/Patrolling + conversations. Ends on own sight/hit/noise above threshold, or on a received alert.
+- CRISIS: one choice per think tick among FIGHT (AttackOfficer / TakeCoverAndAttack / ambush at door), ESCAPE (Flee to FleePoint), SURVIVE (EnemyCower / comply / barricade), weighted, not FRand.
+
+**Per-suspect knobs (from archetype, no new map data)**
+- `iq` = archetype Skill Low/Med/High -> 0.3/0.6/0.9 (plus AggressiveChance as temperament). High iq: cover, pairs, wait at chokepoints, retreat to a defensible room; low iq: rush or bolt, panic sooner.
+- `comms` = can alert others: radio (High skill / gang roles) = whole map; voice = within hearing of a shout, blocked by walls; none = lone. Alert carries officer last-known position (LKP), not live position. No wall vision.
+- `nerve` = morale + fear (Devastation hide-when-hit, line 225). Fear up on hits/near-miss/ally down; picks ESCAPE/SURVIVE over FIGHT as it rises.
+
+**Coordination (only when comms reach)**
+- Alerted suspects in CRISIS share a group LKP; high-iq group: one holds/suppresses, one flanks or both ambush the entry; low-iq group: converge on noise.
+- Alert spread is the thing the player plays against: kill/arrest the radio holder first, quiet entries keep others in ROUTINE.
+
+**Hooks (see sections 1-2 + hook table above)**
+- EnemyCommanderAction subclass (SwatEnemy.uc:286): mode flag, iq/comms/nerve, alert receive.
+- selectionHeuristic of AttackOfficer/TakeCoverAndAttack/Flee/Regroup/EnemyCower -> mode weights (replaces FRand).
+- comms v1 (section "Eye-height sight + comms v1", 10-19) = base for alert spread; add LKP payload + radio/voice range.
+- Gym: measure vs stock with existing autogym (officer losses, suspects alerted per entry, time-to-clear). DK1/FS2 brains can reuse the same two modes later.
+
+**Build order**: 1 mode flag + iq weights on heuristics; 2 alert spread w/ LKP + comms types; 3 group roles (hold/flank/ambush); 4 gym A/B.
