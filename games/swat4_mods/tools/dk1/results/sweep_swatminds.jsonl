@@ -1,0 +1,36 @@
+{"brain": "swatminds", "map": "0/0", "secs": 11.7, "game_ms": 14400, "state": 11, "troopers_alive": 2, "troopers": 2, "suspects_alive": 0, "suspects": 5, "win": true, "orders": 4}
+{"brain": "swatminds", "map": "0/0", "secs": 11.6, "game_ms": 14144, "state": 11, "troopers_alive": 2, "troopers": 2, "suspects_alive": 0, "suspects": 5, "win": true, "orders": 4}
+{"brain": "rush", "map": "0/0", "secs": 11.8, "game_ms": 14240, "state": 11, "troopers_alive": 2, "troopers": 2, "suspects_alive": 0, "suspects": 5, "win": true, "orders": 4}
+{"brain": "pairs", "map": "0/0", "secs": 11.8, "game_ms": 14352, "state": 11, "troopers_alive": 2, "troopers": 2, "suspects_alive": 0, "suspects": 5, "win": true, "orders": 4}
+{"brain": "swatminds", "map": "0/10", "secs": 90.4, "game_ms": 93552, "state": 10, "troopers_alive": 1, "troopers": 2, "suspects_alive": 3, "suspects": 11, "win": false, "orders": 21}
+{"brain": "swatminds", "map": "0/10", "secs": 17.1, "game_ms": 20112, "state": 11, "troopers_alive": 0, "troopers": 2, "suspects_alive": 7, "suspects": 11, "win": false, "orders": 6}
+{"brain": "rush", "map": "0/10", "secs": 19.3, "game_ms": 22672, "state": 11, "troopers_alive": 0, "troopers": 2, "suspects_alive": 7, "suspects": 11, "win": false, "orders": 12}
+{"brain": "pairs", "map": "0/10", "secs": 18.8, "game_ms": 22240, "state": 11, "troopers_alive": 0, "troopers": 2, "suspects_alive": 6, "suspects": 11, "win": false, "orders": 9}
+{"brain": "swatminds", "map": "0/20", "secs": 25.1, "game_ms": 28512, "state": 11, "troopers_alive": 1, "troopers": 4, "suspects_alive": 7, "suspects": 16, "win": false, "orders": 35}
+{"brain": "swatminds", "map": "0/20", "secs": 14.9, "game_ms": 18864, "state": 11, "troopers_alive": 2, "troopers": 4, "suspects_alive": 9, "suspects": 16, "win": false, "orders": 31}
+{"brain": "rush", "map": "0/20", "secs": 19.6, "game_ms": 23136, "state": 11, "troopers_alive": 2, "troopers": 4, "suspects_alive": 7, "suspects": 16, "win": false, "orders": 24}
+{"brain": "pairs", "map": "0/20", "secs": 19.2, "game_ms": 22576, "state": 11, "troopers_alive": 1, "troopers": 4, "suspects_alive": 12, "suspects": 16, "win": false, "orders": 24}
+{"brain": "swatminds", "map": "0/30", "secs": 16.6, "game_ms": 19904, "state": 11, "troopers_alive": 1, "troopers": 2, "suspects_alive": 9, "suspects": 9, "win": false, "orders": 7}
+{"brain": "swatminds", "map": "0/30", "secs": 17.9, "game_ms": 21312, "state": 11, "troopers_alive": 1, "troopers": 2, "suspects_alive": 9, "suspects": 9, "win": false, "orders": 8}
+{"map": "0/30", "brain": "rush", "error": true}
+{"brain": "pairs", "map": "0/30", "secs": 16.8, "game_ms": 19568, "state": 11, "troopers_alive": 1, "troopers": 2, "suspects_alive": 9, "suspects": 9, "win": false, "orders": 6}
+{"map": "0/40", "brain": "swatminds", "error": true}
+{"map": "0/40", "brain": "swatminds", "error": true}
+{"brain": "rush", "map": "0/40", "secs": 41.0, "game_ms": 43664, "state": 11, "troopers_alive": 0, "troopers": 4, "suspects_alive": 3, "suspects": 21, "win": false, "orders": 28}
+{"brain": "pairs", "map": "0/40", "secs": 42.8, "game_ms": 45968, "state": 11, "troopers_alive": 0, "troopers": 4, "suspects_alive": 3, "suspects": 21, "win": false, "orders": 28}
+{"brain": "swatminds", "map": "0/50", "secs": 91.0, "game_ms": 94096, "state": 10, "troopers_alive": 2, "troopers": 4, "suspects_alive": 11, "suspects": 16, "win": false, "orders": 43}
+{"map": "0/50", "brain": "swatminds", "error": true}
+{"map": "0/50", "brain": "rush", "error": true}
+{"map": "0/50", "brain": "pairs", "error": true}
+{"brain": "swatminds", "map": "0/60", "secs": 12.5, "game_ms": 15760, "state": 11, "troopers_alive": 5, "troopers": 8, "suspects_alive": 12, "suspects": 21, "win": false, "orders": 47}
+{"brain": "swatminds", "map": "0/60", "secs": 15.5, "game_ms": 18656, "state": 11, "troopers_alive": 7, "troopers": 8, "suspects_alive": 9, "suspects": 21, "win": false, "orders": 41}
+{"map": "0/60", "brain": "rush", "error": true}
+{"brain": "pairs", "map": "0/60", "secs": 12.2, "game_ms": 15120, "state": 11, "troopers_alive": 6, "troopers": 8, "suspects_alive": 15, "suspects": 21, "win": false, "orders": 39}
+{"brain": "swatminds", "map": "0/70", "secs": 90.4, "game_ms": 93328, "state": 10, "troopers_alive": 2, "troopers": 6, "suspects_alive": 13, "suspects": 22, "win": false, "orders": 44}
+{"map": "0/70", "brain": "swatminds", "error": true}
+{"brain": "rush", "map": "0/70", "secs": 2.6, "game_ms": 5312, "state": 11, "troopers_alive": 6, "troopers": 6, "suspects_alive": 20, "suspects": 22, "win": false, "orders": 6}
+{"brain": "pairs", "map": "0/70", "secs": 42.8, "game_ms": 46032, "state": 11, "troopers_alive": 3, "troopers": 6, "suspects_alive": 5, "suspects": 22, "win": false, "orders": 49}
+{"brain": "swatminds", "map": "0/80", "secs": 7.0, "game_ms": 10032, "state": 11, "troopers_alive": 6, "troopers": 6, "suspects_alive": 15, "suspects": 16, "win": false, "orders": 6}
+{"brain": "swatminds", "map": "0/80", "secs": 8.3, "game_ms": 11712, "state": 11, "troopers_alive": 4, "troopers": 6, "suspects_alive": 14, "suspects": 16, "win": false, "orders": 6}
+{"map": "0/80", "brain": "rush", "error": true}
+{"brain": "pairs", "map": "0/80", "secs": 7.0, "game_ms": 9888, "state": 11, "troopers_alive": 6, "troopers": 6, "suspects_alive": 13, "suspects": 16, "win": false, "orders": 6}

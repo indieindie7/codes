@@ -220,3 +220,27 @@ forwarded to System32; DllMain IAT-patches PeekMessageW/GetMessageW; bridge poll
 - **Mods enabled without the menu (10-25):** active list = `<Mods path0="mods/ws<id>/" path1=... />` in `Documents\KillHouseGames\DoorKickers\options.xml` (Options::Load/Save; trailing slash required, else log "[Error] Could not find mod ... not there anymore"). `tools/dk1/dk1mods.py on|off` writes it (all `mods\ws*`). Scanned dirs: game `mods` + `<userdir>/mods` (Steam subscriptions, `<id>/<name>/`, steamDownloads.xml). New bridge cmd `maps` prints map-list counts (Game+0x74+i*0x10, List {cap,data,count}).
 - Counts: stock list 0 SINGLE 84 (so 0/90+ crash = past the end), 1 RANDOM 132, 3 CAMPAIGN 41. All 89 ws mods on: 263 / 154 / 196 -> workshop single maps at 0/84..0/262. Some mods conflict (same levels_MyMap_0 paths, ws859816816 vs ws3393741402; logged, game still runs).
 - Gym on workshop maps (`results/sweep_ws.jsonl`, pairs): 0/84, 0/130, 0/200 load + run, all lost (25-32 suspects vs 3-4 troopers, dead in 8-26 s); 0/262 crashed.
+
+## DK1 gym: SwatMinds brain (2026-10-27)
+`tools/dk1/squadbrain.py`, hooked into `dk1gym.brain_orders` as `--brain swatminds` (rush/pairs untouched). Constants at file top.
+- Two modes. ENGAGE: a live suspect within CONTACT_R=260 px of any trooper -> whole team to the suspect nearest the team centre (pairs-style). CLEAR: otherwise.
+- Coverage paint: 32 px grid, cells within PAINT_R=200 px of a trooper are "seen". Level XML has no wall data (`<Walls/>` empty, props are entities), so true LOS raycast was skipped; radius fallback used.
+- CLEAR goal = last suspect position seen, else the nearest unpainted cell to the leader (window 1600x1200). Bridge `ERR no path` or an idle leader after 12 ticks blacklists the cell.
+- Train: leader (lowest id) walks to the goal; followers sorted by distance trail k*40 px back along the leader's recorded position trail (bridge `path` is manual drawing, it returns no pathfinder points; `move` pathfinds itself). Re-order only if target moved > 48 px.
+- Window parked off-screen (x=-4000, HWND_BOTTOM, no activate) at launch and per mission start (`dk1gym.park()`).
+- Results (`results/sweep_swatminds.jsonl`, 90 s cap; W/L, troopers alive/total; ERR = game crash):
+
+| map | rush | pairs | swatminds run1 | swatminds run2 |
+|---|---|---|---|---|
+| 0/0 | W 2/2 | W 2/2 | W 2/2 | W 2/2 |
+| 0/10 | L 0/2 | L 0/2 | L 1/2 | L 0/2 |
+| 0/20 | L 2/4 | L 1/4 | L 1/4 | L 2/4 |
+| 0/30 | ERR | L 1/2 | L 1/2 | L 1/2 |
+| 0/40 | L 0/4 | L 0/4 | ERR | ERR |
+| 0/50 | ERR | ERR | L 2/4 | ERR |
+| 0/60 | ERR | L 6/8 | L 5/8 | L 7/8 |
+| 0/70 | L 6/6 | L 3/6 | L 2/6 | ERR |
+| 0/80 | ERR | L 6/6 | L 6/6 | L 4/6 |
+
+Wins: rush 1/9, pairs 1/9, swatminds 2/18 (all 0/0). Crashes: rush 4, pairs 1, swatminds 5.
+Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pairs won 0/10, 0/40, 0/50 then). Cause not isolated: more crashes, and the gym is omniscient so the rush/pairs targeting is already strong; the paint/train logic only matters with real fog/LOS. Troop survival on 0/60 and 0/80 is similar to pairs. Next: real wall LOS (needs wall entities per prop), a clear-mode fallback that rushes when no contact for N s, and a fix for the map crashes.

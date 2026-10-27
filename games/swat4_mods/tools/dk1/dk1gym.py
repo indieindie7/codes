@@ -2,7 +2,7 @@
 
   py -3.13 -I dk1gym.py humans                 dump humans (id team type state x y)
   py -3.13 -I dk1gym.py send "<cmd>" [...]     raw bridge commands (see dk1hook.c)
-  py -3.13 -I dk1gym.py run [N] [out.jsonl] [--brain idle|rush|pairs] [--secs 60] [--map 0/0]
+  py -3.13 -I dk1gym.py run [N] [out.jsonl] [--brain idle|rush|pairs|swatminds] [--secs 60] [--map 0/0]
   py -3.13 -I dk1gym.py launch                 start through Steam, window parked behind others
 
 Needs bin/dbghelp.dll (build.bat) copied next to DoorKickers.exe and a mission loaded.
@@ -10,6 +10,7 @@ Launch goes through Steam (248610) and the window is parked behind everything, n
 """
 import json, math, os, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 GAME = r"F:\SteamLibrary\steamapps\common\DoorKickers"
 BR = os.path.join(GAME, "dk1bridge")
@@ -47,6 +48,17 @@ def humans():
     return out
 
 
+def park():
+    """Move the game window off-screen and to the bottom of the z-order, never activating or minimizing it."""
+    import ctypes
+    from bginput import find
+    try:
+        h = find("DoorKickers")
+    except SystemExit:
+        return
+    ctypes.WinDLL("user32").SetWindowPos(h, 1, -4000, 0, 0, 0, 0x1 | 0x10 | 0x4000)  # HWND_BOTTOM, NOSIZE|NOACTIVATE|ASYNCWINDOWPOS
+
+
 def launch():
     """Start DK1 through Steam if needed, then keep its window behind all others (not minimized)."""
     import ctypes
@@ -62,7 +74,7 @@ def launch():
             continue
         if u32.IsIconic(h):
             u32.ShowWindowAsync(h, 4)  # SW_SHOWNOACTIVATE
-        u32.SetWindowPos(h, 1, 0, 0, 0, 0, 0x1 | 0x2 | 0x10 | 0x4000)  # HWND_BOTTOM, no size/move/activate, async
+        park()
         return h
 
 
@@ -78,6 +90,7 @@ def start_mission(lst=0, idx=0):
     if state()["state"] != 5:
         send(["setstate 5"])
         time.sleep(3)
+    park()
     send([f"load {lst} {idx}"])
     for _ in range(60):
         time.sleep(0.5)
@@ -95,6 +108,7 @@ def start_mission(lst=0, idx=0):
                 break
         else:
             print("WARN still in DEPLOY after deploygo", file=sys.stderr)
+    park()  # loading may re-show the window
     send(["toggle 0"])
 
 
@@ -105,6 +119,9 @@ def alive(h):
 def brain_orders(name, troopers, suspects, last):
     """Return {trooper id: (x, y)} new targets. rush: each trooper to its nearest live suspect;
     pairs: the whole team to the suspect nearest the team centre."""
+    if name == "swatminds":
+        import squadbrain
+        return squadbrain.orders(troopers, suspects, last) if troopers else {}
     if name == "idle" or not suspects:
         return {}
     if name == "pairs":
@@ -125,6 +142,8 @@ def run_match(brain="rush", secs=60, lst=0, idx=0):
         if any(h["type"] == 1 for h in humans()):
             break
         time.sleep(0.5)
+    if brain == "swatminds":
+        import squadbrain; squadbrain.S["ids"] = None  # new match: reset state
     t0, last, orders = time.time(), {}, 0
     while True:
         hs = humans()
@@ -135,7 +154,10 @@ def run_match(brain="rush", secs=60, lst=0, idx=0):
             break
         new = brain_orders(brain, tr, su, last)
         if new:
-            send([f"move {i} {x:.0f} {y:.0f}" for i, (x, y) in new.items()])
+            ans = send([f"move {i} {x:.0f} {y:.0f}" for i, (x, y) in new.items()])
+            if brain == "swatminds":
+                import squadbrain
+                squadbrain.feedback(list(new), ans)
             last.update(new); orders += len(new)
         time.sleep(1)
     n_tr = sum(1 for h in hs if h["type"] == 1)
