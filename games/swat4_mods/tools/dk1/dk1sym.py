@@ -118,8 +118,13 @@ def dis(name):
     """Disassemble one function (capstone), call/jump targets and globals named from the PDB."""
     import capstone, re, struct
     s = SYMBOL_INFO(); s.SizeOfStruct = 88; s.MaxNameLen = 1024
-    assert d.SymFromNameW(h, W.LPCWSTR(name), C.byref(s)), name
-    rva, size = s.Address - BASE, s.Size
+    if name.startswith("0x"):  # RVA[:size]
+        a = name.split(":")
+        assert d.SymFromAddrW(h, C.c_uint64(BASE + int(a[0], 16)), C.byref(C.c_uint64()), C.byref(s))
+        rva, size = int(a[0], 16), int(a[1], 0) if len(a) > 1 else s.Size - (int(a[0], 16) - (s.Address - BASE))
+    else:
+        assert d.SymFromNameW(h, W.LPCWSTR(name), C.byref(s)), name
+        rva, size = s.Address - BASE, s.Size
     raw = open(EXE, "rb").read()
     pe = struct.unpack_from("<I", raw, 0x3c)[0]
     nsec, opt = struct.unpack_from("<H", raw, pe + 6)[0], struct.unpack_from("<H", raw, pe + 20)[0]

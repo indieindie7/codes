@@ -1,0 +1,13 @@
+{"map": "0/0", "brain": "swatminds", "error": true}
+{"brain": "swatminds", "map": "0/0", "secs": 37.1, "game_ms": 39168, "state": 11, "troopers_alive": 2, "troopers": 2, "suspects_alive": 0, "suspects": 5, "win": true, "orders": 34}
+{"brain": "rush", "map": "0/0", "secs": 11.6, "game_ms": 14304, "state": 11, "troopers_alive": 2, "troopers": 2, "suspects_alive": 0, "suspects": 5, "win": true, "orders": 4}
+{"brain": "pairs", "map": "0/0", "secs": 11.9, "game_ms": 14480, "state": 11, "troopers_alive": 2, "troopers": 2, "suspects_alive": 0, "suspects": 5, "win": true, "orders": 4}
+{"map": "0/10", "brain": "swatminds", "error": true}
+{"brain": "swatminds", "map": "0/10", "secs": 2.8, "game_ms": 5600, "state": 11, "troopers_alive": 0, "troopers": 2, "suspects_alive": 9, "suspects": 11, "win": false, "orders": 4}
+{"brain": "rush", "map": "0/10", "secs": 19.2, "game_ms": 22720, "state": 11, "troopers_alive": 1, "troopers": 2, "suspects_alive": 0, "suspects": 11, "win": true, "orders": 13}
+{"brain": "pairs", "map": "0/10", "secs": 3.6, "game_ms": 7376, "state": 11, "troopers_alive": 0, "troopers": 2, "suspects_alive": 9, "suspects": 11, "win": false, "orders": 2}
+{"brain": "swatminds", "map": "0/20", "secs": 21.3, "game_ms": 24640, "state": 11, "troopers_alive": 1, "troopers": 4, "suspects_alive": 9, "suspects": 16, "win": false, "orders": 28}
+{"brain": "swatminds", "map": "0/20", "secs": 10.9, "game_ms": 14224, "state": 11, "troopers_alive": 0, "troopers": 4, "suspects_alive": 12, "suspects": 16, "win": false, "orders": 10}
+{"brain": "rush", "map": "0/20", "secs": 10.8, "game_ms": 14112, "state": 11, "troopers_alive": 3, "troopers": 4, "suspects_alive": 10, "suspects": 16, "win": false, "orders": 12}
+{"brain": "pairs", "map": "0/20", "secs": 20.2, "game_ms": 23488, "state": 11, "troopers_alive": 1, "troopers": 4, "suspects_alive": 9, "suspects": 16, "win": false, "orders": 14}
+{"map": "0/30", "brain": "swatminds", "error": true}

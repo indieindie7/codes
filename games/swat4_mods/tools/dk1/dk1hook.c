@@ -39,6 +39,9 @@ typedef void (__fastcall *Void_t)(void *self, void *edx);
 typedef void *(__stdcall *GeneratePath_t)(int cls, V2 from, V2 to);
 typedef void (__fastcall *SetAIPath_t)(void *human, void *edx, void *wp);
 typedef void (__fastcall *SetState_t)(void *game, void *edx, int state);
+typedef void (__fastcall *DoorOpen_t)(void *door, void *edx, int how, float a, float b);
+typedef BYTE (__fastcall *TraceLOS_t)(void *coll, void *edx, unsigned mask, unsigned shooter, unsigned target, int *out, int x0, int y0, int x1, int y1);
+typedef int *(__fastcall *ToColl_t)(void *game, void *edx, int *ret, float x, float y);
 typedef V2 *(__fastcall *AddToPath_t)(void *human, void *edx, V2 *ret, int flag, float x, float y);
 
 static BYTE *g_base;
@@ -48,6 +51,37 @@ static BOOL (WINAPI *real_Get)(LPMSG, HWND, UINT, UINT);
 static HMODULE g_real_dbghelp;
 
 #define F(rva) ((void *)(g_base + (rva)))
+
+static char g_last[200], g_crash[MAX_PATH];  /* last bridge line, crash log path */
+static LONG CALLBACK veh(EXCEPTION_POINTERS *e)
+{
+    /* first-chance log of access violations etc. to dk1bridge\crash.txt: code, eip (+RVA), fault address,
+       last bridge command, game state/time, a stack scan for code addresses */
+    static int n;
+    DWORD c = e->ExceptionRecord->ExceptionCode;
+    if ((c == 0xC0000005 || c == 0xC000001D || c == 0xC0000094 || c == 0xC00000FD || c == 0xC0000374) && n < 40) {
+        FILE *f = fopen(g_crash, "a");
+        DWORD *sp = (DWORD *)e->ContextRecord->Esp;
+        BYTE *gm = *(BYTE **)(g_base + RVA_GAME_INSTANCE);
+        int i, k = 0;
+        n++;
+        if (f) {
+            fprintf(f, "%lu EXC %08lx eip %08lx rva %lx addr %08lx rw %lu | last '%s' | state %d time %u map %d/%d\n", GetTickCount(), c,
+                    (DWORD)e->ExceptionRecord->ExceptionAddress, (DWORD)e->ExceptionRecord->ExceptionAddress - (DWORD)g_base,
+                    e->ExceptionRecord->NumberParameters > 1 ? (DWORD)e->ExceptionRecord->ExceptionInformation[1] : 0,
+                    e->ExceptionRecord->NumberParameters > 0 ? (DWORD)e->ExceptionRecord->ExceptionInformation[0] : 0, g_last,
+                    gm ? *(int *)(gm + 4) : -1, gm ? *(unsigned *)(gm + 0xc) : 0, gm ? *(int *)(gm + 0xc4) : -1, gm ? *(int *)(gm + 0xc8) : -1);
+            fprintf(f, "   stack rvas:");
+            __try {
+                for (i = 0; i < 400 && k < 14; i++)
+                    if (sp[i] > (DWORD)g_base && sp[i] < (DWORD)g_base + 0x400000) { fprintf(f, " %lx", sp[i] - (DWORD)g_base); k++; }
+            } __except (EXCEPTION_EXECUTE_HANDLER) {}
+            fprintf(f, "\n");
+            fclose(f);
+        }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 
 static void *game(void) { return *(void **)F(RVA_GAME_INSTANCE); }
 
@@ -182,6 +216,89 @@ static void run_line(char *line, FILE *out)
         BYTE *g = *(BYTE **)F(0x3caa0c);
         int i;
         for (i = 0; i < 4; i++) fprintf(out, "list %d count %d\n", i, *(int *)(g + 0x74 + i * 0x10 + 8));
+    } else if (!strcmp(tok, "cgrid")) {
+        /* collision grid = the game's own wall/door/prop map (Game+0x120 Collision: +0 w, +4 h, +8 uint32 cells).
+           A cell blocks line of sight when (v & 0x10) (Collision::TraceLineOfSight is called with mask 0x10);
+           0x80000000 = border/default, treated as blocked. Header "G w h mapW mapH", then h rows of w chars:
+           '#' blocked, '.' open. Map point -> cell: see `c2g`. */
+        BYTE *c = *(BYTE **)((BYTE *)g + 0x120), *mp = *(BYTE **)((BYTE *)g + 0xcc), *m;
+        int w, hh, x, y;
+        unsigned *d;
+        if (!c || !mp) { fprintf(out, "ERR no collision\n"); return; }
+        m = (*(BYTE ***)(mp + 0x20))[*(int *)(mp + 0x2c)];
+        w = *(int *)c; hh = *(int *)(c + 4); d = *(unsigned **)(c + 8);
+        if (w <= 0 || hh <= 0 || w > 4096 || hh > 4096 || !d) { fprintf(out, "ERR bad grid %d %d\n", w, hh); return; }
+        fprintf(out, "G %d %d %d %d\n", w, hh, *(int *)(m + 4), *(int *)(m + 8));
+        for (y = 0; y < hh; y++) {
+            for (x = 0; x < w; x++) { unsigned v = d[y * w + x]; fputc(v == 0x80000000u || (v & 0x10) ? '#' : '.', out); }
+            fputc('\n', out);
+        }
+    } else if (!strcmp(tok, "chist")) {
+        /* histogram of collision cell values: low 16 bits (flags) x has-entity-id (high 16 bits != 0) */
+        BYTE *c = *(BYTE **)((BYTE *)g + 0x120);
+        int w, hh, i, k, nb = 0;
+        unsigned *d, key[64], cnt[64];
+        if (!c) { fprintf(out, "ERR no collision\n"); return; }
+        w = *(int *)c; hh = *(int *)(c + 4); d = *(unsigned **)(c + 8);
+        for (i = 0; i < w * hh; i++) {
+            unsigned v = d[i], kk = v == 0x80000000u ? 0xffffffffu : ((v & 0xffff) | ((v >> 16) ? 0x10000u : 0));
+            for (k = 0; k < nb && key[k] != kk; k++);
+            if (k == nb) { if (nb == 64) continue; key[nb] = kk; cnt[nb++] = 0; }
+            cnt[k]++;
+        }
+        for (k = 0; k < nb; k++) fprintf(out, "%08x %u\n", key[k], cnt[k]);
+    } else if (!strcmp(tok, "c2g")) {
+        /* Game::ConvertMapToCollisionCoords(x, y) */
+        float x = (float)atof(strtok(NULL, " \t\r\n")), y = (float)atof(strtok(NULL, " \t\r\n"));
+        int r[2];
+        ((ToColl_t)F(0x161480))(g, 0, r, x, y);
+        fprintf(out, "%d %d\n", r[0], r[1]);
+    } else if (!strcmp(tok, "los")) {
+        /* los x1 y1 x2 y2 (map coords): the game's Collision::TraceLineOfSight with mask 0x10 -> "1|0 hitx hity" (1 = clear) */
+        float v[4];
+        int i, a[2], b[2], hit[2] = {-1, -1};
+        BYTE r;
+        BYTE *c = *(BYTE **)((BYTE *)g + 0x120);
+        for (i = 0; i < 4; i++) v[i] = (float)atof(strtok(NULL, " \t\r\n"));
+        if (!c) { fprintf(out, "ERR no collision\n"); return; }
+        ((ToColl_t)F(0x161480))(g, 0, a, v[0], v[1]);
+        ((ToColl_t)F(0x161480))(g, 0, b, v[2], v[3]);
+        r = ((TraceLOS_t)F(0x4f010))(c, 0, 0x10, 0x7ffe0000u, 0x7fff0000u, hit, a[0], a[1], b[0], b[1]);
+        fprintf(out, "%d %d %d\n", r ? 1 : 0, hit[0], hit[1]);
+    } else if (!strcmp(tok, "opendoors")) {
+        /* opendoors: Door::Open(how 0, 0, 0) on every closed Door in the entity pool. A trooper whose route crosses a closed
+           door stops dead (Human +0x29c bit 0 set) until somebody opens it; the gym brains do not issue door actions. */
+        void **pool = (void **)F(0x3c0c70);
+        void *v1 = F(0x3accc8), *v2 = F(0x3accd0);
+        int i, n = 0, t = 0;
+        for (i = 0; i < 8192; i++) {
+            BYTE *e = (BYTE *)pool[i];
+            if (!e || (*(void **)e != v1 && *(void **)e != v2)) continue;
+            t++;
+            if (e[0xa4] & 1) continue;
+            ((DoorOpen_t)F(0x91b20))(e, 0, 0, 0.0f, 0.0f);
+            n++;
+        }
+        fprintf(out, "OK doors %d opened %d\n", t, n);
+    } else if (!strcmp(tok, "route")) {
+        /* route id x y: the pathfinder's points (GeneratePath -> Waypoints list +0x24 data / +0x28 count, sPoint 12 B,
+           origin +4), nobody moves. `path` is manual drawing (DeletePath + AddToPath per given point): it never had any. */
+        unsigned id = (unsigned)atoi(strtok(NULL, " \t\r\n"));
+        void **pool = (void **)F(0x3c0c70);
+        BYTE *h = id < 8192 ? (BYTE *)pool[id] : NULL, *wp, *pts;
+        V2 to;
+        int i, n;
+        if (!h || *(int *)(h + 0x18) != 2) { fprintf(out, "ERR not a human %u\n", id); return; }
+        to.x = (float)atof(strtok(NULL, " \t\r\n"));
+        to.y = (float)atof(strtok(NULL, " \t\r\n"));
+        wp = ((GeneratePath_t)F(RVA_GENERATE_PATH))(*(int *)(h + 0xa0), *(V2 *)(h + 0x1c), to);
+        if (!wp) { fprintf(out, "ERR no path %u\n", id); return; }
+        pts = *(BYTE **)(wp + 0x24);
+        n = *(int *)(wp + 0x28);
+        if (n < 0 || n > 512 || (n && !pts)) { fprintf(out, "ERR bad route %d\n", n); return; }
+        fprintf(out, "R %d", n);
+        for (i = 0; i < n; i++) fprintf(out, " %.0f %.0f", *(float *)(pts + 12 * i + 4), *(float *)(pts + 12 * i + 8));
+        fputc('\n', out);
     } else if (!strcmp(tok, "poke")) {
         /* poke id off byte: one byte of a human (debug) */
         unsigned id = (unsigned)atoi(strtok(NULL, " \t\r\n"));
@@ -237,6 +354,8 @@ static void poll_bridge(void)
     if (!out) { fclose(in); return; }
     if (fgets(seq, sizeof seq, in)) fputs(seq, out);
     while (fgets(line, sizeof line, in)) {
+        strncpy(g_last, line, sizeof g_last - 1); g_last[sizeof g_last - 1] = 0;
+        { char *nl = strpbrk(g_last, "\r\n"); if (nl) *nl = 0; }
         __try { run_line(line, out); }
         __except (EXCEPTION_EXECUTE_HANDLER) { fprintf(out, "ERR exception %08lx\n", GetExceptionCode()); }
     }
@@ -299,6 +418,8 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD why, LPVOID r)
         sprintf(g_in, "%s\\in.txt", dir);
         sprintf(g_out, "%s\\out.txt", dir);
         sprintf(g_tmp, "%s\\out.tmp", dir);
+        sprintf(g_crash, "%s\\crash.txt", dir);
+        AddVectoredExceptionHandler(1, veh);
         patch_iat();
     }
     return TRUE;
