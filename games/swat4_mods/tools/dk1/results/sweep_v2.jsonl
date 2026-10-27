@@ -11,3 +11,4 @@
 {"brain": "rush", "map": "0/20", "secs": 10.8, "game_ms": 14112, "state": 11, "troopers_alive": 3, "troopers": 4, "suspects_alive": 10, "suspects": 16, "win": false, "orders": 12}
 {"brain": "pairs", "map": "0/20", "secs": 20.2, "game_ms": 23488, "state": 11, "troopers_alive": 1, "troopers": 4, "suspects_alive": 9, "suspects": 16, "win": false, "orders": 14}
 {"map": "0/30", "brain": "swatminds", "error": true}
+{"map": "0/30", "brain": "swatminds", "error": true}
