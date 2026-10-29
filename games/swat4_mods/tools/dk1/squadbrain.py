@@ -16,22 +16,25 @@ time); reset() when the trooper id set changes (new match).
 import math
 
 CELL = 32            # px paint cell
-PAINT_R = 260        # px: cells within this of a trooper AND in LOS count as seen
+PAINT_R = 320        # px: cells within this of a trooper AND in LOS count as seen
 CONTACT_R = 300      # px: suspect in LOS this close to any trooper -> ENGAGE
 CLOSE_R = 90         # px: suspect this close = contact even without LOS (sound / adjacent room)
 SPACING = 40         # px between train members along the leader's route
 REPATH = 48          # px: re-order only if the target moved more than this (same rule as rush/pairs)
-GOAL_REACHED = 40    # px: leader this close to its goal cell = goal done
+GOAL_REACHED = 70    # px: leader this close to its goal cell = goal done
 GOAL_PATIENCE = 12   # ticks (~1 s each) before an unreached goal is blacklisted
 BOUNDS = (0, 0, 1600, 1200)  # px: frontier window, shrunk to the map size when the grid is known
+TRAIN_REPATH = 140   # px: a follower is re-ordered only if its train slot moved this far (every move resets its plan)
+HOLD_R = 230         # px: ENGAGE shooters with LOS to the target inside this range hold position
+PUSH_AFTER = 8       # ticks of CLEAR without contact before the team rushes the nearest suspect (omniscient gym fallback)
 TRAIL_MAX = 200      # leader trail samples kept (fallback when no route)
 
 S = dict(ids=None, painted=set(), bad=set(), trail=[], goal=None, goal_age=0, seen=None, mode="CLEAR", pend={},
-         grid=None, send=None, lpath=None, region=None)
+         grid=None, send=None, lpath=None, region=None, clear_ticks=0, holding=set())
 
 
 def reset(ids):
-    S.update(ids=ids, painted=set(), bad=set(), trail=[], goal=None, goal_age=0, seen=None, mode="CLEAR", pend={}, lpath=None)
+    S.update(ids=ids, painted=set(), bad=set(), trail=[], goal=None, goal_age=0, seen=None, mode="CLEAR", pend={}, lpath=None, clear_ticks=0, holding=set())
 
 
 def bind(send, cgrid_lines=None, region=None):
@@ -213,18 +216,27 @@ def orders(troopers, suspects, last):
     # contact? suspect in LOS within CONTACT_R, or very close
     contact = [s for t in troopers for s in suspects
                if (lambda d: d <= CLOSE_R or (d <= CONTACT_R and los(t["x"], t["y"], s["x"], s["y"])))(math.hypot(s["x"] - t["x"], s["y"] - t["y"]))]
+    force, thr = set(), {}
     if contact:
+        S["clear_ticks"] = 0
         cx = sum(t["x"] for t in troopers) / len(troopers)
         cy = sum(t["y"] for t in troopers) / len(troopers)
         s = min(contact, key=lambda s: math.hypot(s["x"] - cx, s["y"] - cy))
         S["seen"] = (s["x"], s["y"]); S["mode"] = "ENGAGE"
         S["goal"] = None; S["lpath"] = None
-        want = {t["id"]: (s["x"], s["y"]) for t in troopers}
+        _engage(troopers, s, want := {}, force)
         S["pend"] = dict(leader=None)
     else:
-        S["mode"] = "CLEAR"
+        S["mode"] = "CLEAR"; S["holding"] = set(); S["clear_ticks"] += 1
         leader = next((t for t in troopers if t["id"] == S["ids"][0]), None) or troopers[0]
         S["trail"].append((leader["x"], leader["y"])); del S["trail"][:-TRAIL_MAX]
+        want = {}
+        if S["clear_ticks"] > PUSH_AFTER and suspects:  # nothing found by sweeping: close in on the nearest suspect (pairs-style)
+            s = min(suspects, key=lambda s: math.hypot(s["x"] - leader["x"], s["y"] - leader["y"]))
+            want = {t["id"]: (s["x"], s["y"]) for t in troopers}
+            S["goal"] = None; S["lpath"] = None
+            S["pend"] = dict(leader=None)
+            return {i: p for i, p in want.items() if i not in last or math.hypot(p[0] - last[i][0], p[1] - last[i][1]) > 80}
         g = S["goal"]
         if g:
             gx, gy = _ctr(g)
@@ -233,10 +245,12 @@ def orders(troopers, suspects, last):
                 S["painted"].add(g); S["goal"] = None
             elif S["goal_age"] > GOAL_PATIENCE and leader["wps"] == 0:
                 S["bad"].add(g); S["goal"] = None  # leader idle, goal unreachable
-        fresh = False
+            elif leader["wps"] == 0 and S["goal_age"] > 2:
+                force.add(leader["id"])  # route consumed / plan dropped before the goal: re-issue the same cached goal, no new pathing here
         if not S["goal"]:
-            S["goal"] = _pick_goal(leader); S["goal_age"] = 0; fresh = True
-        want = {}
+            S["goal"] = _pick_goal(leader); S["goal_age"] = 0
+            if S["goal"]:
+                force.add(leader["id"])
         if S["goal"]:
             want[leader["id"]] = _ctr(S["goal"])
         # train: followers ordered by distance to leader, k-th goes k*SPACING behind the leader on the planned route
@@ -249,5 +263,25 @@ def orders(troopers, suspects, last):
         elif len(S["trail"]) > 1:
             for k, t in enumerate(fol, 1):
                 want[t["id"]] = _trail_point(k * SPACING)
+        for t in fol:
+            thr[t["id"]] = TRAIN_REPATH
+            if t["wps"] == 0 and t["id"] in want and math.hypot(want[t["id"]][0] - t["x"], want[t["id"]][1] - t["y"]) > 60:
+                force.add(t["id"])  # idle follower far from its slot
         S["pend"] = dict(leader=leader["id"])
-    return {i: p for i, p in want.items() if i not in last or math.hypot(p[0] - last[i][0], p[1] - last[i][1]) > REPATH}
+    return {i: p for i, p in want.items()
+            if i in force or i not in last or math.hypot(p[0] - last[i][0], p[1] - last[i][1]) > thr.get(i, REPATH)}
+
+
+def _engage(troopers, s, want, force):
+    """Shooters (LOS to the target, within HOLD_R, at most half the team, the farthest from it) hold their lane: stop in place.
+    Everyone else pushes to the target."""
+    sd = lambda t: math.hypot(s["x"] - t["x"], s["y"] - t["y"])
+    shooters = sorted((t for t in troopers if sd(t) <= HOLD_R and los(t["x"], t["y"], s["x"], s["y"])), key=sd, reverse=True)
+    hold = {t["id"] for t in shooters[:max(1, len(troopers) // 2)]} if len(troopers) > 1 else set()
+    for t in troopers:
+        if t["id"] in hold:
+            if t["wps"] > 0 or t["id"] not in S["holding"]:
+                want[t["id"]] = (t["x"], t["y"]); force.add(t["id"])  # move-to-self = stop
+        else:
+            want[t["id"]] = (s["x"], s["y"])
+    S["holding"] = hold

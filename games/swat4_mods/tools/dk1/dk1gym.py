@@ -3,16 +3,17 @@
   py -3.13 -I dk1gym.py humans                 dump humans (id team type state x y)
   py -3.13 -I dk1gym.py send "<cmd>" [...]     raw bridge commands (see dk1hook.c)
   py -3.13 -I dk1gym.py run [N] [out.jsonl] [--brain idle|rush|pairs|swatminds] [--secs 60] [--map 0/0]
-  py -3.13 -I dk1gym.py launch                 start through Steam, window parked behind others
+  py -3.13 -I dk1gym.py launch                 start C:\Games\DoorKickers (DK1_GAME), window parked behind others
 
 Needs bin/dbghelp.dll (build.bat) copied next to DoorKickers.exe and a mission loaded.
-Launch goes through Steam (248610) and the window is parked behind everything, never focused.
+Launch runs the exe directly (Steam must be running; steam_appid.txt) and the window is parked behind everything, never focused.
 """
 import json, math, os, subprocess, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-GAME = r"F:\SteamLibrary\steamapps\common\DoorKickers"
+# 10-29: gym copy on C: (the F: USB enclosure dropped twice mid-sweep); DK1_GAME overrides
+GAME = os.environ.get("DK1_GAME", r"C:\Games\DoorKickers")
 BR = os.path.join(GAME, "dk1bridge")
 IN, OUT = os.path.join(BR, "in.txt"), os.path.join(BR, "out.txt")
 STEAM_APPID = "248610"
@@ -50,9 +51,19 @@ def humans():
     return out
 
 
+def mark_bot(secs=900):
+    """Tell focusguard this DK1 is a script launch: Steam-started windows get a 60 s 'user launched' pass there,
+    which let the game steal focus (10-29). The marker expires, so a later DK1 the user starts plays normally."""
+    d = os.path.expanduser(r"~\Documents\Tools\focusguard\botlaunch")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "doorkickers.exe"), "w") as f:
+        f.write(str(time.time() + secs))
+
+
 def park():
     """Move the game window off-screen and to the bottom of the z-order, never activating or minimizing it."""
     import ctypes
+    mark_bot()
     from bginput import find
     try:
         h = find("DoorKickers")
@@ -62,12 +73,13 @@ def park():
 
 
 def launch():
-    """Start DK1 through Steam if needed, then keep its window behind all others (not minimized)."""
+    """Start DK1 (direct exe) if needed, then keep its window behind all others (not minimized)."""
     import ctypes
     from bginput import find
     u32 = ctypes.WinDLL("user32")
+    mark_bot()
     if "DoorKickers" not in subprocess.run(["tasklist"], capture_output=True, text=True).stdout:
-        subprocess.Popen([r"C:\Program Files (x86)\Steam\steam.exe", "-applaunch", STEAM_APPID])
+        subprocess.Popen([os.path.join(GAME, "DoorKickers.exe")], cwd=GAME)  # direct: steam_appid.txt in GAME, Steam running
     for _ in range(120):
         time.sleep(0.5)
         try:
@@ -89,29 +101,34 @@ def state(timeout=10):
 def start_mission(lst=0, idx=0):
     """Menu -> loaded mission -> running sim (see PORTS-HOOKS.md DK1 for the states).
     `load` straight from ENDING (11) crashed the game ("Game crashed :(" box, 10-24), so go back to MAIN_MENU first."""
-    if state()["state"] != 5:
-        send(["setstate 5"])
+    # the bridge goes silent 10-60 s after a mission ends (ENDING/ENDED teardown) and during map loads: generous timeouts.
+    # (The 10-27 "0/30 timeouts" were this plus the F: stall, not the map: 0/30 runs fine from a settled game.)
+    if state(90)["state"] != 5:
+        send(["setstate 5"], 90)
         time.sleep(3)
+        state(90)
     park()
-    send([f"load {lst} {idx}"])
-    for _ in range(60):
+    send([f"load {lst} {idx}"], 90)
+    for _ in range(240):
         time.sleep(0.5)
         if state(60)["state"] == 7:  # LOADING_ALMOST_FINISHED waits for a click (loading blocks the bridge 10+ s)
             break
-    send(["setstate 8"])
+    else:
+        raise TimeoutError(f"load {lst}/{idx} never reached state 7")
+    send(["setstate 8"], 60)
     time.sleep(1)
-    if state()["state"] == 9:  # map with a deploy screen: GO with the default entry points
+    if state(60)["state"] == 9:  # map with a deploy screen: GO with the default entry points
         # DeployScreen::OnDeployGO, as the button; the bare Game::Client_FinishDeploy (`deploy`)
         # reached RUNNING but dropped the deployed troopers (10-24)
-        send(["deploygo"])
+        send(["deploygo"], 60)
         for _ in range(40):  # RUNNING comes a second or two later
             time.sleep(0.5)
-            if state()["state"] == 10:
+            if state(60)["state"] == 10:
                 break
         else:
             print("WARN still in DEPLOY after deploygo", file=sys.stderr)
     park()  # loading may re-show the window
-    send(["toggle 0"])
+    send(["toggle 0"], 60)
 
 
 def alive(h):
@@ -181,7 +198,7 @@ def run_match(brain="rush", secs=60, lst=0, idx=0):
         hs = humans()
         tr = [h for h in hs if h["type"] == 1 and alive(h)]
         su = [h for h in hs if h["type"] == 2 and alive(h)]
-        st = state()
+        st = state(60)
         if not tr or not su or (st["state"] >= 11 and time.time() - t0 > 4) or time.time() - t0 > secs:  # state 11 right after load = stale
             break
         new = brain_orders(brain, tr, su, last)
@@ -195,6 +212,8 @@ def run_match(brain="rush", secs=60, lst=0, idx=0):
                 squadbrain.feedback(list(new), ans)
             last.update(new); orders += len(new)
         time.sleep(1)
+    if not any(h["type"] == 1 for h in hs):
+        raise TimeoutError("no troopers in the match (load/start failed)")  # sweep.sh relaunches and retries
     n_tr = sum(1 for h in hs if h["type"] == 1)
     n_su = sum(1 for h in hs if h["type"] == 2)
     return dict(brain=brain, map=f"{lst}/{idx}", secs=round(time.time() - t0, 1), game_ms=st["time"], state=st["state"],

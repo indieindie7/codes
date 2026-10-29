@@ -5,7 +5,7 @@ Paths need the trailing slash ("mods/ws<id>/"), else the log says "Could not fin
 Mod levels are appended to the map lists (single missions eMapList 0: 84 stock maps, mods from index 84)."""
 import os, re, sys
 
-GAME_MODS = r"F:\SteamLibrary\steamapps\common\DoorKickers\mods"
+GAME_MODS = os.path.join(os.environ.get("DK1_GAME", r"C:\Games\DoorKickers"), "mods")
 OPTS = os.path.join(os.environ["USERPROFILE"], r"Documents\KillHouseGames\DoorKickers\options.xml")
 
 if __name__ == "__main__":

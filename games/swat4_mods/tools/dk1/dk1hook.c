@@ -13,6 +13,8 @@
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
 #define RVA_GAME_INSTANCE   0x3caa08
 #define RVA_GET_HUMANS      0x159020  /* List<Human*>* Game::GetMapHumansList() */
@@ -369,6 +371,56 @@ static void poll_bridge(void)
 static BOOL WINAPI hook_Peek(LPMSG m, HWND w, UINT a, UINT b, UINT r) { poll_bridge(); return real_Peek(m, w, a, b, r); }
 static BOOL WINAPI hook_Get(LPMSG m, HWND w, UINT a, UINT b) { poll_bridge(); return real_Get(m, w, a, b); }
 
+/* Bot mode (10-29): the gym runs DK1 while the user types elsewhere, and the game stole focus on launch and on
+   every mission load. When focusguard's bot marker for doorkickers.exe is live (dk1gym.py mark_bot()), the game's
+   own focus calls become no-ops and its windows never activate. A DK1 the user starts later plays normally. */
+static int g_bot;
+static BOOL (WINAPI *real_Show)(HWND, int);
+static BOOL (WINAPI *real_Pos)(HWND, HWND, int, int, int, int, UINT);
+static HDWP (WINAPI *real_Defer)(HDWP, HWND, HWND, int, int, int, int, UINT);
+static HWND (WINAPI *real_CreateA)(DWORD, LPCSTR, LPCSTR, DWORD, int, int, int, int, HWND, HMENU, HINSTANCE, LPVOID);
+static HWND (WINAPI *real_CreateW)(DWORD, LPCWSTR, LPCWSTR, DWORD, int, int, int, int, HWND, HMENU, HINSTANCE, LPVOID);
+
+static BOOL WINAPI hook_Fg(HWND w) { return TRUE; }
+static HWND WINAPI hook_Focus(HWND w) { return GetFocus(); }
+static BOOL WINAPI hook_Show(HWND w, int c)
+{
+    if (c == SW_SHOWNORMAL || c == SW_SHOW || c == SW_SHOWMAXIMIZED || c == SW_RESTORE || c == SW_SHOWDEFAULT)
+        c = SW_SHOWNOACTIVATE;
+    return real_Show(w, c);
+}
+static BOOL WINAPI hook_Pos(HWND w, HWND a, int x, int y, int cx, int cy, UINT f) { return real_Pos(w, a, x, y, cx, cy, f | SWP_NOACTIVATE); }
+static HDWP WINAPI hook_Defer(HDWP d, HWND w, HWND a, int x, int y, int cx, int cy, UINT f) { return real_Defer(d, w, a, x, y, cx, cy, f | SWP_NOACTIVATE); }
+static HWND WINAPI hook_CreateA(DWORD ex, LPCSTR c, LPCSTR n, DWORD st, int x, int y, int w, int h, HWND p, HMENU m, HINSTANCE i, LPVOID l)
+{
+    /* WS_VISIBLE at creation still activated the window (10-29): create hidden, then show without activating */
+    HWND r;
+    if (p) return real_CreateA(ex, c, n, st, x, y, w, h, p, m, i, l);
+    r = real_CreateA(ex | WS_EX_NOACTIVATE, c, n, st & ~WS_VISIBLE, x, y, w, h, p, m, i, l);
+    if (r && (st & WS_VISIBLE)) real_Show(r, SW_SHOWNOACTIVATE);
+    return r;
+}
+static HWND WINAPI hook_CreateW(DWORD ex, LPCWSTR c, LPCWSTR n, DWORD st, int x, int y, int w, int h, HWND p, HMENU m, HINSTANCE i, LPVOID l)
+{
+    HWND r;
+    if (p) return real_CreateW(ex, c, n, st, x, y, w, h, p, m, i, l);
+    r = real_CreateW(ex | WS_EX_NOACTIVATE, c, n, st & ~WS_VISIBLE, x, y, w, h, p, m, i, l);
+    if (r && (st & WS_VISIBLE)) real_Show(r, SW_SHOWNOACTIVATE);
+    return r;
+}
+
+static int bot_marker(void)
+{
+    char path[MAX_PATH], buf[64] = {0};
+    FILE *f;
+    if (!GetEnvironmentVariableA("USERPROFILE", path, MAX_PATH)) return 0;
+    strcat(path, "\\Documents\\Tools\\focusguard\\botlaunch\\doorkickers.exe");
+    if (!(f = fopen(path, "r"))) return 0;
+    fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    return atof(buf) > (double)time(NULL);
+}
+
 static void patch_iat(void)
 {
     IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)g_base;
@@ -377,6 +429,11 @@ static void patch_iat(void)
         nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
     FARPROC peek = GetProcAddress(GetModuleHandleA("user32"), "PeekMessageW");
     FARPROC get = GetProcAddress(GetModuleHandleA("user32"), "GetMessageW");
+    HMODULE u = GetModuleHandleA("user32");
+    FARPROC fg = GetProcAddress(u, "SetForegroundWindow"), show = GetProcAddress(u, "ShowWindow"),
+            pos = GetProcAddress(u, "SetWindowPos"), defer = GetProcAddress(u, "DeferWindowPos"),
+            ca = GetProcAddress(u, "CreateWindowExA"), focus = GetProcAddress(u, "SetFocus"), cw = GetProcAddress(u, "CreateWindowExW");
+    real_Show = (void *)show;
     for (; imp->Name; imp++) {
         IMAGE_THUNK_DATA *t = (IMAGE_THUNK_DATA *)(g_base + imp->FirstThunk);
         for (; t->u1.Function; t++) {
@@ -384,6 +441,13 @@ static void patch_iat(void)
             DWORD old;
             if ((FARPROC)t->u1.Function == peek) { real_Peek = (void *)peek; p = hook_Peek; }
             else if ((FARPROC)t->u1.Function == get) { real_Get = (void *)get; p = hook_Get; }
+            else if (g_bot && (FARPROC)t->u1.Function == fg) p = hook_Fg;
+            else if (g_bot && (FARPROC)t->u1.Function == focus) p = hook_Focus;
+            else if (g_bot && (FARPROC)t->u1.Function == show) { real_Show = (void *)show; p = hook_Show; }
+            else if (g_bot && (FARPROC)t->u1.Function == pos) { real_Pos = (void *)pos; p = hook_Pos; }
+            else if (g_bot && (FARPROC)t->u1.Function == defer) { real_Defer = (void *)defer; p = hook_Defer; }
+            else if (g_bot && (FARPROC)t->u1.Function == ca) { real_CreateA = (void *)ca; p = hook_CreateA; }
+            else if (g_bot && (FARPROC)t->u1.Function == cw) { real_CreateW = (void *)cw; p = hook_CreateW; }
             if (!p) continue;
             VirtualProtect(&t->u1.Function, 4, PAGE_READWRITE, &old);
             t->u1.Function = (DWORD)(DWORD_PTR)p;
@@ -420,6 +484,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD why, LPVOID r)
         sprintf(g_tmp, "%s\\out.tmp", dir);
         sprintf(g_crash, "%s\\crash.txt", dir);
         AddVectoredExceptionHandler(1, veh);
+        g_bot = bot_marker();
         patch_iat();
     }
     return TRUE;

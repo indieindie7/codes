@@ -5,7 +5,7 @@
 """
 import ctypes as C, ctypes.wintypes as W, sys, os
 
-EXE = r"F:\SteamLibrary\steamapps\common\DoorKickers\DoorKickers.exe"
+EXE = os.path.join(os.environ.get("DK1_GAME", r"C:\Games\DoorKickers"), "DoorKickers.exe")
 BASE = 0x10000000
 d = C.WinDLL("dbghelp")
 h = W.HANDLE(0x1234)
