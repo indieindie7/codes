@@ -320,3 +320,10 @@ Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pai
 - DSO ver 47 decode (gameScripts/sideQuest.cs.dso, MoveAimOrder2 caller): args are (a, unit, "0", "MoveAimOrder2", ...). So planAddOrder(a, unitId, time, "Type", params...); argc 5..16 incl name = 4..15 user args. Probe: ("DuckOrder",2,3,4) gave no error (argv2=unit id 2); (2,"DuckOrder",..) gave "no player with id 0" (argv2 is read as the id).
 - planAddOrder("WaitOrder",1,3,4) + spSubmitTurn crashed the game in Charon twice: wrong layout, not the real call.
 - Untested: planAddOrder(0, 1, 0, "DuckOrder") + submit. Game launches kept dying ("not polling") at the end of this session, so the ambush brain is still not built.
+
+## DK1 gym: zone HUNT sweep v4 (2026-10-30)
+- Brain: swatminds with no-cheat zone HUNT (a755dc4). 45 cells = maps 0/0..0/80 x 5 reps, 90 s cap. Data `tools/dk1/results/sweep_v4_hunt.ok.jsonl` (raw run incl. failed cells: `sweep_v4_hunt.jsonl`).
+- Result: 8/45 wins (18 %; 0/0 x5, 0/50 x3), mean win time 53.0 s, suspects alive 7.93/15.22, troopers alive 2.16. v3 omniscient-rush swatminds: 4/19 (21 %), 29.2 s, 2.32 troopers alive.
+- Verdict: dropping the omniscient push costs ~no win rate, but wins take ~2x longer (search time). Keep HUNT (no cheating).
+- Gotcha: first resume of the sweep had all 29 cells time out: Steam was running but not logged in (HKCU\Software\Valve\Steam\ActiveProcess ActiveUser=0) -> DK1 log "SteamAPI_Init() failed", exe exits rc 1. Fix: steam.exe -shutdown, restart -silent. Check ActiveUser != 0 before a sweep.
+- HUNT state is not logged per run (no counter in the jsonl); add a hunt_ticks field before the next tuning sweep.
