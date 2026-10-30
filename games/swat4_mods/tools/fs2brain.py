@@ -188,8 +188,17 @@ def duckhunt(us):
         run(" ".join(DUCK.format(i=u["id"]) for u in mine))
 
 
+def ambush(us):
+    """hunt, then crouch + wait. WaitOrder args from miniMissions.cs.dso: (a, unit, "0", "WaitOrder", "500", "1500", 0, 0)."""
+    hunt(us)
+    mine, _ = _split(us)
+    T = os.environ.get("FS2_AMB", 'planAddOrder(0, {i}, "0", "DuckOrder"); planAddOrder(0, {i}, "0", "WaitOrder", "500", "1500", 0, 0);')
+    if mine:
+        run(" ".join(T.format(i=u["id"]) for u in mine))
+
+
 SPREAD = 450.0
-BRAINS = dict(mass=mass, idle=idle, rush=rush, pairs=pairs, focus=focus, bound=bound, hunt=hunt, duckhunt=duckhunt)
+BRAINS = dict(mass=mass, idle=idle, rush=rush, pairs=pairs, focus=focus, bound=bound, hunt=hunt, duckhunt=duckhunt, ambush=ambush)
 
 if __name__ == "__main__":
     for u in units():
