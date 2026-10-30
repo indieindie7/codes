@@ -261,3 +261,10 @@ Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pai
 - swatminds tune (squadbrain.py): followers re-path only if train slot moves >140 px (TRAIN_REPATH); ENGAGE up to half the team (LOS shooters, farthest) hold, rest push; rush nearest suspect after PUSH_AFTER=8 quiet CLEAR ticks; PAINT_R 320, GOAL_REACHED 70. Orders on 0/0: 34 -> 17.
 - 0/30 "timeouts" = bridge stalls of 10-60 s after mission end/map load (+ F: stall), not the map; timeouts 60-90 s + one retry per cell in sweep.sh.
 - Sweep v3 stopped by user after 57 rows (`results/sweep_v3.jsonl`, maps 0/0..0/80, ~2 reps): swatminds 4/19 wins (mean win 26.8 s), rush 6/19 (19.3 s, 1 err), pairs 5/19 (17.4 s). swatminds still slower and not better. Next: finish the 5-rep sweep (`bash results/sweep.sh results/sweep_v3.jsonl $(cat results/sweep_v3.cells)`), then look at why swatminds loses the fast-fail maps.
+
+## DK1 gym: no-cheat zone HUNT (2026-10-29)
+- From Josh Baker's stealth-AI talk (video-notes tree/382). swatminds now has CLEAR / HUNT / ENGAGE. It only knows suspects in contact (LOS within CONTACT_R, or within CLOSE_R). The omniscient PUSH_AFTER rush is removed.
+- Zones: the open 32 px cells are split into ZONE_CELLS=4 blocks, and each block into its 4-connected parts. Zones are built in bind().
+- HUNT: run a BFS from the anchor zone and give one trooper per zone (two in big zones, BIG_ZONE=2.0). Checkpoints are the centroid plus extra points in big zones plus POIS. A zone counts as searched when it is walked or 80 % painted. Stop after HUNT_HOPS=3, then go back to CLEAR.
+- Relay in 2 tiers: the anchor goes first to the zone of the trooper who made contact, then RELAY_TICKS=2 later to the suspect's exact zone if that trooper is still alive.
+- Offline self-test (`py -3.13 -I squadbrain.py`) passes. Not run in the game yet. Next: sweep v3 cells against the 9d1fe75 rows.
