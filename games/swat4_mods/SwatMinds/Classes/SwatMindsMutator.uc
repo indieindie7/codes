@@ -26,6 +26,10 @@ struct Mind
     var SwatCharacterGoal AlertGoal; // investigate (low iq) or barricade (high iq) toward LKP
     var byte  Role;             // step 3: 0 none yet, 1 hold, 2 flank (sticky once given)
     var vector GoalAt;          // LKP the current alert goal was made for
+    var byte  Stance;           // 10-29 Cantata: 0 chase, 1 aggressive, 2 hold, 3 passive
+    var bool  bWait;            // 10-29 pincer: flanker holds until a holder is engaged
+    var float WaitSince;
+    var float NextCurious;
 };
 
 var config bool  bEnabled;         // false = stock FRand choice
@@ -207,6 +211,14 @@ var config float AlertGap;         // seconds between one suspect's alerts
 var config bool  bRoles;           // 10-26 step 3: told high-iq suspects split into hold (barricade) and flank
 var config float FlankShare;       // chance a told high-iq suspect becomes a flanker
 var config float FlankMin, FlankMax; // flank point distance band from the LKP
+var config bool  bPincer;          // 10-29: flankers hold (barricade) until a holder is engaged, then go
+var config float PincerMax;        // longest a flanker waits
+var config bool  bStances;         // 10-29 Cantata: per-suspect stance chase/aggressive/hold/passive
+var config float AggrShare, HoldShare, PassShare;
+var config bool  bAlarm;           // 10-29 Cantata: a hit suspect alarms allies in range to a random point near the nearest officer
+var config float AlarmRange;
+var config float Curiosity;        // 10-29 Cantata: per-second chance a suspect senses an unseen officer within CuriosityRange
+var config float CuriosityRange;
 var config bool  bPropagate;       // 10-26: sound walks through open doors; closed doors and walls cut it (Alert voice, SpreadFear heard)
 var config float WallLoss, DoorLoss; // loudness kept through a wall / a shut door (heard range x this)
 var array<Door> HearDoors;
@@ -281,8 +293,20 @@ function int AddMind(Pawn P)
         Minds[i].Comms = 0;
     else
         Minds[i].Comms = 1;
+    if (bStances)
+    {
+        Roll = FRand();
+        if (Roll < AggrShare)
+            Minds[i].Stance = 1;
+        else if (Roll < AggrShare + HoldShare)
+            Minds[i].Stance = 2;
+        else if (Roll < AggrShare + HoldShare + PassShare)
+            Minds[i].Stance = 3;
+        if (Minds[i].Stance == 1)
+            Minds[i].Comms = 2;
+    }
     SwapAbilities(P);
-    Log("SwatMinds add "$P.Name$" nerve="$Minds[i].Nerve$" aggressive="$ISwatAI(P).IsAggressive()$" iq="$Minds[i].Iq$" comms="$Minds[i].Comms, 'SwatMinds');
+    Log("SwatMinds add "$P.Name$" nerve="$Minds[i].Nerve$" aggressive="$ISwatAI(P).IsAggressive()$" iq="$Minds[i].Iq$" comms="$Minds[i].Comms$" stance="$Minds[i].Stance, 'SwatMinds');
     return i;
 }
 
@@ -467,6 +491,8 @@ function Timer()
                 CA.ChangeMorale(-FearAdd * MoraleFromFear, "SwatMinds fear");
             Log("SwatMinds hit "$E.Name$" dmg="$Dmg$" fear="$Minds[i].Fear$" anger="$Minds[i].Anger, 'SwatMinds');
             SpreadFear(E, 0.08, "ally hit");
+            if (bAlarm)
+                Alarm(i);
         }
 
         // stress: officers in sight; close ones also scare (shouting, cornered)
@@ -503,6 +529,14 @@ function Timer()
             if (Level.TimeSeconds >= Minds[i].NextAlert)
                 Alert(i);
         }
+        if (Curiosity > 0.0 && Seen == 0 && Level.TimeSeconds >= Minds[i].NextCurious)
+        {
+            Minds[i].NextCurious = Level.TimeSeconds + 1.0;
+            if (FRand() < Curiosity)
+                Curious(i);
+        }
+        if (Minds[i].bWait && (PincerReady(i) || Level.TimeSeconds - Minds[i].WaitSince > PincerMax))
+            Pincer(i);
         if (Close > 0)
             AddFear(i, 0.03 * Close * (1.0 - Minds[i].Nerve));
         // high stress wears down low nerve
@@ -780,10 +814,14 @@ function React(int j, string How)
     A = Minds[j].P;
     if (int(ISwatEnemy(A).GetCurrentState()) >= 2)
         return;
+    if (bStances && Minds[j].Stance == 3)
+        return;
     // same news again: keep the goal running (re-posting every alert made them stutter)
     if (Minds[j].AlertGoal != None && VSize(Minds[j].LKP - Minds[j].GoalAt) < 300.0)
         return;
-    if (bRoles && Minds[j].Iq >= 0.5 && Minds[j].Role == 0)
+    if (bStances && Minds[j].Stance == 2)
+        Minds[j].Role = 1;
+    else if (bRoles && Minds[j].Iq >= 0.5 && Minds[j].Role == 0)
     {
         Minds[j].Role = 1;
         if (FRand() < FlankShare)
@@ -792,18 +830,126 @@ function React(int j, string How)
     if (Minds[j].AlertGoal != None)
         ReleaseAlert(j);
     Minds[j].GoalAt = Minds[j].LKP;
-    if (Minds[j].Role == 2 && FlankPoint(A, Minds[j].LKP, Pt))
+    Minds[j].bWait = false;
+    if (Minds[j].Role == 2 && bPincer && !PincerReady(j) && Minds[j].Stance != 1)
+    {
+        Minds[j].AlertGoal = new class'BarricadeGoal'(AI_Resource(A.characterAI), Minds[j].LKP, false, true);
+        Minds[j].bWait = true;
+        Minds[j].WaitSince = Level.TimeSeconds;
+        How = How$" wait";
+    }
+    else if (Minds[j].Role == 2 && FlankPoint(A, Minds[j].LKP, Pt))
     {
         Minds[j].AlertGoal = new class'InvestigateGoal'(AI_Resource(A.characterAI), Pt, false);
         How = How$" flank";
     }
-    else if (Minds[j].Iq >= 0.5)
+    else if (bStances && Minds[j].Stance == 1)
+        Minds[j].AlertGoal = new class'InvestigateGoal'(AI_Resource(A.characterAI), Minds[j].LKP, false);
+    else if (Minds[j].Iq >= 0.5 || (bStances && Minds[j].Stance == 2))
         Minds[j].AlertGoal = new class'BarricadeGoal'(AI_Resource(A.characterAI), Minds[j].LKP, false, true);
     else
         Minds[j].AlertGoal = new class'InvestigateGoal'(AI_Resource(A.characterAI), Minds[j].LKP, false);
     Minds[j].AlertGoal.AddRef();
     Minds[j].AlertGoal.postGoal(None);
     Log("SwatMinds told "$A.Name$" by="$How$" iq="$Minds[j].Iq$" goal="$Minds[j].AlertGoal.Class.Name, 'SwatMinds');
+}
+
+// Pincer: a holder (or any suspect near the LKP) is engaged = officers are busy at the front.
+function bool PincerReady(int j)
+{
+    local int k;
+    local Pawn B;
+    for (k = 0; k < Minds.Length; k++)
+    {
+        B = Minds[k].P;
+        if (k == j || B == None || Minds[k].bDown || !B.IsConscious() || B.IsCompliant())
+            continue;
+        if (int(ISwatEnemy(B).GetCurrentState()) >= 2 && VSize(B.Location - Minds[j].LKP) < 1500.0)
+            return true;
+    }
+    return false;
+}
+
+function Pincer(int j)
+{
+    local Pawn A;
+    local vector Pt;
+    A = Minds[j].P;
+    Minds[j].bWait = false;
+    if (Minds[j].AlertGoal != None)
+        ReleaseAlert(j);
+    if (!FlankPoint(A, Minds[j].LKP, Pt))
+        return;
+    Minds[j].AlertGoal = new class'InvestigateGoal'(AI_Resource(A.characterAI), Pt, false);
+    Minds[j].AlertGoal.AddRef();
+    Minds[j].AlertGoal.postGoal(None);
+    Log("SwatMinds pincer go "$A.Name$" after="$(Level.TimeSeconds - Minds[j].WaitSince), 'SwatMinds');
+}
+
+// Cantata alarm: hit suspect calls every non-passive ally in range to a point near the nearest officer.
+function Alarm(int i)
+{
+    local Pawn S, O, Best, A;
+    local int j, n;
+    local float D, BD;
+    local vector Pt;
+    S = Minds[i].P;
+    BD = 1500.0;
+    foreach S.RadiusActors(class'Pawn', O, 1500.0)
+        if (O != S && IsOfficerSide(O) && O.IsConscious())
+        {
+            D = VSize(O.Location - S.Location);
+            if (D < BD)
+            {
+                BD = D;
+                Best = O;
+            }
+        }
+    if (Best == None)
+        return;
+    Pt = Best.Location + VRand() * 200.0;
+    Pt.Z = Best.Location.Z;
+    for (j = 0; j < Minds.Length; j++)
+    {
+        A = Minds[j].P;
+        if (j == i || A == None || Minds[j].bDown || !A.IsConscious() || A.IsCompliant() || ISwatAI(A).IsArrested())
+            continue;
+        if (VSize(A.Location - S.Location) > AlarmRange || Minds[j].LKPAt > Level.TimeSeconds - 3.0)
+            continue;
+        Minds[j].LKP = Pt;
+        Minds[j].LKPAt = Level.TimeSeconds;
+        if (bTwoMode && !Minds[j].bCrisis)
+            EnterCrisis(j, "alarm");
+        React(j, "alarm");
+        n++;
+    }
+    Log("SwatMinds alarm "$S.Name$" told="$n, 'SwatMinds');
+}
+
+// Cantata curiosity: sometimes notice an officer without seeing them (sound/feel) within CuriosityRange.
+function Curious(int i)
+{
+    local Pawn S, O, Best;
+    local float D, BD;
+    S = Minds[i].P;
+    BD = CuriosityRange;
+    foreach S.RadiusActors(class'Pawn', O, CuriosityRange)
+        if (O != S && IsOfficerSide(O) && O.IsConscious())
+        {
+            D = VSize(O.Location - S.Location);
+            if (D < BD)
+            {
+                BD = D;
+                Best = O;
+            }
+        }
+    if (Best == None)
+        return;
+    Minds[i].LKP = Best.Location;
+    Minds[i].LKPAt = Level.TimeSeconds;
+    if (bTwoMode && !Minds[i].bCrisis)
+        EnterCrisis(i, "curious");
+    React(i, "curious");
 }
 
 // Flank point: a nav FlankMin..FlankMax from the LKP, hidden from it, on the side most
@@ -832,6 +978,7 @@ function bool FlankPoint(Pawn A, vector LKP, out vector Pt)
 
 function ReleaseAlert(int i)
 {
+    Minds[i].bWait = false;
     Minds[i].AlertGoal.unPostGoal(None);
     Minds[i].AlertGoal.Release();
     Minds[i].AlertGoal = None;
@@ -2665,6 +2812,16 @@ defaultproperties
     FlankShare=0.4
     FlankMin=400.0
     FlankMax=1100.0
+    bPincer=false
+    PincerMax=15.0
+    bStances=false
+    AggrShare=0.2
+    HoldShare=0.25
+    PassShare=0.1
+    bAlarm=false
+    AlarmRange=1500.0
+    Curiosity=0.0
+    CuriosityRange=800.0
     bPropagate=false
     WallLoss=0.35
     DoorLoss=0.6

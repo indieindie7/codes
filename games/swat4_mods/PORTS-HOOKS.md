@@ -301,3 +301,18 @@ Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pai
 - DLL planAddOrder compares a STRING order type: TAWOrder SuicideOrder DuckOrder StandOrder EOSOrder COSOrder CancelMoveAimOrder SetMaxTargetDistanceOrder EOAOrder MoveAimOrder2 CancelSideStatusOrder CanGetBoxesOrder SetSpeedOrder JoinGoActiveGroupOrder ReactivateOrder MakeUntargetableOrder WaitOrder (EOS/COS = engage/continue on sight). Callers: gameScripts/sideQuest.cs.dso (MoveAimOrder2 + getSplitAimAngle/getSplitDucks), map/scriptsFS2/conflux/confluxMission.cs.dso, map/scriptsFS2InGame/minis/miniMissions.cs.dso (WaitOrder). argc 5..16 incl. name.
 - Untested next probe: planAddOrder(0, id, "DuckOrder", 0); game crashed in Charon before it ran (random crash again). Arg layout after the type still unknown; decode DSO bytecode (ver 47) of sideQuest sendUnitToTarget or Ghidra the registration.
 - Ambush brain NOT built: no safe order call yet.
+
+## SwatMinds: timed pincer + Cantata stances/alarm/curiosity (2026-10-29)
+- Flags (all default false) in SwatMindsMutator.uc: bPincer (flankers barricade at LKP until a suspect near the LKP is engaged or PincerMax 15 s, then flank; needs bRoles), bStances (per-suspect chase/aggressive 0.2/hold 0.25/passive 0.1: aggressive = radio + rush LKP, hold = always barricade, passive ignores alerts), bAlarm (hit suspect sends allies within 1500 uu to a random point near nearest officer), Curiosity (per-second chance to sense an unseen officer within 800 uu).
+- Gym: SP-JewelryHeist, 18 seeded games x 2 officer modes (36/arm), 300 s, base = bTwoMode+bAlerts, out F:/gogGames/SWAT 4/SwatMinds/gym_1029/<arm>.
+
+| arm | susDown | susFree | offDown (nearest/scored, mean) |
+|---|---|---|---|
+| C base | 3.34 | 9.39 | 1.17 / 1.33 = 1.25 |
+| P pincer (+bRoles) | 2.92 | 9.94 | 1.28 / 1.06 = 1.17 |
+| S stances | 3.58 | 9.20 | 0.83 / 1.00 = 0.92 |
+| M alarm | 3.17 | 9.78 | 1.22 / 1.28 = 1.25 |
+| U curiosity 0.15 | 3.06 | 9.98 | 1.00 / 0.78 = 0.89 |
+
+- Noise: offDown SE ~0.17 per arm. Verdict: no arm beats base. Pincer -0.08 and alarm 0.0 = noise; stances (-0.33) and curiosity (-0.36) lower officer losses, so worse for the hard-suspect goal. Keep all four off. Pincer did not fix flanker deaths (susDown 2.92 vs 3.34 base, fewer deaths but no officer gain). Best set stays bTwoMode + bAlerts (+ bPropagate for realism).
+- Next: stances need more than a roll (guards HOLD only by map marker, not random); curiosity probably needs a lower range or noise-scaling.
