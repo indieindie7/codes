@@ -5,7 +5,7 @@
 units() reads every unit id (1..15) in one bridge call: team (getTeamOfPlayerWithId,
 1/2, 0 = no unit), alive (getUnitIdIsAlive), pos (getPosOfPlayerWithId). Ids per
 team vary by map, so never assume 1-4 = team 1. Moves go in with
-planAddWaypoint(0, id, x, y, 0) (verified 10-24: 2nd arg = unit id, 0 for the rest).
+planNavigateTo(0, id, x, y) (10-30; planAddWaypoint is a straight line and gets stuck on walls).
 Brains: idle (no plans, the old soak baseline), rush (each unit to the nearest
 enemy), pairs (units pair up; the leader goes for the nearest enemy, the buddy
 follows a step behind so both arrive together).
@@ -28,13 +28,16 @@ def units():
     return out
 
 
+# order call template. 10-30: planAddWaypoint is a straight line, units stop at the first wall (looked like "orders only act on turn 0");
+# planNavigateTo(0, id, x, y) paths around walls. FS2_WP overrides for probes
+WP = os.environ.get("FS2_WP", "planNavigateTo(0, {i}, {x}, {y});")
 LAST = []  # orders sent this turn: (id, x, y)
 
 
 def _go(moves):
     LAST[:] = moves
     if moves:
-        run(" ".join(f"planAddWaypoint(0, {i}, {x:.1f}, {y:.1f}, 0);" for i, x, y in moves))
+        run(" ".join(WP.format(i=i, x=f"{x:.1f}", y=f"{y:.1f}") for i, x, y in moves))
 
 
 def _near(u, others):

@@ -276,3 +276,13 @@ Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pai
   rush: kills 0, deaths 2 (m1 unit-read glitch, 0 units); hunt: kills 0,0,1,1 deaths 2; bound: kills 0,0,1,0 deaths 2; focus: kills (0),0,0,1 deaths 2.
 - VERDICT: no brain beats stock Charon; deaths = 2 every match whatever the brain, kills 0-1 => our orders probably NOT in control (SWAT4 session hint). Not proven.
 - NEXT (user: stop for today): run `fs2soak.py 2 diag.jsonl --brain rush --map test1`, compare `sent` vs `pos0->pos1` per turn. If units don't move toward sent waypoints: planAddWaypoint args (1st/5th) wrong, or plans for team 1 are dropped/cleared at submit (Charon "standard AI" may overwrite; try `$gcmAIDoesBothSides` off + planAddOrder). Only then tune brains.
+
+## FS2: order delivery fix, planNavigateTo (2026-10-30)
+- Cause of "0 wins / 2 deaths for every brain": `planAddWaypoint` is a straight line; units stop at the first wall (logged sent vs pos0/pos1 per turn in fs2soak.jsonl). Variants cutoff-first, getSimTime() as 1st or 5th arg did not help.
+- Fix: `planNavigateTo(0, id, x, y)` (4 args, paths around walls); units now reach goals within a turn. Default `WP` in tools/fs2brain.py (FS2_WP env overrides). `planCutOffPlanHere(0,id)` takes 2 args.
+- Re-soak, test1, 4 matches each, vs Charon (team 2): 
+  - rush: 0 wins, 4 losses, kills 0/0/2/0, deaths 4 each (suicide, 3-4 turns)
+  - hunt: 0 wins, 1 loss, kills 1/1/2/2, deaths 3/3/3/4 (5-turn cap)
+  - bound: 0 wins, 1 loss, kills 1/1/3/2, deaths 4/3/3/3
+  - focus: 0 wins, 3 losses, kills 0 each, deaths 3-4
+- Verdict: brains are in control now. Hunt/bound kill ~1.5-1.75 per match vs ~0.5 before, but still 0 wins: pairs/bounding survive longer (5 turns) than rush/focus. Next: cover/LOS-aware goals (stock AI wins by cover), tune STEP, more turns.
