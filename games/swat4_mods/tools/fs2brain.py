@@ -179,8 +179,17 @@ def mass(us):
     _go([(u["id"], *_toward(u, (t["x"], t["y"]), STEP)) for u in mine])
 
 
+def duckhunt(us):
+    """hunt, then every unit ends its move crouched (planAddOrder(a, unit, time, "Type"), layout from sideQuest.cs.dso)."""
+    hunt(us)
+    mine, _ = _split(us)
+    DUCK = os.environ.get("FS2_DUCK", 'planAddOrder(0, {i}, 0, "DuckOrder");')
+    if mine:
+        run(" ".join(DUCK.format(i=u["id"]) for u in mine))
+
+
 SPREAD = 450.0
-BRAINS = dict(mass=mass, idle=idle, rush=rush, pairs=pairs, focus=focus, bound=bound, hunt=hunt)
+BRAINS = dict(mass=mass, idle=idle, rush=rush, pairs=pairs, focus=focus, bound=bound, hunt=hunt, duckhunt=duckhunt)
 
 if __name__ == "__main__":
     for u in units():

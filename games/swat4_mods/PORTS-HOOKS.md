@@ -327,3 +327,6 @@ Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pai
 - Verdict: dropping the omniscient push costs ~no win rate, but wins take ~2x longer (search time). Keep HUNT (no cheating).
 - Gotcha: first resume of the sweep had all 29 cells time out: Steam was running but not logged in (HKCU\Software\Valve\Steam\ActiveProcess ActiveUser=0) -> DK1 log "SteamAPI_Init() failed", exe exits rc 1. Fix: steam.exe -shutdown, restart -silent. Check ActiveUser != 0 before a sweep.
 - HUNT state is not logged per run (no counter in the jsonl); add a hunt_ticks field before the next tuning sweep.
+
+## FS2: duckhunt soak (10-30)
+planAddOrder(0, id, 0, "DuckOrder") after planNavigateTo: submit safe, no crash (4 matches test1). Brain `duckhunt` = hunt + duck: kills 0/2/1/1, deaths 4/4/4/3, wins 0 (1 turn-cap). No gain over bound STEP 350 (kills 1.5-2, deaths 3-4). Crouch alone does not win; aim (MoveAimOrder2) + WaitOrder params still unknown (WaitOrder with guessed args crashes Charon).
