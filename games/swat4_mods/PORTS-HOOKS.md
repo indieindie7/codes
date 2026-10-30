@@ -268,3 +268,11 @@ Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pai
 - HUNT: run a BFS from the anchor zone and give one trooper per zone (two in big zones, BIG_ZONE=2.0). Checkpoints are the centroid plus extra points in big zones plus POIS. A zone counts as searched when it is walked or 80 % painted. Stop after HUNT_HOPS=3, then go back to CLEAR.
 - Relay in 2 tiers: the anchor goes first to the zone of the trooper who made contact, then RELAY_TICKS=2 later to the suspect's exact zone if that trooper is still alive.
 - Offline self-test (`py -3.13 -I squadbrain.py`) passes. Not run in the game yet. Next: sweep v3 cells against the 9d1fe75 rows.
+
+## FS2: SwatMinds brains + soak numbers, STOPPED (2026-10-29)
+- Goal 1 already solved 10-24 (startup-sequence race, not DXVK). Today native D3D9 (`d3d9.dll.dxvk` renamed), 4070 Ti (3060 had 1 GB free), Steam launch, window behind. Multi-turn: 5 turns/match, no crash, 19-30 s/turn.
+- New brains in `tools/fs2brain.py`: `focus` (all to one foe), `bound` (pair leapfrog, STEP 350), `hunt` (SIGHT 900 fog model, last contact, 3x3 sweep). `reset()` per match. fs2soak logs `sent`/`pos0`/`pos1` per turn (untested: diag run killed).
+- Soak, map test1, 4 matches each (turns=5), win = 0/all:
+  rush: kills 0, deaths 2 (m1 unit-read glitch, 0 units); hunt: kills 0,0,1,1 deaths 2; bound: kills 0,0,1,0 deaths 2; focus: kills (0),0,0,1 deaths 2.
+- VERDICT: no brain beats stock Charon; deaths = 2 every match whatever the brain, kills 0-1 => our orders probably NOT in control (SWAT4 session hint). Not proven.
+- NEXT (user: stop for today): run `fs2soak.py 2 diag.jsonl --brain rush --map test1`, compare `sent` vs `pos0->pos1` per turn. If units don't move toward sent waypoints: planAddWaypoint args (1st/5th) wrong, or plans for team 1 are dropped/cleared at submit (Charon "standard AI" may overwrite; try `$gcmAIDoesBothSides` off + planAddOrder). Only then tune brains.

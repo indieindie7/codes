@@ -163,11 +163,15 @@ def match(mi, out, brain="idle", mapname=""):
             return print("match load timeout")
         time.sleep(2)
     time.sleep(5)  # post-load schedules (randSPMatchPostLoad)
+    fs2brain.reset()
     for _ in range(12):
         before, a0 = turn(), alive()
         pos = os.path.getsize(LOG)
         t1 = time.time()
-        fs2brain.BRAINS[brain](fs2brain.units())
+        us0 = fs2brain.units()
+        fs2brain.LAST.clear()
+        fs2brain.BRAINS[brain](us0)
+        sent = [(i, round(x), round(y)) for i, x, y in fs2brain.LAST]
         run("Canvas.popDialog(MessageLoading); $gThreadCharon=0; spSubmitTurn();")  # $gcmAIDoesBothSides=1 stalls the 2nd submit and gives the player side no plans anyway
         while turn() <= before and time.time() - t1 < (300 if before == 0 else 30):  # -1 = no reply while busy
             time.sleep(2)
@@ -191,7 +195,7 @@ def match(mi, out, brain="idle", mapname=""):
         us = fs2brain.units()
         n1 = sum(u["alive"] for u in us if u["team"] == 1); n2 = sum(u["alive"] for u in us if u["team"] == 2)
         rec = dict(match=mi, brain=brain, map=mapname or "random", t1_alive=n1, t2_alive=n2, turn=before, next=now, secs=round(time.time() - t1, 1),
-                   alive_before=a0, alive_after=a1, plan_edges=plans,
+                   alive_before=a0, sent=sent, pos0={u['id']: (round(u['x']), round(u['y'])) for u in us0 if u['alive']}, pos1={u['id']: (round(u['x']), round(u['y'])) for u in us if u['alive']}, alive_after=a1, plan_edges=plans,
                    ended=("onEndMatch" in txt or "GameOver" in txt or "activeGameNotifyGameEnded" in txt))
         out.write(json.dumps(rec) + "\n"); out.flush()
         print(f"m{mi} t{before}->{now} {rec['secs']}s alive {''.join(map(str, a1[:7]))} plans {plans}")

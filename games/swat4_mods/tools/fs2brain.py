@@ -28,7 +28,11 @@ def units():
     return out
 
 
+LAST = []  # orders sent this turn: (id, x, y)
+
+
 def _go(moves):
+    LAST[:] = moves
     if moves:
         run(" ".join(f"planAddWaypoint(0, {i}, {x:.1f}, {y:.1f}, 0);" for i, x, y in moves))
 
@@ -64,7 +68,102 @@ def pairs(us):
     _go(moves)
 
 
-BRAINS = dict(idle=idle, rush=rush, pairs=pairs)
+# ---- SwatMinds ideas (10-29): focus fire, bounding pairs, zone hunt ----
+STEP = 350.0   # one bound per turn
+SIGHT = 900.0  # no-cheat sight radius: foes farther than this from every friend are "unknown"
+_mem = dict(turn=0, last=None, visited=set(), bbox=None)
+
+
+def reset():
+    _mem.update(turn=0, last=None, visited=set(), bbox=None)
+
+
+def _d(a, b):
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def _toward(u, g, step):
+    d = _d((u["x"], u["y"]), g) or 1
+    k = min(1.0, step / d)
+    return u["x"] + (g[0] - u["x"]) * k, u["y"] + (g[1] - u["y"]) * k
+
+
+def _split(us):
+    mine = sorted((u for u in us if u["team"] == TEAM and u["alive"]), key=lambda u: u["id"])
+    foes = [u for u in us if u["team"] != TEAM and u["alive"]]
+    return mine, foes
+
+
+def focus(us):
+    """All units to the one foe nearest the squad centroid: shots land together."""
+    mine, foes = _split(us)
+    if not (mine and foes):
+        return
+    c = (sum(u["x"] for u in mine) / len(mine), sum(u["y"] for u in mine) / len(mine))
+    t = min(foes, key=lambda e: _d(c, (e["x"], e["y"])))
+    _go([(u["id"], t["x"], t["y"]) for u in mine])
+
+
+def bound(us, tgt=None):
+    """Pairs leapfrog: per turn one of each pair advances a bound, the other holds
+    (overwatch). Roles flip every turn. Lone unit just advances."""
+    mine, foes = _split(us)
+    tgt = tgt or [(e["x"], e["y"]) for e in foes]
+    if not (mine and tgt):
+        return
+    moves = []
+    for k in range(0, len(mine), 2):
+        a, b = mine[k], (mine[k + 1] if k + 1 < len(mine) else None)
+        mover, holder = (a, b) if (_mem["turn"] + k // 2) % 2 == 0 else (b, a)
+        if mover is None:
+            mover, holder = holder, None
+        g = min(tgt, key=lambda p: _d((mover["x"], mover["y"]), p))
+        moves.append((mover["id"], *_toward(mover, g, STEP)))
+        if holder:  # hold = re-plan own position (no drift)
+            moves.append((holder["id"], holder["x"], holder["y"]))
+    _go(moves)
+    _mem["turn"] += 1
+
+
+def _cell(x, y):
+    x0, y0, x1, y1 = _mem["bbox"]
+    return min(2, max(0, int(3 * (y - y0) / ((y1 - y0) or 1)))) * 3 + min(2, max(0, int(3 * (x - x0) / ((x1 - x0) or 1))))
+
+
+def _cellctr(c):
+    x0, y0, x1, y1 = _mem["bbox"]
+    return x0 + (x1 - x0) * (c % 3 + .5) / 3, y0 + (y1 - y0) * (c // 3 + .5) / 3
+
+
+def hunt(us):
+    """No-cheat zone hunt. Foes count only within SIGHT of a friend. Seen: bounding
+    pairs at them, last contact remembered. Unseen: sweep last contact, then the
+    unvisited cells of a 3x3 grid over the extent of the units."""
+    mine, foes = _split(us)
+    if not mine:
+        return
+    if _mem["bbox"] is None:
+        xs, ys = [u["x"] for u in us], [u["y"] for u in us]
+        _mem["bbox"] = (min(xs) - 300, min(ys) - 300, max(xs) + 300, max(ys) + 300)
+    seen = [(e["x"], e["y"]) for e in foes if any(_d((e["x"], e["y"]), (m["x"], m["y"])) <= SIGHT for m in mine)]
+    for m in mine:
+        _mem["visited"].add(_cell(m["x"], m["y"]))
+    if seen:
+        _mem["last"] = seen[0]
+        return bound(us, seen)
+    goals = [_cellctr(c) for c in range(9) if c not in _mem["visited"]]
+    if _mem["last"]:
+        if _d(_mem["last"], (mine[0]["x"], mine[0]["y"])) < 250:
+            _mem["last"] = None
+        else:
+            goals.insert(0, _mem["last"])
+    if not goals:
+        _mem["visited"].clear()
+        goals = [_cellctr(c) for c in range(9)]
+    bound(us, goals)
+
+
+BRAINS = dict(idle=idle, rush=rush, pairs=pairs, focus=focus, bound=bound, hunt=hunt)
 
 if __name__ == "__main__":
     for u in units():
