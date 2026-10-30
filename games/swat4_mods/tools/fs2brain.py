@@ -72,7 +72,7 @@ def pairs(us):
 
 
 # ---- SwatMinds ideas (10-29): focus fire, bounding pairs, zone hunt ----
-STEP = 350.0   # one bound per turn
+STEP = float(os.environ.get("FS2_STEP", 350))   # one bound per turn
 SIGHT = 900.0  # no-cheat sight radius: foes farther than this from every friend are "unknown"
 _mem = dict(turn=0, last=None, visited=set(), bbox=None)
 
@@ -166,7 +166,21 @@ def hunt(us):
     bound(us, goals)
 
 
-BRAINS = dict(idle=idle, rush=rush, pairs=pairs, focus=focus, bound=bound, hunt=hunt)
+def mass(us):
+    """Arrive together: if the squad is spread wider than SPREAD, everyone steps to the centroid
+    (nearest-to-centroid unit holds); once massed, all advance a short step on the nearest foe."""
+    mine, foes = _split(us)
+    if not (mine and foes):
+        return
+    c = (sum(u["x"] for u in mine) / len(mine), sum(u["y"] for u in mine) / len(mine))
+    if max(_d(c, (u["x"], u["y"])) for u in mine) > SPREAD:
+        return _go([(u["id"], *_toward(u, c, 2 * STEP)) for u in mine])
+    t = min(foes, key=lambda e: _d(c, (e["x"], e["y"])))
+    _go([(u["id"], *_toward(u, (t["x"], t["y"]), STEP)) for u in mine])
+
+
+SPREAD = 450.0
+BRAINS = dict(mass=mass, idle=idle, rush=rush, pairs=pairs, focus=focus, bound=bound, hunt=hunt)
 
 if __name__ == "__main__":
     for u in units():

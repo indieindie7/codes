@@ -286,3 +286,8 @@ Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pai
   - bound: 0 wins, 1 loss, kills 1/1/3/2, deaths 4/3/3/3
   - focus: 0 wins, 3 losses, kills 0 each, deaths 3-4
 - Verdict: brains are in control now. Hunt/bound kill ~1.5-1.75 per match vs ~0.5 before, but still 0 wins: pairs/bounding survive longer (5 turns) than rush/focus. Next: cover/LOS-aware goals (stock AI wins by cover), tune STEP, more turns.
+
+## FS2: baselines, mass brain, bound STEP sweep (2026-10-30)
+- test1, 4 matches each, vs Charon, (win,kills,deaths,turns): idle 0 wins, kills 0/0/0/1, deaths 3/3/2/3 (5 turns). mass (gather then advance together, FS2_STEP/SPREAD 450): 4 losses, kills 1/1/0/0, deaths 4, dead in 2-3 turns = worse than idle.
+- bound STEP sweep (FS2_STEP env): 180 -> 3 losses 1 draw, kills 0/2/1/2, deaths 4/4/3/4; 350 -> 1 loss 3 draws, kills 1/1/3/2, deaths 4/3/3/3; 600 -> 3 losses 1 draw, kills 2/2/0/0. 350 stays best; sample is small (noise ~1 kill).
+- Still 0 wins for any brain. Charon out-trades us in the open; moving in unaided gets us killed faster than holding. Untried: planAddOrder (5-16 args, order types OrderWait/WaitUntilSeeEnemy/MoveAim/Prone/Stand exist; signature not decoded), cover/LOS-aware goals.
