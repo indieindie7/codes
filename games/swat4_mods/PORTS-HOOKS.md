@@ -316,3 +316,7 @@ Verdict: no gain over rush/pairs. Today's baselines are worse than 10-24/25 (pai
 
 - Noise: offDown SE ~0.17 per arm. Verdict: no arm beats base. Pincer -0.08 and alarm 0.0 = noise; stances (-0.33) and curiosity (-0.36) lower officer losses, so worse for the hard-suspect goal. Keep all four off. Pincer did not fix flanker deaths (susDown 2.92 vs 3.34 base, fewer deaths but no officer gain). Best set stays bTwoMode + bAlerts (+ bPropagate for realism).
 - Next: stances need more than a roll (guards HOLD only by map marker, not random); curiosity probably needs a lower range or noise-scaling.
+## FS2: planAddOrder layout, decoded from sideQuest.cs.dso (2026-10-30)
+- DSO ver 47 decode (gameScripts/sideQuest.cs.dso, MoveAimOrder2 caller): args are (a, unit, "0", "MoveAimOrder2", ...). So planAddOrder(a, unitId, time, "Type", params...); argc 5..16 incl name = 4..15 user args. Probe: ("DuckOrder",2,3,4) gave no error (argv2=unit id 2); (2,"DuckOrder",..) gave "no player with id 0" (argv2 is read as the id).
+- planAddOrder("WaitOrder",1,3,4) + spSubmitTurn crashed the game in Charon twice: wrong layout, not the real call.
+- Untested: planAddOrder(0, 1, 0, "DuckOrder") + submit. Game launches kept dying ("not polling") at the end of this session, so the ambush brain is still not built.
