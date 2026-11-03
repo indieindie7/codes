@@ -350,3 +350,8 @@ Ideas, not orders. All four need logged play data first: (state, choice, outcome
 
 Repo: C:\Users\john\Documents\Tools\skilljepa (github indieindie7/skill-jepa).
 Fit: #4 applies now to the DK1, Cantata and Retro Commander sweeps. #1 and #3 fit Cantata/Retro Commander utility scores once decision logs exist. #2 goes to the director only (rule feedback-ai-play-fair-director-balances).
+
+## Parked: weight-space programming (peer chat, 2026-11-03)
+MIT 11-2026: an LLM reads and edits network weights directly, with no gradients (blog rikiyat.github.io/blog/weight-space-programming, code github.com/leofmarciano/weightspace).
+- Not applicable now: SwatMinds (UnrealScript), DK1 squadbrain.py, FS2 fs2brain.py, the Cantata harness and Retro Micro.java are all hand rules with no policy nets.
+- Revisit when a gym gets a small learned policy, for example the B1 learned_logit nudge above once (state, choice, outcome) logs exist. Then edit that net on a copy and A/B it with the gym score under falsifier rules. GPU rules apply.
