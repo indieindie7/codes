@@ -237,6 +237,8 @@ if __name__ == "__main__":
         path = pos[1] if len(pos) > 1 else None
         for _ in range(n):
             r = run_match(opt("--brain", "rush"), float(opt("--secs", 60)), *map(int, opt("--map", "0/0").split("/")))
+            if "squadbrain" in sys.modules:
+                r["hunt_ticks"] = sys.modules["squadbrain"].S["hunt_ticks"]
             print(json.dumps(r))
             if path:
                 with open(path, "a") as f:

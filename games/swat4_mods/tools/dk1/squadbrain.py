@@ -41,12 +41,12 @@ TRAIL_MAX = 200      # leader trail samples kept (fallback when no route)
 
 S = dict(ids=None, painted=set(), bad=set(), trail=[], goal=None, goal_age=0, seen=None, mode="CLEAR", pend={},
          grid=None, send=None, lpath=None, region=None, holding=set(),
-         zones=[], zof={}, zadj={}, anchor=None, xact=False, relay=None, hunt=None)
+         zones=[], zof={}, zadj={}, anchor=None, xact=False, relay=None, hunt=None, hunt_ticks=0)
 
 
 def reset(ids):
     S.update(ids=ids, painted=set(), bad=set(), trail=[], goal=None, goal_age=0, seen=None, mode="CLEAR", pend={}, lpath=None, holding=set(),
-             anchor=None, xact=False, relay=None, hunt=None)  # zones = map data, rebuilt by bind()
+             anchor=None, xact=False, relay=None, hunt=None, hunt_ticks=0)  # zones = map data, rebuilt by bind()
 
 
 def bind(send, cgrid_lines=None, region=None):
@@ -406,7 +406,7 @@ def orders(troopers, suspects, last):
         _engage(troopers, s, want := {}, force)
         S["pend"] = dict(leader=None)
     elif S["anchor"] is not None and S["zones"] and _hunt(troopers, want := {}, force):
-        S["mode"] = "HUNT"; S["holding"] = set(); S["goal"] = None; S["lpath"] = None
+        S["mode"] = "HUNT"; S["hunt_ticks"] += 1; S["holding"] = set(); S["goal"] = None; S["lpath"] = None
         S["pend"] = dict(leader=None)
     else:
         if S["anchor"] is not None:  # hunt finished: forget the anchor, sweep
