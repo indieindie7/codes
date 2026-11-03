@@ -333,3 +333,6 @@ planAddOrder(0, id, 0, "DuckOrder") after planNavigateTo: submit safe, no crash 
 
 ## FS2: WaitOrder crashes the game (10-30)
 miniMissions.cs.dso call decoded: planAddOrder(a, unit, "0", "WaitOrder", "500", "1500", <0>, <0>) (arg strings from the fst; trailing 2 are op73 constants, value unknown). Sent as above (a=0) after spSubmitTurn the game dies in Charon, 3 of 3 runs (also with numeric guesses). DuckOrder alone is safe (duckhunt, no gain). MoveAimOrder2 args (sideQuest.cs.dso d[8153]) are two function-call results (op68) + a constant; not decoded. Next: find what `a` is (0 may be invalid for orders, "no player with id" check reads argv2) or hook via Ghidra on the planAddOrder handler. Brain `ambush` (hunt+duck+wait) left in fs2brain.py, FS2_AMB overrides the order text.
+
+## FS2: Duck+EOSOrder soak (11-03)
+planAddOrder(0,id,"0","DuckOrder") + (…,"EOSOrder"): no crash, 3 matches test1: kills 3/1/0, deaths 2/4/4, 0 wins (1 turn-cap). Noise level vs bound STEP 350 (kills 1.5-2, deaths 3-4). WaitOrder still crashes. Use FS2_AMB to swap order text.
