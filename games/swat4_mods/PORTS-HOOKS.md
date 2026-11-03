@@ -336,3 +336,17 @@ miniMissions.cs.dso call decoded: planAddOrder(a, unit, "0", "WaitOrder", "500",
 
 ## FS2: Duck+EOSOrder soak (11-03)
 planAddOrder(0,id,"0","DuckOrder") + (…,"EOSOrder"): no crash, 3 matches test1: kills 3/1/0, deaths 2/4/4, 0 wins (1 turn-cap). Noise level vs bound STEP 350 (kills 1.5-2, deaths 3-4). WaitOrder still crashes. Use FS2_AMB to swap order text.
+
+## Parked: skill-jepa methods for game AIs (from JEPA chat, 2026-11-03)
+Ideas, not orders. All four need logged play data first: (state, choice, outcome) rows per decision.
+1. **Hand rule + clipped learned nudge:** score = base_utility + delta*clip(learned_logit, 3), with delta in {.1, .3, 1}. The designer's behaviour survives, and the learned part only reorders close calls. Ref: skilljepa arms.py combine (~L104).
+2. **Per-player prior for the director:** use the base AI until about 10 rows per player, then a kernel residual on that player's history. Ref: a17_user_profile.py. This is the director layer adapting to the player's style; the agent itself stays fair.
+3. **Abstain gate:** fall back to the default behaviour when the top margin is low, entropy is high, or the "none" score is high. Ref: avb_serve.py gate_feats.
+4. **Falsifier discipline:**
+   - frozen hashed holdout (holdout_check.py --init/--verify)
+   - arms pre-registered in a PLAN file
+   - accept a change only if its metric is >= the last accepted metric - .005
+   - shadow-log for 1 day before promoting
+
+Repo: C:\Users\john\Documents\Tools\skilljepa (github indieindie7/skill-jepa).
+Fit: #4 applies now to the DK1, Cantata and Retro Commander sweeps. #1 and #3 fit Cantata/Retro Commander utility scores once decision logs exist. #2 goes to the director only (rule feedback-ai-play-fair-director-balances).
