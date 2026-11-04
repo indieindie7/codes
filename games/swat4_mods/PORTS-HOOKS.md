@@ -355,3 +355,4 @@ Fit: #4 applies now to the DK1, Cantata and Retro Commander sweeps. #1 and #3 fi
 MIT 11-2026: an LLM reads and edits network weights directly, with no gradients (blog rikiyat.github.io/blog/weight-space-programming, code github.com/leofmarciano/weightspace).
 - Not applicable now: SwatMinds (UnrealScript), DK1 squadbrain.py, FS2 fs2brain.py, the Cantata harness and Retro Micro.java are all hand rules with no policy nets.
 - Revisit when a gym gets a small learned policy, for example the B1 learned_logit nudge above once (state, choice, outcome) logs exist. Then edit that net on a copy and A/B it with the gym score under falsifier rules. GPU rules apply.
+- 11-03 JEPA test: A18 (weight-space edit) NOT SUPPORTED on the skill router (skill-jepa 8ba63ec). Video note: video-notes tree/449. Candidate first target: the TRM/distilled-FSM enemy brain idea (memory goobi-rpg-future-ideas).
