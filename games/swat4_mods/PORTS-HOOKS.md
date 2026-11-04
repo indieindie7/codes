@@ -356,3 +356,7 @@ MIT 11-2026: an LLM reads and edits network weights directly, with no gradients 
 - Not applicable now: SwatMinds (UnrealScript), DK1 squadbrain.py, FS2 fs2brain.py, the Cantata harness and Retro Micro.java are all hand rules with no policy nets.
 - Revisit when a gym gets a small learned policy, for example the B1 learned_logit nudge above once (state, choice, outcome) logs exist. Then edit that net on a copy and A/B it with the gym score under falsifier rules. GPU rules apply.
 - 11-03 JEPA test: A18 (weight-space edit) NOT SUPPORTED on the skill router (skill-jepa 8ba63ec). Video note: video-notes tree/449. Candidate first target: the TRM/distilled-FSM enemy brain idea (memory goobi-rpg-future-ideas).
+
+## FS2 GUI order functions + 20-match soak (11-04)
+- planAddOrder "WaitOrder" crashes Charon apply; the GUI's global fns work instead: select with `cycleSelectedPlayer()` until `getSelectedPlayerId()==id`, then `addWaitOrder(1000)` (also addMoveAimOrder, addDuckOrder, addEOSOrder, addFocusAimOrder, addProneOrder, addSetSpeed). They act on the GUI selection. One run() per unit: no crash over 20 matches (one batched statement for all 4 units crashed).
+- test1, 20 matches each, Steam launch: bound STEP 350 = 39 kills / 52 deaths / 0 wins (Charon 5, cap 15); bound + select/addWaitOrder(1000) hold ("ambush2") = 35 / 59 / 0 (Charon 6, cap 14). No gain; brain not kept.
