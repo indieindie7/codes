@@ -360,3 +360,14 @@ MIT 11-2026: an LLM reads and edits network weights directly, with no gradients 
 ## FS2 GUI order functions + 20-match soak (11-04)
 - planAddOrder "WaitOrder" crashes Charon apply; the GUI's global fns work instead: select with `cycleSelectedPlayer()` until `getSelectedPlayerId()==id`, then `addWaitOrder(1000)` (also addMoveAimOrder, addDuckOrder, addEOSOrder, addFocusAimOrder, addProneOrder, addSetSpeed). They act on the GUI selection. One run() per unit: no crash over 20 matches (one batched statement for all 4 units crashed).
 - test1, 20 matches each, Steam launch: bound STEP 350 = 39 kills / 52 deaths / 0 wins (Charon 5, cap 15); bound + select/addWaitOrder(1000) hold ("ambush2") = 35 / 59 / 0 (Charon 6, cap 14). No gain; brain not kept.
+
+## Rainbow Six 1998 AI decomp: ideas for SwatMinds (11-04)
+Source: C:\re\rainbowsix\AI-MAP.md (commit a0c9ad8, local repo; Ghidra project ghidra/proj/r6named, 22 AI fns named). Gym shelved: game renders black under automation.
+- Fair-play verdict: terrorists see the player only through the raycast LOS check (FUN_0057ff30). Exceptions: terrorists share positions with each other (FUN_0058a1a0), and shots are heard by distance alone (bullet 300 cm, gunshot 400 cm).
+- Portable to SwatMinds:
+  - LOS recomputed every 0.75 s, not every frame (cheap, and gives the player a reaction window).
+  - Shadow rule: a target in shadow is only seen within 800 cm; anything within 300 cm is always seen.
+  - Vision cone widens with alertness (cos limit .7/.6/.5 for bored/ready/alert).
+  - Sound passes through at most 4 portals; at most 5 terrorists seek one sound at once (limits dogpiles; fits the director layer).
+  - Stress/morale: +10 per wound, +15 per dead friendly seen, +30 when out of ammo, +10 when shot in the back. Failing a stress check by 25 or less means retreat, not panic. Map onto SWAT 4 suspect morale/compliance.
+  - Ready/Alert plan pair per terrorist, loaded from data (.pln): designer-authored, tunable without code.
