@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net472</TargetFramework><AssemblyName>AtrioCompanion</AssemblyName><LangVersion>latest</LangVersion><GenerateAssemblyInfo>false</GenerateAssemblyInfo></PropertyGroup>
+<ItemGroup>
+<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+<Reference Include="Atrio"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/Atrio.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="Isto.Core"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/Isto.Core.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="BehaviorDesigner.Runtime"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/BehaviorDesigner.Runtime.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="UnityEngine"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="UnityEngine.CoreModule"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="UnityEngine.IMGUIModule"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="UnityEngine.AIModule"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/UnityEngine.AIModule.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="UnityEngine.PhysicsModule"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/UnityEngine.PhysicsModule.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="UnityEngine.TextRenderingModule"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="UnityEngine.InputLegacyModule"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/Atrio_Data/Managed/UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="BepInEx"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/BepInEx/core/BepInEx.dll</HintPath><Private>false</Private></Reference>
+<Reference Include="0Harmony"><HintPath>C:/Program Files (x86)/Steam/steamapps/common/Atrio The Dark Wild/BepInEx/core/0Harmony.dll</HintPath><Private>false</Private></Reference>
+</ItemGroup></Project>
