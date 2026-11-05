@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net472</TargetFramework><AssemblyName>CKCompanion</AssemblyName><LangVersion>latest</LangVersion><GenerateAssemblyInfo>false</GenerateAssemblyInfo><Nullable>disable</Nullable>
+<M>C:/Program Files (x86)/Steam/steamapps/common/Core Keeper/CoreKeeper_Data/Managed</M>
+<B>C:/Program Files (x86)/Steam/steamapps/common/Core Keeper/BepInEx/core</B></PropertyGroup>
+<ItemGroup>
+<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+<GameDll Include="$(M)/Pug*.dll;$(M)/Unity.*.dll;$(M)/UnityEngine.dll;$(M)/ScriptableData*.dll;$(M)/UnityEngine.*Module.dll;$(B)/BepInEx.dll;$(B)/0Harmony.dll" />
+<Reference Include="@(GameDll)"><Private>false</Private></Reference>
+</ItemGroup></Project>

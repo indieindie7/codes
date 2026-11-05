@@ -1,0 +1,12 @@
+[Info   :Core Keeper Companion] companion spawned: Bumble at (15.0, 0.0, -8.6) (player (-7.1, 0.0, -17.8))
+[Info   :Core Keeper Companion] [callout:hello] "Hi! I'm Bumble. I'll help! Probably." at companion=(15.0, 0.0, -8.6)
+[Info   :Core Keeper Companion] [teleport] far 24,0 -> (-5.6, 0.0, -17.8)
+[Info   :Core Keeper Companion] [callout:teleport] "Found you! I took a shortcut. Don't ask." at companion=(-5.6, 0.0, -17.8)
+[Info   :Core Keeper Companion] [pos] companion=(-5.6, 0.0, -17.8) player=(-7.1, 0.0, -17.8) dist=1.5 moving=False tiles=1868 key0=int2(10, -9) walk=True
+[Info   :Core Keeper Companion] [callout:chest] "A chest up ahead! Yours, I mean. Definitely yours." at companion=(-5.6, 0.0, -17.8)
+[Info   :Core Keeper Companion] [pos] companion=(-5.6, 0.0, -17.8) player=(-7.1, 0.0, -17.8) dist=1.5 moving=False tiles=1934 key0=int2(10, -9) walk=True
+[Info   :Core Keeper Companion] [pos] companion=(-5.6, 0.0, -17.8) player=(-7.1, 0.0, -17.8) dist=1.5 moving=False tiles=1934 key0=int2(10, -9) walk=True
+[Info   :Core Keeper Companion] [pos] companion=(-5.6, 0.0, -17.8) player=(-7.1, 0.0, -17.8) dist=1.5 moving=False tiles=1934 key0=int2(10, -9) walk=True
+[Info   :Core Keeper Companion] [pos] companion=(-5.6, 0.0, -17.8) player=(-7.1, 0.0, -17.8) dist=1.5 moving=False tiles=1934 key0=int2(10, -9) walk=True
+[Info   :Core Keeper Companion] [pos] companion=(-5.6, 0.0, -17.8) player=(-7.1, 0.0, -17.8) dist=1.5 moving=False tiles=1934 key0=int2(10, -9) walk=True
+[Info   :Core Keeper Companion] [pos] companion=(-5.6, 0.0, -17.8) player=(-7.1, 0.0, -17.8) dist=1.5 moving=False tiles=1934 key0=int2(10, -9) walk=True

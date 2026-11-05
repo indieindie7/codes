@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net472</TargetFramework><AssemblyName>CKResolveFix</AssemblyName><B>C:/Program Files (x86)/Steam/steamapps/common/Core Keeper/BepInEx/core</B></PropertyGroup>
+<ItemGroup>
+<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+<Reference Include="$(B)/BepInEx.dll;$(B)/Mono.Cecil.dll"><Private>false</Private></Reference>
+</ItemGroup></Project>
