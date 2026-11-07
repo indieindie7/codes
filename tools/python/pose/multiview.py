@@ -1,11 +1,13 @@
-"""multiview: several photos of one statue -> one coloured 3D point cloud + free-camera HTML viewer.
-Geometry = NLF SMPL body of the FIRST view (kNN densified). Every view gets its own NLF fit; its 6890 verts are
+"""multiview: several photos of one statue -> one coloured 3D triangle mesh + free-camera HTML viewer.
+Geometry = NLF SMPL body of the FIRST view, triangulated with smpl_mesh.npz (ball-pivoted SMPL template, watertight,
+NLF ships no faces), loop-subdivided twice. Colours live on vertices; the GPU lerps them across each triangle
+(a*A + b*B + c*C, barycentric). Every view gets its own NLF fit; its 6890 verts are
 aligned to the first (Umeyama similarity) -> per-view affine camera. Colour per point = visibility (z-buffer) x
 facing weight blend over views, each view's colours normalised to the first view's mean (b&w photos get tinted).
-Unseen points (back) take the mean of their coloured neighbours, shaded.
+Unseen vertices (back) take the mean of their coloured neighbours, shaded.
 Usage: py -3.13 multiview.py <out_dir> <img1> <img1_drawcheck_ref.npz> [<img2> <npz2> ...]
 Env: NLF_MODEL (torchscript path)."""
-import sys, os, json, base64, numpy as np, torch, torchvision
+import sys, os, json, base64, numpy as np, torch, torchvision, trimesh
 from PIL import Image
 from scipy.spatial import cKDTree
 from scipy.ndimage import distance_transform_edt
@@ -33,15 +35,13 @@ for img, npz in pairs:
     print(views[-1]['name'], 'nlf ok')
 del m; torch.cuda.empty_cache()
 
-C = views[0]['v3']                                   # canonical = first view's camera frame (metres, y down, z away)
-_, nn = cKDTree(C).query(C, k=9)
-P = np.unique(np.r_[C, ((C[:, None] + C[nn[:, 1:]]) / 2).reshape(-1, 3)].round(4), axis=0)
-_, nn2 = cKDTree(P).query(P, k=7)                    # second pass: fill gaps
-P = np.unique(np.r_[P, ((P[:, None] + P[nn2[:, 1:4]]) / 2).reshape(-1, 3)].round(4), axis=0)
-# unsigned normals (local PCA) for the facing weight
-_, nk = cKDTree(P).query(P, k=12); Q = P[nk] - P[nk].mean(1, keepdims=True)
-N = np.linalg.eigh(np.einsum('nki,nkj->nij', Q, Q))[1][:, :, 0]
-
+C = views[0]['v3']                                   # canonical = first view's camera frame (mm, y down, z away)
+sm = np.load(os.path.join(HERE, 'smpl_mesh.npz'))    # faces over 7155 verts = SMPL verts vmap (a few split for manifoldness)
+P, F = trimesh.remesh.subdivide_loop(C[sm['vmap']].astype(np.float64), sm['faces'], iterations=2)
+tm = trimesh.Trimesh(P, F, process=False)
+if tm.volume < 0: F = F[:, ::-1].copy(); tm = trimesh.Trimesh(P, F, process=False)
+N = tm.vertex_normals                                # outward normals (signed)
+used = np.zeros(len(P), bool); used[F.ravel()] = True
 ref_mean = None; acc = np.zeros((len(P), 3)); wsum = np.zeros(len(P)); src = np.zeros((len(P), len(views)))
 for k, v in enumerate(views):
     s, R, t = umeyama(C, v['v3'])                    # canonical -> this view's camera frame
@@ -66,19 +66,28 @@ for k, v in enumerate(views):
     if v['im'].std(2).mean() < 3:                     # b&w photo: luminance x reference tint
         col = col.mean(1, keepdims=True) * (ref_mean / ref_mean.mean())
     dview = np.linalg.inv(s * R) @ np.array([0, 0, 1.0]); dview /= np.linalg.norm(dview)
-    face = np.abs(N @ dview)
-    wt = vis * (0.15 + face ** 2) * np.where(inm, 1, 0.3) * (2.0 if k == 0 else 1.0)
+    face = np.clip(-(N @ dview), 0, 1)               # >0 only when the surface faces this camera
+    wt = vis * (face > 0.05) * (0.15 + face ** 2) * np.where(inm, 1, 0.3) * (2.0 if k == 0 else 1.0)
     acc += col * wt[:, None]; wsum += wt; src[:, k] = wt
     print(v['name'], 'visible pts', int(vis.sum()), 'of', len(P))
-seen = wsum > 1e-6
+seen = (wsum > 1e-6) & used
 col = np.zeros((len(P), 3)); col[seen] = acc[seen] / wsum[seen, None]
-_, nb = cKDTree(P[seen]).query(P[~seen], k=8); col[~seen] = col[seen][nb].mean(1) * 0.82
+# unseen (no photo saw it): diffuse colours over the mesh edges from the seen border (smooth, no kNN streaks), darker
+import scipy.sparse as sp
+E = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
+Adj = sp.coo_matrix((np.ones(len(E) * 2), (np.r_[E[:, 0], E[:, 1]], np.r_[E[:, 1], E[:, 0]])), shape=(len(P),) * 2).tocsr()
+Adj = sp.diags(1 / np.maximum(Adj.sum(1).A1, 1)) @ Adj
+_, nb = cKDTree(P[seen]).query(P[~seen], k=8); col[~seen] = col[seen][nb].mean(1)
+for _ in range(300): c2 = Adj @ col; col[~seen] = c2[~seen]
+col[~seen] *= 0.85
+col = np.clip(col, 0, 255)                          # b&w tint can push red past 255 (uint8 wrap = cyan specks)
 print('coloured', int(seen.sum()), 'filled', int((~seen).sum()))
 
 # viewer data: centre, y up, metres
 X = P - P.mean(0); X[:, 1] *= -1; X[:, 2] *= -1; X *= 1.7 / np.ptp(X[:, 1])   # NLF is in mm -> 1.7 units tall
-np.savez(os.path.join(od, 'cloud.npz'), pts=X, col=col, src=src, seen=seen)
-data = dict(n=len(X), pos=base64.b64encode(X.astype(np.float32).tobytes()).decode(),
+np.savez(os.path.join(od, 'mesh.npz'), pts=X, faces=F, col=col, src=src, seen=seen)
+trimesh.Trimesh(X, F, vertex_colors=np.c_[col.round(), np.full(len(X), 255)].astype(np.uint8), process=False).export(os.path.join(od, 'mesh.ply'))
+data = dict(n=len(X), nf=len(F), idx=base64.b64encode(F.astype(np.uint32).tobytes()).decode(), pos=base64.b64encode(X.astype(np.float32).tobytes()).decode(),
             col=base64.b64encode(col.round().astype(np.uint8).tobytes()).decode(),
             src=base64.b64encode((src.argmax(1) * seen + (~seen) * 255).astype(np.uint8).tobytes()).decode(),
             views=[v['name'] for v in views])
