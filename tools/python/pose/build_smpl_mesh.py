@@ -17,6 +17,10 @@ ms.meshing_re_orient_faces_coherently()
 c = ms.current_mesh(); Vo, Fo = c.vertex_matrix(), c.face_matrix()
 dist, vmap = cKDTree(V).query(Vo); assert dist.max() < 1e-9
 t = trimesh.Trimesh(Vo, Fo, process=False)
-if t.volume < 0: Fo = Fo[:, ::-1].copy(); t = trimesh.Trimesh(Vo, Fo, process=False)
-print('verts', len(Vo), 'faces', len(Fo), 'watertight', t.is_watertight, 'winding', t.is_winding_consistent)
+# BPA gives several closed shells (e.g. a limb); orient EACH outward (one inverted shell = inward normals = unseen in multiview)
+lab = trimesh.graph.connected_component_labels(t.face_adjacency, node_count=len(Fo))
+for l in np.unique(lab):
+    if trimesh.Trimesh(Vo, Fo[lab == l], process=False).volume < 0: Fo[lab == l] = Fo[lab == l][:, ::-1]
+t = trimesh.Trimesh(Vo, Fo, process=False)
+print('verts', len(Vo), 'faces', len(Fo), 'shells', lab.max() + 1, 'volume', round(t.volume, 4), 'watertight', t.is_watertight, 'winding', t.is_winding_consistent)
 np.savez(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'smpl_mesh.npz'), faces=Fo.astype(np.int32), vmap=vmap.astype(np.int32))

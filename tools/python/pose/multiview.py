@@ -2,8 +2,8 @@
 Geometry = NLF SMPL body of the FIRST view, triangulated with smpl_mesh.npz (ball-pivoted SMPL template, watertight,
 NLF ships no faces), loop-subdivided twice. Colours live on vertices; the GPU lerps them across each triangle
 (a*A + b*B + c*C, barycentric). Every view gets its own NLF fit; its 6890 verts are
-aligned to the first (Umeyama similarity) -> per-view affine camera. Colour per point = visibility (z-buffer) x
-facing weight blend over views, each view's colours normalised to the first view's mean (b&w photos get tinted).
+aligned to the first (Umeyama similarity) -> per-view affine camera. Colour per vertex = the photo whose camera it faces most
+(z-buffer visible, in mask, not grazing; near-ties blend), each view's colours normalised to the first view's mean (b&w photos get tinted).
 Unseen vertices (back) take the mean of their coloured neighbours, shaded.
 Usage: py -3.13 multiview.py <out_dir> <img1> <img1_drawcheck_ref.npz> [<img2> <npz2> ...]
 Env: NLF_MODEL (torchscript path)."""
@@ -42,7 +42,7 @@ tm = trimesh.Trimesh(P, F, process=False)
 if tm.volume < 0: F = F[:, ::-1].copy(); tm = trimesh.Trimesh(P, F, process=False)
 N = tm.vertex_normals                                # outward normals (signed)
 used = np.zeros(len(P), bool); used[F.ravel()] = True
-ref_mean = None; acc = np.zeros((len(P), 3)); wsum = np.zeros(len(P)); src = np.zeros((len(P), len(views)))
+ref_mean = None; cols, scores = [], []
 for k, v in enumerate(views):
     s, R, t = umeyama(C, v['v3'])                    # canonical -> this view's camera frame
     pc = (s * (R @ P.T)).T + t; vc = (s * (R @ C.T)).T + t
@@ -66,12 +66,16 @@ for k, v in enumerate(views):
     if v['im'].std(2).mean() < 3:                     # b&w photo: luminance x reference tint
         col = col.mean(1, keepdims=True) * (ref_mean / ref_mean.mean())
     dview = np.linalg.inv(s * R) @ np.array([0, 0, 1.0]); dview /= np.linalg.norm(dview)
-    face = np.clip(-(N @ dview), 0, 1)               # >0 only when the surface faces this camera
-    wt = vis * (face > 0.05) * (0.15 + face ** 2) * np.where(inm, 1, 0.3) * (2.0 if k == 0 else 1.0)
-    acc += col * wt[:, None]; wsum += wt; src[:, k] = wt
+    face = np.abs(N @ dview)                          # unsigned: BPA mesh has inside-out patches (legs); z-buffer handles occlusion
+    # score = how square-on this photo sees the vertex; grazing (<0.25) samples don't count
+    sc = np.where(inm, face, 0.5 * face)              # off-mask: nearest in-mask pixel, only if no photo does better
+    scores.append(np.where(vis & (face > 0.25), sc, -1.0)); cols.append(col)
     print(v['name'], 'visible pts', int(vis.sum()), 'of', len(P))
-seen = (wsum > 1e-6) & used
-col = np.zeros((len(P), 3)); col[seen] = acc[seen] / wsum[seen, None]
+# per vertex: the photo whose camera the surface faces most wins; views within ~0.05 of it blend softly (no hard seams)
+S = np.stack(scores, 1); best = S.max(1); seen = (best > 0) & used
+src = np.where(S > 0, np.exp((S - best[:, None]) / 0.03), 0.0)
+src /= np.maximum(src.sum(1, keepdims=True), 1e-9)
+col = np.einsum('nk,knc->nc', src, np.stack(cols)); col[~seen] = 0
 # unseen (no photo saw it): diffuse colours over the mesh edges from the seen border (smooth, no kNN streaks), darker
 import scipy.sparse as sp
 E = np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]
